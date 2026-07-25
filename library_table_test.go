@@ -512,6 +512,59 @@ end
 	}
 }
 
+func TestWarmLargeTableConcatHasConstantAllocationCount(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state := newStateWithTable(t)
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@concat-large-alloc.lua", `
+local concat = table.concat
+local values = {}
+for index = 1, 1000 do
+	values[index] = "12345678"
+end
+return function()
+	return concat(values)
+end
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("loader produced %d results; want 1", len(results))
+	}
+	body := results[0]
+	var destination [1]Value
+	for index := 0; index < 16; index++ {
+		if _, err := state.CallInto(
+			body,
+			nil,
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allocations := testing.AllocsPerRun(32, func() {
+		if _, err := state.CallInto(
+			body,
+			nil,
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	})
+	// An 8 KiB result is intentionally too long for the short-string cache.
+	// Its representation minimum is one exact builder buffer and one
+	// luaString header, independent of the 1,000 input elements.
+	if allocations > 2 {
+		t.Fatalf("large concat allocated %v times per run; want at most 2", allocations)
+	}
+	if text, ok := destination[0].AsString(); !ok || len(text) != 8000 {
+		t.Fatalf("large concat result = %v", destination[0])
+	}
+}
+
 func newStateWithTable(t *testing.T) *State {
 	t.Helper()
 	state, err := New(Options{})

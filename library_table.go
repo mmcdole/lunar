@@ -362,20 +362,7 @@ func tableSort(frame Frame) Outcome {
 	// be roots and cannot consume the nested comparator call's value budget.
 	// The caller extent remains live, so trimming the borrowed native frame
 	// cannot discard registers owned by its Lua caller.
-	call := frame.activation()
-	thread := frame.thread
-	argumentEnd := int(call.base) + 2
-	if thread.top > argumentEnd {
-		previousTop := thread.top
-		previousExtent := thread.liveValueExtent()
-		thread.clearInactive(argumentEnd, previousTop)
-		thread.top = argumentEnd
-		thread.frameExtent = int(call.callerExtent)
-		if argumentEnd > thread.frameExtent {
-			thread.frameExtent = argumentEnd
-		}
-		thread.clearDeadSuffix(previousExtent)
-	}
+	frame.discardArgumentsAfter(2)
 
 	if failure := sortRange(
 		frame,

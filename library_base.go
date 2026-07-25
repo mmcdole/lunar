@@ -75,15 +75,7 @@ func baseXPCall(frame Frame) Outcome {
 	// invokes the target. Apart from making those arguments unobservable,
 	// this releases their roots and keeps them out of the protected call's
 	// value-stack budget.
-	previousTop := thread.top
-	previousExtent := thread.liveValueExtent()
-	thread.clearInactive(base+2, previousTop)
-	thread.top = base + 2
-	thread.frameExtent = int(call.callerExtent)
-	if thread.top > thread.frameExtent {
-		thread.frameExtent = thread.top
-	}
-	thread.clearDeadSuffix(previousExtent)
+	frame.discardArgumentsAfter(2)
 
 	return runProtectedCall(
 		frame,
@@ -92,6 +84,34 @@ func baseXPCall(frame Frame) Outcome {
 		handler,
 		true,
 	)
+}
+
+// discardArgumentsAfter removes a native call's supplied argument tail.
+//
+// It is deliberately shrink-only: a missing argument remains absent rather
+// than becoming an explicit nil. The caller's register extent stays live.
+// Discarded slots are cleared in place, and any tail beyond that caller extent
+// also stops consuming nested-call value budget.
+func (frame Frame) discardArgumentsAfter(count int) {
+	call := frame.activation()
+	if count < 0 {
+		panic("lua: negative retained argument count")
+	}
+	thread := frame.thread
+	argumentEnd := int(call.base) + count
+	if thread.top <= argumentEnd {
+		return
+	}
+
+	previousTop := thread.top
+	previousExtent := thread.liveValueExtent()
+	thread.clearInactive(argumentEnd, previousTop)
+	thread.top = argumentEnd
+	thread.frameExtent = int(call.callerExtent)
+	if argumentEnd > thread.frameExtent {
+		thread.frameExtent = argumentEnd
+	}
+	thread.clearDeadSuffix(previousExtent)
 }
 
 // The remainder of this file is the Lua 5.1 auxiliary layer shared by every
