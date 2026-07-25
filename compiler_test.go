@@ -84,7 +84,7 @@ func TestCompilerInternsTokenTextWithoutRetainingSource(t *testing.T) {
 
 func TestCompilerDeduplicatesCompactConstants(t *testing.T) {
 	unit := newCompileUnit("@constants.lua")
-	function, syntaxError := unit.newFunction(1, 0, 0)
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -144,7 +144,7 @@ func TestCompilerDeduplicatesCompactConstants(t *testing.T) {
 
 func TestCompilerEmitsInstructionsLinesAndRegisterHighWater(t *testing.T) {
 	unit := newCompileUnit("@code.lua")
-	function, syntaxError := unit.newFunction(3, 2, 0)
+	function, syntaxError := unit.newFunction(nil, 3, 2, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -207,7 +207,7 @@ func TestCompilerEmitsInstructionsLinesAndRegisterHighWater(t *testing.T) {
 
 func TestCompilerUsesCanonicalMinimumAndRejectsRegisterOverflow(t *testing.T) {
 	unit := newCompileUnit("@registers.lua")
-	function, syntaxError := unit.newFunction(1, 0, 0)
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -235,7 +235,7 @@ func TestCompilerUsesCanonicalMinimumAndRejectsRegisterOverflow(t *testing.T) {
 
 func TestCompilerPatchesAllocationFreeJumpLists(t *testing.T) {
 	unit := newCompileUnit("@jumps.lua")
-	function, syntaxError := unit.newFunction(1, 0, 0)
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -271,7 +271,7 @@ func TestCompilerPatchesAllocationFreeJumpLists(t *testing.T) {
 
 func TestCompilerRejectsUnresolvedControlFlow(t *testing.T) {
 	unit := newCompileUnit("@jumps.lua")
-	function, syntaxError := unit.newFunction(1, 0, 0)
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -286,7 +286,7 @@ func TestCompilerRejectsUnresolvedControlFlow(t *testing.T) {
 
 func TestCompilerRejectsUnboundExpressionResult(t *testing.T) {
 	unit := newCompileUnit("@result.lua")
-	function, syntaxError := unit.newFunction(1, 0, 0)
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}

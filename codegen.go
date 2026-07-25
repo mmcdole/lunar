@@ -773,6 +773,8 @@ func (parser *sourceParser) writeExpressionValue(
 		}
 	case expressionDeferred:
 		emitter.bindResult(value.info, target)
+	case expressionUpvalue:
+		emitter.emitABC(opGetUpvalue, target, value.info, 0, line)
 	case expressionGlobal:
 		emitter.emitABx(opGetGlobal, target, value.info, line)
 	case expressionIndexed:

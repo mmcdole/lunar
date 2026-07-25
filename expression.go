@@ -6,6 +6,7 @@ const (
 	expressionInvalid expressionKind = iota
 	expressionConstant
 	expressionLocal
+	expressionUpvalue
 	expressionGlobal
 	expressionDeferred
 	expressionTemporary
@@ -310,6 +311,8 @@ func (parser *sourceParser) parsePrimary() (compiledExpression, *Error) {
 		}, nil
 	case tokenName, '(':
 		return parser.parsePrefixExpression()
+	case tokenFunction:
+		return parser.parseFunctionExpression()
 	case '{':
 		return parser.parseConstructor()
 	case tokenDots:
@@ -319,6 +322,7 @@ func (parser *sourceParser) parsePrimary() (compiledExpression, *Error) {
 				"cannot use ... outside a vararg function",
 			)
 		}
+		parser.function.builder.varargFlags &^= varargNeedsArg
 		if syntaxError := parser.advance(); syntaxError != nil {
 			return compiledExpression{}, syntaxError
 		}
@@ -406,6 +410,16 @@ func (parser *sourceParser) parsePrefixExpression() (
 func (parser *sourceParser) parseFieldSuffix(
 	table compiledExpression,
 ) (compiledExpression, *Error) {
+	return parser.parseNamedFieldSuffix(table, '.')
+}
+
+func (parser *sourceParser) parseNamedFieldSuffix(
+	table compiledExpression,
+	delimiter tokenKind,
+) (compiledExpression, *Error) {
+	if parser.current.kind != delimiter {
+		panic("lua: compiler field suffix delimiter mismatch")
+	}
 	line := parser.current.line
 	tableRegister, syntaxError := parser.expressionToRegister(&table, line)
 	if syntaxError != nil {

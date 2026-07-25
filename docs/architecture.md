@@ -68,6 +68,8 @@ Files are organized by substantial runtime concepts:
   and constant folding;
 - `assignment.go`: iterative target capture, alias preservation, result
   adjustment, and ordered stores;
+- `compiler_function.go`: lexical capture resolution, function bodies,
+  closure publication, and function-definition sugar;
 - `compiler_call.go`: contiguous call windows, method calls, tail calls, and
   Lua 5.1 multiple-result adjustment;
 - `constructor.go`: table-constructor grammar, record stores, list batching,
@@ -120,14 +122,37 @@ vararg can stream an open result count. `NEWTABLE` receives floating-byte
 array and record hints after the complete constructor is known; the executor
 must decode both operands before reserving storage.
 
-An assignment captures compact local, global, or indexed targets without
-retaining general expression nodes. All table and key operands are evaluated
-left-to-right before the right-hand side. If a later local target would
-overwrite a register used by an earlier indexed target, one temporary
+An assignment captures compact local, upvalue, global, or indexed targets
+without retaining general expression nodes. All table and key operands are
+evaluated left-to-right before the right-hand side. If a later local target
+would overwrite a register used by an earlier indexed target, one temporary
 snapshots that local and every conflicting operand is rewritten to it. Values
 are then assigned right-to-left and the statement releases its entire
 temporary suffix once. Equal target/value counts keep the final expression
 deferred so it can write directly to the rightmost destination.
+
+A nested function is sealed before its parent publishes it. Its ordered
+upvalue layout records only whether each value comes from a parent register
+or a parent upvalue and the corresponding compact index. `CLOSURE` is followed
+immediately by canonical `MOVE` or `GETUPVAL` binding words; these are metadata
+consumed by closure creation, not ordinary instructions. Transitive capture
+creates one pass-through upvalue per function level, while repeated references
+reuse one descriptor.
+
+Lexical blocks record whether they own a captured local. Continuing past such
+a block emits one `CLOSE` at the lowest captured register before that register
+suffix can be reused. Function return, tail-call replacement, and error
+unwinding instead close the whole activation. Closure creation must read every
+binding before writing its destination, which makes `local function f()`
+recursive even when the closure destination and captured local are the same
+register.
+
+Source vararg functions retain Lua 5.1's default compatibility layout: an
+implicit `arg` local follows fixed parameters, and it is materialized by call
+setup only when the function never uses `...`. Encountering a vararg
+expression clears that requirement. This preserves the standard Lua 5.1
+distribution's behavior without putting an argument table on functions that
+use the current vararg expression.
 
 ## Build order
 

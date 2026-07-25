@@ -5,6 +5,7 @@ type assignmentTargetKind uint8
 const (
 	assignmentInvalid assignmentTargetKind = iota
 	assignmentLocal
+	assignmentUpvalue
 	assignmentGlobal
 	assignmentIndexed
 )
@@ -108,8 +109,29 @@ func (parser *sourceParser) appendAssignmentTarget(
 	targetBase int,
 	line uint32,
 ) *Error {
+	target, syntaxError := parser.assignmentTarget(expression, line)
+	if syntaxError != nil {
+		return syntaxError
+	}
+	if target.kind == assignmentLocal {
+		if syntaxError = parser.preserveAssignmentLocal(
+			parser.targets[targetBase:],
+			target.destination,
+			line,
+		); syntaxError != nil {
+			return syntaxError
+		}
+	}
+	parser.targets = append(parser.targets, target)
+	return nil
+}
+
+func (parser *sourceParser) assignmentTarget(
+	expression compiledExpression,
+	line uint32,
+) (assignmentTarget, *Error) {
 	if !expression.assignable {
-		return parser.syntaxError(
+		return assignmentTarget{}, parser.syntaxError(
 			line,
 			"assignment target is not a variable",
 		)
@@ -119,6 +141,9 @@ func (parser *sourceParser) appendAssignmentTarget(
 	switch expression.kind {
 	case expressionLocal:
 		target.kind = assignmentLocal
+		target.destination = expression.info
+	case expressionUpvalue:
+		target.kind = assignmentUpvalue
 		target.destination = expression.info
 	case expressionGlobal:
 		target.kind = assignmentGlobal
@@ -131,17 +156,7 @@ func (parser *sourceParser) appendAssignmentTarget(
 	if target.kind == assignmentInvalid {
 		panic("lua: assignable expression has no assignment target")
 	}
-	if target.kind == assignmentLocal {
-		if syntaxError := parser.preserveAssignmentLocal(
-			parser.targets[targetBase:],
-			target.destination,
-			line,
-		); syntaxError != nil {
-			return syntaxError
-		}
-	}
-	parser.targets = append(parser.targets, target)
-	return nil
+	return target, nil
 }
 
 // preserveAssignmentLocal snapshots a local used by an earlier indexed
@@ -274,6 +289,21 @@ func (parser *sourceParser) emitAssignmentStore(
 		return parser.writeExpression(
 			value,
 			target.destination,
+			line,
+		)
+	case assignmentUpvalue:
+		register, syntaxError := parser.expressionToRegister(
+			value,
+			line,
+		)
+		if syntaxError != nil {
+			return syntaxError
+		}
+		emitter.emitABC(
+			opSetUpvalue,
+			register,
+			target.destination,
+			0,
 			line,
 		)
 	case assignmentGlobal:

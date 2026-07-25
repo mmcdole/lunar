@@ -16,11 +16,25 @@ type activeLocal struct {
 	name       *luaString
 	register   int
 	debugIndex int
+	blockIndex int
 }
 
 type blockState struct {
 	localBase     int
 	registerFloor int
+	captured      bool
+}
+
+type upvalueSource uint8
+
+const (
+	upvalueFromLocal upvalueSource = iota
+	upvalueFromUpvalue
+)
+
+type upvalueBinding struct {
+	source upvalueSource
+	index  int
 }
 
 func newCompileUnit(sourceName string) *compileUnit {
@@ -66,10 +80,12 @@ func (unit *compileUnit) internOwned(text string) *luaString {
 // tree or boxed intermediate value is retained.
 type functionState struct {
 	unit            *compileUnit
+	parent          *functionState
 	builder         prototypeBuilder
 	constantIndexes map[slot]int
 	locals          []activeLocal
 	blocks          []blockState
+	upvalues        []upvalueBinding
 	registerTop     int
 	registerHigh    int
 	registerFloor   int
@@ -78,6 +94,7 @@ type functionState struct {
 }
 
 func (unit *compileUnit) newFunction(
+	parent *functionState,
 	line uint32,
 	parameters int,
 	varargFlags int,
@@ -135,6 +152,7 @@ func (unit *compileUnit) newFunction(
 	}
 	return &functionState{
 		unit:          unit,
+		parent:        parent,
 		registerTop:   registers,
 		registerHigh:  high,
 		registerFloor: registers,
@@ -196,6 +214,14 @@ func (function *functionState) emit(
 	return pc
 }
 
+func (function *functionState) fixLastLine(line uint32) {
+	pc := len(function.builder.debug.lines) - 1
+	if pc < 0 {
+		panic("lua: compiler has no instruction line to fix")
+	}
+	function.builder.debug.lines[pc] = int(line)
+}
+
 func (function *functionState) emitABC(
 	operation opcode,
 	a, b, c int,
@@ -210,6 +236,16 @@ func (function *functionState) emitDeferredABC(
 	line uint32,
 ) int {
 	pc := function.emitABC(operation, noRegister, b, c, line)
+	function.pendingResults++
+	return pc
+}
+
+func (function *functionState) emitDeferredABx(
+	operation opcode,
+	bx int,
+	line uint32,
+) int {
+	pc := function.emitABx(operation, noRegister, bx, line)
 	function.pendingResults++
 	return pc
 }
@@ -257,24 +293,43 @@ func (function *functionState) bindResult(pc, register int) {
 }
 
 func (function *functionState) enterBlock() {
+	if function.registerTop != function.registerFloor {
+		panic("lua: compiler block entered with live temporaries")
+	}
 	function.blocks = append(function.blocks, blockState{
 		localBase:     len(function.locals),
 		registerFloor: function.registerFloor,
 	})
 }
 
-func (function *functionState) leaveBlock() {
+func (function *functionState) enterFunctionBlock() {
+	if len(function.blocks) != 0 || len(function.locals) != 0 {
+		panic("lua: function scope was not the first compiler block")
+	}
+	if function.registerTop != function.registerFloor {
+		panic("lua: function scope has inconsistent parameter registers")
+	}
+	function.blocks = append(function.blocks, blockState{
+		registerFloor: 0,
+	})
+	function.registerFloor = 0
+}
+
+func (function *functionState) leaveBlock(line uint32) {
 	index := len(function.blocks) - 1
 	if index < 0 {
 		panic("lua: compiler block stack underflow")
 	}
 	block := function.blocks[index]
-	function.blocks = function.blocks[:index]
 	endPC := function.currentPC()
 	for local := block.localBase; local < len(function.locals); local++ {
 		debugIndex := function.locals[local].debugIndex
 		function.builder.debug.locals[debugIndex].endPC = endPC
 	}
+	if index != 0 {
+		function.emitCloseForExit(index, line)
+	}
+	function.blocks = function.blocks[:index]
 	function.locals = function.locals[:block.localBase]
 	function.registerFloor = block.registerFloor
 	function.releaseRegisters(block.registerFloor)
@@ -284,7 +339,15 @@ func (function *functionState) activateLocals(
 	names []*luaString,
 	base int,
 ) {
+	if len(function.blocks) == 0 {
+		panic("lua: local activated outside a compiler block")
+	}
+	if base < function.registerFloor ||
+		base+len(names) != function.registerTop {
+		panic("lua: local activation does not cover the reserved register suffix")
+	}
 	startPC := function.currentPC()
+	blockIndex := len(function.blocks) - 1
 	for index, name := range names {
 		debugIndex := len(function.builder.debug.locals)
 		function.builder.debug.locals = append(
@@ -301,6 +364,7 @@ func (function *functionState) activateLocals(
 				name:       name,
 				register:   base + index,
 				debugIndex: debugIndex,
+				blockIndex: blockIndex,
 			},
 		)
 	}
@@ -309,13 +373,44 @@ func (function *functionState) activateLocals(
 }
 
 func (function *functionState) localRegister(name *luaString) (int, bool) {
+	index, ok := function.localIndex(name)
+	if !ok {
+		return 0, false
+	}
+	return function.locals[index].register, true
+}
+
+func (function *functionState) localIndex(name *luaString) (int, bool) {
 	for index := len(function.locals) - 1; index >= 0; index-- {
 		local := function.locals[index]
 		if local.name == name {
-			return local.register, true
+			return index, true
 		}
 	}
 	return 0, false
+}
+
+// emitCloseForExit closes every captured local owned by the blocks from
+// firstExited outward. One CLOSE at the lowest captured register covers the
+// whole suffix. RETURN and TAILCALL do not use this helper: frame teardown
+// closes the complete activation.
+func (function *functionState) emitCloseForExit(
+	firstExited int,
+	line uint32,
+) {
+	if firstExited < 0 || firstExited > len(function.blocks) {
+		panic("lua: invalid compiler block exit")
+	}
+	closeBase := noRegister
+	for index := firstExited; index < len(function.blocks); index++ {
+		block := function.blocks[index]
+		if block.captured && block.registerFloor < closeBase {
+			closeBase = block.registerFloor
+		}
+	}
+	if closeBase != noRegister {
+		function.emitABC(opClose, closeBase, 0, 0, line)
+	}
 }
 
 func (function *functionState) isVararg() bool {
@@ -557,6 +652,9 @@ func (function *functionState) setJump(
 func (function *functionState) finish(
 	lastLine uint32,
 ) (*Prototype, *Error) {
+	if len(function.blocks) != 0 || len(function.locals) != 0 {
+		panic("lua: compiler sealed a function with an active lexical scope")
+	}
 	if function.unresolvedJumps != 0 {
 		return nil, newSourceSyntaxError(
 			function.unit.sourceName.text,
@@ -573,5 +671,6 @@ func (function *functionState) finish(
 	}
 	function.builder.lastLine = int(lastLine)
 	function.builder.registers = function.registerHigh
+	function.builder.upvalues = len(function.upvalues)
 	return function.builder.seal()
 }

@@ -29,7 +29,12 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 	}
 
 	unit := newCompileUnit(sourceName)
-	function, syntaxError := unit.newFunction(0, 0, varargIsVararg)
+	function, syntaxError := unit.newFunction(
+		nil,
+		0,
+		0,
+		varargIsVararg,
+	)
 	if syntaxError != nil {
 		return nil, syntaxError
 	}
@@ -41,7 +46,7 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 	if syntaxError = parser.advance(); syntaxError != nil {
 		return nil, syntaxError
 	}
-	function.enterBlock()
+	function.enterFunctionBlock()
 	returned, syntaxError := parser.parseBlock(tokenEOF)
 	if syntaxError != nil {
 		return nil, syntaxError
@@ -50,9 +55,11 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 		return nil, parser.expected(tokenEOF)
 	}
 	if !returned {
+		function.leaveBlock(parser.current.line)
 		function.emitABC(opReturn, 0, 1, 0, parser.current.line)
+	} else {
+		function.leaveBlock(parser.current.line)
 	}
-	function.leaveBlock()
 	return function.finish(0)
 }
 
@@ -178,6 +185,8 @@ func (parser *sourceParser) parseStatement() *Error {
 		return parser.advance()
 	case tokenDo:
 		return parser.parseDo()
+	case tokenFunction:
+		return parser.parseFunctionStatement()
 	case tokenLocal:
 		return parser.parseLocal()
 	case tokenName, '(':
@@ -205,10 +214,11 @@ func (parser *sourceParser) parseDo() *Error {
 	if syntaxError != nil {
 		return syntaxError
 	}
-	if _, syntaxError = parser.expect(tokenEnd); syntaxError != nil {
+	end, syntaxError := parser.expect(tokenEnd)
+	if syntaxError != nil {
 		return syntaxError
 	}
-	parser.function.leaveBlock()
+	parser.function.leaveBlock(end.line)
 	return nil
 }
 
@@ -216,6 +226,9 @@ func (parser *sourceParser) parseLocal() *Error {
 	line := parser.current.line
 	if syntaxError := parser.advance(); syntaxError != nil {
 		return syntaxError
+	}
+	if parser.current.kind == tokenFunction {
+		return parser.parseLocalFunction(line)
 	}
 
 	nameBase := len(parser.names)
@@ -376,6 +389,19 @@ func (parser *sourceParser) resolveVariable(
 		return compiledExpression{
 			kind:       expressionLocal,
 			info:       register,
+			line:       line,
+			assignable: true,
+		}, nil
+	}
+	if index, ok, syntaxError := parser.function.resolveUpvalue(
+		name,
+		line,
+	); syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	} else if ok {
+		return compiledExpression{
+			kind:       expressionUpvalue,
+			info:       index,
 			line:       line,
 			assignable: true,
 		}, nil
