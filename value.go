@@ -357,6 +357,11 @@ func rawEqual(left, right Value) bool {
 }
 
 func rawSlotEqual(left, right slot) bool {
+	if left.ref == nil || right.ref == nil {
+		return left.ref == nil &&
+			right.ref == nil &&
+			math.Float64frombits(left.bits) == math.Float64frombits(right.bits)
+	}
 	if left.ref == right.ref && left.bits == right.bits {
 		return true
 	}
@@ -365,8 +370,6 @@ func rawSlotEqual(left, right slot) bool {
 		return false
 	}
 	switch kind {
-	case NumberKind:
-		return math.Float64frombits(left.bits) == math.Float64frombits(right.bits)
 	case StringKind:
 		leftString := (*luaString)(left.ref)
 		rightString := (*luaString)(right.ref)

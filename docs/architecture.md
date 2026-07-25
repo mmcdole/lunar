@@ -57,6 +57,9 @@ Files are organized by substantial runtime concepts:
 - `string.go`: State-neutral immutable strings, stable hashing, and bounded
   runtime-local short-string reuse;
 - `table.go`: dense and hash storage plus raw table semantics;
+- `number.go`: deterministic numeric-string syntax and compact numeric
+  coercion;
+- `metamethod.go`: raw event lookup and shared-handler selection;
 - `opcode.go`: canonical Lua 5.1 instruction encoding;
 - `lexer.go`: direct source scanning with one-token lookahead;
 - `compiler.go`: per-compilation ownership plus mutable function emission
@@ -81,8 +84,10 @@ Files are organized by substantial runtime concepts:
 - `function.go`: canonical functions and compact upvalues;
 - `call.go`: compact activations, shared-stack call layout, varargs, tail
   replacement, and result adjustment;
-- `execute.go`: the dense instruction switch, execution outcomes, runtime
-  faults, and traceback capture;
+- `execute.go`: the compact instruction switch, cold execution driver, calls,
+  runtime faults, and traceback capture;
+- `execute_numeric.go`: cold numeric coercion, comparisons, numeric-loop
+  preparation, and resumable metamethod calls;
 - later `load.go`: source and bytecode loading;
 - later native-frame additions to `call.go`: Go calls, outcomes, and
   continuations; and
@@ -206,13 +211,27 @@ promptly so a warm reusable stack does not retain dead Lua graphs.
 
 ## Execution
 
-The executor is one iterative dense switch over verified Lua instructions.
-The current Function, Prototype, register base, program counter, code,
-constants, upvalues, and value stack are local variables in its hot loop.
-Ordinary instructions neither publish frame state nor reread the activation.
-Calls, returns, stack growth, errors, and future yield points are explicit
-seams: they publish the program counter, perform the operation, and reload
-locals before execution resumes.
+Execution is split into one iterative dense instruction switch and one cold
+driver. The switch retains the current Function, Prototype, register base,
+program counter, code, constants, upvalues, and value stack in locals. It
+directly executes control flow, moves, loads, upvalue access, number-only
+arithmetic and comparisons, and prepared numeric loops. Ordinary instructions
+neither publish frame state nor reread the activation.
+
+An instruction that can call, allocate, grow a stack, coerce a string, invoke
+a metamethod, or construct an error publishes its program counter and returns
+that instruction to the driver. The driver performs the cold operation and
+re-enters the same switch. This boundary is deliberately an instruction
+value, not an interface or handler object. It keeps call setup and semantic
+temporaries out of the switch's live set, which matters because Go allocates
+registers for a whole function rather than for each switch arm. The design
+keeps one dispatch implementation while allowing uncommon semantics to have
+ordinary, testable functions.
+
+While the switch is active, the activation stack and compact value stack
+cannot grow, Lua cannot be re-entered, and its cached frame pointer and slices
+remain valid. Calls, returns, stack growth, errors, and future yield points are
+therefore explicit reload seams.
 
 Direct Lua functions take the inline call path. Other values use a cold raw
 `__call` lookup, insert the original value as argument one, and then enter the
@@ -229,6 +248,34 @@ closure, and adopts its engine-owned upvalue slice without another copy.
 Closure instantiation and open-vararg stack growth stay behind cold helpers so
 their allocation and error machinery does not enlarge the always-hot switch
 frame.
+
+Runtime number coercion accepts numbers and complete numeric strings. The
+shared parser recognizes signed decimal fractions and exponents, signed
+hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
+warm-path parsing does not allocate. It intentionally rejects locale-specific
+spellings, named infinities and NaNs, hexadecimal floats, embedded NUL, and
+trailing data instead of inheriting platform-dependent libc behavior.
+
+Number-only arithmetic remains entirely in compact slots. String coercion and
+metamethod selection are cold. Binary arithmetic checks the left operand's
+event before the right operand's and calls the selected value with the
+original operands; unary minus passes its operand twice, matching Lua 5.1.
+Equality never coerces, and distinct tables or userdata invoke `__eq` only
+when both sides name the same raw handler. Ordering compares numbers or byte
+strings directly. Other like-typed values require matching handlers;
+`<=` falls back to reversed `__lt` and negates its result.
+
+A metamethod call appends a compact continuation beside, rather than inside,
+the activation. The continuation records only result placement or comparison
+branching and survives ordinary nested and tail calls. It is removed on
+completion or centralized unwind. Frame and value limits are checked before
+scratch arguments, an activation, or a continuation are published, so
+resource failure is atomic.
+
+Numeric `for` converts its hidden initial value, limit, and step exactly once
+at `FORPREP`, stores numbers back into the canonical four-register window,
+and keeps the visible loop variable separate. Zero and NaN steps follow Lua
+5.1's comparison rules rather than being rejected as extensions.
 
 The executor assumes only immutable, sealed Prototypes. Prototype
 verification is therefore responsible for instruction bounds, register and

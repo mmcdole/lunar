@@ -137,14 +137,17 @@ func (table *Table) RawSetInt(key int, value Value) error {
 // RawGetString returns the value associated with a string key without
 // constructing a temporary Value or invoking metamethods.
 func (table *Table) RawGetString(key string) Value {
-	if table == nil || table.owner == nil {
-		return nilValue
-	}
-	hash := table.owner.strings.hash(key)
-	if value, found := table.store.getString(key, hash); found {
+	if value, found := table.rawStringSlot(key); found {
 		return value.owningValue()
 	}
 	return nilValue
+}
+
+func (table *Table) rawStringSlot(key string) (slot, bool) {
+	if table == nil || table.owner == nil {
+		return nilSlot, false
+	}
+	return table.store.getString(key, table.owner.strings.hash(key))
 }
 
 // RawSetString associates a string key with value without invoking

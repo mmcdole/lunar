@@ -3,7 +3,6 @@ package lua
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 type tokenKind uint16
@@ -293,28 +292,9 @@ func (lex *lexer) readNumber(start int, line uint32) (token, error) {
 }
 
 func parseNumber(literal string) (float64, error) {
-	if strings.IndexByte(literal, '_') >= 0 {
+	number, ok := parseLuaNumber(literal)
+	if !ok {
 		return 0, strconv.ErrSyntax
-	}
-
-	normalized := literal
-	if len(literal) > 2 &&
-		literal[0] == '0' &&
-		(literal[1] == 'x' || literal[1] == 'X') {
-		for index := 2; index < len(literal); index++ {
-			if !isHexDigit(literal[index]) {
-				return 0, strconv.ErrSyntax
-			}
-		}
-		normalized += "p0"
-	}
-
-	number, err := strconv.ParseFloat(normalized, 64)
-	if err != nil {
-		if numberError, ok := err.(*strconv.NumError); !ok ||
-			numberError.Err != strconv.ErrRange {
-			return 0, err
-		}
 	}
 	return number, nil
 }

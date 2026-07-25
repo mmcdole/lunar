@@ -292,13 +292,26 @@ func (thread *Thread) unwindLuaCalls(stopDepth int) {
 
 	oldExtent := thread.liveValueExtent()
 	frameExtent := int(thread.frames[stopDepth].callerExtent)
+	top := frameExtent
 	for index := len(thread.frames) - 1; index >= stopDepth; index-- {
 		thread.closeUpvalues(int(thread.frames[index].base))
 		thread.frames[index] = activation{}
 	}
 	thread.frames = thread.frames[:stopDepth]
+	for len(thread.continuations) != 0 {
+		last := len(thread.continuations) - 1
+		if int(thread.continuations[last].frameDepth) < stopDepth {
+			break
+		}
+		if int(thread.continuations[last].frameDepth) == stopDepth {
+			frameExtent = int(thread.continuations[last].savedExtent)
+			top = int(thread.continuations[last].savedTop)
+		}
+		thread.continuations[last] = executionContinuation{}
+		thread.continuations = thread.continuations[:last]
+	}
 	thread.frameExtent = frameExtent
-	thread.top = frameExtent
+	thread.top = top
 	thread.clearDeadSuffix(oldExtent)
 }
 

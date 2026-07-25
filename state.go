@@ -118,6 +118,7 @@ func (state *State) Close() error {
 		state.main.closeUpvalues(0)
 		state.main.values = nil
 		state.main.frames = nil
+		state.main.continuations = nil
 		state.main.top = 0
 		state.main.frameExtent = 0
 		state.main.status = ThreadClosed
@@ -381,14 +382,15 @@ const (
 // registers and activation records remain private.
 type Thread struct {
 	objectHeader
-	state        *State
-	values       []slot
-	frames       []activation
-	openUpvalues *upvalue
-	top          int
-	frameExtent  int
-	status       ThreadStatus
-	main         bool
+	state         *State
+	values        []slot
+	frames        []activation
+	continuations []executionContinuation
+	openUpvalues  *upvalue
+	top           int
+	frameExtent   int
+	status        ThreadStatus
+	main          bool
 }
 
 // Value returns the owning Lua value for thread.

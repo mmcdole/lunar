@@ -1,6 +1,9 @@
 package lua
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 type executionResultKind uint8
 
@@ -23,252 +26,464 @@ func execute(thread *Thread, stopDepth int) executionResult {
 		stopDepth > len(thread.frames) {
 		panic("lua: invalid executor entry")
 	}
-	if len(thread.frames) == stopDepth {
-		return executionResult{kind: executionReturned}
-	}
-
-reload:
-	for {
-		frameIndex := len(thread.frames) - 1
-		frame := thread.frames[frameIndex]
-		function := frame.function
-		prototype := function.prototype
-		values := thread.values
-		base := int(frame.base)
-		pc := int(frame.pc)
-		code := prototype.code
-		constants := prototype.constants
-		upvalues := function.upvalues
-
+driver:
+	for len(thread.frames) > stopDepth {
+		if len(thread.continuations) != 0 {
+			last := len(thread.continuations) - 1
+			depth := int(thread.continuations[last].frameDepth)
+			if depth == len(thread.frames) {
+				resumeExecutionContinuation(thread)
+			} else if depth > len(thread.frames) {
+				panic("lua: orphaned execution continuation")
+			}
+		}
 		for {
-			instructionPC := pc
-			current := code[pc]
-			pc++
-
+			current := runInstructions(thread)
 			switch current.opcode() {
-			case opMove:
-				writeSlot(
-					&values[base+current.a()],
-					values[base+current.b()],
-				)
-
-			case opLoadK:
-				writeSlot(
-					&values[base+current.a()],
-					constants[current.bx()],
-				)
-
-			case opLoadBool:
-				value := falseSlot
-				if current.b() != 0 {
-					value = trueSlot
+			case opAdd, opSub, opMul, opDiv, opMod, opPow, opUnaryMinus:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowArithmetic(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-				writeSlot(&values[base+current.a()], value)
-				if current.c() != 0 {
-					pc++
+			case opEqual:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowEquality(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-
-			case opLoadNil:
-				for register := current.a(); register <= current.b(); register++ {
-					values[base+register] = nilSlot
+			case opLessThan, opLessEqual:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowOrder(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-
-			case opGetUpvalue:
-				writeSlot(
-					&values[base+current.a()],
-					upvalues[current.b()].read(),
-				)
-
-			case opSetUpvalue:
-				upvalues[current.b()].write(values[base+current.a()])
-
-			case opNot:
-				source := values[base+current.b()]
-				result := source.ref == nilMarkerPointer ||
-					source.ref == falseMarkerPointer
-				if result {
-					writeSlot(&values[base+current.a()], trueSlot)
-				} else {
-					writeSlot(&values[base+current.a()], falseSlot)
+			case opForPrep:
+				frameIndex := len(thread.frames) - 1
+				if failure := prepareNumericFor(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-
-			case opJump:
-				pc += current.sbx()
-
-			case opTest:
-				source := values[base+current.a()]
-				truth := source.ref != nilMarkerPointer &&
-					source.ref != falseMarkerPointer
-				if truth == (current.c() != 0) {
-					jump := code[pc]
-					pc++
-					pc += jump.sbx()
-				} else {
-					pc++
-				}
-
-			case opTestSet:
-				source := values[base+current.b()]
-				truth := source.ref != nilMarkerPointer &&
-					source.ref != falseMarkerPointer
-				if truth == (current.c() != 0) {
-					writeSlot(&values[base+current.a()], source)
-					jump := code[pc]
-					pc++
-					pc += jump.sbx()
-				} else {
-					pc++
-				}
-
 			case opCall:
-				callBase := base + current.a()
+				frameIndex := len(thread.frames) - 1
+				frame := thread.frames[frameIndex]
+				callBase := int(frame.base) + current.a()
 				argumentCount := current.b() - 1
 				if current.b() == 0 {
 					argumentCount = thread.top - callBase - 1
 				}
 				wantedResults := current.c() - 1
-				thread.frames[frameIndex].pc = uint32(pc)
-
-				callee, direct := luaFunctionSlot(values[callBase])
+				callee, direct := luaFunctionSlot(thread.values[callBase])
 				if !direct {
-					callErr := enterLuaCallMetamethod(
+					failure := enterLuaCallMetamethod(
 						thread,
 						frameIndex,
-						instructionPC,
+						int(frame.pc)-1,
 						callBase,
 						argumentCount,
 						wantedResults,
 						false,
 					)
-					if callErr != nil {
-						return failExecution(
-							thread,
-							stopDepth,
-							callErr,
-						)
+					if failure != nil {
+						return failExecution(thread, stopDepth, failure)
 					}
-					continue reload
+					continue
 				}
-				if callErr := thread.pushLuaCall(
+				if failure := thread.pushLuaCall(
 					callee,
 					callBase,
 					argumentCount,
 					wantedResults,
-				); callErr != nil {
-					return failExecution(thread, stopDepth, callErr)
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-				continue reload
-
 			case opTailCall:
-				callBase := base + current.a()
+				frameIndex := len(thread.frames) - 1
+				frame := thread.frames[frameIndex]
+				callBase := int(frame.base) + current.a()
 				argumentCount := current.b() - 1
 				if current.b() == 0 {
 					argumentCount = thread.top - callBase - 1
 				}
-				thread.frames[frameIndex].pc = uint32(pc)
-
-				callee, direct := luaFunctionSlot(values[callBase])
+				callee, direct := luaFunctionSlot(thread.values[callBase])
 				if !direct {
-					callErr := enterLuaCallMetamethod(
+					failure := enterLuaCallMetamethod(
 						thread,
 						frameIndex,
-						instructionPC,
+						int(frame.pc)-1,
 						callBase,
 						argumentCount,
 						0,
 						true,
 					)
-					if callErr != nil {
-						return failExecution(
-							thread,
-							stopDepth,
-							callErr,
-						)
+					if failure != nil {
+						return failExecution(thread, stopDepth, failure)
 					}
-					continue reload
+					continue
 				}
-				if callErr := thread.replaceLuaCall(
+				if failure := thread.replaceLuaCall(
 					callee,
 					callBase,
 					argumentCount,
-				); callErr != nil {
-					return failExecution(thread, stopDepth, callErr)
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-				continue reload
-
 			case opReturn:
-				firstResult := base + current.a()
+				frame := thread.frames[len(thread.frames)-1]
+				firstResult := int(frame.base) + current.a()
 				resultCount := current.b() - 1
 				if current.b() == 0 {
 					resultCount = thread.top - firstResult
 				}
-				thread.frames[frameIndex].pc = uint32(pc)
 				thread.finishLuaCall(firstResult, resultCount)
 				if len(thread.frames) == stopDepth {
 					return executionResult{kind: executionReturned}
 				}
-				continue reload
-
-			case opClose:
-				thread.closeUpvalues(base + current.a())
-
-			case opClosure:
-				pc = installClosure(thread, frameIndex, current, pc)
-
-			case opVararg:
-				parameters := int(prototype.parameters)
-				extraCount := frame.varargCount()
-				firstExtra := int(frame.resultBase) + 1 + parameters
-				resultCount := current.b() - 1
-				if current.b() == 0 {
-					resultCount = extraCount
-					destination := base + current.a()
-					required := uint64(destination) + uint64(resultCount)
-					if required > uint64(len(values)) {
-						thread.frames[frameIndex].pc = uint32(pc)
-						if failure := prepareOpenVararg(
-							thread,
-							destination,
-							resultCount,
-						); failure != nil {
-							return failExecution(
-								thread,
-								stopDepth,
-								failure,
-							)
-						}
-						values = thread.values
+				if len(thread.continuations) != 0 {
+					last := len(thread.continuations) - 1
+					if int(thread.continuations[last].frameDepth) ==
+						len(thread.frames) {
+						continue driver
 					}
-					thread.top = int(required)
 				}
-				copied := resultCount
-				if copied > extraCount {
-					copied = extraCount
+			case opClose:
+				frame := thread.frames[len(thread.frames)-1]
+				thread.closeUpvalues(int(frame.base) + current.a())
+			case opClosure:
+				frameIndex := len(thread.frames) - 1
+				bindingPC := int(thread.frames[frameIndex].pc)
+				thread.frames[frameIndex].pc = uint32(installClosure(
+					thread,
+					frameIndex,
+					current,
+					bindingPC,
+				))
+			case opVararg:
+				if failure := executeVararg(
+					thread,
+					len(thread.frames)-1,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
 				}
-				destination := base + current.a()
-				copy(
-					values[destination:destination+copied],
-					values[firstExtra:firstExtra+copied],
-				)
-				thread.fillNil(
-					destination+copied,
-					destination+resultCount,
-				)
-
 			default:
-				thread.frames[frameIndex].pc = uint32(pc)
+				frameIndex := len(thread.frames) - 1
 				return failExecution(
 					thread,
 					stopDepth,
 					newExecutionRuntimeError(
 						thread,
 						frameIndex,
-						instructionPC,
+						int(thread.frames[frameIndex].pc)-1,
 						"opcode %s is not executable yet",
 						current.opcode(),
 					),
 				)
 			}
+		}
+	}
+	return executionResult{kind: executionReturned}
+}
+
+// runInstructions owns the compact dispatch frame. Operations that need
+// coercion or metamethod machinery publish their PC and return to execute,
+// keeping cold semantic state out of this function's register allocation.
+func runInstructions(thread *Thread) instruction {
+	frameIndex := len(thread.frames) - 1
+	frame := &thread.frames[frameIndex]
+	function := frame.function
+	prototype := function.prototype
+	values := thread.values
+	base := int(frame.base)
+	pc := int(frame.pc)
+	code := prototype.code
+
+	for {
+		current := code[pc]
+		pc++
+
+		switch current.opcode() {
+		case opMove:
+			writeSlot(
+				&values[base+current.a()],
+				values[base+current.b()],
+			)
+
+		case opLoadK:
+			writeSlot(
+				&values[base+current.a()],
+				prototype.constants[current.bx()],
+			)
+
+		case opLoadBool:
+			value := falseSlot
+			if current.b() != 0 {
+				value = trueSlot
+			}
+			writeSlot(&values[base+current.a()], value)
+			if current.c() != 0 {
+				pc++
+			}
+
+		case opLoadNil:
+			for register := current.a(); register <= current.b(); register++ {
+				values[base+register] = nilSlot
+			}
+
+		case opGetUpvalue:
+			writeSlot(
+				&values[base+current.a()],
+				function.upvalues[current.b()].read(),
+			)
+
+		case opSetUpvalue:
+			function.upvalues[current.b()].write(
+				values[base+current.a()],
+			)
+
+		case opAdd, opSub, opMul, opDiv, opMod:
+			left := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.b(),
+			)
+			right := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.c(),
+			)
+			if left.ref == nil && right.ref == nil {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				var result float64
+				switch current.opcode() {
+				case opAdd:
+					result = leftNumber + rightNumber
+				case opSub:
+					result = leftNumber - rightNumber
+				case opMul:
+					result = leftNumber * rightNumber
+				case opDiv:
+					result = leftNumber / rightNumber
+				case opMod:
+					result = leftNumber -
+						math.Floor(leftNumber/rightNumber)*rightNumber
+				}
+				writeSlot(
+					&values[base+current.a()],
+					numberSlot(result),
+				)
+				break
+			}
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opPow:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opUnaryMinus:
+			source := values[base+current.b()]
+			if source.ref == nil {
+				writeSlot(
+					&values[base+current.a()],
+					numberSlot(-math.Float64frombits(source.bits)),
+				)
+				break
+			}
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opNot:
+			source := values[base+current.b()]
+			result := source.ref == nilMarkerPointer ||
+				source.ref == falseMarkerPointer
+			if result {
+				writeSlot(&values[base+current.a()], trueSlot)
+			} else {
+				writeSlot(&values[base+current.a()], falseSlot)
+			}
+
+		case opJump:
+			pc += current.sbx()
+
+		case opEqual:
+			left := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.b(),
+			)
+			right := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.c(),
+			)
+			var equal bool
+			switch {
+			case left.ref == nil && right.ref == nil:
+				equal = math.Float64frombits(left.bits) ==
+					math.Float64frombits(right.bits)
+			case left.ref == right.ref && left.bits == right.bits:
+				equal = true
+			case left.kind() != right.kind():
+				equal = false
+			case left.kind() == StringKind ||
+				left.kind() == TableKind ||
+				left.kind() == UserDataKind:
+				thread.frames[frameIndex].pc = uint32(pc)
+				return current
+			default:
+				equal = false
+			}
+			if equal == (current.a() != 0) {
+				jump := code[pc]
+				pc++
+				pc += jump.sbx()
+			} else {
+				pc++
+			}
+
+		case opLessThan, opLessEqual:
+			left := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.b(),
+			)
+			right := operandSlot(
+				values,
+				prototype.constants,
+				base,
+				current.c(),
+			)
+			var (
+				compared bool
+				result   bool
+			)
+			if left.ref == nil && right.ref == nil {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				compared = true
+				if current.opcode() == opLessThan {
+					result = leftNumber < rightNumber
+				} else {
+					result = leftNumber <= rightNumber
+				}
+			}
+			if !compared {
+				thread.frames[frameIndex].pc = uint32(pc)
+				return current
+			}
+			if result == (current.a() != 0) {
+				jump := code[pc]
+				pc++
+				pc += jump.sbx()
+			} else {
+				pc++
+			}
+
+		case opTest:
+			source := values[base+current.a()]
+			truth := source.ref != nilMarkerPointer &&
+				source.ref != falseMarkerPointer
+			if truth == (current.c() != 0) {
+				jump := code[pc]
+				pc++
+				pc += jump.sbx()
+			} else {
+				pc++
+			}
+
+		case opTestSet:
+			source := values[base+current.b()]
+			truth := source.ref != nilMarkerPointer &&
+				source.ref != falseMarkerPointer
+			if truth == (current.c() != 0) {
+				writeSlot(&values[base+current.a()], source)
+				jump := code[pc]
+				pc++
+				pc += jump.sbx()
+			} else {
+				pc++
+			}
+
+		case opCall:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opTailCall:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opReturn:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opClose:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opClosure:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opVararg:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opForPrep:
+			register := base + current.a()
+			initial := values[register]
+			limit := values[register+1]
+			step := values[register+2]
+			if initial.ref == nil &&
+				limit.ref == nil &&
+				step.ref == nil {
+				writeSlot(
+					&values[register],
+					numberSlot(
+						math.Float64frombits(initial.bits)-
+							math.Float64frombits(step.bits),
+					),
+				)
+				pc += current.sbx()
+				break
+			}
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
+
+		case opForLoop:
+			register := base + current.a()
+			step := math.Float64frombits(values[register+2].bits)
+			index := math.Float64frombits(values[register].bits) + step
+			limit := math.Float64frombits(values[register+1].bits)
+			if step > 0 && index <= limit ||
+				!(step > 0) && limit <= index {
+				value := numberSlot(index)
+				writeSlot(&values[register], value)
+				writeSlot(&values[register+3], value)
+				pc += current.sbx()
+			}
+
+		default:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
 		}
 	}
 }
@@ -343,31 +558,52 @@ func prepareOpenVararg(
 	return nil
 }
 
+func executeVararg(
+	thread *Thread,
+	frameIndex int,
+	code instruction,
+) *Error {
+	frame := thread.frames[frameIndex]
+	prototype := frame.function.prototype
+	parameters := int(prototype.parameters)
+	extraCount := frame.varargCount()
+	firstExtra := int(frame.resultBase) + 1 + parameters
+	resultCount := code.b() - 1
+	destination := int(frame.base) + code.a()
+	if code.b() == 0 {
+		resultCount = extraCount
+		required := uint64(destination) + uint64(resultCount)
+		if required > uint64(len(thread.values)) {
+			if failure := prepareOpenVararg(
+				thread,
+				destination,
+				resultCount,
+			); failure != nil {
+				return failure
+			}
+		}
+		thread.top = int(required)
+	}
+	copied := resultCount
+	if copied > extraCount {
+		copied = extraCount
+	}
+	copy(
+		thread.values[destination:destination+copied],
+		thread.values[firstExtra:firstExtra+copied],
+	)
+	thread.fillNil(
+		destination+copied,
+		destination+resultCount,
+	)
+	return nil
+}
+
 func luaFunctionSlot(value slot) (*Function, bool) {
 	if value.kind() != FunctionKind {
 		return nil, false
 	}
 	return (*Function)(value.ref), true
-}
-
-func luaCallMetamethod(thread *Thread, value slot) *Function {
-	var metatable *Table
-	switch value.kind() {
-	case TableKind:
-		metatable = (*Table)(value.ref).metatable
-	case UserDataKind:
-		metatable = (*UserData)(value.ref).metatable
-	case FunctionKind:
-		return nil
-	default:
-		metatable = thread.state.typeMetatables[value.kind()]
-	}
-	if metatable == nil {
-		return nil
-	}
-	metamethod := slotFromValue(metatable.RawGetString("__call"))
-	function, _ := luaFunctionSlot(metamethod)
-	return function
 }
 
 // Keep call-metamethod lookup and call-window insertion off direct calls.
