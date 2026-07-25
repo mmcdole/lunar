@@ -78,9 +78,10 @@ type runtimeState struct {
 
 // State owns one Lua runtime, its global environment, and its main Thread.
 //
-// A State has one active executor. Callers must serialize execution and
-// mutation. Owning Values and object handles may be retained by other
-// goroutines, but their operations remain subject to the same rule.
+// A State has one active executor. Callers must serialize all operations on a
+// State; no State method may overlap another, including Close. Owning Values
+// and object handles may be retained by other goroutines, but their operations
+// remain subject to the same rule.
 //
 // A State must not be copied after first use. Retain and pass its pointer.
 type State struct {
@@ -119,7 +120,8 @@ func New(options Options) (*State, error) {
 }
 
 // Close releases runtime-owned resources and prevents further execution or
-// mutation. It is safe to call Close more than once.
+// mutation. Repeated serialized calls are idempotent. Close must not overlap
+// another operation on this State, including another call to Close.
 //
 // Previously returned owning Values and canonical object handles remain safe
 // to inspect after Close.
@@ -161,7 +163,8 @@ func (state *State) MainThread() *Thread {
 //
 // Strings are immutable and State-neutral. A returned Value may be shared
 // among States and remains safe after this State is closed. Calling String
-// after Close is permitted and constructs an uncached Value.
+// after Close returns is permitted and constructs an uncached Value. As with
+// every State operation, String must not overlap Close on the same State.
 func (state *State) String(text string) Value {
 	if state == nil || state.runtime == nil {
 		return Value{}

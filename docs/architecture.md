@@ -441,8 +441,13 @@ Execution is split into one iterative dense instruction switch and one cold
 driver. The switch retains the current Function, Prototype, register base,
 program counter, code, constants, upvalues, and value stack in locals. It
 directly executes control flow, moves, loads, upvalue access, number-only
-arithmetic and comparisons, and prepared numeric loops. Ordinary instructions
-neither publish frame state nor reread the activation.
+arithmetic except exponentiation, comparisons, and prepared numeric loops.
+Ordinary instructions neither publish frame state nor reread the activation.
+
+Exponentiation remains in the cold driver. On arm64 with Go 1.25.1, placing
+`math.Pow` in the switch enlarged the executor frame from 160 to 176 bytes, so
+numeric power accepts a cold-driver round trip instead of taxing every
+dispatch activation.
 
 An instruction that must grow an execution-stack backing array, coerce a
 string, invoke a metamethod, construct an error, or use an open or vararg call
