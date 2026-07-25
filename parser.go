@@ -12,6 +12,7 @@ type sourceParser struct {
 	function     *functionState
 	names        []*luaString
 	values       []compiledExpression
+	targets      []assignmentTarget
 	nesting      int
 	previousLine uint32
 }
@@ -284,54 +285,6 @@ func (parser *sourceParser) parseLocal() *Error {
 	emitter.releaseRegisters(base + len(names))
 	emitter.activateLocals(names, base)
 	return nil
-}
-
-func (parser *sourceParser) parsePrefixStatement() *Error {
-	line := parser.current.line
-	target, syntaxError := parser.parsePrefixExpression()
-	if syntaxError != nil {
-		return syntaxError
-	}
-	if parser.current.kind != '=' {
-		if target.kind != expressionCall {
-			if target.assignable {
-				return parser.expected('=')
-			}
-			return parser.syntaxError(
-				line,
-				"statement is neither an assignment nor a function call",
-			)
-		}
-		return parser.setCallResultCount(&target, 0, line)
-	}
-	if !target.assignable {
-		return parser.syntaxError(
-			line,
-			"assignment target is not a variable",
-		)
-	}
-	if _, syntaxError = parser.expect('='); syntaxError != nil {
-		return syntaxError
-	}
-	values, syntaxError := parser.parseExpressionList()
-	if syntaxError != nil {
-		return syntaxError
-	}
-	defer parser.releaseExpressionList(values)
-	if values.valueCount == 1 {
-		value := &parser.values[values.valueBase]
-		return parser.storeExpression(&target, value, line)
-	}
-	base, syntaxError := parser.adjustExpressionList(values, 1, line)
-	if syntaxError != nil {
-		return syntaxError
-	}
-	value := compiledExpression{
-		kind: expressionTemporary,
-		info: base,
-		line: line,
-	}
-	return parser.storeExpression(&target, &value, line)
 }
 
 func (parser *sourceParser) parseReturn() *Error {

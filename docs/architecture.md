@@ -66,6 +66,8 @@ Files are organized by substantial runtime concepts:
   grammar;
 - `codegen.go`: expression lowering, register placement, conditional exits,
   and constant folding;
+- `assignment.go`: iterative target capture, alias preservation, result
+  adjustment, and ordered stores;
 - `compiler_call.go`: contiguous call windows, method calls, tail calls, and
   Lua 5.1 multiple-result adjustment;
 - `constructor.go`: table-constructor grammar, record stores, list batching,
@@ -117,6 +119,15 @@ One pending list field is retained so only a syntactically final call or
 vararg can stream an open result count. `NEWTABLE` receives floating-byte
 array and record hints after the complete constructor is known; the executor
 must decode both operands before reserving storage.
+
+An assignment captures compact local, global, or indexed targets without
+retaining general expression nodes. All table and key operands are evaluated
+left-to-right before the right-hand side. If a later local target would
+overwrite a register used by an earlier indexed target, one temporary
+snapshots that local and every conflicting operand is rewritten to it. Values
+are then assigned right-to-left and the statement releases its entire
+temporary suffix once. Equal target/value counts keep the final expression
+deferred so it can write directly to the rightmost destination.
 
 ## Build order
 

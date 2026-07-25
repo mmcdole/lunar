@@ -103,40 +103,6 @@ func (parser *sourceParser) adjustExpressionList(
 	return base, nil
 }
 
-func (parser *sourceParser) storeExpression(
-	target *compiledExpression,
-	value *compiledExpression,
-	line uint32,
-) *Error {
-	emitter := parser.function
-	switch target.kind {
-	case expressionLocal:
-		return parser.writeExpression(value, target.info, line)
-	case expressionGlobal:
-		register, syntaxError := parser.expressionToRegister(value, line)
-		if syntaxError != nil {
-			return syntaxError
-		}
-		emitter.emitABx(opSetGlobal, register, target.info, line)
-	case expressionIndexed:
-		operand, syntaxError := parser.expressionToRK(value, line)
-		if syntaxError != nil {
-			return syntaxError
-		}
-		emitter.emitABC(
-			opSetTable,
-			target.info,
-			target.aux,
-			operand,
-			line,
-		)
-	default:
-		panic("lua: expression is not assignable")
-	}
-	parser.releaseExpressionTemporaries(*target, *value)
-	return nil
-}
-
 func isArithmeticOperator(operation binaryOperator) bool {
 	switch operation {
 	case binaryAdd, binarySubtract, binaryMultiply, binaryDivide,
