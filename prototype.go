@@ -177,7 +177,7 @@ func exactSlice[Element any](values []Element) []Element {
 }
 
 func prototypeStringSlot(value *luaString) slot {
-	return slotFromValue(stringValue(value))
+	return stringSlot(value)
 }
 
 func prototypeStringText(value *luaString) string {

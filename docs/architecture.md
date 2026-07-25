@@ -88,6 +88,8 @@ Files are organized by substantial runtime concepts:
   runtime faults, and traceback capture;
 - `execute_numeric.go`: cold numeric coercion, comparisons, numeric-loop
   preparation, and numeric event selection;
+- `execute_string.go`: primitive length, batched concatenation, and string
+  event reduction;
 - `execute_metamethod.go`: allocation-free suspension and resumption around
   Lua metamethod calls;
 - `execute_table.go`: globals, table access, method lookup, constructors,
@@ -272,12 +274,29 @@ when both sides name the same raw handler. Ordering compares numbers or byte
 strings directly. Other like-typed values require matching handlers;
 `<=` falls back to reversed `__lt` and negates its result.
 
+Length of strings counts bytes, and table length computes a raw Lua 5.1
+border; neither primitive consults `__len`. Other values use the exact Lua 5.1
+left-then-nil event lookup and pass both values to the selected handler.
+Primitive string and table length remain in the instruction loop, with the
+table border search isolated in a non-reentrant helper so its loop state does
+not enlarge the dispatch frame.
+
+Concatenation stays on the compact stack and reduces its register span from
+right to left. Each maximal adjacent string/number suffix becomes one output
+string, avoiding quadratic pairwise copying and temporary heap strings for
+numbers. Numeric text follows deterministic Lua 5.1 `%.14g`-style formatting.
+Non-coercible pairs select `__concat` from the left value before the right and
+suspend with one marked continuation. The returned value is installed at the
+exact reduced pair before reduction continues, so later pairs observe event
+mutation performed by earlier handlers. Public Values are never constructed
+by this path.
+
 A metamethod call appends a compact continuation beside, rather than inside,
-the activation. The continuation records only result placement or comparison
-branching and survives ordinary nested and tail calls. It is removed on
-completion or centralized unwind. Frame and value limits are checked before
-scratch arguments, an activation, or a continuation are published, so
-resource failure is atomic.
+the activation. The continuation records only result placement, comparison
+branching, or the remaining concatenation range and survives ordinary nested
+and tail calls. It is removed on completion or centralized unwind. Frame and
+value limits are checked before scratch arguments, an activation, or a
+continuation are published, so resource failure is atomic.
 
 Table instructions enter small non-reentrant compact-slot read and write
 helpers directly from the switch. They complete raw hits, ordinary

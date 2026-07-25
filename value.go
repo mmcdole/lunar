@@ -283,10 +283,14 @@ func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 }
 
 func stringValue(pointer *luaString) Value {
+	return stringSlot(pointer).owningValue()
+}
+
+func stringSlot(pointer *luaString) slot {
 	if pointer == nil {
 		panic("lua: nil string object")
 	}
-	return Value{ref: unsafe.Pointer(pointer), bits: uint64(StringKind)}
+	return slot{ref: unsafe.Pointer(pointer), bits: uint64(StringKind)}
 }
 
 func (value Value) owner() *runtimeState {

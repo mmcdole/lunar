@@ -4,6 +4,7 @@ const (
 	continuationComparison uint32 = 1 << iota
 	continuationInvert
 	continuationIgnoreResult
+	continuationConcat
 )
 
 // executionContinuation records only work suspended while a Lua metamethod
@@ -122,7 +123,7 @@ func startMetamethodCall(
 }
 
 //go:noinline
-func resumeExecutionContinuation(thread *Thread) {
+func resumeExecutionContinuation(thread *Thread) *Error {
 	last := len(thread.continuations) - 1
 	continuation := thread.continuations[last]
 	if int(continuation.frameDepth) != len(thread.frames) {
@@ -145,7 +146,15 @@ func resumeExecutionContinuation(thread *Thread) {
 	frame := &thread.frames[frameIndex]
 	if continuation.flags&continuationIgnoreResult != 0 {
 		frame.pc = continuation.nextPC
-		return
+		return nil
+	}
+	if continuation.flags&continuationConcat != 0 {
+		frame.pc = continuation.nextPC
+		writeSlot(
+			&thread.values[int(frame.base)+continuation.code.c()],
+			result,
+		)
+		return slowConcat(thread, frameIndex, continuation.code)
 	}
 	if continuation.flags&continuationComparison == 0 {
 		writeSlot(
@@ -153,7 +162,7 @@ func resumeExecutionContinuation(thread *Thread) {
 			result,
 		)
 		frame.pc = continuation.nextPC
-		return
+		return nil
 	}
 
 	truth := result.ref != nilMarkerPointer &&
@@ -168,6 +177,7 @@ func resumeExecutionContinuation(thread *Thread) {
 		continuation.code,
 		truth,
 	)
+	return nil
 }
 
 func setComparisonPC(

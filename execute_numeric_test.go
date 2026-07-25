@@ -123,8 +123,8 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 			"@right.lua",
 			`return "right"`,
 		)
-		left := numericTestTable(t, state, "__add", leftHandler.Value())
-		right := numericTestTable(t, state, "__add", rightHandler.Value())
+		left := metamethodTestTable(t, state, "__add", leftHandler.Value())
+		right := metamethodTestTable(t, state, "__add", rightHandler.Value())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -169,8 +169,8 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 			"@right.lua",
 			`return "right"`,
 		)
-		left := numericTestTable(t, state, "__add", Bool(false))
-		right := numericTestTable(t, state, "__add", rightHandler.Value())
+		left := metamethodTestTable(t, state, "__add", Bool(false))
+		right := metamethodTestTable(t, state, "__add", rightHandler.Value())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -262,7 +262,7 @@ func TestExecutorArithmeticMetamethodEvents(t *testing.T) {
 				"@handler.lua",
 				`return "`+test.event+`"`,
 			)
-			left := numericTestTable(
+			left := metamethodTestTable(
 				t,
 				state,
 				test.event,
@@ -305,8 +305,8 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@call.lua",
 			`local callable, left, right = ...; return right`,
 		)
-		callable := numericTestTable(t, state, "__call", callHandler.Value())
-		left := numericTestTable(t, state, "__add", callable.Value())
+		callable := metamethodTestTable(t, state, "__call", callHandler.Value())
+		left := metamethodTestTable(t, state, "__add", callable.Value())
 		right, err := state.NewTable(0, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -341,7 +341,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@unary.lua",
 			`local left, right = ...; return left == right`,
 		)
-		value := numericTestTable(t, state, "__unm", handler.Value())
+		value := metamethodTestTable(t, state, "__unm", handler.Value())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -382,7 +382,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@multiple.lua",
 			`return 1, 2`,
 		)
-		left := numericTestTable(t, state, "__add", multiple.Value())
+		left := metamethodTestTable(t, state, "__add", multiple.Value())
 		thread, result := executeTestFunction(
 			t,
 			state,
@@ -394,7 +394,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 		assertExecutionValues(t, thread, Number(1))
 
 		empty := compileTestFunction(t, state, "@empty.lua", `return`)
-		left = numericTestTable(t, state, "__add", empty.Value())
+		left = metamethodTestTable(t, state, "__add", empty.Value())
 		thread, result = executeTestFunction(
 			t,
 			state,
@@ -422,7 +422,7 @@ return finish(right)
 		if !prototypeContainsOpcode(handler.prototype, opTailCall) {
 			t.Fatal("handler did not compile a tail call")
 		}
-		left := numericTestTable(t, state, "__add", handler.Value())
+		left := metamethodTestTable(t, state, "__add", handler.Value())
 		right, err := state.NewTable(0, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -659,8 +659,8 @@ return left == right, left ~= right
 		"@equal-handler.lua",
 		`return "truthy"`,
 	)
-	left := numericTestTable(t, state, "__eq", handler.Value())
-	right := numericTestTable(t, state, "__eq", handler.Value())
+	left := metamethodTestTable(t, state, "__eq", handler.Value())
+	right := metamethodTestTable(t, state, "__eq", handler.Value())
 	thread, result := executeTestFunction(
 		t,
 		state,
@@ -677,7 +677,7 @@ return left == right, left ~= right
 		"@other.lua",
 		`return true`,
 	)
-	right = numericTestTable(t, state, "__eq", other.Value())
+	right = metamethodTestTable(t, state, "__eq", other.Value())
 	thread, result = executeTestFunction(
 		t,
 		state,
@@ -694,8 +694,8 @@ return left == right, left ~= right
 		"@false.lua",
 		`return false`,
 	)
-	first := numericTestTable(t, state, "__eq", falseHandler.Value())
-	second := numericTestTable(t, state, "__eq", falseHandler.Value())
+	first := metamethodTestTable(t, state, "__eq", falseHandler.Value())
+	second := metamethodTestTable(t, state, "__eq", falseHandler.Value())
 	thread, result = executeTestFunction(
 		t,
 		state,
@@ -821,8 +821,8 @@ local left, right = ...
 return left < right, left <= right
 `)
 	less := compileTestFunction(t, state, "@less.lua", `return true`)
-	left := numericTestTable(t, state, "__lt", less.Value())
-	right := numericTestTable(t, state, "__lt", less.Value())
+	left := metamethodTestTable(t, state, "__lt", less.Value())
+	right := metamethodTestTable(t, state, "__lt", less.Value())
 
 	thread, result := executeTestFunction(
 		t,
@@ -1003,7 +1003,7 @@ func TestExecutorMetamethodFailureClearsContinuations(t *testing.T) {
 local invalid = 1
 return invalid()
 `)
-	left := numericTestTable(t, state, "__add", handler.Value())
+	left := metamethodTestTable(t, state, "__add", handler.Value())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1216,7 +1216,7 @@ func TestExecutorWarmMetamethodContinuationDoesNotAllocate(t *testing.T) {
 		"@handler.lua",
 		`return 42`,
 	)
-	left := numericTestTable(t, state, "__add", handler.Value())
+	left := metamethodTestTable(t, state, "__add", handler.Value())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1269,7 +1269,7 @@ return total
 	benchmarkExecutorFunction(b, state, function)
 }
 
-func numericTestTable(
+func metamethodTestTable(
 	t testing.TB,
 	state *State,
 	event string,

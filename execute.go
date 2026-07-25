@@ -32,7 +32,9 @@ driver:
 			last := len(thread.continuations) - 1
 			depth := int(thread.continuations[last].frameDepth)
 			if depth == len(thread.frames) {
-				resumeExecutionContinuation(thread)
+				if failure := resumeExecutionContinuation(thread); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
 			} else if depth > len(thread.frames) {
 				panic("lua: orphaned execution continuation")
 			}
@@ -69,6 +71,24 @@ driver:
 			case opAdd, opSub, opMul, opDiv, opMod, opPow, opUnaryMinus:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowArithmetic(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
+			case opLength:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowLength(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
+			case opConcat:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowConcat(
 					thread,
 					frameIndex,
 					current,
@@ -379,6 +399,30 @@ func runInstructions(thread *Thread) instruction {
 			} else {
 				writeSlot(&values[base+current.a()], falseSlot)
 			}
+
+		case opLength:
+			source := values[base+current.b()]
+			switch source.kind() {
+			case StringKind:
+				writeSlot(
+					&values[base+current.a()],
+					numberSlot(float64(
+						len((*luaString)(source.ref).text),
+					)),
+				)
+			case TableKind:
+				writeTableLength(
+					&values[base+current.a()],
+					(*Table)(source.ref),
+				)
+			default:
+				thread.frames[frameIndex].pc = uint32(pc)
+				return current
+			}
+
+		case opConcat:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
 
 		case opJump:
 			pc += current.sbx()

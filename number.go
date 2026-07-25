@@ -53,6 +53,19 @@ func slotToNumber(value slot) (float64, bool) {
 	return parseLuaNumber((*luaString)(value.ref).text)
 }
 
+func appendLuaNumber(destination []byte, number float64) []byte {
+	switch {
+	case math.IsNaN(number):
+		return append(destination, "nan"...)
+	case math.IsInf(number, 1):
+		return append(destination, "inf"...)
+	case math.IsInf(number, -1):
+		return append(destination, "-inf"...)
+	default:
+		return strconv.AppendFloat(destination, number, 'g', 14, 64)
+	}
+}
+
 func trimLuaNumberSpace(text string) string {
 	first := 0
 	for first < len(text) && isLuaNumberSpace(text[first]) {

@@ -19,8 +19,9 @@ executor runs compact calls, closures, upvalues, varargs, control flow,
 numeric arithmetic and comparison, numeric loops, and their Lua 5.1
 metamethods. It also runs globals, table reads and writes, method lookup,
 table constructors, and Lua 5.1 `__index` and `__newindex` resolution.
-Generic iteration, remaining operators, public source execution, and the
-standard libraries are still under construction.
+It also implements Lua 5.1 length and right-to-left concatenation semantics.
+Generic iteration, public source execution, and the standard libraries are
+still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

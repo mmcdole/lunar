@@ -119,6 +119,41 @@ func TestParseLuaNumberAcceptsRangeResults(t *testing.T) {
 	}
 }
 
+func TestAppendLuaNumberUsesDeterministicLua51Formatting(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		number float64
+		want   string
+	}{
+		{"fixed lower boundary", 1e-4, "0.0001"},
+		{"exponent lower boundary", 1e-5, "1e-05"},
+		{"fixed upper boundary", 1e13, "10000000000000"},
+		{"exponent upper boundary", 1e14, "1e+14"},
+		{"rounding", 1.234567890123456, "1.2345678901235"},
+		{
+			"smallest subnormal",
+			math.SmallestNonzeroFloat64,
+			"4.9406564584125e-324",
+		},
+		{"negative zero", math.Copysign(0, -1), "-0"},
+		{"positive infinity", math.Inf(1), "inf"},
+		{"negative infinity", math.Inf(-1), "-inf"},
+		{"not a number", math.NaN(), "nan"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := string(appendLuaNumber(nil, test.number))
+			if got != test.want {
+				t.Fatalf(
+					"appendLuaNumber(%v) = %q; want %q",
+					test.number,
+					got,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
 func TestSlotToNumber(t *testing.T) {
 	number := slot{bits: math.Float64bits(-12.5)}
 	if got, ok := slotToNumber(number); !ok || got != -12.5 {
