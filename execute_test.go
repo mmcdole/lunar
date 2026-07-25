@@ -1046,7 +1046,7 @@ return result`
 	}
 }
 
-func TestExecutorPartialFailurePreservesSuspendedCaller(t *testing.T) {
+func TestExecutionFailureFinalizationPreservesSuspendedCaller(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -1074,9 +1074,23 @@ return value()
 		t.Fatal(callErr)
 	}
 
-	result := execute(thread, 1)
+	result := driveExecution(thread, 1)
 	if result.kind != executionFailed || result.err == nil {
 		t.Fatalf("partial execution result = %+v; want failure", result)
+	}
+	if len(thread.frames) != 2 ||
+		thread.frames[0].function != caller ||
+		thread.frames[1].function != failing {
+		t.Fatalf("live failure left frames = %#v", thread.frames)
+	}
+	if len(result.err.traceback) != 0 {
+		t.Fatal("execution driver eagerly captured a caught traceback")
+	}
+
+	finalizeExecutionFailure(thread, 1, result.err)
+	if len(result.err.traceback) != 1 ||
+		result.err.traceback[0].Source != "@failing.lua" {
+		t.Fatalf("finalized traceback = %#v", result.err.traceback)
 	}
 	if len(thread.frames) != 1 ||
 		thread.frames[0].function != caller ||

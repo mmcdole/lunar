@@ -21,6 +21,17 @@ type executionResult struct {
 // the current frame's hot state in Go locals and publishes only at seams that
 // can replace a frame, grow the value stack, or leave the executor.
 func execute(thread *Thread, stopDepth int) executionResult {
+	result := driveExecution(thread, stopDepth)
+	if result.kind == executionFailed {
+		finalizeExecutionFailure(thread, stopDepth, result.err)
+	}
+	return result
+}
+
+// driveExecution stops at stopDepth or at the first Lua failure. Failure
+// leaves execution state live so a protected caller may inspect it before
+// choosing when to unwind.
+func driveExecution(thread *Thread, stopDepth int) executionResult {
 	if thread == nil ||
 		stopDepth < 0 ||
 		stopDepth > len(thread.frames) {
@@ -33,7 +44,7 @@ driver:
 			depth := int(thread.continuations[last].frameDepth)
 			if depth == len(thread.frames) {
 				if failure := resumeExecutionContinuation(thread); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			} else if depth > len(thread.frames) {
 				panic("lua: orphaned execution continuation")
@@ -42,7 +53,7 @@ driver:
 		for {
 			if thread.frames[len(thread.frames)-1].function.prototype == nil {
 				if failure := invokeNativeCall(thread); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 				if len(thread.frames) == stopDepth {
 					return executionResult{kind: executionReturned}
@@ -66,7 +77,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opSetGlobal, opSetTable,
 				opSetGlobalMiss, opSetTableMiss:
@@ -76,7 +87,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opNewTable:
 				executeNewTable(
@@ -91,7 +102,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opLength:
 				frameIndex := len(thread.frames) - 1
@@ -100,7 +111,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opConcat:
 				frameIndex := len(thread.frames) - 1
@@ -109,7 +120,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opEqual:
 				frameIndex := len(thread.frames) - 1
@@ -118,7 +129,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opLessThan, opLessEqual:
 				frameIndex := len(thread.frames) - 1
@@ -127,7 +138,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opForPrep:
 				frameIndex := len(thread.frames) - 1
@@ -136,7 +147,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opIteratorLoop:
 				frameIndex := len(thread.frames) - 1
@@ -145,7 +156,7 @@ driver:
 					frameIndex,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opCall:
 				frameIndex := len(thread.frames) - 1
@@ -168,7 +179,7 @@ driver:
 						false,
 					)
 					if failure != nil {
-						return failExecution(thread, stopDepth, failure)
+						return stopExecution(thread, failure)
 					}
 					continue
 				}
@@ -178,7 +189,7 @@ driver:
 					argumentCount,
 					wantedResults,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opTailCall:
 				frameIndex := len(thread.frames) - 1
@@ -200,7 +211,7 @@ driver:
 						true,
 					)
 					if failure != nil {
-						return failExecution(thread, stopDepth, failure)
+						return stopExecution(thread, failure)
 					}
 					continue
 				}
@@ -220,7 +231,7 @@ driver:
 					)
 				}
 				if failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opReturn:
 				frame := thread.frames[len(thread.frames)-1]
@@ -258,7 +269,7 @@ driver:
 					len(thread.frames)-1,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			case opSetList:
 				if failure := executeSetList(
@@ -266,13 +277,12 @@ driver:
 					len(thread.frames)-1,
 					current,
 				); failure != nil {
-					return failExecution(thread, stopDepth, failure)
+					return stopExecution(thread, failure)
 				}
 			default:
 				frameIndex := len(thread.frames) - 1
-				return failExecution(
+				return stopExecution(
 					thread,
-					stopDepth,
 					newExecutionRuntimeError(
 						thread,
 						frameIndex,
@@ -860,23 +870,29 @@ func operandRegister(operand int) int {
 	return operand
 }
 
-func failExecution(
-	thread *Thread,
-	stopDepth int,
-	failure *Error,
-) executionResult {
+func stopExecution(thread *Thread, failure *Error) executionResult {
 	if failure == nil {
 		panic("lua: executor failed without an error")
 	}
 	positionExecutionResourceFailure(thread, failure)
-	if len(failure.traceback) == 0 {
-		failure.traceback = executionTraceback(thread, stopDepth)
-	}
-	thread.unwindCalls(stopDepth)
 	return executionResult{
 		kind: executionFailed,
 		err:  failure,
 	}
+}
+
+func finalizeExecutionFailure(
+	thread *Thread,
+	stopDepth int,
+	failure *Error,
+) {
+	if failure == nil {
+		panic("lua: executor failed without an error")
+	}
+	if len(failure.traceback) == 0 {
+		failure.traceback = executionTraceback(thread, stopDepth)
+	}
+	thread.unwindCalls(stopDepth)
 }
 
 func positionExecutionResourceFailure(
