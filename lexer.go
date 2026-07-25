@@ -91,14 +91,15 @@ func (kind tokenKind) String() string {
 }
 
 type token struct {
-	// text may borrow the source buffer. The compiler must clone or intern it
-	// before retaining it in a Prototype.
-	text   string
-	number float64
-	start  uint32
-	end    uint32
-	line   uint32
-	kind   tokenKind
+	// text may borrow the source buffer. ownedText records decoded text whose
+	// backing storage may be adopted by the compilation string table.
+	text      string
+	number    float64
+	start     uint32
+	end       uint32
+	line      uint32
+	kind      tokenKind
+	ownedText bool
 }
 
 type lexer struct {
@@ -163,7 +164,7 @@ func (lex *lexer) scan() (token, error) {
 			lex.offset += 2
 			if level, after, ok := lex.longDelimiter(lex.offset, '['); ok {
 				lex.offset = after
-				if _, err := lex.readLong(level, false); err != nil {
+				if _, _, err := lex.readLong(level, false); err != nil {
 					return token{}, err
 				}
 			} else {
@@ -188,24 +189,26 @@ func (lex *lexer) scan() (token, error) {
 	case '[':
 		if level, after, ok := lex.longDelimiter(start, '['); ok {
 			lex.offset = after
-			text, err := lex.readLong(level, true)
+			text, owned, err := lex.readLong(level, true)
 			if err != nil {
 				return token{}, err
 			}
 			value := lex.token(tokenString, start, line)
 			value.text = text
+			value.ownedText = owned
 			return value, nil
 		}
 		if start+1 < len(lex.source) && lex.source[start+1] == '=' {
 			return token{}, lex.errorf(line, "invalid long string delimiter")
 		}
 	case '\'', '"':
-		text, err := lex.readQuoted(current)
+		text, owned, err := lex.readQuoted(current)
 		if err != nil {
 			return token{}, err
 		}
 		value := lex.token(tokenString, start, line)
 		value.text = text
+		value.ownedText = owned
 		return value, nil
 	case '.':
 		if lex.match("...") {
@@ -313,7 +316,7 @@ func parseNumber(literal string) (float64, error) {
 	return number, nil
 }
 
-func (lex *lexer) readQuoted(delimiter byte) (string, error) {
+func (lex *lexer) readQuoted(delimiter byte) (string, bool, error) {
 	lex.offset++
 	contentStart := lex.offset
 	lex.scratch = lex.scratch[:0]
@@ -326,11 +329,11 @@ func (lex *lexer) readQuoted(delimiter byte) (string, error) {
 			end := lex.offset
 			lex.offset++
 			if !escaped {
-				return lex.source[contentStart:end], nil
+				return lex.source[contentStart:end], false, nil
 			}
-			return string(lex.scratch), nil
+			return string(lex.scratch), true, nil
 		case '\n', '\r':
-			return "", lex.errorf(lex.line, "unfinished string")
+			return "", false, lex.errorf(lex.line, "unfinished string")
 		case '\\':
 			if !escaped {
 				lex.scratch = append(
@@ -341,7 +344,7 @@ func (lex *lexer) readQuoted(delimiter byte) (string, error) {
 			}
 			lex.offset++
 			if lex.offset == len(lex.source) {
-				return "", lex.errorf(lex.line, "unfinished string")
+				return "", false, lex.errorf(lex.line, "unfinished string")
 			}
 			escape := lex.source[lex.offset]
 			switch escape {
@@ -369,7 +372,7 @@ func (lex *lexer) readQuoted(delimiter byte) (string, error) {
 			case '\n', '\r':
 				lex.scratch = append(lex.scratch, '\n')
 				if err := lex.consumeNewline(); err != nil {
-					return "", err
+					return "", false, err
 				}
 			default:
 				if !isDigit(escape) {
@@ -387,7 +390,7 @@ func (lex *lexer) readQuoted(delimiter byte) (string, error) {
 					digits++
 				}
 				if value > 255 {
-					return "", lex.errorf(
+					return "", false, lex.errorf(
 						lex.line,
 						"escape sequence too large",
 					)
@@ -401,14 +404,14 @@ func (lex *lexer) readQuoted(delimiter byte) (string, error) {
 			lex.offset++
 		}
 	}
-	return "", lex.errorf(lex.line, "unfinished string")
+	return "", false, lex.errorf(lex.line, "unfinished string")
 }
 
-func (lex *lexer) readLong(level int, keepText bool) (string, error) {
+func (lex *lexer) readLong(level int, keepText bool) (string, bool, error) {
 	if lex.offset < len(lex.source) &&
 		(lex.source[lex.offset] == '\n' || lex.source[lex.offset] == '\r') {
 		if err := lex.consumeNewline(); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
@@ -422,7 +425,7 @@ func (lex *lexer) readLong(level int, keepText bool) (string, error) {
 			lex.offset+1 < len(lex.source) &&
 			lex.source[lex.offset] == '[' &&
 			lex.source[lex.offset+1] == '[' {
-			return "", lex.errorf(
+			return "", false, lex.errorf(
 				lex.line,
 				"nesting of [[...]] is deprecated",
 			)
@@ -433,16 +436,16 @@ func (lex *lexer) readLong(level int, keepText bool) (string, error) {
 				end := lex.offset
 				lex.offset = after
 				if !keepText {
-					return "", nil
+					return "", false, nil
 				}
 				if !normalizing {
-					return lex.source[contentStart:end], nil
+					return lex.source[contentStart:end], false, nil
 				}
 				lex.scratch = append(
 					lex.scratch,
 					lex.source[segmentStart:end]...,
 				)
-				return string(lex.scratch), nil
+				return string(lex.scratch), true, nil
 			}
 		}
 
@@ -470,7 +473,7 @@ func (lex *lexer) readLong(level int, keepText bool) (string, error) {
 				lex.scratch = append(lex.scratch, '\n')
 			}
 			if err := lex.consumeNewline(); err != nil {
-				return "", err
+				return "", false, err
 			}
 			if normalize {
 				segmentStart = lex.offset
@@ -480,9 +483,9 @@ func (lex *lexer) readLong(level int, keepText bool) (string, error) {
 		}
 	}
 	if keepText {
-		return "", lex.errorf(lex.line, "unfinished long string")
+		return "", false, lex.errorf(lex.line, "unfinished long string")
 	}
-	return "", lex.errorf(lex.line, "unfinished long comment")
+	return "", false, lex.errorf(lex.line, "unfinished long comment")
 }
 
 func (lex *lexer) longDelimiter(
@@ -536,17 +539,7 @@ func (lex *lexer) token(kind tokenKind, start int, line uint32) token {
 }
 
 func (lex *lexer) errorf(line uint32, format string, arguments ...any) error {
-	description := fmt.Sprintf(format, arguments...)
-	return &Error{
-		value: Nil(),
-		description: fmt.Sprintf(
-			"%s:%d: %s",
-			sourceID(lex.sourceName),
-			line,
-			description,
-		),
-		category: SyntaxError,
-	}
+	return newSourceSyntaxError(lex.sourceName, line, format, arguments...)
 }
 
 func keyword(text string) tokenKind {

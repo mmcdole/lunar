@@ -1,6 +1,9 @@
 package lua
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // ErrorCategory classifies an Error without replacing its arbitrary Lua error
 // Value.
@@ -81,6 +84,24 @@ func (err *Error) Traceback() []TraceFrame {
 		return nil
 	}
 	return append([]TraceFrame(nil), err.traceback...)
+}
+
+func newSourceSyntaxError(
+	source string,
+	line uint32,
+	format string,
+	arguments ...any,
+) *Error {
+	return &Error{
+		value: Nil(),
+		description: fmt.Sprintf(
+			"%s:%d: %s",
+			sourceID(source),
+			line,
+			fmt.Sprintf(format, arguments...),
+		),
+		category: SyntaxError,
+	}
 }
 
 const maxSourceID = 59
