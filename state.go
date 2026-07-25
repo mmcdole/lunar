@@ -9,6 +9,9 @@ import (
 // ErrClosed reports an operation that requires a live State.
 var ErrClosed = errors.New("lua: state is closed")
 
+// ErrRunning reports an operation that cannot run while Lua is executing.
+var ErrRunning = errors.New("lua: state is executing")
+
 // ErrForeignValue reports a reference value owned by another State.
 var ErrForeignValue = errors.New("lua: value belongs to another state")
 

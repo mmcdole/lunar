@@ -85,9 +85,10 @@ func (parser *sourceParser) lexerError(err error) *Error {
 	if syntaxError, ok := err.(*Error); ok {
 		return syntaxError
 	}
+	message := err.Error()
 	return &Error{
-		value:       Nil(),
-		description: err.Error(),
+		value:       errorStringValue(message),
+		description: message,
 		category:    SyntaxError,
 		cause:       err,
 	}

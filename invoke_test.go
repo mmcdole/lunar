@@ -1,0 +1,927 @@
+package lua
+
+import (
+	"errors"
+	"runtime"
+	"slices"
+	"strings"
+	"testing"
+)
+
+func TestCompileAndLoadPrototypeAcrossStates(t *testing.T) {
+	prototype, err := Compile("@shared.lua", `return marker`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prototype.SourceName() != "@shared.lua" {
+		t.Fatalf("source name = %q", prototype.SourceName())
+	}
+
+	first, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if err := first.SetGlobal("marker", Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.SetGlobal("marker", Number(2)); err != nil {
+		t.Fatal(err)
+	}
+
+	firstFunction, err := first.LoadPrototype(prototype)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondFunction, err := second.LoadPrototype(prototype)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstFunction == secondFunction ||
+		firstFunction.Prototype() != prototype ||
+		secondFunction.Prototype() != prototype {
+		t.Fatal("loading did not preserve shared prototype and distinct closure identity")
+	}
+
+	firstResults, err := first.Call(firstFunction.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondResults, err := second.Call(secondFunction.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, firstResults, Number(1))
+	assertTestValues(t, secondResults, Number(2))
+}
+
+func TestLoadStringDoesNotExecute(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	function, err := state.LoadString("@load.lua", `
+executions = (executions or 0) + 1
+return executions
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions, err := state.Global("executions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, executions, Nil())
+
+	results, err := state.Call(function.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(1))
+}
+
+func TestLoadRejectsInvalidPrototypeAndReportsSyntax(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	for _, prototype := range []*Prototype{nil, &Prototype{}} {
+		if _, loadErr := state.LoadPrototype(prototype); !errors.Is(
+			loadErr,
+			ErrInvalidPrototype,
+		) {
+			t.Fatalf("invalid prototype error = %v", loadErr)
+		}
+	}
+
+	_, syntaxErr := state.LoadString("@broken.lua", `local =`)
+	var luaErr *Error
+	if !errors.As(syntaxErr, &luaErr) ||
+		luaErr.Category() != SyntaxError ||
+		luaErr.Value().Kind() != StringKind {
+		t.Fatalf("syntax error = %#v", syntaxErr)
+	}
+	if got := luaErr.Error(); !strings.HasPrefix(got, "broken.lua") {
+		t.Fatalf("syntax description = %q", got)
+	}
+	if message, ok := luaErr.Value().AsString(); !ok ||
+		message != luaErr.Error() {
+		t.Fatalf("syntax error value = %q, %v", message, ok)
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, loadErr := state.LoadPrototype(nil); !errors.Is(loadErr, ErrClosed) {
+		t.Fatalf("closed load error = %v", loadErr)
+	}
+	if _, loadErr := state.LoadString("@closed.lua", `return 1`); !errors.Is(
+		loadErr,
+		ErrClosed,
+	) {
+		t.Fatalf("closed source load error = %v", loadErr)
+	}
+}
+
+func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := mustLoadString(t, state, "@values.lua", `return ...`)
+
+	results, err := state.Call(
+		function.Value(),
+		Number(1),
+		Nil(),
+		table.Value(),
+		state.String("last"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		Number(1),
+		Nil(),
+		table.Value(),
+		state.String("last"),
+	)
+	assertRootThreadReady(t, state.MainThread())
+
+	runtime.GC()
+	resultTable, ok := results[2].Table()
+	if !ok || resultTable != table {
+		t.Fatal("owning call result did not retain canonical table identity")
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	runtime.GC()
+	resultTable, ok = results[2].Table()
+	if !ok || resultTable != table {
+		t.Fatal("call result became invalid after state close")
+	}
+}
+
+func TestStateCallUsesRootCallMetamethodLayout(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	chunk := mustLoadString(t, state, "@callable.lua", `
+return function(self, ...)
+	return self, ...
+end
+`)
+	values, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, ok := values[0].Function()
+	if !ok {
+		t.Fatal("chunk did not return the call handler")
+	}
+	callable, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := metatable.RawSetString("__call", handler.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(callable.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := state.Call(
+		callable.Value(),
+		Number(7),
+		state.String("value"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		callable.Value(),
+		Number(7),
+		state.String("value"),
+	)
+}
+
+func TestStateCallProtectsFailuresAndRemainsReusable(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	failing := mustLoadString(t, state, "@failure.lua", `
+local function inner()
+	return nil + 1
+end
+return inner()
+`)
+	if _, callErr := state.Call(failing.Value()); callErr == nil {
+		t.Fatal("runtime failure returned nil")
+	} else {
+		var luaErr *Error
+		if !errors.As(callErr, &luaErr) ||
+			luaErr.Category() != RuntimeError {
+			t.Fatalf("runtime error = %#v", callErr)
+		}
+		traceback := luaErr.Traceback()
+		if len(traceback) != 1 || traceback[0].TailCalls != 1 {
+			t.Fatalf("tail-call traceback = %#v", traceback)
+		}
+	}
+	assertRootThreadReady(t, state.MainThread())
+
+	success := mustLoadString(t, state, "@success.lua", `return 42`)
+	results, err := state.Call(success.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(42))
+
+	if _, callErr := state.Call(Number(1)); callErr == nil {
+		t.Fatal("calling a number returned nil")
+	} else {
+		var luaErr *Error
+		if !errors.As(callErr, &luaErr) ||
+			luaErr.Category() != RuntimeError {
+			t.Fatalf("non-callable error = %#v", callErr)
+		}
+	}
+	assertRootThreadReady(t, state.MainThread())
+}
+
+func TestStateCallValidatesIngressBeforeMutation(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	other, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	function := mustLoadString(t, state, "@identity.lua", `return ...`)
+	foreign, err := other.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := state.MainThread()
+
+	for _, test := range []struct {
+		name     string
+		callable Value
+		args     []Value
+		want     error
+	}{
+		{
+			name:     "invalid callable",
+			callable: Value{},
+			want:     ErrInvalidValue,
+		},
+		{
+			name:     "foreign callable",
+			callable: foreign.Value(),
+			want:     ErrForeignValue,
+		},
+		{
+			name:     "invalid argument",
+			callable: function.Value(),
+			args:     []Value{{}},
+			want:     ErrInvalidValue,
+		},
+		{
+			name:     "foreign argument",
+			callable: function.Value(),
+			args:     []Value{foreign.Value()},
+			want:     ErrForeignValue,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			beforeValues := slices.Clone(thread.values)
+			beforeFrames := slices.Clone(thread.frames)
+			if _, callErr := state.Call(test.callable, test.args...); !errors.Is(
+				callErr,
+				test.want,
+			) {
+				t.Fatalf("call error = %v; want %v", callErr, test.want)
+			}
+			if thread.status != ThreadReady ||
+				thread.top != 0 ||
+				thread.frameExtent != 0 ||
+				!slices.Equal(thread.values, beforeValues) ||
+				!slices.Equal(thread.frames, beforeFrames) {
+				t.Fatal("rejected ingress changed root execution state")
+			}
+		})
+	}
+
+	thread.status = ThreadRunning
+	if _, callErr := state.Call(function.Value()); !errors.Is(
+		callErr,
+		ErrRunning,
+	) {
+		t.Fatalf("running call error = %v", callErr)
+	}
+	thread.status = ThreadReady
+}
+
+func TestStateCallIntoHandlesOverlapAndShortDestination(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	identity := mustLoadString(t, state, "@identity.lua", `return ...`)
+
+	values := []Value{Number(10), Number(20), Number(90), Number(91)}
+	count, err := state.CallInto(
+		identity.Value(),
+		values[:2],
+		values[1:3],
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("result count = %d; want 2", count)
+	}
+	assertTestValues(
+		t,
+		values,
+		Number(10),
+		Number(10),
+		Number(20),
+		Number(91),
+	)
+
+	producer := mustLoadString(t, state, "@producer.lua", `
+side_effect = side_effect + 1
+return 1, 2, 3
+`)
+	if err := state.SetGlobal("side_effect", Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	destination := make([]Value, 2, 8)
+	destination[0] = Number(70)
+	destination[1] = Number(71)
+	count, callErr := state.CallInto(
+		producer.Value(),
+		nil,
+		destination,
+	)
+	var capacityErr *ResultCapacityError
+	if !errors.As(callErr, &capacityErr) ||
+		capacityErr.Required != 3 ||
+		capacityErr.Available != 2 ||
+		count != 3 {
+		t.Fatalf("capacity result = (%d, %#v)", count, callErr)
+	}
+	assertTestValues(t, destination, Number(70), Number(71))
+	sideEffect, err := state.Global("side_effect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, sideEffect, Number(1))
+	assertRootThreadReady(t, state.MainThread())
+}
+
+func TestStateCallIntoLeavesDestinationUntouchedOnFailure(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	failing := mustLoadString(t, state, "@failure.lua", `return nil + 1`)
+	destination := []Value{Number(80), Number(81)}
+	if count, callErr := state.CallInto(
+		failing.Value(),
+		nil,
+		destination,
+	); count != 0 || callErr == nil {
+		t.Fatalf("failed call = (%d, %v)", count, callErr)
+	}
+	assertTestValues(t, destination, Number(80), Number(81))
+	assertRootThreadReady(t, state.MainThread())
+}
+
+func TestLoadPrototypeInitializesRootUpvalues(t *testing.T) {
+	builder := testPrototypeBuilder(
+		makeABC(opGetUpvalue, 0, 0, 0),
+		makeABC(opGetUpvalue, 1, 1, 0),
+		makeABC(opReturn, 0, 3, 0),
+	)
+	builder.upvalues = 2
+	prototype, syntaxError := builder.seal()
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function, err := state.LoadPrototype(prototype)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if function.UpvalueCount() != 2 {
+		t.Fatalf("loaded upvalue count = %d; want 2", function.UpvalueCount())
+	}
+	results, err := state.Call(function.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Nil(), Nil())
+}
+
+func TestStateCallHandlesZeroResultsAndPreservesDestinationTail(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	empty := mustLoadString(t, state, "@empty.lua", `return`)
+	results, err := state.Call(empty.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results != nil {
+		t.Fatalf("zero-result Call returned %#v; want nil", results)
+	}
+	destination := []Value{Number(70), Number(71)}
+	count, err := state.CallInto(empty.Value(), nil, destination)
+	if err != nil || count != 0 {
+		t.Fatalf("zero-result CallInto = (%d, %v)", count, err)
+	}
+	assertTestValues(t, destination, Number(70), Number(71))
+
+	one := mustLoadString(t, state, "@one.lua", `return 9`)
+	count, err = state.CallInto(one.Value(), nil, destination)
+	if err != nil || count != 1 {
+		t.Fatalf("one-result CallInto = (%d, %v)", count, err)
+	}
+	assertTestValues(t, destination, Number(9), Number(71))
+}
+
+func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		number, ok := frame.Number(0)
+		if !ok {
+			return frame.ArgTypeError(0, NumberKind)
+		}
+		second, _ := frame.Argument(1)
+		return frame.ReturnValues(
+			Number(number+1),
+			second,
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(
+		host.Value(),
+		Number(6),
+		state.String("direct"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(7), state.String("direct"))
+
+	callable, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if _, ok := frame.Table(0); !ok {
+			return frame.ArgTypeError(0, TableKind)
+		}
+		number, ok := frame.Number(1)
+		if !ok {
+			return frame.ArgTypeError(1, NumberKind)
+		}
+		second, _ := frame.Argument(2)
+		return frame.ReturnValues(Number(number+1), second)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := metatable.RawSetString("__call", callHandler.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(callable.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+	results, err = state.Call(
+		callable.Value(),
+		Number(8),
+		state.String("metamethod"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(9), state.String("metamethod"))
+
+	failing, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		return frame.RaiseString("native failure")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, callErr := state.Call(failing.Value()); callErr == nil {
+		t.Fatal("native root failure returned nil")
+	} else {
+		var luaErr *Error
+		if !errors.As(callErr, &luaErr) ||
+			luaErr.Category() != RuntimeError ||
+			luaErr.Error() != "native failure" {
+			t.Fatalf("native root failure = %#v", callErr)
+		}
+	}
+	assertRootThreadReady(t, state.MainThread())
+}
+
+func TestStateCallCleansRootExecutionAfterNativePanic(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	host, err := state.NewNativeFunction(func(Frame) Outcome {
+		panic("host panic")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("host", host.Value()); err != nil {
+		t.Fatal(err)
+	}
+	chunk := mustLoadString(t, state, "@panic.lua", `
+local retained = "closed"
+saved = function()
+	return retained
+end
+host()
+`)
+
+	var recovered any
+	func() {
+		defer func() {
+			recovered = recover()
+		}()
+		_, _ = state.Call(chunk.Value())
+	}()
+	if recovered != "host panic" {
+		t.Fatalf("recovered panic = %#v", recovered)
+	}
+	assertRootThreadReady(t, state.MainThread())
+
+	saved, err := state.Global("saved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("closed"))
+}
+
+func TestStateCallRejectsNativeReentry(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	target := mustLoadString(t, state, "@target.lua", `return 1`)
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if _, callErr := frame.State().Call(target.Value()); !errors.Is(
+			callErr,
+			ErrRunning,
+		) {
+			return frame.RaiseString("nested call was not rejected")
+		}
+		return frame.ReturnBool(true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(host.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true))
+}
+
+func TestStateCallPreservesTrailingNilResults(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := mustLoadString(
+		t,
+		state,
+		"@trailing-nil.lua",
+		`return 1, nil, 3, nil`,
+	)
+	results, err := state.Call(function.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(1), Nil(), Number(3), Nil())
+
+	destination := []Value{
+		Number(40),
+		Number(41),
+		Number(42),
+		Number(43),
+		Number(44),
+	}
+	count, err := state.CallInto(function.Value(), nil, destination)
+	if err != nil || count != 4 {
+		t.Fatalf("trailing-nil CallInto = (%d, %v)", count, err)
+	}
+	assertTestValues(
+		t,
+		destination,
+		Number(1),
+		Nil(),
+		Number(3),
+		Nil(),
+		Number(44),
+	)
+}
+
+func TestStateCallResourceFailureLeavesMainThreadReusable(t *testing.T) {
+	state, err := New(Options{MaxValues: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	large := mustLoadString(t, state, "@large.lua", `return 1, 2, 3`)
+	if _, callErr := state.Call(large.Value()); callErr == nil {
+		t.Fatal("value limit returned nil")
+	} else {
+		var luaErr *Error
+		if !errors.As(callErr, &luaErr) ||
+			luaErr.Category() != ResourceError {
+			t.Fatalf("value limit error = %#v", callErr)
+		}
+		if message, ok := luaErr.Value().AsString(); !ok ||
+			message != luaErr.Error() {
+			t.Fatalf("resource error value = %q, %v", message, ok)
+		}
+	}
+	assertRootThreadReady(t, state.MainThread())
+
+	small := mustLoadString(t, state, "@small.lua", `return 1`)
+	results, err := state.Call(small.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(1))
+}
+
+func TestStateCallRejectsClosedState(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := mustLoadString(t, state, "@closed.lua", `return 1`)
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, callErr := state.Call(function.Value()); !errors.Is(
+		callErr,
+		ErrClosed,
+	) {
+		t.Fatalf("closed Call error = %v", callErr)
+	}
+	destination := []Value{Number(9)}
+	if count, callErr := state.CallInto(
+		function.Value(),
+		nil,
+		destination,
+	); count != 0 || !errors.Is(callErr, ErrClosed) {
+		t.Fatalf("closed CallInto = (%d, %v)", count, callErr)
+	}
+	assertTestValues(t, destination, Number(9))
+}
+
+func TestStateCallIntoWarmFixedCallDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := mustLoadString(t, state, "@identity.lua", `return ...`)
+	arguments := []Value{Number(12)}
+	results := make([]Value, 1)
+	if _, err := state.CallInto(
+		function.Value(),
+		arguments,
+		results,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		if _, callErr := state.CallInto(
+			function.Value(),
+			arguments,
+			results,
+		); callErr != nil {
+			panic(callErr)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm CallInto allocations = %v; want 0", allocations)
+	}
+
+	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		number, ok := frame.Number(0)
+		if !ok {
+			return frame.ArgTypeError(0, NumberKind)
+		}
+		return frame.ReturnNumber(number)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.CallInto(
+		native.Value(),
+		arguments,
+		results,
+	); err != nil {
+		t.Fatal(err)
+	}
+	allocations = testing.AllocsPerRun(1000, func() {
+		if _, callErr := state.CallInto(
+			native.Value(),
+			arguments,
+			results,
+		); callErr != nil {
+			panic(callErr)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm native CallInto allocations = %v; want 0", allocations)
+	}
+}
+
+func BenchmarkStateCallBoundary(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	function := mustLoadString(b, state, "@boundary.lua", `return ...`)
+	arguments := []Value{Number(12)}
+	results := make([]Value, 1)
+	if _, err := state.CallInto(
+		function.Value(),
+		arguments,
+		results,
+	); err != nil {
+		b.Fatal(err)
+	}
+	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		number, ok := frame.Number(0)
+		if !ok {
+			return frame.ArgTypeError(0, NumberKind)
+		}
+		return frame.ReturnNumber(number)
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("CallInto one result", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if _, callErr := state.CallInto(
+				function.Value(),
+				arguments,
+				results,
+			); callErr != nil {
+				b.Fatal(callErr)
+			}
+		}
+	})
+	b.Run("Call one result", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if _, callErr := state.Call(
+				function.Value(),
+				Number(12),
+			); callErr != nil {
+				b.Fatal(callErr)
+			}
+		}
+	})
+	b.Run("CallInto native one result", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if _, callErr := state.CallInto(
+				native.Value(),
+				arguments,
+				results,
+			); callErr != nil {
+				b.Fatal(callErr)
+			}
+		}
+	})
+}
+
+func mustLoadString(
+	t testing.TB,
+	state *State,
+	sourceName string,
+	source string,
+) *Function {
+	t.Helper()
+	function, err := state.LoadString(sourceName, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return function
+}
+
+func assertRootThreadReady(t *testing.T, thread *Thread) {
+	t.Helper()
+	if thread.status != ThreadReady ||
+		thread.top != 0 ||
+		thread.frameExtent != 0 ||
+		len(thread.frames) != 0 ||
+		len(thread.continuations) != 0 ||
+		thread.openUpvalues != nil {
+		t.Fatalf(
+			"root thread retained execution state: status=%v top=%d extent=%d "+
+				"frames=%d continuations=%d upvalues=%p",
+			thread.status,
+			thread.top,
+			thread.frameExtent,
+			len(thread.frames),
+			len(thread.continuations),
+			thread.openUpvalues,
+		)
+	}
+	for index, value := range thread.values {
+		if value != (slot{}) {
+			t.Fatalf("root stack slot %d retained %v", index, value.owningValue())
+		}
+	}
+}
+
+func assertTestValues(t *testing.T, got []Value, want ...Value) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("value count = %d; want %d", len(got), len(want))
+	}
+	for index := range want {
+		assertTestValue(t, got[index], want[index])
+	}
+}

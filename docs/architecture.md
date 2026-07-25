@@ -36,10 +36,13 @@ embedding stack made from Go interface values.
 The friendly interface uses typed constructors and observers, direct table
 methods, and protected calls returning owned result slices.
 
-The low-level interface will add:
+The low-level interface currently includes:
 
 - `Frame` for direct typed callback arguments and results;
-- `CallInto` for caller-owned result storage;
+- `CallInto` for caller-owned result storage.
+
+It will later add:
+
 - `Cursor` for allocation-free table traversal after setup; and
 - `Builder` for bulk construction whose allocations follow storage growth,
   not inserted-value count.
@@ -99,7 +102,9 @@ Files are organized by substantial runtime concepts:
   list installation, and indexed metamethod resolution;
 - `native.go`: borrowed native call frames, typed argument and result access,
   captured values, terminal outcomes, and the Go callback seam;
-- later `load.go`: source and bytecode loading;
+- `load.go`: public source compilation and State-bound Function loading;
+- `invoke.go`: protected main-Thread calls and owning or caller-supplied result
+  egress;
 - later `library_*.go`: standard libraries using native frames.
 
 A file is split only when the resulting modules have independently meaningful
@@ -533,6 +538,25 @@ parity within low-single-digit measurement variation. Both paths allocate
 zero bytes. A Lua Function is 32 bytes, and a native Function plus its entry
 and capture-slice header is 64 bytes before capture backing storage.
 
+### Public-call checkpoint
+
+On the same Apple M3 Pro and Go 1.25.1 setup, a warmed State boundary over a
+precompiled one-result identity chunk measures:
+
+| Boundary | Time | Bytes | Allocations |
+| --- | ---: | ---: | ---: |
+| `CallInto`, Lua Function | 53.05 ns | 0 | 0 |
+| `CallInto`, native Function | 52.41 ns | 0 | 0 |
+| friendly `Call`, Lua Function | 64.86 ns | 16 | 1 |
+
+`Call` intentionally allocates the exact owned result slice. `CallInto`
+copies directly between public owning Values and the same compact stack used
+by the executor; it does not create a compatibility stack, adapter objects, or
+a second call path. Arguments are staged before result publication, so caller
+input and output slices may overlap. A short result destination is detected
+after execution but before any destination write, leaving Lua side effects
+intact while keeping the caller's buffer unchanged.
+
 Runtime number coercion accepts numbers and complete numeric strings. The
 shared parser recognizes signed decimal fractions and exponents, signed
 hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
@@ -632,10 +656,13 @@ The executor's default failure remains a fail-closed invariant guard for an
 invalid internal instruction, rather than a fallback to another interpreter.
 
 Runtime failure snapshots the active Lua trace before one centralized unwind
-closes upvalues, drops activations, and clears dead stack roots. Ordinary Lua
-control flow does not use Go panic or interface-valued per-opcode results. The
-executor returns one small outcome only when it reaches its requested call
-depth or fails; coroutine support will add a yield outcome when it exists.
+closes upvalues, drops activations, and clears dead stack roots. Engine-created
+syntax and resource failures carry an owned string error Value, matching Lua
+5.1's protected load/call boundary; a native callback may still raise any Lua
+Value. Ordinary Lua control flow does not use Go panic or interface-valued
+per-opcode results. The executor returns one small outcome only when it reaches
+its requested call depth or fails; coroutine support will add a yield outcome
+when it exists.
 
 ## Build order
 

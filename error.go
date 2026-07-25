@@ -95,35 +95,45 @@ func newSourceSyntaxError(
 	format string,
 	arguments ...any,
 ) *Error {
+	message := fmt.Sprintf(
+		"%s:%d: %s",
+		sourceID(source),
+		line,
+		fmt.Sprintf(format, arguments...),
+	)
 	return &Error{
-		value: Nil(),
-		description: fmt.Sprintf(
-			"%s:%d: %s",
-			sourceID(source),
-			line,
-			fmt.Sprintf(format, arguments...),
-		),
-		category: SyntaxError,
+		value:       errorStringValue(message),
+		description: message,
+		category:    SyntaxError,
 	}
 }
 
 func newResourceError(format string, arguments ...any) *Error {
+	message := fmt.Sprintf(format, arguments...)
 	return &Error{
-		value:       Nil(),
-		description: fmt.Sprintf(format, arguments...),
+		value:       errorStringValue(message),
+		description: message,
 		category:    ResourceError,
 	}
+}
+
+func errorStringValue(message string) Value {
+	return stringValue(newLuaString(message))
 }
 
 const maxSourceID = 59
 
 func sourceID(source string) string {
 	if source == "" {
-		return "?"
+		return `[string ""]`
 	}
 	switch source[0] {
 	case '=':
-		return truncateSource(source[1:], maxSourceID, false)
+		literal := source[1:]
+		if len(literal) > maxSourceID {
+			literal = literal[:maxSourceID]
+		}
+		return literal
 	case '@':
 		const pathTail = 52
 		path := source[1:]
@@ -133,29 +143,21 @@ func sourceID(source string) string {
 		return "..." + path[len(path)-pathTail:]
 	default:
 		line := source
-		endedAtNewline := false
+		truncated := false
 		if end := strings.IndexAny(line, "\r\n"); end >= 0 {
 			line = line[:end]
-			endedAtNewline = true
+			truncated = true
 		}
 		const prefix = `[string "`
 		const suffix = `"]`
-		available := maxSourceID - len(prefix) - len(suffix)
-		if endedAtNewline && len(line)+3 <= available {
+		const sourceBytes = 43
+		if len(line) > sourceBytes {
+			line = line[:sourceBytes]
+			truncated = true
+		}
+		if truncated {
 			line += "..."
-		} else if endedAtNewline || len(line) > available {
-			line = truncateSource(line, available, true)
 		}
 		return prefix + line + suffix
 	}
-}
-
-func truncateSource(source string, limit int, ellipsis bool) string {
-	if len(source) <= limit {
-		return source
-	}
-	if !ellipsis || limit < 3 {
-		return source[:limit]
-	}
-	return source[:limit-3] + "..."
 }

@@ -22,8 +22,11 @@ lookup, table constructors, and Lua 5.1 `__index` and `__newindex`
 resolution. It also implements Lua 5.1 length and right-to-left concatenation
 semantics. Lua can now call allocation-free Go functions through borrowed
 typed Frames over the same compact stack, including calls from metamethod and
-iterator continuations. Public source execution and the standard libraries
-are still under construction.
+iterator continuations. Go can compile State-neutral Prototypes, load them
+into distinct States, and invoke Lua or callable objects through protected
+`Call` and caller-buffer `CallInto` boundaries. Warmed nonallocating calls
+through `CallInto` add no boundary allocation. Contexts, coroutines, and the
+standard libraries are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

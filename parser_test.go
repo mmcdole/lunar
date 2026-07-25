@@ -714,10 +714,14 @@ func TestCompileSourceErrors(t *testing.T) {
 				t.Fatal("malformed source was accepted")
 			}
 			if syntaxError.Category() != SyntaxError ||
-				!syntaxError.Value().IsNil() ||
+				syntaxError.Value().Kind() != StringKind ||
 				!strings.Contains(syntaxError.Error(), "bad.lua:1:") ||
 				!strings.Contains(syntaxError.Error(), test.want) {
 				t.Fatalf("syntax error = %v", syntaxError)
+			}
+			if message, ok := syntaxError.Value().AsString(); !ok ||
+				message != syntaxError.Error() {
+				t.Fatalf("syntax error value = %q, %v", message, ok)
 			}
 		})
 	}

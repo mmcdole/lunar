@@ -12,9 +12,6 @@ const (
 	nativeTokenMask   = nativeTerminalBit - 1
 )
 
-// ErrRunning reports an operation that cannot run while Lua is executing.
-var ErrRunning = errors.New("lua: state is executing")
-
 // ErrInvalidNativeFunction reports construction with a nil native entry.
 var ErrInvalidNativeFunction = errors.New("lua: native function is nil")
 

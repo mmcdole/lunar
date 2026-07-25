@@ -1011,7 +1011,7 @@ func newPrototypeSyntaxError(
 		message = fmt.Sprintf("instruction %d: %s", pc, message)
 	}
 	return &Error{
-		value:       Nil(),
+		value:       errorStringValue(message),
 		description: message,
 		category:    SyntaxError,
 	}
