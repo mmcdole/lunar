@@ -1,0 +1,454 @@
+package lua
+
+import (
+	"errors"
+	"sync/atomic"
+	"unsafe"
+)
+
+// ErrClosed reports an operation that requires a live State.
+var ErrClosed = errors.New("lua: state is closed")
+
+// ErrForeignValue reports a reference value owned by another State.
+var ErrForeignValue = errors.New("lua: value belongs to another state")
+
+// ErrInvalidValue reports use of the zero Value.
+var ErrInvalidValue = errors.New("lua: invalid value")
+
+// ErrInvalidKey reports nil, NaN, or another invalid Lua table key.
+var ErrInvalidKey = errors.New("lua: invalid table key")
+
+// ErrInvalidNextKey reports a key that is not a valid continuation for table
+// traversal.
+var ErrInvalidNextKey = errors.New("lua: invalid key to next")
+
+// ErrNegativeCapacity reports a negative collection capacity hint.
+var ErrNegativeCapacity = errors.New("lua: capacity hint is negative")
+
+// ErrCapacity reports a collection capacity hint too large for eager
+// allocation. Tables may still grow beyond this size incrementally.
+var ErrCapacity = errors.New("lua: capacity hint is too large")
+
+// Options configures a State at construction.
+//
+// Options is copied by New. Mutating the caller's value after construction
+// does not affect a live State.
+type Options struct {
+	// MaxValues limits values held by the execution stack. Zero selects the
+	// implementation default.
+	MaxValues int
+	// MaxFrames limits nested Lua and native calls. Zero selects the
+	// implementation default.
+	MaxFrames int
+}
+
+const (
+	defaultMaxValues = 64 << 10
+	defaultMaxFrames = 1024
+	maxTableHint     = 1 << 20
+)
+
+type objectHeader struct {
+	owner *runtimeState
+}
+
+// runtimeState is the lightweight ownership token shared by canonical
+// objects. It owns only runtime-wide caches and close state, never the State's
+// object roots. Retaining one object therefore does not pin an unrelated Lua
+// graph.
+type runtimeState struct {
+	closed  atomic.Bool
+	strings stringPool
+}
+
+// State owns one Lua runtime, its global environment, and its main Thread.
+//
+// A State has one active executor. Callers must serialize execution and
+// mutation. Owning Values and object handles may be retained by other
+// goroutines, but their operations remain subject to the same rule.
+type State struct {
+	runtime              *runtimeState
+	options              Options
+	main                 *Thread
+	globals              *Table
+	registry             *Table
+	typeMetatables       [TableKind + 1]*Table
+	typeMetatableVersion [TableKind + 1]uint64
+}
+
+// New constructs an empty State.
+func New(options Options) (*State, error) {
+	if options.MaxValues < 0 || options.MaxFrames < 0 {
+		return nil, ErrNegativeCapacity
+	}
+	if options.MaxValues == 0 {
+		options.MaxValues = defaultMaxValues
+	}
+	if options.MaxFrames == 0 {
+		options.MaxFrames = defaultMaxFrames
+	}
+
+	rt := &runtimeState{}
+	rt.strings.init(rt)
+	state := &State{runtime: rt, options: options}
+	state.main = &Thread{
+		objectHeader: objectHeader{owner: rt},
+		state:        state,
+		status:       ThreadReady,
+		main:         true,
+	}
+	state.globals = newTable(rt, 0, 0)
+	state.registry = newTable(rt, 0, 0)
+	return state, nil
+}
+
+// Close releases runtime-owned resources and prevents further execution or
+// mutation. It is safe to call Close more than once.
+//
+// Previously returned owning Values and canonical object handles remain safe
+// to inspect after Close.
+func (state *State) Close() error {
+	if state == nil || state.runtime == nil {
+		return nil
+	}
+	if state.runtime.closed.Swap(true) {
+		return nil
+	}
+	state.runtime.strings.close()
+	if state.main != nil {
+		state.main.closeUpvalues(0)
+		state.main.values = nil
+		state.main.status = ThreadClosed
+	}
+	state.globals = nil
+	state.registry = nil
+	state.typeMetatables = [TableKind + 1]*Table{}
+	return nil
+}
+
+// MainThread returns the canonical main Thread.
+func (state *State) MainThread() *Thread {
+	if state == nil {
+		return nil
+	}
+	return state.main
+}
+
+// String returns an owning Lua string Value.
+//
+// The source bytes are retained immutably and never alias mutable memory.
+// Observation of the returned string remains safe after the State is closed.
+// Calling String after Close is permitted; it constructs an uncached,
+// observation-only Value owned by the closed runtime.
+func (state *State) String(text string) Value {
+	if state == nil || state.runtime == nil {
+		return Value{}
+	}
+	return stringValue(state.runtime.strings.make(text))
+}
+
+// NewTable constructs an empty canonical Table using optional capacity hints.
+func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	if arrayHint < 0 || recordHint < 0 {
+		return nil, ErrNegativeCapacity
+	}
+	if arrayHint > maxTableHint || recordHint > maxTableHint {
+		return nil, ErrCapacity
+	}
+	return newTable(state.runtime, arrayHint, recordHint), nil
+}
+
+// NewUserData constructs canonical userdata holding payload.
+func (state *State) NewUserData(payload any) (*UserData, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	return &UserData{
+		objectHeader: objectHeader{owner: state.runtime},
+		payload:      payload,
+	}, nil
+}
+
+// Registry returns the private Lua registry table.
+//
+// The returned table is canonical. It is not an execution stack or a set of
+// pseudo-indexed Go registers.
+func (state *State) Registry() (*Table, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	return state.registry, nil
+}
+
+// Global returns a raw value from the global environment.
+func (state *State) Global(name string) (Value, error) {
+	if err := state.checkOpen(); err != nil {
+		return Value{}, err
+	}
+	return state.globals.RawGetString(name), nil
+}
+
+// SetGlobal performs a raw assignment in the global environment.
+func (state *State) SetGlobal(name string, value Value) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	return state.globals.RawSetString(name, value)
+}
+
+// RawEqual applies Lua raw equality without invoking metamethods.
+func (state *State) RawEqual(left, right Value) (bool, error) {
+	if err := state.checkOpen(); err != nil {
+		return false, err
+	}
+	if err := state.runtime.accept(left); err != nil {
+		return false, err
+	}
+	if err := state.runtime.accept(right); err != nil {
+		return false, err
+	}
+	return rawEqual(left, right), nil
+}
+
+// Metatable returns value's metatable without invoking Lua. A nil result means
+// no metatable is installed.
+func (state *State) Metatable(value Value) (*Table, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := state.runtime.accept(value); err != nil {
+		return nil, err
+	}
+	switch value.Kind() {
+	case TableKind:
+		table, _ := value.Table()
+		return table.metatable, nil
+	case UserDataKind:
+		data, _ := value.UserData()
+		return data.metatable, nil
+	default:
+		return state.typeMetatables[value.Kind()], nil
+	}
+}
+
+// SetMetatable replaces value's metatable without invoking Lua. Passing nil
+// removes the metatable.
+func (state *State) SetMetatable(value Value, metatable *Table) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	if err := state.runtime.accept(value); err != nil {
+		return err
+	}
+	if metatable != nil {
+		if metatable.owner == nil {
+			return ErrInvalidValue
+		}
+		if metatable.owner != state.runtime {
+			return ErrForeignValue
+		}
+	}
+	switch value.Kind() {
+	case TableKind:
+		table, _ := value.Table()
+		table.metatable = metatable
+	case UserDataKind:
+		data, _ := value.UserData()
+		data.metatable = metatable
+	default:
+		state.typeMetatables[value.Kind()] = metatable
+		state.typeMetatableVersion[value.Kind()]++
+	}
+	return nil
+}
+
+// FunctionEnvironment returns function's Lua 5.1 environment.
+func (state *State) FunctionEnvironment(function *Function) (*Table, error) {
+	if err := state.checkFunction(function); err != nil {
+		return nil, err
+	}
+	return function.environment, nil
+}
+
+// SetFunctionEnvironment replaces function's Lua 5.1 environment.
+func (state *State) SetFunctionEnvironment(function *Function, environment *Table) error {
+	if err := state.checkFunction(function); err != nil {
+		return err
+	}
+	if environment == nil || environment.owner == nil {
+		return ErrInvalidValue
+	}
+	if environment.owner != state.runtime {
+		return ErrForeignValue
+	}
+	function.environment = environment
+	return nil
+}
+
+// UserDataEnvironment returns data's Lua 5.1 environment. A nil result means
+// no environment is installed.
+func (state *State) UserDataEnvironment(data *UserData) (*Table, error) {
+	if err := state.checkUserData(data); err != nil {
+		return nil, err
+	}
+	return data.environment, nil
+}
+
+// SetUserDataEnvironment replaces data's Lua 5.1 environment. Passing nil
+// removes it.
+func (state *State) SetUserDataEnvironment(data *UserData, environment *Table) error {
+	if err := state.checkUserData(data); err != nil {
+		return err
+	}
+	if environment != nil {
+		if environment.owner == nil {
+			return ErrInvalidValue
+		}
+		if environment.owner != state.runtime {
+			return ErrForeignValue
+		}
+	}
+	data.environment = environment
+	return nil
+}
+
+func (state *State) checkOpen() error {
+	if state == nil || state.runtime == nil || state.runtime.closed.Load() {
+		return ErrClosed
+	}
+	return nil
+}
+
+func (state *State) checkFunction(function *Function) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	if function == nil || function.owner == nil {
+		return ErrInvalidValue
+	}
+	if function.owner != state.runtime {
+		return ErrForeignValue
+	}
+	return nil
+}
+
+func (state *State) checkUserData(data *UserData) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	if data == nil || data.owner == nil {
+		return ErrInvalidValue
+	}
+	if data.owner != state.runtime {
+		return ErrForeignValue
+	}
+	return nil
+}
+
+func (rt *runtimeState) accept(value Value) error {
+	if !value.Valid() {
+		return ErrInvalidValue
+	}
+	if owner := value.owner(); owner != nil && owner != rt {
+		return ErrForeignValue
+	}
+	return nil
+}
+
+// ThreadStatus describes a Thread's execution state.
+type ThreadStatus uint8
+
+const (
+	// ThreadReady identifies a Thread that has not started or is idle.
+	ThreadReady ThreadStatus = iota
+	// ThreadRunning identifies the currently executing Thread.
+	ThreadRunning
+	// ThreadSuspended identifies a coroutine stopped at yield.
+	ThreadSuspended
+	// ThreadDead identifies a coroutine that returned or failed.
+	ThreadDead
+	// ThreadClosed identifies a Thread whose State has closed.
+	ThreadClosed
+)
+
+// Thread is the canonical object for a Lua thread.
+//
+// The main thread and coroutines use the same representation. Execution
+// registers and activation records remain private.
+type Thread struct {
+	objectHeader
+	state        *State
+	values       []slot
+	openUpvalues *upvalue
+	status       ThreadStatus
+	main         bool
+}
+
+// Value returns the owning Lua value for thread.
+func (thread *Thread) Value() Value {
+	if thread == nil || thread.owner == nil {
+		return Value{}
+	}
+	return objectValue(ThreadKind, unsafe.Pointer(thread))
+}
+
+// State returns the State that owns thread.
+func (thread *Thread) State() *State {
+	if thread == nil {
+		return nil
+	}
+	return thread.state
+}
+
+// Status returns thread's current status.
+func (thread *Thread) Status() ThreadStatus {
+	if thread == nil || thread.owner == nil || thread.owner.closed.Load() {
+		return ThreadClosed
+	}
+	return thread.status
+}
+
+// IsMain reports whether thread is its State's main thread.
+func (thread *Thread) IsMain() bool {
+	return thread != nil && thread.main
+}
+
+// UserData is a canonical Lua userdata object holding a Go value.
+//
+// The payload is opaque to Lua unless native functions expose operations on
+// it. Metatable and environment changes are controlled by State operations.
+type UserData struct {
+	objectHeader
+	payload     any
+	metatable   *Table
+	environment *Table
+}
+
+// Value returns the owning Lua value for userdata.
+func (data *UserData) Value() Value {
+	if data == nil || data.owner == nil {
+		return Value{}
+	}
+	return objectValue(UserDataKind, unsafe.Pointer(data))
+}
+
+// Data returns the Go payload. Reading the payload remains safe after the
+// owning State closes.
+func (data *UserData) Data() any {
+	if data == nil {
+		return nil
+	}
+	return data.payload
+}
+
+// SetData replaces the Go payload.
+func (data *UserData) SetData(payload any) error {
+	if data == nil || data.owner == nil || data.owner.closed.Load() {
+		return ErrClosed
+	}
+	data.payload = payload
+	return nil
+}

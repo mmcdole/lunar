@@ -1,0 +1,427 @@
+package lua
+
+import (
+	"errors"
+	"math"
+	"runtime"
+	"testing"
+)
+
+func TestTableRawScalarAccess(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		key   Value
+		value Value
+	}{
+		{Number(0), state.String("zero")},
+		{Number(-4), state.String("negative")},
+		{Bool(true), Number(1)},
+		{Bool(false), Number(2)},
+		{state.String("name"), state.String("badger")},
+	}
+	for _, test := range tests {
+		if err := table.RawSet(test.key, test.value); err != nil {
+			t.Fatalf("RawSet(%v): %v", test.key, err)
+		}
+		got, err := table.RawGet(test.key)
+		if err != nil {
+			t.Fatalf("RawGet(%v): %v", test.key, err)
+		}
+		equal, err := state.RawEqual(got, test.value)
+		if err != nil || !equal {
+			t.Fatalf("RawGet(%v) = %v, want %v", test.key, got, test.value)
+		}
+	}
+
+	if err := table.RawSet(Number(math.Copysign(0, -1)), Number(9)); err != nil {
+		t.Fatal(err)
+	}
+	if got := table.RawGetInt(0); got.String() != "9" {
+		t.Fatalf("-0/+0 canonicalization = %v, want 9", got)
+	}
+	if err := table.RawSet(Nil(), Bool(true)); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("nil key error = %v, want ErrInvalidKey", err)
+	}
+	if err := table.RawSet(Number(math.NaN()), Bool(true)); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("NaN key error = %v, want ErrInvalidKey", err)
+	}
+	var invalid Value
+	if err := table.RawSet(Bool(true), invalid); !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("invalid value error = %v, want ErrInvalidValue", err)
+	}
+}
+
+func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const denseCount = 10_000
+	for index := 1; index <= denseCount; index++ {
+		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := table.RawLen(); got != denseCount {
+		t.Fatalf("dense RawLen = %d, want %d", got, denseCount)
+	}
+	if len(table.array) != denseCount || table.arrayUsed != denseCount {
+		t.Fatalf("dense storage = len %d, used %d", len(table.array), table.arrayUsed)
+	}
+
+	sparse, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sparseIndex = 50_000_000
+	if err := sparse.RawSetInt(sparseIndex, Bool(true)); err != nil {
+		t.Fatal(err)
+	}
+	if len(sparse.array) != 0 {
+		t.Fatalf("sparse assignment materialized %d array slots", len(sparse.array))
+	}
+	if got, ok := sparse.RawGetInt(sparseIndex).AsBool(); !ok || !got {
+		t.Fatalf("sparse lookup = (%v, %v), want (true, true)", got, ok)
+	}
+	if sparse.store.count != 1 {
+		t.Fatalf("sparse hash count = %d, want 1", sparse.store.count)
+	}
+}
+
+func TestTableMovesExistingIntegerFromHashToArray(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := table.RawSetInt(5, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if table.store.count != 1 || len(table.array) != 0 {
+		t.Fatalf("initial sparse storage = hash %d, array %d", table.store.count, len(table.array))
+	}
+	if err := table.RawSetInt(1, Bool(true)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(2, Bool(true)); err != nil {
+		t.Fatal(err)
+	}
+	version := table.structuralVersion
+	if err := table.RawSetInt(5, Number(2)); err != nil {
+		t.Fatal(err)
+	}
+	if table.store.count != 0 || table.store.integerKeys != 0 {
+		t.Fatalf(
+			"migrated key remains in hash: count=%d integerKeys=%d",
+			table.store.count,
+			table.store.integerKeys,
+		)
+	}
+	if len(table.array) != 5 {
+		t.Fatalf("migrated array length = %d, want 5", len(table.array))
+	}
+	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
+		t.Fatalf("migrated value = (%v, %v), want (2, true)", got, ok)
+	}
+	if table.structuralVersion != version {
+		t.Fatalf(
+			"storage move changed logical structural version from %d to %d",
+			version,
+			table.structuralVersion,
+		)
+	}
+}
+
+func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const count = 5000
+	for index := 0; index < count; index++ {
+		key := "key-" + Number(float64(index)).String()
+		if err := table.RawSetString(key, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := 0; index < count; index++ {
+		key := "key-" + Number(float64(index)).String()
+		if got, ok := table.RawGetString(key).AsNumber(); !ok || got != float64(index) {
+			t.Fatalf("lookup %q = %v", key, table.RawGetString(key))
+		}
+	}
+	for index := 0; index < count; index += 2 {
+		key := "key-" + Number(float64(index)).String()
+		if err := table.RawSetString(key, Nil()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := count; index < count*2; index++ {
+		key := "key-" + Number(float64(index)).String()
+		if err := table.RawSetString(key, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	objectKey, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSet(objectKey.Value(), state.String("identity")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := table.RawGet(objectKey.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := got.AsString(); !ok || text != "identity" {
+		t.Fatalf("reference-key lookup = %v", got)
+	}
+}
+
+func TestTableDeletionAndVersions(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := table.RawSetString("ordinary", Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if table.structuralVersion != 1 || table.metamethodVersion != 0 {
+		t.Fatalf("initial versions = (%d, %d)", table.structuralVersion, table.metamethodVersion)
+	}
+	if err := table.RawSetString("ordinary", Number(2)); err != nil {
+		t.Fatal(err)
+	}
+	if table.structuralVersion != 1 {
+		t.Fatalf("value update changed structural version to %d", table.structuralVersion)
+	}
+	if err := table.RawSetString("__index", Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	metamethodVersion := table.metamethodVersion
+	if metamethodVersion == 0 {
+		t.Fatal("metamethod insertion did not invalidate absence state")
+	}
+	if err := table.RawSetString("__index", Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if table.metamethodVersion != metamethodVersion+1 {
+		t.Fatal("metamethod deletion did not invalidate absence state")
+	}
+	if got := table.RawGetString("__index"); !got.IsNil() {
+		t.Fatalf("deleted key = %v, want nil", got)
+	}
+}
+
+func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 8; index++ {
+		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, key := range []string{"north", "south", "east", "west"} {
+		if err := table.RawSetString(key, Bool(true)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	visited := 0
+	previous := nilSlot
+	for {
+		key, _, found, err := table.next(previous)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !found {
+			break
+		}
+		visited++
+		if err := table.RawSet(key.owningValue(), Nil()); err != nil {
+			t.Fatal(err)
+		}
+		previous = key
+	}
+	if visited != 12 {
+		t.Fatalf("visited %d keys, want 12", visited)
+	}
+	if table.arrayUsed != 0 || table.store.count != 0 {
+		t.Fatalf("table not empty after traversal deletion: array=%d hash=%d", table.arrayUsed, table.store.count)
+	}
+
+	missing := slotFromValue(state.String("missing"))
+	if _, _, _, err := table.next(missing); !errors.Is(err, ErrInvalidNextKey) {
+		t.Fatalf("missing continuation error = %v, want ErrInvalidNextKey", err)
+	}
+}
+
+func TestTableRawLenSequence(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for index := 1; index <= 64; index++ {
+		if err := table.RawSetInt(index, Bool(true)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := table.RawLen(); got != 64 {
+		t.Fatalf("RawLen = %d, want 64", got)
+	}
+	if err := table.RawSetInt(64, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if got := table.RawLen(); got != 63 {
+		t.Fatalf("RawLen after tail deletion = %d, want 63", got)
+	}
+
+	hashTail, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 3; index++ {
+		if err := hashTail.RawSetInt(index, Bool(true)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := hashTail.RawSetInt(4, Bool(true)); err != nil {
+		t.Fatal(err)
+	}
+	if got := hashTail.RawLen(); got != 4 {
+		t.Fatalf("RawLen across storage = %d, want 4", got)
+	}
+}
+
+func TestTableSteadyStateRawAccessDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(8, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(1, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		if err := table.RawSetString("field", Number(1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if capacity := len(table.store.entries); capacity != minimumStoreCapacity {
+		t.Fatalf("one-field store capacity = %d, want %d", capacity, minimumStoreCapacity)
+	}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		if err := table.RawSetInt(1, Number(2)); err != nil {
+			panic(err)
+		}
+		_ = table.RawGetInt(1)
+		if err := table.RawSetString("field", Number(2)); err != nil {
+			panic(err)
+		}
+		_ = table.RawGetString("field")
+		if err := table.RawSetString("absent", Nil()); err != nil {
+			panic(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("steady-state raw access allocated %.2f times", allocations)
+	}
+}
+
+func BenchmarkTableRawInteger(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(1, 0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := table.RawSetInt(1, Number(0)); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	for index := range b.N {
+		if err := table.RawSetInt(1, Number(float64(index))); err != nil {
+			b.Fatal(err)
+		}
+		runtime.KeepAlive(table.RawGetInt(1))
+	}
+}
+
+func BenchmarkTableRawString(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := table.RawSetString("field", Number(0)); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	for index := range b.N {
+		if err := table.RawSetString("field", Number(float64(index))); err != nil {
+			b.Fatal(err)
+		}
+		runtime.KeepAlive(table.RawGetString("field"))
+	}
+}
