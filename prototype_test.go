@@ -303,19 +303,6 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("closure-binding-target"),
-			registers:  2,
-			upvalues:   1,
-			children:   []*Prototype{child},
-			code: []instruction{
-				makeAsBx(opJump, 0, 1),
-				makeABx(opClosure, 0, 0),
-				makeABC(opMove, 1, 0, 0),
-				makeABC(opGetUpvalue, 0, 0, 0),
-				makeABC(opReturn, 0, 1, 0),
-			},
-		},
-		{
 			sourceName: newLuaString("largest-setlist-block"),
 			registers:  2,
 			code: []instruction{
@@ -432,6 +419,21 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 					makeABC(opReturn, 0, 1, 0),
 				)
 				builder.registers = 2
+				return builder
+			},
+		},
+		{
+			name: "jump into closure binding",
+			builder: func() *prototypeBuilder {
+				builder := testPrototypeBuilder(
+					makeAsBx(opJump, 0, 1),
+					makeABx(opClosure, 0, 0),
+					makeABC(opMove, 1, 0, 0),
+					makeABC(opGetUpvalue, 0, 0, 0),
+					makeABC(opReturn, 0, 1, 0),
+				)
+				builder.upvalues = 1
+				builder.children = []*Prototype{child}
 				return builder
 			},
 		},

@@ -925,7 +925,7 @@ func (prototype *Prototype) checkControlTarget(
 			target,
 		)
 	}
-	if roles[target] == setListExtraWord {
+	if roles[target] != executableWord {
 		return prototype.syntaxError(
 			pc,
 			"%s target %d enters instruction metadata",
