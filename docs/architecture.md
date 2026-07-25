@@ -285,7 +285,10 @@ metamethods. Missing reads and writes follow at most 100 `__index` or
 `__newindex` targets; only a Function-valued event is called, while every
 other event value is the next target. Getter continuations retain one result,
 and setter continuations request and retain none. Nil and NaN are read misses
-but remain invalid keys when resolution reaches a table write.
+but remain invalid keys when resolution reaches a table write. An existing
+write resolves its array or hash location once and updates that exact
+location; it does not repeat the key lookup after deciding that
+`__newindex` must be bypassed.
 
 Globals use the executing Function's environment, never an implicit State
 global. `NEWTABLE` decodes both floating-byte operands and clamps their

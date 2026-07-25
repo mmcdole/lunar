@@ -299,6 +299,99 @@ func TestTableDeletionAndMetamethodInvalidation(t *testing.T) {
 	}
 }
 
+func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	tests := []struct {
+		name string
+		key  Value
+		lane tableLane
+	}{
+		{name: "array", key: Number(1), lane: tableArrayLane},
+		{name: "hash", key: state.String("field"), lane: tableHashLane},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			table, err := state.NewTable(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := table.RawSet(test.key, Number(1)); err != nil {
+				t.Fatal(err)
+			}
+
+			normalized, index, arrayKey, hash, status :=
+				normalizeTableKey(slotFromValue(test.key))
+			if status != tableKeyValid {
+				t.Fatal("valid key was rejected")
+			}
+			value, location, found := table.resolveNormalizedSlot(
+				normalized,
+				index,
+				arrayKey,
+				hash,
+			)
+			if !found || !rawSlotEqual(value, numberSlot(1)) {
+				t.Fatalf("resolved value = (%v, %v), want (1, true)", value, found)
+			}
+			if location.lane != test.lane {
+				t.Fatalf("resolved lane = %d, want %d", location.lane, test.lane)
+			}
+
+			version := table.structuralVersion
+			table.absentMetamethods = metaIndex.bit()
+			table.replaceResolvedSlot(location, numberSlot(2))
+			if table.structuralVersion != version {
+				t.Fatalf(
+					"value update changed structural version from %d to %d",
+					version,
+					table.structuralVersion,
+				)
+			}
+			if table.absentMetamethods != 0 {
+				t.Fatal("value update retained the absent-metamethod cache")
+			}
+			got, err := table.RawGet(test.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if number, ok := got.AsNumber(); !ok || number != 2 {
+				t.Fatalf("updated value = %v, want 2", got)
+			}
+
+			table.absentMetamethods = metaIndex.bit()
+			table.replaceResolvedSlot(location, nilSlot)
+			if table.structuralVersion != version+1 {
+				t.Fatalf(
+					"deletion structural version = %d, want %d",
+					table.structuralVersion,
+					version+1,
+				)
+			}
+			if table.absentMetamethods != 0 {
+				t.Fatal("deletion retained the absent-metamethod cache")
+			}
+			got, err = table.RawGet(test.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.IsNil() {
+				t.Fatalf("deleted value = %v, want nil", got)
+			}
+			if test.lane == tableArrayLane && table.arrayUsed != 0 {
+				t.Fatalf("array used = %d, want 0", table.arrayUsed)
+			}
+			if test.lane == tableHashLane && table.store.count != 0 {
+				t.Fatalf("hash count = %d, want 0", table.store.count)
+			}
+		})
+	}
+}
+
 func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

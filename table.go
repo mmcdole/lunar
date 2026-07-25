@@ -28,6 +28,22 @@ type tableStore struct {
 	integerKeys int
 }
 
+type tableLane uint8
+
+const (
+	tableArrayLane tableLane = iota
+	tableHashLane
+)
+
+// tableLocation is valid only until the table's next structural mutation.
+// It lets an immediately following update use the slot already found by a
+// lookup, mirroring Lua's resolve-once table-set path without retaining an
+// interior pointer into movable Go slices.
+type tableLocation struct {
+	index int
+	lane  tableLane
+}
+
 // Table is the canonical representation of a Lua table.
 //
 // Its storage, metatable, traversal state, and cache generations are private.
@@ -351,6 +367,78 @@ func (table *Table) rawNormalizedSlot(
 		return table.rawIntSlot(index)
 	}
 	return table.store.get(key, hash)
+}
+
+func (table *Table) resolveNormalizedSlot(
+	key slot,
+	index int,
+	arrayKey bool,
+	hash uint64,
+) (slot, tableLocation, bool) {
+	if arrayKey {
+		if index <= len(table.array) {
+			value := table.array[index-1]
+			return value,
+				tableLocation{
+					index: index - 1,
+					lane:  tableArrayLane,
+				},
+				value.kind() != NilKind
+		}
+		number := float64(index)
+		key = slot{bits: math.Float64bits(number)}
+		hash = hashNumber(number)
+	}
+	storeIndex, found := table.store.find(key, hash)
+	if !found {
+		return nilSlot, tableLocation{}, false
+	}
+	return table.store.entries[storeIndex].value,
+		tableLocation{
+			index: storeIndex,
+			lane:  tableHashLane,
+		},
+		true
+}
+
+func (table *Table) replaceResolvedSlot(
+	location tableLocation,
+	value slot,
+) {
+	var current slot
+	switch location.lane {
+	case tableArrayLane:
+		current = table.array[location.index]
+	case tableHashLane:
+		current = table.store.entries[location.index].value
+	default:
+		panic("lua: invalid table storage lane")
+	}
+	if current.kind() == NilKind {
+		panic("lua: stale table location")
+	}
+
+	if value.kind() == NilKind {
+		switch location.lane {
+		case tableArrayLane:
+			table.array[location.index] = nilSlot
+			table.arrayUsed--
+		case tableHashLane:
+			table.store.deleteAt(location.index)
+		}
+		table.recordMutation(true, true)
+		return
+	}
+	if rawSlotEqual(current, value) {
+		return
+	}
+	switch location.lane {
+	case tableArrayLane:
+		writeSlot(&table.array[location.index], value)
+	case tableHashLane:
+		writeSlot(&table.store.entries[location.index].value, value)
+	}
+	table.recordMutation(false, true)
 }
 
 func (table *Table) rawSetSlot(key, value slot) tableKeyStatus {

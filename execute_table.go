@@ -145,19 +145,13 @@ func slowTableSet(
 					status,
 				)
 			}
-			if _, present := table.rawNormalizedSlot(
+			if _, location, present := table.resolveNormalizedSlot(
 				normalized,
 				index,
 				arrayKey,
 				hash,
 			); present {
-				table.rawSetNormalizedSlot(
-					normalized,
-					index,
-					arrayKey,
-					hash,
-					value,
-				)
+				table.replaceResolvedSlot(location, value)
 				return nil
 			}
 			method, found = metamethodSlot(
