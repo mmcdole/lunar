@@ -554,27 +554,15 @@ func TestProtectedCallsDoNotCatchHostContextFailures(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	failure := &Error{
-		value:       state.String("context stopped"),
-		description: "context stopped",
-		category:    ContextError,
-	}
-	raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.sealError(failure)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetGlobal("raise_context", raiser.Value()); err != nil {
-		t.Fatal(err)
-	}
 	testCases := []struct {
-		name   string
-		source string
+		name        string
+		source      string
+		traceSource []string
 	}{
 		{
-			name:   "target",
-			source: `return pcall(raise_context)`,
+			name:        "target",
+			source:      `return pcall(raise_context)`,
+			traceSource: []string{"=[Go]", "=[Go]", "@protected-context.lua"},
 		},
 		{
 			name: "xpcall handler",
@@ -584,10 +572,33 @@ return xpcall(
 	raise_context
 )
 `,
+			traceSource: []string{
+				"=[Go]",
+				"@protected-context.lua",
+				"=[Go]",
+				"@protected-context.lua",
+			},
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			failure := &Error{
+				value:       state.String("context stopped"),
+				description: "context stopped",
+				category:    ContextError,
+			}
+			raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
+				return frame.sealError(failure)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := state.SetGlobal(
+				"raise_context",
+				raiser.Value(),
+			); err != nil {
+				t.Fatal(err)
+			}
 			chunk := mustLoadString(
 				t,
 				state,
@@ -603,6 +614,24 @@ return xpcall(
 					"protected context failure = %#v; want original failure",
 					callErr,
 				)
+			}
+			trace := luaErr.Traceback()
+			if len(trace) != len(test.traceSource) {
+				t.Fatalf(
+					"protected context traceback = %+v; want %d frames",
+					trace,
+					len(test.traceSource),
+				)
+			}
+			for index, source := range test.traceSource {
+				if trace[index].Source != source {
+					t.Fatalf(
+						"protected context frame %d = %+v; want source %q",
+						index,
+						trace[index],
+						source,
+					)
+				}
 			}
 			assertRootThreadReady(t, state.MainThread())
 		})

@@ -41,12 +41,13 @@ type TraceFrame struct {
 // never invokes Lua, tostring, or a metamethod, so Error remains safe after the
 // owning State closes.
 type Error struct {
-	value              Value
-	description        string
-	traceback          []TraceFrame
-	category           ErrorCategory
-	resourcePositioned bool
-	cause              error
+	value                Value
+	description          string
+	traceback            []TraceFrame
+	category             ErrorCategory
+	resourcePositionable bool
+	resourcePositioned   bool
+	cause                error
 }
 
 // Error returns a stable non-executing description.
@@ -114,9 +115,10 @@ func newSourceSyntaxError(
 func newResourceError(format string, arguments ...any) *Error {
 	message := fmt.Sprintf(format, arguments...)
 	return &Error{
-		value:       errorStringValue(message),
-		description: message,
-		category:    ResourceError,
+		value:                errorStringValue(message),
+		description:          message,
+		category:             ResourceError,
+		resourcePositionable: true,
 	}
 }
 
@@ -139,6 +141,7 @@ func (err *Error) positionResourceFailure(
 ) {
 	if err == nil ||
 		err.category != ResourceError ||
+		!err.resourcePositionable ||
 		err.resourcePositioned ||
 		prototype == nil {
 		return

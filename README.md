@@ -30,8 +30,11 @@ library now includes Lua 5.1 `pcall` and `xpcall` over the same executor;
 their warmed success paths allocate nothing. Canonical coroutines now suspend
 and resume the same compact activation stack, including the Lua 5.1
 `coroutine` library and exact native/metamethod yield barriers; warmed resume
-paths allocate nothing. Contexts, reentrant native calls, and the remainder of
-the standard libraries are still under construction.
+paths allocate nothing. A native callback can synchronously reenter Lua
+through protected `Frame.Call` or caller-buffer `Frame.CallInto` without a
+second executor or object representation; warmed `CallInto` paths allocate
+nothing. Contexts and the remainder of the standard libraries are still under
+construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

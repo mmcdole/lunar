@@ -40,7 +40,7 @@ func (state *State) OpenBase() error {
 }
 
 func basePCall(frame Frame) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	thread := frame.thread
 	base := int(call.base)
 	count := thread.top - base
@@ -58,7 +58,7 @@ func basePCall(frame Frame) Outcome {
 }
 
 func baseXPCall(frame Frame) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	thread := frame.thread
 	base := int(call.base)
 	count := thread.top - base
@@ -127,7 +127,7 @@ func baseArgumentError(
 }
 
 func immediateLuaCaller(frame Frame) (*Prototype, int, bool) {
-	frame.call()
+	frame.activation()
 	if len(frame.thread.frames) < 2 {
 		return nil, 0, false
 	}

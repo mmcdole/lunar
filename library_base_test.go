@@ -418,7 +418,7 @@ func TestBaseXPCallDiscardsExtraArgumentsBeforeCallingTarget(t *testing.T) {
 	defer state.Close()
 
 	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		call := frame.call()
+		call := frame.activation()
 		if frame.depth != 2 {
 			return frame.ReturnBool(false)
 		}

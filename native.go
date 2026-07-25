@@ -25,9 +25,9 @@ var ErrNativeCaptureLimit = errors.New("lua: native function capture limit excee
 // The Frame is borrowed for the duration of the call. The callback must
 // return an Outcome produced by that Frame. Retaining a Frame or using it
 // after producing a terminal Outcome is a programming error. Go panics are
-// propagated after the borrowed activation is removed; Raise and ArgError
-// are the protected Lua-error paths, while Yield suspends a yieldable
-// coroutine.
+// propagated after the borrowed activation is removed; the Raise and
+// argument-error methods are the protected Lua-error paths, while Yield
+// suspends a yieldable coroutine.
 type NativeFunc func(Frame) Outcome
 
 type nativeOutcomeKind uint8
@@ -108,7 +108,7 @@ func (state *State) NewNativeFunction(
 
 // ArgumentCount returns the number of supplied arguments.
 func (frame Frame) ArgumentCount() int {
-	call := frame.call()
+	call := frame.activation()
 	return frame.thread.top - int(call.base)
 }
 
@@ -205,31 +205,31 @@ func (frame Frame) LuaThread(index int) (*Thread, bool) {
 
 // State returns the State executing this callback.
 func (frame Frame) State() *State {
-	frame.call()
+	frame.activation()
 	return frame.thread.state
 }
 
 // Thread returns the Thread executing this callback.
 func (frame Frame) Thread() *Thread {
-	frame.call()
+	frame.activation()
 	return frame.thread
 }
 
 // Environment returns the executing native Function's Lua 5.1 environment.
 func (frame Frame) Environment() *Table {
-	return frame.call().function.environment
+	return frame.activation().function.environment
 }
 
 // CaptureCount returns the native Function's fixed capture count.
 func (frame Frame) CaptureCount() int {
-	call := frame.call()
+	call := frame.activation()
 	return len(call.function.nativeBodyUnchecked().captures)
 }
 
 // Capture returns captured Value index. An out-of-range index is a
 // programming error.
 func (frame Frame) Capture(index int) Value {
-	call := frame.call()
+	call := frame.activation()
 	frame.checkCaptureIndex(call.function, index)
 	return call.function.nativeBodyUnchecked().captures[index].owningValue()
 }
@@ -238,7 +238,7 @@ func (frame Frame) Capture(index int) Value {
 //
 // An invalid, foreign, or out-of-range Value is a programming error.
 func (frame Frame) SetCapture(index int, value Value) {
-	call := frame.call()
+	call := frame.activation()
 	frame.checkCaptureIndex(call.function, index)
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
@@ -251,7 +251,7 @@ func (frame Frame) SetCapture(index int, value Value) {
 
 // Return completes the callback without results.
 func (frame Frame) Return() Outcome {
-	call := frame.call()
+	call := frame.activation()
 	outputCount, failure := frame.prepareResults(call, 0)
 	if failure != nil {
 		return frame.sealError(failure)
@@ -263,7 +263,7 @@ func (frame Frame) Return() Outcome {
 
 // ReturnValue completes the callback with one owning Value.
 func (frame Frame) ReturnValue(value Value) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
 	}
@@ -276,7 +276,7 @@ func (frame Frame) ReturnValue(value Value) Outcome {
 // requested result count is applied before the compact result window is
 // written.
 func (frame Frame) ReturnValues(values ...Value) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	for _, value := range values {
 		if err := frame.thread.owner.accept(value); err != nil {
 			panic(err)
@@ -306,13 +306,13 @@ func (frame Frame) ReturnValues(values ...Value) Outcome {
 
 // ReturnNil completes the callback with one Lua nil result.
 func (frame Frame) ReturnNil() Outcome {
-	call := frame.call()
+	call := frame.activation()
 	return frame.returnOne(call, nilSlot)
 }
 
 // ReturnBool completes the callback with one Lua boolean result.
 func (frame Frame) ReturnBool(value bool) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	result := falseSlot
 	if value {
 		result = trueSlot
@@ -322,13 +322,13 @@ func (frame Frame) ReturnBool(value bool) Outcome {
 
 // ReturnNumber completes the callback with one Lua number result.
 func (frame Frame) ReturnNumber(value float64) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	return frame.returnOne(call, numberSlot(value))
 }
 
 // ReturnString completes the callback with one Lua string result.
 func (frame Frame) ReturnString(value string) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	outputCount, failure := frame.prepareResults(call, 1)
 	if failure != nil {
 		return frame.sealError(failure)
@@ -352,7 +352,7 @@ func (frame Frame) ReturnString(value string) Outcome {
 // Thread, across another native call, or across a metamethod or iterator
 // boundary produces Lua 5.1's ordinary illegal-yield error instead.
 func (frame Frame) Yield() Outcome {
-	call := frame.call()
+	call := frame.activation()
 	resultBase, previousTop, previousExtent, failure :=
 		frame.prepareYield(call, 0)
 	if failure != nil {
@@ -364,7 +364,7 @@ func (frame Frame) Yield() Outcome {
 
 // YieldValue suspends the executing coroutine with one owning Value.
 func (frame Frame) YieldValue(value Value) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
 	}
@@ -387,7 +387,7 @@ func (frame Frame) YieldValue(value Value) Outcome {
 // return, yielded values are not adjusted to the caller's requested result
 // count; that adjustment applies later to the arguments supplied at resume.
 func (frame Frame) YieldValues(values ...Value) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	for _, value := range values {
 		if err := frame.thread.owner.accept(value); err != nil {
 			panic(err)
@@ -418,7 +418,7 @@ func (frame Frame) YieldValues(values ...Value) Outcome {
 // to this native call. It transfers compact slots directly and does not
 // materialize owning Values.
 func (frame Frame) YieldArguments() Outcome {
-	call := frame.call()
+	call := frame.activation()
 	argumentBase := int(call.base)
 	argumentCount := frame.thread.top - argumentBase
 	resultBase, previousTop, previousExtent, failure :=
@@ -442,7 +442,7 @@ func (frame Frame) YieldArguments() Outcome {
 
 // Raise completes the callback with an arbitrary Lua error Value.
 func (frame Frame) Raise(value Value) Outcome {
-	frame.call()
+	frame.activation()
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
 	}
@@ -455,7 +455,7 @@ func (frame Frame) Raise(value Value) Outcome {
 
 // RaiseString completes the callback with a string Lua error.
 func (frame Frame) RaiseString(message string) Outcome {
-	frame.call()
+	frame.activation()
 	return frame.raiseString(message)
 }
 
@@ -463,7 +463,7 @@ func (frame Frame) RaiseString(message string) Outcome {
 //
 // index is zero-based. It may name a missing argument.
 func (frame Frame) ArgError(index int, reason string) Outcome {
-	frame.call()
+	frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
 	}
@@ -479,7 +479,7 @@ func (frame Frame) ArgError(index int, reason string) Outcome {
 // index is zero-based. It may name a missing argument. InvalidKind is not a
 // valid expected kind.
 func (frame Frame) ArgTypeError(index int, expected Kind) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
 	}
@@ -508,7 +508,7 @@ func (frame Frame) raiseString(message string) Outcome {
 }
 
 func (frame Frame) argument(index int) (slot, bool) {
-	call := frame.call()
+	call := frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
 	}
@@ -519,7 +519,7 @@ func (frame Frame) argument(index int) (slot, bool) {
 	return frame.thread.values[int(call.base)+index], true
 }
 
-func (frame Frame) call() *activation {
+func (frame Frame) activation() *activation {
 	if frame.thread == nil ||
 		frame.token == 0 ||
 		frame.token&nativeTerminalBit != 0 ||

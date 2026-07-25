@@ -533,15 +533,15 @@ Frame and Go callback do not survive suspension. Resume arguments complete
 that retained activation through its existing result destination and requested
 result count.
 
-Reentrant Frame calls remain a separate later operation. A future
-`Frame.Call` may re-enter Lua synchronously, but a yield crossing that
-native/API boundary is a Lua 5.1 error. It must restore the original argument
-top and frame extent before the callback resumes so argument access continues
-to describe the same call. Context-aware public calls will make their active
-context available through `Frame.Context` and inherit it through nested calls.
-Active Thread ownership and aggregate native-call depth are already State-wide,
-so nested coroutine resumes cannot evade the native-depth limit and State close
-cannot race a callback on any Thread.
+Reentrant `Frame.Call` and `Frame.CallInto` use the nested checkpoint described
+below. A yield crossing that native/API boundary is a Lua 5.1 error. The
+checkpoint restores the original argument top and frame extent before the
+callback resumes, so argument access continues to describe the same call.
+Future context-aware public calls will make their active context available
+through `Frame.Context` and inherit it through nested calls. Active Thread
+ownership and aggregate native-call depth are State-wide, so nested coroutine
+resumes cannot evade the native-depth limit and State close cannot race a
+callback on any Thread.
 
 ### Native-call checkpoint
 
@@ -683,17 +683,23 @@ adjacency. Every verified Lua 5.1 opcode has a private-core execution route.
 The executor's default failure remains a fail-closed invariant guard for an
 invalid internal instruction, rather than a fallback to another interpreter.
 
-Runtime failure snapshots the active Lua trace before one centralized unwind
-closes upvalues, drops activations, and clears dead stack roots. Engine-created
-syntax and resource failures carry an owned string error Value, matching Lua
-5.1's protected load/call boundary; a native callback may still raise any Lua
-Value. A deterministic frame or value limit reached by a Lua instruction is an
-ordinary Lua error positioned at that instruction, including when the youngest
-activation is native and its Lua caller must be found below it. A failure at a
-Go ingress boundary with no active Lua frame remains source-less. ResourceError
-is only additional classification for Go callers, not a separate uncatchable
-control-flow class. Actual Go allocation failure is not treated as a recoverable
-Lua quota failure.
+Runtime failure appends each active traceback segment immediately before the
+corresponding frames unwind. The unwind then closes upvalues, drops
+activations, and clears dead stack roots. This segment rule lets a protected
+nested call return only its own trace while later propagation adds each outer
+segment exactly once. A caught error does not allocate a traceback.
+
+Engine-created syntax and resource failures carry an owned string error Value,
+matching Lua 5.1's protected load/call boundary; a native callback may still
+raise any Lua Value. Only VM-created resource strings are eligible for source
+positioning, so classifying an arbitrary raised Value as a ResourceError cannot
+replace that Value. A deterministic frame or value limit reached by a Lua
+instruction is an ordinary Lua error positioned at that instruction, including
+when the youngest activation is native and its Lua caller must be found below
+it. A failure at a Go ingress boundary with no active Lua frame remains
+source-less. ResourceError is only additional classification for Go callers,
+not a separate uncatchable control-flow class. Actual Go allocation failure is
+not treated as a recoverable Lua quota failure.
 
 Lua `pcall` and `xpcall` install metadata-only checkpoints inside this same
 executor rather than recursively invoking the public `State.Call` boundary.
@@ -711,6 +717,36 @@ call returns. Deterministic ResourceError values are catchable. A future
 controlled allocator failure would instead need Lua's distinct source-less,
 handler-skipping memory-error path; an unrecoverable Go runtime allocation
 failure is not converted.
+
+### Native reentry
+
+`Frame.Call` and `Frame.CallInto` let an executing native callback invoke Lua,
+another native function, or a Function-valued `__call` handler synchronously.
+They reuse the current Thread, activation stack, compact slots, and executor;
+`State.Call` remains the separate idle-State ingress boundary. The outer Frame
+is deliberately invalid while a nested callback runs and becomes valid again
+after the nested call returns.
+
+The reentry checkpoint retains only stack depths, extents, and native ownership
+metadata. Inputs are validated and staged before execution, so argument and
+destination storage may overlap. Failure restores private call machinery but
+does not roll back Lua-visible side effects. `CallInto` leaves a short
+destination unchanged and reports the exact required result count. `RaiseError`
+clones a returned failure before rethrowing it; traceback segments are appended
+by the unwind rule rather than eagerly inspecting live outer frames.
+
+Reentry does not create another yield route. Yielding across the current native
+boundary remains Lua 5.1's ordinary
+`attempt to yield across metamethod/C-call boundary` error, while a distinct
+child coroutine resumed by the nested call may suspend normally.
+
+On arm64, warmed one-result `Frame.CallInto` calls take about 114 ns for a Lua
+target, 116 ns for a native target, and 126 ns for a callable table on the
+qualification machine, all with zero allocations. `Frame.Call` allocates only
+its nonempty owning result slice. Persistent object sizes and the 160-byte
+`runInstructions` frame are unchanged. The shared protected-call path retains
+its frozen performance; its private two-representation argument staging adds
+16 transient stack bytes at a nested call boundary.
 
 ### Coroutines and suspension
 
@@ -761,10 +797,11 @@ when it reaches its requested call depth, yields, or fails.
 4. Executor, PUC-style direct-call reentry, upvalues, and errors.
 5. Native frames plus public source loading and protected calls.
 6. Coroutines and native yield.
-7. Context polling and reentrant native calls.
-8. Standard libraries and embedding operations.
-9. Debug facilities and optional extensions.
-10. Profile-driven quickening, inline caches, and executor specialization.
+7. Reentrant native calls.
+8. Context polling and context-aware calls.
+9. Standard libraries and embedding operations.
+10. Debug facilities and optional extensions.
+11. Profile-driven quickening, inline caches, and executor specialization.
 
 The compiler remains in the root package so it can build private compact
 constants without introducing an exported intermediate representation.

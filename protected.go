@@ -7,30 +7,32 @@ const (
 	protectedValueReserve = 64
 )
 
-// executionCheckpoint is the non-transactional execution boundary used by
-// protected calls. Lua-visible mutations survive a failure; only private call
-// machinery and stack roots created above the boundary are restored.
+// executionCheckpoint is the non-transactional boundary used by nested calls.
+// Lua-visible mutations survive a failure; only private call machinery and
+// stack roots created above the boundary are restored.
 type executionCheckpoint struct {
-	frameDepth        int
-	continuationDepth int
-	top               int
-	frameExtent       int
-	liveExtent        int
-	nativeToken       uint64
-	nativeCallDepth   uint16
+	frameDepth         int
+	continuationDepth  int
+	top                int
+	frameExtent        int
+	liveExtent         int
+	nativeToken        uint64
+	nativeCallDepth    uint16
+	runtimeNativeDepth uint16
 }
 
 func captureExecutionCheckpoint(frame Frame) executionCheckpoint {
-	frame.call()
+	frame.activation()
 	thread := frame.thread
 	return executionCheckpoint{
-		frameDepth:        len(thread.frames),
-		continuationDepth: len(thread.continuations),
-		top:               thread.top,
-		frameExtent:       thread.frameExtent,
-		liveExtent:        thread.liveValueExtent(),
-		nativeToken:       frame.token,
-		nativeCallDepth:   thread.nativeCallDepth,
+		frameDepth:         len(thread.frames),
+		continuationDepth:  len(thread.continuations),
+		top:                thread.top,
+		frameExtent:        thread.frameExtent,
+		liveExtent:         thread.liveValueExtent(),
+		nativeToken:        frame.token,
+		nativeCallDepth:    thread.nativeCallDepth,
+		runtimeNativeDepth: thread.owner.nativeCallDepth,
 	}
 }
 
@@ -51,8 +53,9 @@ func (checkpoint executionCheckpoint) restore(
 		checkpoint.liveExtent < checkpoint.frameExtent ||
 		checkpoint.liveExtent > len(thread.values) ||
 		thread.activeNativeToken != checkpoint.nativeToken ||
-		thread.nativeCallDepth != checkpoint.nativeCallDepth {
-		panic("lua: invalid protected execution checkpoint")
+		thread.nativeCallDepth != checkpoint.nativeCallDepth ||
+		thread.owner.nativeCallDepth != checkpoint.runtimeNativeDepth {
+		panic("lua: invalid nested execution checkpoint")
 	}
 
 	previousExtent := thread.liveValueExtent()
@@ -187,10 +190,10 @@ func runProtectedCall(
 		}
 	}()
 
-	resultBase, failure := startProtectedCall(
+	resultBase, failure := startNestedCall(
 		thread,
 		target,
-		arguments,
+		callArguments{compact: arguments},
 		allResults,
 	)
 	if failure == nil {
@@ -200,7 +203,7 @@ func runProtectedCall(
 			if len(thread.frames) != checkpoint.frameDepth ||
 				len(thread.continuations) != checkpoint.continuationDepth ||
 				thread.top < resultBase {
-				panic("lua: protected target returned invalid execution state")
+				panic("lua: protected call returned invalid execution state")
 			}
 			resultCount := thread.top - resultBase
 			previousExtent := checkpoint.restore(thread, false)
@@ -212,15 +215,23 @@ func runProtectedCall(
 				previousExtent,
 			)
 		case executionFailed:
+			if result.err == nil {
+				panic("lua: protected target failed without an error")
+			}
 			failure = result.err
 		default:
-			panic("lua: protected target produced an invalid execution result")
+			panic("lua: protected call produced an invalid execution result")
 		}
 	}
 	if failure == nil {
 		panic("lua: protected target failed without an error")
 	}
 	if !isCatchableProtectedFailure(failure) {
+		snapshotExecutionFailure(
+			thread,
+			checkpoint.frameDepth,
+			failure,
+		)
 		checkpoint.restore(thread, true)
 		restored = true
 		return frame.sealError(failure)
@@ -247,10 +258,10 @@ func runProtectedCall(
 	handlerActive = true
 	failureDepth := len(thread.frames)
 	handlerArguments := [1]slot{errorValue}
-	handlerBase, handlerFailure := startProtectedCall(
+	handlerBase, handlerFailure := startNestedCall(
 		thread,
 		slotFromFunction(handlerFunction),
-		handlerArguments[:],
+		callArguments{compact: handlerArguments[:]},
 		1,
 	)
 	if handlerFailure == nil {
@@ -275,6 +286,11 @@ func runProtectedCall(
 		panic("lua: protected error handler failed without an error")
 	}
 	if !isCatchableProtectedFailure(handlerFailure) {
+		snapshotExecutionFailure(
+			thread,
+			checkpoint.frameDepth,
+			handlerFailure,
+		)
 		checkpoint.restore(thread, true)
 		restored = true
 		thread.leaveErrorHandler()
@@ -303,10 +319,15 @@ func isCatchableProtectedFailure(failure *Error) bool {
 	}
 }
 
-func startProtectedCall(
+type callArguments struct {
+	owning  []Value
+	compact []slot
+}
+
+func startNestedCall(
 	thread *Thread,
 	callable slot,
-	arguments []slot,
+	arguments callArguments,
 	wantedResults int,
 ) (int, *Error) {
 	function, direct := functionSlot(callable)
@@ -329,7 +350,10 @@ func startProtectedCall(
 	}
 
 	scratchBase := thread.liveValueExtent()
-	argumentCount := len(arguments)
+	argumentCount := len(arguments.compact)
+	if arguments.compact == nil {
+		argumentCount = len(arguments.owning)
+	}
 	stagedCount := argumentCount + 1
 	callArgumentCount := argumentCount
 	if !direct {
@@ -359,10 +383,20 @@ func startProtectedCall(
 	thread.reserveValues(layout.required)
 	thread.reserveFrames(len(thread.frames) + 1)
 	writeSlot(&thread.values[scratchBase], callable)
-	copy(
-		thread.values[scratchBase+1:scratchBase+1+argumentCount],
-		arguments,
-	)
+	argumentBase := scratchBase + 1
+	if arguments.compact != nil {
+		copy(
+			thread.values[argumentBase:argumentBase+argumentCount],
+			arguments.compact,
+		)
+	} else {
+		for index, value := range arguments.owning {
+			writeSlot(
+				&thread.values[argumentBase+index],
+				slotFromValue(value),
+			)
+		}
+	}
 	if !direct {
 		thread.insertCallMetamethod(
 			function,
@@ -383,7 +417,7 @@ func (frame Frame) returnProtectedSuccess(
 	scratchBase int,
 	previousExtent int,
 ) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	if resultCount < 0 || resultCount == int(^uint(0)>>1) {
 		frame.thread.clearInactive(scratchBase, previousExtent)
 		return frame.sealError(newResourceError("value stack index overflow"))
@@ -423,7 +457,7 @@ func (frame Frame) returnProtectedSuccess(
 }
 
 func (frame Frame) returnProtectedFailure(value slot) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	outputCount, failure := frame.prepareResults(call, 2)
 	if failure != nil {
 		return frame.sealError(failure)

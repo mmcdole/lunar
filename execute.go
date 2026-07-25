@@ -890,20 +890,32 @@ func finalizeExecutionFailure(
 	stopDepth int,
 	failure *Error,
 ) {
+	snapshotExecutionFailure(thread, stopDepth, failure)
+	thread.unwindCalls(stopDepth)
+}
+
+func snapshotExecutionFailure(
+	thread *Thread,
+	stopDepth int,
+	failure *Error,
+) {
 	if failure == nil {
 		panic("lua: executor failed without an error")
 	}
-	if len(failure.traceback) == 0 {
-		failure.traceback = executionTraceback(thread, stopDepth)
-	}
-	thread.unwindCalls(stopDepth)
+	failure.traceback = appendExecutionTraceback(
+		failure.traceback,
+		thread,
+		stopDepth,
+	)
 }
 
 func positionExecutionResourceFailure(
 	thread *Thread,
 	failure *Error,
 ) {
-	if failure.category != ResourceError ||
+	if failure == nil ||
+		failure.category != ResourceError ||
+		!failure.resourcePositionable ||
 		failure.resourcePositioned ||
 		len(failure.traceback) != 0 {
 		return
@@ -923,8 +935,24 @@ func positionExecutionResourceFailure(
 	}
 }
 
-func executionTraceback(thread *Thread, stopDepth int) []TraceFrame {
-	traceback := make([]TraceFrame, 0, len(thread.frames)-stopDepth)
+func appendExecutionTraceback(
+	prefix []TraceFrame,
+	thread *Thread,
+	stopDepth int,
+) []TraceFrame {
+	if stopDepth < 0 || stopDepth > len(thread.frames) {
+		panic("lua: invalid traceback stop depth")
+	}
+	frameCount := len(thread.frames) - stopDepth
+	if frameCount == 0 {
+		return prefix
+	}
+	traceback := make(
+		[]TraceFrame,
+		len(prefix),
+		len(prefix)+frameCount,
+	)
+	copy(traceback, prefix)
 	for index := len(thread.frames) - 1; index >= stopDepth; index-- {
 		frame := &thread.frames[index]
 		prototype := frame.function.prototype

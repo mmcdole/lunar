@@ -66,7 +66,7 @@ func coroutineResume(frame Frame) Outcome {
 			"coroutine expected",
 		)
 	}
-	call := frame.call()
+	call := frame.activation()
 	base := int(call.base)
 	parent := frame.thread
 	run := resumeThread(
@@ -150,7 +150,7 @@ func coroutineWrappedResume(frame Frame) Outcome {
 	if !ok {
 		panic("lua: coroutine wrapper lost its thread")
 	}
-	call := frame.call()
+	call := frame.activation()
 	base := int(call.base)
 	parent := frame.thread
 	run := resumeThread(
@@ -186,7 +186,7 @@ func (frame Frame) returnCompactValues(
 	leadingCount int,
 	values []slot,
 ) Outcome {
-	call := frame.call()
+	call := frame.activation()
 	if leadingCount < 0 || leadingCount > len(leading) {
 		panic("lua: invalid compact result prefix")
 	}
