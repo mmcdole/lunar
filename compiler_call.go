@@ -280,6 +280,22 @@ func (parser *sourceParser) parseCallArguments(
 			panic("lua: compiler lost string argument order")
 		}
 		explicit = 1
+	case '{':
+		argument, syntaxError := parser.parseConstructor()
+		if syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		register, syntaxError := parser.expressionToNextRegister(
+			&argument,
+			argument.line,
+		)
+		if syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		if register != base+1+implicit {
+			panic("lua: compiler lost constructor argument order")
+		}
+		explicit = 1
 	default:
 		return compiledExpression{}, parser.syntaxError(
 			parser.current.line,

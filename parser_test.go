@@ -796,6 +796,8 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		"return outer(first(), middle(), final(...))",
 		"local object = factory(); return object:method((argument()))",
 		"local first, second = produce(); return consume(first, second)",
+		"return {first(), name = value(), [key()] = other(), final(...)}",
+		"consume {1, 2, nested = {3, 4}}",
 		"return (((((((((nil)))))))))",
 		"local =",
 		"return 1 +",

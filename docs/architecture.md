@@ -68,6 +68,8 @@ Files are organized by substantial runtime concepts:
   and constant folding;
 - `compiler_call.go`: contiguous call windows, method calls, tail calls, and
   Lua 5.1 multiple-result adjustment;
+- `constructor.go`: table-constructor grammar, record stores, list batching,
+  and allocation hints;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
 - `function.go`: canonical functions and compact upvalues;
@@ -107,6 +109,14 @@ producers are emitted directly beside their consuming call, return, or
 `SETLIST`; prototype verification rejects any broken adjacency. `SELF` may
 legally overlap its output base with its receiver register, so the executor
 must capture the receiver and key before writing either output.
+
+A table constructor pins its table at the bottom of its temporary register
+suffix. Record fields are evaluated and stored immediately; list fields are
+staged contiguously above the table and flushed in 50-value `SETLIST` blocks.
+One pending list field is retained so only a syntactically final call or
+vararg can stream an open result count. `NEWTABLE` receives floating-byte
+array and record hints after the complete constructor is known; the executor
+must decode both operands before reserving storage.
 
 ## Build order
 

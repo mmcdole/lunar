@@ -310,6 +310,8 @@ func (parser *sourceParser) parsePrimary() (compiledExpression, *Error) {
 		}, nil
 	case tokenName, '(':
 		return parser.parsePrefixExpression()
+	case '{':
+		return parser.parseConstructor()
 	case tokenDots:
 		if !parser.function.isVararg() {
 			return compiledExpression{}, parser.syntaxError(
@@ -390,7 +392,7 @@ func (parser *sourceParser) parsePrefixExpression() (
 			value, syntaxError = parser.parseIndexSuffix(value)
 		case ':':
 			value, syntaxError = parser.parseMethodCall(value)
-		case '(', tokenString:
+		case '(', tokenString, '{':
 			value, syntaxError = parser.parseCallSuffix(value)
 		default:
 			return value, nil

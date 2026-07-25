@@ -58,19 +58,31 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 func (parser *sourceParser) advance() *Error {
 	value, err := parser.lexer.next()
 	if err != nil {
-		if syntaxError, ok := err.(*Error); ok {
-			return syntaxError
-		}
-		return &Error{
-			value:       Nil(),
-			description: err.Error(),
-			category:    SyntaxError,
-			cause:       err,
-		}
+		return parser.lexerError(err)
 	}
 	parser.previousLine = parser.current.line
 	parser.current = value
 	return nil
+}
+
+func (parser *sourceParser) peekToken() (token, *Error) {
+	value, err := parser.lexer.peek()
+	if err != nil {
+		return token{}, parser.lexerError(err)
+	}
+	return value, nil
+}
+
+func (parser *sourceParser) lexerError(err error) *Error {
+	if syntaxError, ok := err.(*Error); ok {
+		return syntaxError
+	}
+	return &Error{
+		value:       Nil(),
+		description: err.Error(),
+		category:    SyntaxError,
+		cause:       err,
+	}
 }
 
 func (parser *sourceParser) accept(kind tokenKind) (bool, *Error) {
