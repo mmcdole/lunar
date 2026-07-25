@@ -5,9 +5,10 @@ import "fmt"
 // OpenBase installs the currently implemented Lua 5.1 base-library globals.
 //
 // The base library is still under construction; this currently installs _G,
-// _VERSION, pcall, and xpcall. Opening is explicit: New returns an empty
-// State. Calling OpenBase again replaces the functions with fresh canonical
-// objects and restores the other globals.
+// _VERSION, pcall, xpcall, and the Lua 5.1 coroutine library. Opening is
+// explicit: New returns an empty State. Calling OpenBase again replaces the
+// functions and coroutine table with fresh canonical objects and restores the
+// other globals.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
@@ -32,7 +33,10 @@ func (state *State) OpenBase() error {
 	if err := state.globals.RawSetString("pcall", pcall.Value()); err != nil {
 		return err
 	}
-	return state.globals.RawSetString("xpcall", xpcall.Value())
+	if err := state.globals.RawSetString("xpcall", xpcall.Value()); err != nil {
+		return err
+	}
+	return state.OpenCoroutine()
 }
 
 func basePCall(frame Frame) Outcome {
@@ -41,7 +45,7 @@ func basePCall(frame Frame) Outcome {
 	base := int(call.base)
 	count := thread.top - base
 	if count == 0 {
-		return baseArgumentError(frame, "pcall", 0, "value expected")
+		return baseArgumentError(frame, 0, "value expected")
 	}
 	target := thread.values[base]
 	return runProtectedCall(
@@ -59,7 +63,7 @@ func baseXPCall(frame Frame) Outcome {
 	base := int(call.base)
 	count := thread.top - base
 	if count < 2 {
-		return baseArgumentError(frame, "xpcall", 1, "value expected")
+		return baseArgumentError(frame, 1, "value expected")
 	}
 	target := thread.values[base]
 	handler := thread.values[base+1]
@@ -89,28 +93,52 @@ func baseXPCall(frame Frame) Outcome {
 
 func baseArgumentError(
 	frame Frame,
-	function string,
 	index int,
 	reason string,
 ) Outcome {
-	frame.call()
+	prototype, pc, found := immediateLuaCaller(frame)
+	name := "?"
+	if found {
+		call := prototype.code[pc]
+		if operation := call.opcode(); operation == opCall ||
+			operation == opTailCall {
+			if _, candidate, named := prototype.describeOperand(
+				pc,
+				call.a(),
+			); named {
+				name = candidate
+			}
+		}
+	}
 	message := fmt.Sprintf(
 		"bad argument #%d to '%s' (%s)",
 		index+1,
-		function,
+		name,
 		reason,
 	)
-	for caller := len(frame.thread.frames) - 2; caller >= 0; caller-- {
-		activation := frame.thread.frames[caller]
-		if activation.function == nil || activation.function.prototype == nil {
-			continue
-		}
+	if found {
 		message = executionErrorDescription(
-			activation.function.prototype,
-			int(activation.pc)-1,
+			prototype,
+			pc,
 			message,
 		)
-		break
 	}
 	return frame.raiseString(message)
+}
+
+func immediateLuaCaller(frame Frame) (*Prototype, int, bool) {
+	frame.call()
+	if len(frame.thread.frames) < 2 {
+		return nil, 0, false
+	}
+	caller := &frame.thread.frames[len(frame.thread.frames)-2]
+	if caller.function == nil || caller.function.prototype == nil {
+		return nil, 0, false
+	}
+	prototype := caller.function.prototype
+	pc := int(caller.pc) - 1
+	if pc < 0 || pc >= len(prototype.code) {
+		return nil, 0, false
+	}
+	return prototype, pc, true
 }

@@ -27,8 +27,11 @@ into distinct States, and invoke Lua or callable objects through protected
 `Call` and caller-buffer `CallInto` boundaries. Warmed nonallocating calls
 through `CallInto` add no boundary allocation. The explicitly opened base
 library now includes Lua 5.1 `pcall` and `xpcall` over the same executor;
-their warmed success paths allocate nothing. Contexts, coroutines, and the
-remainder of the standard libraries are still under construction.
+their warmed success paths allocate nothing. Canonical coroutines now suspend
+and resume the same compact activation stack, including the Lua 5.1
+`coroutine` library and exact native/metamethod yield barriers; warmed resume
+paths allocate nothing. Contexts, reentrant native calls, and the remainder of
+the standard libraries are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

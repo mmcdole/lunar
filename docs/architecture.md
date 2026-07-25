@@ -107,8 +107,11 @@ Files are organized by substantial runtime concepts:
 - `load.go`: public source compilation and State-bound Function loading;
 - `invoke.go`: protected main-Thread calls and owning or caller-supplied result
   egress;
-- `library_base.go`: the Lua 5.1 base library using native frames; later
-  `library_*.go` files add the remaining standard libraries.
+- `coroutine.go`: canonical Thread construction, compact resume transfer,
+  suspension lifecycle, and State-wide execution ownership;
+- `library_base.go` and `library_coroutine.go`: the implemented Lua 5.1
+  runtime library surface using native frames; later `library_*.go` files add
+  the remaining standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -310,7 +313,7 @@ Badger translates that model rather than reproducing its C details:
 The qualification gate is a same-source matrix covering fixed zero/one/many
 results, open results, excess and missing arguments, varargs, recursion, tail
 calls, closures and upvalues, nested continuations, protected-call boundaries,
-`__call`, limits, errors, and future native/yield cases. Warm fixed calls must
+`__call`, limits, errors, and native/yield cases. Warm fixed calls must
 remain allocation-free, beat the frozen Badger and upstream GopherLua
 comparators on the identical fixture, and close a material part of the current
 roughly 1.82-times geometric-mean gap to PUC 5.1. The first implementation
@@ -471,7 +474,7 @@ resource failure. The design therefore keeps one dispatch implementation
 without routing ordinary Lua calls through the outer driver.
 
 While the switch is active, execution-stack backing arrays cannot be replaced
-and cached frame state remains valid. Calls, returns, errors, and future yield
+and cached frame state remains valid. Calls, returns, errors, and yield
 points are explicit reload or exit seams.
 
 Direct Lua functions take the inline call path. Other values use a cold raw
@@ -512,7 +515,8 @@ Lua-call admission can therefore reject Go functions from the slot tag,
 without first chasing the Function to inspect its body. This mirrors PUC's
 private closure subtypes without exposing another public value kind.
 
-Frames become invalid as soon as they produce a return or error outcome.
+Frames become invalid as soon as they produce a return, error, or yield
+outcome.
 Construction and result preflight reject foreign Values before changing the
 stack. A Lua error retains the native activation long enough to capture it in
 the traceback and then follows centralized unwind. A Go panic is not
@@ -521,17 +525,23 @@ removed before the panic propagates. A successful Outcome retains only the
 lightweight runtime identity and token, not the executing Thread or the
 State's object graph.
 
-Yield and reentrant Frame calls are separate later outcomes rather than
-implicit behavior in the first callback ABI. A future `Frame.Call` may
-re-enter Lua synchronously, but a yield crossing that native/API boundary is
-a Lua 5.1 error. It must restore the original argument top and frame extent
-before the callback resumes so argument access continues to describe the
-same call. Native yield itself will be a terminal outcome, equivalent to
-returning `lua_yield`, and will be admitted only at a resumable native-call
-position. Context-aware public calls will make their active context available
-through `Frame.Context` and inherit it through nested calls. When coroutines
-are introduced, active native execution tracking moves to runtime scope so
-State close cannot race a callback on any Thread.
+Native yield is a terminal outcome equivalent to returning `lua_yield`.
+It is admitted only in a non-main coroutine at its outermost native activation
+with no pending metamethod, iterator, or protected-call continuation. The
+native activation remains on the compact activation stack, but its borrowed
+Frame and Go callback do not survive suspension. Resume arguments complete
+that retained activation through its existing result destination and requested
+result count.
+
+Reentrant Frame calls remain a separate later operation. A future
+`Frame.Call` may re-enter Lua synchronously, but a yield crossing that
+native/API boundary is a Lua 5.1 error. It must restore the original argument
+top and frame extent before the callback resumes so argument access continues
+to describe the same call. Context-aware public calls will make their active
+context available through `Frame.Context` and inherit it through nested calls.
+Active Thread ownership and aggregate native-call depth are already State-wide,
+so nested coroutine resumes cannot evade the native-depth limit and State close
+cannot race a callback on any Thread.
 
 ### Native-call checkpoint
 
@@ -702,12 +712,45 @@ controlled allocator failure would instead need Lua's distinct source-less,
 handler-skipping memory-error path; an unrecoverable Go runtime allocation
 failure is not converted.
 
+### Coroutines and suspension
+
+A coroutine is another canonical `Thread` owned by the same `State`; it does
+not use a Go goroutine, scheduler channel, alternate stack representation, or
+second executor. The active Thread pointer moves at a resume boundary while
+the parent becomes `normal`, then returns to the parent when the child yields,
+returns, or fails. Aggregate native depth remains State-wide across this
+switch, preventing a chain of coroutine resumes from bypassing the Go-stack
+limit.
+
+Yield leaves Lua activations, registers, and open upvalues intact. The
+outermost yielding native activation itself is the suspension record: yielded
+slots occupy its existing result destination, and resume arguments later
+complete that activation using its requested result adjustment. Once results
+cross to the resumer, their temporary slots are cleared and the suspended live
+extent returns to the saved caller extent. A dead coroutine clears and releases
+all reusable stack, activation, and continuation backing storage because it can
+never execute again.
+
+Lua's `coroutine.resume` and `coroutine.wrap` transfer slots directly between
+Threads. Only the public Go `Thread.Resume` boundary materializes owning
+`Value` results; `ResumeInto` accepts caller storage and remains allocation-free
+when warm. Arbitrary error Values retain identity, including nil and reference
+objects. The Lua library derives argument names and wrapper source prefixes
+from the immediate call site, including tail calls, rather than keeping
+diagnostic provenance in the hot representation.
+
+Lua 5.1 permits yield through ordinary Lua calls and ordinary `__call`, but
+rejects it across protected calls, metamethod continuations, generic
+iterators, nested native calls, and the main Thread. The runtime enforces that
+rule from the retained activation, per-Thread native depth, and existing
+continuation stack; it needs no separate barrier object or counter in the hot
+loop.
+
 Type errors recover PUC-style local, upvalue, global, field, and method names by
 tracing verified bytecode only after failure; no provenance is stored in Values,
 activations, or the hot loop. Ordinary Lua control flow does not use Go panic or
 interface-valued per-opcode results. The executor returns one small outcome only
-when it reaches its requested call depth or fails; coroutine support will add a
-yield outcome when it exists.
+when it reaches its requested call depth, yields, or fails.
 
 ## Build order
 
@@ -717,10 +760,11 @@ yield outcome when it exists.
    Prototypes without retaining an AST.
 4. Executor, PUC-style direct-call reentry, upvalues, and errors.
 5. Native frames plus public source loading and protected calls.
-6. Context polling, coroutines, yield, and reentrant native calls.
-7. Standard libraries and embedding operations.
-8. Debug facilities and optional extensions.
-9. Profile-driven quickening, inline caches, and executor specialization.
+6. Coroutines and native yield.
+7. Context polling and reentrant native calls.
+8. Standard libraries and embedding operations.
+9. Debug facilities and optional extensions.
+10. Profile-driven quickening, inline caches, and executor specialization.
 
 The compiler remains in the root package so it can build private compact
 constants without introducing an exported intermediate representation.
