@@ -479,6 +479,8 @@ func (table *Table) rawSetNormalizedSlot(
 	table.recordMutation(structural, changed)
 }
 
+// Integer keys cannot name string-keyed metamethods, so rawSetIntegerSlot
+// preserves the absence cache.
 func (table *Table) rawSetIntegerSlot(key int, value slot) {
 	structural, _ := table.setInteger(key, value)
 	if structural {
@@ -508,6 +510,8 @@ func (table *Table) rawSetList(first int, values []slot) {
 				inserted++
 			}
 		}
+		// SETLIST writes only positive integer keys, so the string-keyed
+		// metamethod absence cache remains valid.
 		table.arrayUsed += inserted
 		table.structuralVersion += uint64(inserted)
 		return

@@ -229,7 +229,7 @@ func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 	}
 }
 
-func TestTableDeletionAndMetamethodInvalidation(t *testing.T) {
+func TestTableMutationBookkeepingAndMetamethodCache(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -265,6 +265,26 @@ func TestTableDeletionAndMetamethodInvalidation(t *testing.T) {
 		metaIndex,
 	); found || table.absentMetamethods&metaIndex.bit() == 0 {
 		t.Fatal("missing __index was not cached")
+	}
+
+	if err := table.RawSetInt(1, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(1, Number(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(1, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	table.rawSetList(2, []slot{numberSlot(2), numberSlot(3)})
+	if err := table.RawSetInt(-1, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(-1, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if table.absentMetamethods&metaIndex.bit() == 0 {
+		t.Fatal("integer mutations invalidated cached string metamethod absence")
 	}
 
 	if err := table.RawSetString("__index", Number(1)); err != nil {
