@@ -569,6 +569,11 @@ hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
 warm-path parsing does not allocate. It intentionally rejects locale-specific
 spellings, named infinities and NaNs, hexadecimal floats, embedded NUL, and
 trailing data instead of inheriting platform-dependent libc behavior.
+Primitive number spelling likewise remains locale-independent and uses one
+Lua 5.1 `%.14g`-style formatter for diagnostic Values and execution-time
+coercion. Future `tostring` uses that primitive only after applying its own
+metamethod semantics; `print` and `string.format` remain separate semantic
+layers.
 
 Number-only arithmetic remains entirely in compact slots. String coercion and
 metamethod selection are cold. Binary arithmetic checks the left operand's
@@ -589,12 +594,11 @@ not enlarge the dispatch frame.
 Concatenation stays on the compact stack and reduces its register span from
 right to left. Each maximal adjacent string/number suffix becomes one output
 string, avoiding quadratic pairwise copying and temporary heap strings for
-numbers. Numeric text follows deterministic Lua 5.1 `%.14g`-style formatting.
-Non-coercible pairs select `__concat` from the left value before the right and
-suspend with one marked continuation. The returned value is installed at the
-exact reduced pair before reduction continues, so later pairs observe event
-mutation performed by earlier handlers. Public Values are never constructed
-by this path.
+numbers. Non-coercible pairs select `__concat` from the left value before the
+right and suspend with one marked continuation. The returned value is
+installed at the exact reduced pair before reduction continues, so later
+pairs observe event mutation performed by earlier handlers. Public Values are
+never constructed by this path.
 
 Generic iteration retains the canonical generator, state, and control in
 `R(A)` through `R(A+2)`. Each `TFORLOOP` stages those values in its verified

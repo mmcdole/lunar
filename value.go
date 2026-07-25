@@ -234,6 +234,8 @@ func (value Value) SameObject(other Value) (same, applicable bool) {
 }
 
 // String returns a stable diagnostic representation without executing Lua.
+// Numbers use Lua 5.1's `%.14g`-style spelling, which is not a lossless
+// serialization format.
 func (value Value) String() string {
 	switch value.Kind() {
 	case InvalidKind:
@@ -245,7 +247,8 @@ func (value Value) String() string {
 		return strconv.FormatBool(boolean)
 	case NumberKind:
 		number, _ := value.AsNumber()
-		return strconv.FormatFloat(number, 'g', -1, 64)
+		var buffer [32]byte
+		return string(appendLuaNumber(buffer[:0], number))
 	case StringKind:
 		text, _ := value.AsString()
 		return text

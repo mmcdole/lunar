@@ -119,22 +119,26 @@ func TestParseLuaNumberAcceptsRangeResults(t *testing.T) {
 	}
 }
 
-func TestAppendLuaNumberUsesDeterministicLua51Formatting(t *testing.T) {
+func TestLuaNumberFormattingUsesDeterministicLua51Spelling(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		number float64
 		want   string
 	}{
+		{"positive zero", 0, "0"},
+		{"integer", 42, "42"},
 		{"fixed lower boundary", 1e-4, "0.0001"},
 		{"exponent lower boundary", 1e-5, "1e-05"},
 		{"fixed upper boundary", 1e13, "10000000000000"},
 		{"exponent upper boundary", 1e14, "1e+14"},
 		{"rounding", 1.234567890123456, "1.2345678901235"},
+		{"consecutive integer boundary", 1 << 53, "9.007199254741e+15"},
 		{
 			"smallest subnormal",
 			math.SmallestNonzeroFloat64,
 			"4.9406564584125e-324",
 		},
+		{"largest finite", math.MaxFloat64, "1.7976931348623e+308"},
 		{"negative zero", math.Copysign(0, -1), "-0"},
 		{"positive infinity", math.Inf(1), "inf"},
 		{"negative infinity", math.Inf(-1), "-inf"},
@@ -150,7 +154,27 @@ func TestAppendLuaNumberUsesDeterministicLua51Formatting(t *testing.T) {
 					test.want,
 				)
 			}
+			if diagnostic := Number(test.number).String(); diagnostic != test.want {
+				t.Fatalf(
+					"Number(%v).String() = %q; want %q",
+					test.number,
+					diagnostic,
+					test.want,
+				)
+			}
 		})
+	}
+}
+
+func TestNumberValueStringAllocatesOnlyItsResult(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	value := Number(1.234567890123456)
+	formattedNumberSink = value.String()
+	allocations := testing.AllocsPerRun(1000, func() {
+		formattedNumberSink = value.String()
+	})
+	if allocations != 1 {
+		t.Fatalf("Number.String allocations = %v; want 1", allocations)
 	}
 }
 
@@ -177,9 +201,10 @@ func TestSlotToNumber(t *testing.T) {
 }
 
 var (
-	parsedNumberSink float64
-	parsedOKSink     bool
-	parsedSlot       = prototypeStringSlot(newLuaString(" +12345.625e-2 "))
+	parsedNumberSink    float64
+	parsedOKSink        bool
+	formattedNumberSink string
+	parsedSlot          = prototypeStringSlot(newLuaString(" +12345.625e-2 "))
 )
 
 func TestParseLuaNumberDoesNotAllocate(t *testing.T) {
