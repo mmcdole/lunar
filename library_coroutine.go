@@ -181,46 +181,6 @@ func coroutineWrappedResume(frame Frame) Outcome {
 	)
 }
 
-func (frame Frame) returnCompactValues(
-	leading [2]slot,
-	leadingCount int,
-	values []slot,
-) Outcome {
-	call := frame.activation()
-	if leadingCount < 0 || leadingCount > len(leading) {
-		panic("lua: invalid compact result prefix")
-	}
-	supplied := leadingCount + len(values)
-	outputCount, failure := frame.prepareResults(call, supplied)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	resultBase := int(call.resultBase)
-	written := leadingCount
-	if written > outputCount {
-		written = outputCount
-	}
-	for index := 0; index < written; index++ {
-		writeSlot(
-			&frame.thread.values[resultBase+index],
-			leading[index],
-		)
-	}
-	copied := len(values)
-	if available := outputCount - written; copied > available {
-		copied = available
-	}
-	if copied > 0 {
-		copy(
-			frame.thread.values[resultBase+written:resultBase+written+copied],
-			values[:copied],
-		)
-		written += copied
-	}
-	frame.thread.fillNil(resultBase+written, resultBase+outputCount)
-	return frame.sealReturn(outputCount)
-}
-
 func nativeCallerPrefix(frame Frame) string {
 	prototype, pc, found := immediateLuaCaller(frame)
 	if !found {

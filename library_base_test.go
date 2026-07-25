@@ -2,6 +2,11 @@ package lua
 
 import (
 	"errors"
+	"fmt"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -513,4 +518,316 @@ func newStateWithBase(t testing.TB, options Options) *State {
 		t.Fatal(err)
 	}
 	return state
+}
+
+// lua51Case is one recorded differential case. Each source is a complete Lua
+// 5.1 chunk and want is the outcome PUC Lua 5.1.5 produces for it, in the
+// shared spelling formatLua51Value defines.
+//
+// Recorded expectations are verified against a real interpreter by
+// TestLibraryCasesMatchTheLua51Oracle. Regenerate or re-verify with:
+//
+//	BADGER_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
+//
+// and record new cases with BADGER_LUA51_RECORD=1 set as well.
+type lua51Case struct {
+	name   string
+	source string
+	want   string
+}
+
+// runLua51Case executes source on a State with every implemented library open
+// and reports the outcome the recorded Lua 5.1 driver would print.
+func runLua51Case(t *testing.T, source string) string {
+	t.Helper()
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.OpenMath(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.OpenTable(); err != nil {
+		t.Fatal(err)
+	}
+	installTestPrelude(t, state)
+
+	chunk, err := state.LoadString("=case", source)
+	if err != nil {
+		return "syntax " + formatLua51Text(err.Error())
+	}
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		var failure *Error
+		if errors.As(err, &failure) {
+			return "error " + formatLua51Value(failure.Value())
+		}
+		return "error " + formatLua51Text(err.Error())
+	}
+	parts := make([]string, 0, len(results)+1)
+	parts = append(parts, "ok")
+	for _, value := range results {
+		parts = append(parts, formatLua51Value(value))
+	}
+	return strings.Join(parts, " ")
+}
+
+// formatLua51Value spells one result the way the Lua driver does. Numbers use
+// Lua 5.1's own %.14g primitive, with NaN normalized because C's sign-of-NaN
+// spelling is platform-dependent.
+func formatLua51Value(value Value) string {
+	switch value.Kind() {
+	case NumberKind:
+		number, _ := value.AsNumber()
+		if math.IsNaN(number) {
+			return "nan"
+		}
+		return value.String()
+	case StringKind:
+		text, _ := value.AsString()
+		return formatLua51Text(text)
+	case NilKind, BoolKind:
+		return value.String()
+	default:
+		return value.Kind().String()
+	}
+}
+
+func formatLua51Text(text string) string {
+	return "'" + text + "'"
+}
+
+func runLua51Cases(t *testing.T, cases []lua51Case) {
+	t.Helper()
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := runLua51Case(t, test.source); got != test.want {
+				t.Fatalf(
+					"%s\n got: %s\nwant: %s",
+					test.source,
+					got,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
+// TestLibraryCasesMatchTheLua51Oracle re-derives every recorded expectation
+// from a real Lua 5.1 interpreter. It is skipped unless BADGER_LUA51 names one,
+// because the reference binary is deliberately not carried in this repository.
+func TestLibraryCasesMatchTheLua51Oracle(t *testing.T) {
+	binary := os.Getenv("BADGER_LUA51")
+	if binary == "" {
+		t.Skip("set BADGER_LUA51 to a Lua 5.1 interpreter to verify")
+	}
+	cases := make([]lua51Case, 0, len(mathLibraryLua51Cases)+len(tableLibraryLua51Cases))
+	cases = append(cases, mathLibraryLua51Cases...)
+	cases = append(cases, tableLibraryLua51Cases...)
+
+	driver := &strings.Builder{}
+	driver.WriteString(lua51OracleDriver)
+	driver.WriteString("local sources = {\n")
+	for _, test := range cases {
+		driver.WriteString(quoteLuaString(test.source))
+		driver.WriteString(",\n")
+	}
+	driver.WriteString("}\nrun(sources)\n")
+
+	path := filepath.Join(t.TempDir(), "oracle.lua")
+	if err := os.WriteFile(path, []byte(driver.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(binary, path).Output()
+	if err != nil {
+		t.Fatalf("%s: %v", binary, err)
+	}
+	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
+	if len(lines) != len(cases) {
+		t.Fatalf("oracle produced %d lines; want %d", len(lines), len(cases))
+	}
+	record := os.Getenv("BADGER_LUA51_RECORD") != ""
+	for index, test := range cases {
+		if record {
+			t.Logf("{\n\tname:   %q,\n\tsource: %q,\n\twant:   %q,\n},", test.name, test.source, lines[index])
+			continue
+		}
+		if lines[index] != test.want {
+			t.Errorf(
+				"%s: oracle disagrees with the recorded expectation\n%s\n got: %s\nwant: %s",
+				test.name,
+				test.source,
+				lines[index],
+				test.want,
+			)
+		}
+	}
+}
+
+// lua51OracleDriver formats results exactly as formatLua51Value does.
+const lua51OracleDriver = `
+local function fmt(v)
+  local t = type(v)
+  if t == "number" then
+    if v ~= v then return "nan" end
+    return string.format("%.14g", v)
+  elseif t == "string" then
+    return "'" .. v .. "'"
+  elseif t == "nil" or t == "boolean" then
+    return tostring(v)
+  end
+  return t
+end
+
+local function collect(...)
+  local n = select("#", ...)
+  local out = { (select(1, ...)) and "ok" or "error" }
+  for i = 2, n do out[#out + 1] = fmt((select(i, ...))) end
+  return table.concat(out, " ")
+end
+
+function run(sources)
+  for i = 1, #sources do
+    local chunk, err = loadstring(sources[i], "=case")
+    if not chunk then
+      io.write("syntax '", tostring(err), "'\n")
+    else
+      io.write(collect(pcall(chunk)), "\n")
+    end
+  end
+end
+`
+
+// quoteLuaString spells text as a Lua 5.1 double-quoted literal.
+func quoteLuaString(text string) string {
+	quoted := &strings.Builder{}
+	quoted.WriteByte('"')
+	for index := 0; index < len(text); index++ {
+		switch character := text[index]; character {
+		case '"', '\\':
+			quoted.WriteByte('\\')
+			quoted.WriteByte(character)
+		case '\n':
+			quoted.WriteString("\\n")
+		case '\r':
+			quoted.WriteString("\\r")
+		case '\t':
+			quoted.WriteString("\\t")
+		default:
+			if character < 0x20 || character == 0x7f {
+				fmt.Fprintf(quoted, "\\%03d", character)
+				continue
+			}
+			quoted.WriteByte(character)
+		}
+	}
+	quoted.WriteByte('"')
+	return quoted.String()
+}
+
+// The differential cases need a few base-library primitives that the base
+// library does not implement yet: metamethod installation, multiple-result
+// counting, and Lua-level error raising. installTestPrelude supplies exactly
+// those four, and only for tests. They are deliberate throwaway scaffolding
+// with no claim to being the eventual base-library implementations; delete
+// them once library_base.go provides the real ones.
+func installTestPrelude(t *testing.T, state *State) {
+	t.Helper()
+	prelude := [...]struct {
+		name  string
+		entry NativeFunc
+	}{
+		{name: "error", entry: testPreludeError},
+		{name: "select", entry: testPreludeSelect},
+		{name: "setmetatable", entry: testPreludeSetMetatable},
+		{name: "tostring", entry: testPreludeToString},
+	}
+	for _, definition := range prelude {
+		function, err := state.NewNativeFunction(definition.entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := state.SetGlobal(
+			definition.name,
+			function.Value(),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func testPreludeError(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		value = nilSlot
+	}
+	level := 1
+	if _, hasLevel := frame.argument(1); hasLevel {
+		if supplied, ok := frame.integerArgument(1); ok {
+			level = supplied
+		}
+	}
+	if value.kind() == StringKind && level > 0 {
+		return libraryError(frame, "%s", (*luaString)(value.ref).text)
+	}
+	return frame.Raise(value.owningValue())
+}
+
+func testPreludeSelect(frame Frame) Outcome {
+	count := frame.ArgumentCount()
+	if text, ok := frame.String(0); ok && text == "#" {
+		return frame.ReturnNumber(float64(count - 1))
+	}
+	index, ok := frame.integerArgument(0)
+	if !ok || index < 1 {
+		return baseArgumentError(frame, 0, "index out of range")
+	}
+	call := frame.activation()
+	base := int(call.base) + index
+	if base > frame.thread.top {
+		base = frame.thread.top
+	}
+	return frame.returnCompactValues(
+		[2]slot{},
+		0,
+		frame.thread.values[base:frame.thread.top],
+	)
+}
+
+func testPreludeSetMetatable(frame Frame) Outcome {
+	target, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	var metatable *Table
+	if value, present := frame.argument(1); present &&
+		value.kind() != NilKind {
+		metatable, ok = frame.Table(1)
+		if !ok {
+			return baseArgumentTypeError(frame, 1, "table")
+		}
+	}
+	if err := frame.State().SetMetatable(
+		target.Value(),
+		metatable,
+	); err != nil {
+		return frame.RaiseString(err.Error())
+	}
+	return frame.returnCompactValues([2]slot{slotFromValue(target.Value())}, 1, nil)
+}
+
+func testPreludeToString(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	return frame.ReturnString(value.owningValue().String())
 }

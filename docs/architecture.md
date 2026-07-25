@@ -111,9 +111,14 @@ Files are organized by substantial runtime concepts:
   suspension lifecycle, and State-wide execution ownership;
 - `context.go`: operation-scoped context ownership, polling budgets, and
   cancellation failures;
-- `library_base.go` and `library_coroutine.go`: the implemented Lua 5.1
-  runtime library surface using native frames; later `library_*.go` files add
-  the remaining standard libraries.
+- `library_base.go`, `library_coroutine.go`, `library_math.go`, and
+  `library_table.go`: the implemented Lua 5.1 runtime library surface using
+  native frames. `library_base.go` also owns the auxiliary layer shared by
+  every library file, corresponding to PUC's `lauxlib` plus the two runtime
+  operations a library needs: argument coercion, positioned argument and
+  general diagnostics, compact result publication, an unprotected binary call,
+  and ordinary less-than. Later `library_*.go` files add the remaining
+  standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -819,6 +824,99 @@ tracing verified bytecode only after failure; no provenance is stored in Values,
 activations, or the hot loop. Ordinary Lua control flow does not use Go panic or
 interface-valued per-opcode results. The executor returns one small outcome only
 when it reaches its requested call depth, yields, or fails.
+
+## Standard libraries
+
+Each library has its own explicit opener and no implicit installation. `New`
+returns an empty State. Reopening replaces the library table and every
+Function in it with fresh canonical objects, so a program cannot half-restore
+a tampered library. `OpenBase` also opens `coroutine` because Lua 5.1's
+`luaopen_base` registers those functions; `math` and `table` are separate
+openers because PUC registers them separately.
+
+Libraries are ordinary native callbacks. They read compact arguments and
+publish compact results, so a scalar entry never materializes an owning
+`Value`. They do not gain private access to the executor: reentrant Lua calls
+use the same nested checkpoint `Frame.Call` uses.
+
+`library_base.go` owns the auxiliary layer the other library files share.
+Argument coercion follows PUC's `luaL_checknumber`: exact numbers pass through
+and complete numeric strings convert, using the runtime's own deterministic
+number grammar rather than a second one. That grammar rejects the
+locale-dependent spellings, named infinities, and hexadecimal floats C's
+`strtod` happens to accept; the library layer inherits that decision instead
+of reintroducing platform dependence at the boundary.
+
+Integer arguments follow `luaL_checkint`, which casts a double straight to C
+`int` and is therefore undefined for NaN and for magnitudes outside that type.
+Badger truncates toward zero and saturates at the signed 32-bit bounds, so
+every input has one defined result while every value C could convert without
+undefined behavior converts identically.
+
+Diagnostics reproduce `luaL_argerror` and `luaL_error`, including
+`luaL_where(L, 1)`: the failing function's name and the reported source
+position both come from the immediate Lua caller's call instruction, and a
+library entered directly from Go has neither. A method call does not count its
+receiver, so a failure in the receiver of `t:f(...)` becomes Lua 5.1's
+distinct bad-self message. The name and category come from the same verified
+bytecode tracing the executor uses for runtime type errors; no provenance is
+stored in the hot representation.
+
+The math library is the exact Lua 5.1 surface, including the `mod` alias the
+standard distribution publishes through `LUA_COMPAT_MOD` as the same canonical
+Function as `fmod`. Where Go's standard library differs from C, C wins:
+`max` and `min` keep PUC's seed-and-replace scan, so a NaN propagates only
+when it appears first, and `modf` splits an infinity into that infinity and a
+zero of the same sign. Degree conversion divides and radian conversion
+multiplies by the same constant, preserving PUC's rounding.
+
+Transcendental results come from Go's `math` package, not from a C library.
+Lua 5.1 specifies no accuracy for them and PUC forwards to whatever `libm` the
+platform supplies, so bit equality with any particular C library is neither
+achievable nor meaningful. Against macOS/arm64 `libm`, 1,980 sampled points
+put `sqrt` and `log` exact, every other function within 3 ULP, and `pow` within
+10 ULP. `math.pow` uses the same primitive as the `^` operator, so the two
+always agree with each other, which is the invariant that matters inside one
+runtime.
+
+`math.random` is the one entry that cannot be reproduced. Lua 5.1 delegates it
+to C `rand()`, whose sequence, resolution, and process-global seed are
+implementation-defined. Badger instead gives each opened math library one
+private xoshiro256** generator seeded through SplitMix64: identical on every
+platform, reproducible from a seed, significant across the whole 53-bit
+mantissa, and unable to disturb another State's stream. The interface is
+PUC's, including the three arities, the empty-interval failures, and
+advancing the generator before arguments are inspected. An unseeded library
+starts from one fixed seed, mirroring C's implicit `srand(1)`.
+
+The table library operates on raw storage, as Lua 5.1 does. Element access is
+raw compact reads and writes, sequence length is the same border the length
+operator reports, and only an explicit callback, a comparator, or an `__lt`
+handler runs Lua. `table.setn` reports Lua 5.1's obsolescence failure because
+the standard distribution leaves `LUA_COMPAT_GETN` undefined.
+
+`table.sort` reproduces PUC's quicksort rather than delegating to Go's sort.
+Its behavior is observable: it is unstable, its comparison count and resulting
+permutation are visible to a counting comparator, a comparator may read and
+mutate the table mid-sort, and an inconsistent order function must produce
+Lua's `invalid order function for sorting` failure rather than a Go panic or a
+silently wrong result. Recursion always takes the smaller partition, so depth
+stays logarithmic even under a hostile comparator.
+
+Library callbacks are unprotected, matching `lua_call`. A failure is returned
+to the library, which restores its own call machinery and then propagates the
+original error; the nested traceback segment is captured before restoration,
+so the executor's one-segment-per-frame rule still holds across the boundary.
+Lua-visible mutations performed before the failure are not rolled back.
+
+Library correctness is measured against PUC Lua 5.1.5 rather than against
+another Go implementation. Each library test file carries a table of recorded
+cases: a complete Lua chunk and the outcome PUC produces for it. A separate
+test re-derives every recorded outcome from a real interpreter when
+`BADGER_LUA51` names one, so the expectations stay verifiable without carrying
+the reference binary in this repository. Cases deliberately avoid behavior Lua
+5.1 leaves undefined, notably the choice of border in a table with more than
+one.
 
 ## Build order
 
