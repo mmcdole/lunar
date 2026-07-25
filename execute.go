@@ -9,6 +9,7 @@ type executionResultKind uint8
 
 const (
 	executionReturned executionResultKind = iota
+	executionYielded
 	executionFailed
 )
 
@@ -54,6 +55,9 @@ driver:
 			if thread.frames[len(thread.frames)-1].function.prototype == nil {
 				if failure := invokeNativeCall(thread); failure != nil {
 					return stopExecution(thread, failure)
+				}
+				if thread.status == ThreadSuspended {
+					return executionResult{kind: executionYielded}
 				}
 				if len(thread.frames) == stopDepth {
 					return executionResult{kind: executionReturned}

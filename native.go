@@ -26,7 +26,8 @@ var ErrNativeCaptureLimit = errors.New("lua: native function capture limit excee
 // return an Outcome produced by that Frame. Retaining a Frame or using it
 // after producing a terminal Outcome is a programming error. Go panics are
 // propagated after the borrowed activation is removed; Raise and ArgError
-// are the protected Lua-error paths.
+// are the protected Lua-error paths, while Yield suspends a yieldable
+// coroutine.
 type NativeFunc func(Frame) Outcome
 
 type nativeOutcomeKind uint8
@@ -35,6 +36,7 @@ const (
 	nativeOutcomeInvalid nativeOutcomeKind = iota
 	nativeOutcomeReturn
 	nativeOutcomeError
+	nativeOutcomeYield
 )
 
 // Outcome is the terminal result of a NativeFunc.
@@ -56,7 +58,7 @@ type Outcome struct {
 // Argument indexes are zero-based. Typed argument methods perform exact Lua
 // type checks and do not coerce values. Owning Values and object handles read
 // from a Frame may be retained, but the Frame itself is valid only until a
-// terminal Return, Raise, or ArgError method is called, or until the
+// terminal Return, Raise, ArgError, or Yield method is called, or until the
 // NativeFunc returns.
 type Frame struct {
 	thread *Thread
@@ -344,6 +346,100 @@ func (frame Frame) ReturnString(value string) Outcome {
 	return frame.sealReturn(outputCount)
 }
 
+// Yield suspends the executing coroutine without yielded values.
+//
+// The borrowed Frame becomes invalid immediately. Yielding from the main
+// Thread, across another native call, or across a metamethod or iterator
+// boundary produces Lua 5.1's ordinary illegal-yield error instead.
+func (frame Frame) Yield() Outcome {
+	call := frame.call()
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, 0)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	frame.finishYield(call, resultBase, 0, previousTop, previousExtent)
+	return frame.sealYield(0)
+}
+
+// YieldValue suspends the executing coroutine with one owning Value.
+func (frame Frame) YieldValue(value Value) Outcome {
+	call := frame.call()
+	if err := frame.thread.owner.accept(value); err != nil {
+		panic(err)
+	}
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	writeSlot(
+		&frame.thread.values[resultBase],
+		slotFromValue(value),
+	)
+	frame.finishYield(call, resultBase, 1, previousTop, previousExtent)
+	return frame.sealYield(1)
+}
+
+// YieldValues suspends the executing coroutine with values.
+//
+// Values are validated before the execution stack is changed. Unlike a
+// return, yielded values are not adjusted to the caller's requested result
+// count; that adjustment applies later to the arguments supplied at resume.
+func (frame Frame) YieldValues(values ...Value) Outcome {
+	call := frame.call()
+	for _, value := range values {
+		if err := frame.thread.owner.accept(value); err != nil {
+			panic(err)
+		}
+	}
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, len(values))
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	for index, value := range values {
+		writeSlot(
+			&frame.thread.values[resultBase+index],
+			slotFromValue(value),
+		)
+	}
+	frame.finishYield(
+		call,
+		resultBase,
+		len(values),
+		previousTop,
+		previousExtent,
+	)
+	return frame.sealYield(len(values))
+}
+
+// YieldArguments suspends the executing coroutine with every argument passed
+// to this native call. It transfers compact slots directly and does not
+// materialize owning Values.
+func (frame Frame) YieldArguments() Outcome {
+	call := frame.call()
+	argumentBase := int(call.base)
+	argumentCount := frame.thread.top - argumentBase
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, argumentCount)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	copy(
+		frame.thread.values[resultBase:resultBase+argumentCount],
+		frame.thread.values[argumentBase:argumentBase+argumentCount],
+	)
+	frame.finishYield(
+		call,
+		resultBase,
+		argumentCount,
+		previousTop,
+		previousExtent,
+	)
+	return frame.sealYield(argumentCount)
+}
+
 // Raise completes the callback with an arbitrary Lua error Value.
 func (frame Frame) Raise(value Value) Outcome {
 	frame.call()
@@ -495,6 +591,61 @@ func (frame Frame) prepareResults(
 	return outputCount, nil
 }
 
+func (frame Frame) prepareYield(
+	call *activation,
+	supplied int,
+) (resultBase, previousTop, previousExtent int, failure *Error) {
+	if supplied < 0 {
+		panic("lua: negative native yield count")
+	}
+	thread := frame.thread
+	if thread.main ||
+		thread.status != ThreadRunning ||
+		thread.nativeCallDepth != 1 ||
+		len(thread.continuations) != 0 {
+		return 0, 0, 0, &Error{
+			value: thread.state.String(
+				"attempt to yield across metamethod/C-call boundary",
+			),
+			description: "attempt to yield across metamethod/C-call boundary",
+			category:    RuntimeError,
+		}
+	}
+	resultBase = int(call.resultBase)
+	limit := thread.valueLimit()
+	if resultBase < 0 ||
+		resultBase > limit ||
+		supplied > limit-resultBase ||
+		uint64(resultBase)+uint64(supplied) > uint64(^uint32(0)) {
+		return 0, 0, 0, newResourceError(
+			"value stack limit of %d exceeded",
+			limit,
+		)
+	}
+	previousTop = thread.top
+	previousExtent = thread.liveValueExtent()
+	thread.reserveValues(resultBase + supplied)
+	return resultBase, previousTop, previousExtent, nil
+}
+
+func (frame Frame) finishYield(
+	call *activation,
+	resultBase int,
+	supplied int,
+	previousTop int,
+	previousExtent int,
+) {
+	thread := frame.thread
+	resultEnd := resultBase + supplied
+	thread.clearInactive(resultEnd, previousTop)
+	thread.top = resultEnd
+	thread.frameExtent = int(call.callerExtent)
+	if resultEnd > thread.frameExtent {
+		thread.frameExtent = resultEnd
+	}
+	thread.clearDeadSuffix(previousExtent)
+}
+
 func (frame Frame) sealReturn(outputCount int) Outcome {
 	frame.seal()
 	return Outcome{
@@ -502,6 +653,16 @@ func (frame Frame) sealReturn(outputCount int) Outcome {
 		token:       frame.token,
 		resultCount: uint32(outputCount),
 		kind:        nativeOutcomeReturn,
+	}
+}
+
+func (frame Frame) sealYield(outputCount int) Outcome {
+	frame.seal()
+	return Outcome{
+		owner:       frame.thread.owner,
+		token:       frame.token,
+		resultCount: uint32(outputCount),
+		kind:        nativeOutcomeYield,
 	}
 }
 
@@ -539,7 +700,9 @@ func invokeNativeCall(thread *Thread) *Error {
 	case parentToken != 0 &&
 		(parentToken&nativeTerminalBit != 0 || thread.nativeCallDepth == 0):
 		panic("lua: invalid parent native callback")
-	case int(thread.nativeCallDepth) >= thread.nativeCallLimit():
+	case thread.owner.nativeCallDepth < thread.nativeCallDepth:
+		panic("lua: thread native depth exceeds runtime depth")
+	case int(thread.owner.nativeCallDepth) >= thread.nativeCallLimit():
 		return newResourceError("C stack overflow")
 	}
 	call := &thread.frames[len(thread.frames)-1]
@@ -557,11 +720,13 @@ func invokeNativeCall(thread *Thread) *Error {
 	token := thread.nextNativeToken()
 	thread.activeNativeToken = token
 	thread.nativeCallDepth++
+	thread.owner.nativeCallDepth++
 	callbackReturned := false
 	nativeFrameDepth := len(thread.frames) - 1
 	defer func() {
 		thread.activeNativeToken = parentToken
 		thread.nativeCallDepth--
+		thread.owner.nativeCallDepth--
 		if !callbackReturned {
 			thread.unwindCalls(nativeFrameDepth)
 		}
@@ -600,6 +765,20 @@ func invokeNativeCall(thread *Thread) *Error {
 			)
 		}
 		return outcome.failure
+	case nativeOutcomeYield:
+		call := &thread.frames[nativeFrameDepth]
+		resultBase := int(call.resultBase)
+		if outcome.failure != nil ||
+			resultBase < 0 ||
+			resultBase > thread.top ||
+			int(outcome.resultCount) != thread.top-resultBase {
+			return newNativeRuntimeError(
+				thread,
+				"native function returned an invalid outcome",
+			)
+		}
+		thread.status = ThreadSuspended
+		return nil
 	default:
 		return newNativeRuntimeError(
 			thread,

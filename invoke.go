@@ -84,8 +84,12 @@ func (state *State) callMain(
 		return nil, 0, err
 	}
 
+	state.active = thread
 	thread.status = ThreadRunning
-	defer thread.resetMainCall()
+	defer func() {
+		thread.resetMainCall()
+		state.active = nil
+	}()
 
 	required := 1 + len(arguments)
 	thread.reserveValues(required)
@@ -144,7 +148,9 @@ func (state *State) prepareMainCall(
 		return nil, err
 	}
 	thread := state.main
-	if thread == nil || thread.status != ThreadReady {
+	if state.active != nil ||
+		thread == nil ||
+		thread.status != ThreadReady {
 		return nil, ErrRunning
 	}
 	if thread.top != 0 ||
@@ -155,6 +161,7 @@ func (state *State) prepareMainCall(
 		thread.activeNativeToken != 0 ||
 		thread.nativeCallDepth != 0 ||
 		thread.errorHandlerDepth != 0 ||
+		state.runtime.nativeCallDepth != 0 ||
 		state.limits.values != state.options.MaxValues ||
 		state.limits.frames != state.options.MaxFrames {
 		panic("lua: ready main thread retains execution state")

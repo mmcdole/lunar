@@ -80,17 +80,19 @@ type objectHeader struct {
 // object roots. Retaining one object therefore does not pin an unrelated Lua
 // graph.
 type runtimeState struct {
-	closed         atomic.Bool
-	strings        stringPool
-	nativeSequence uint64
+	closed          atomic.Bool
+	strings         stringPool
+	nativeSequence  uint64
+	nativeCallDepth uint16
 }
 
 // State owns one Lua runtime, its global environment, and its main Thread.
 //
 // A State has one active executor. Callers must serialize all operations on a
-// State; no State method may overlap another, including Close. Owning Values
-// and object handles may be retained by other goroutines, but their operations
-// remain subject to the same rule.
+// State; no State method, coroutine Resume, or owned-object mutation may
+// overlap another operation, including Close. Owning Values and object handles
+// may be retained by other goroutines, but their operations remain subject to
+// the same rule.
 //
 // A State must not be copied after first use. Retain and pass its pointer.
 type State struct {
@@ -98,6 +100,7 @@ type State struct {
 	runtime        *runtimeState
 	options        Options
 	limits         resourceLimits
+	active         *Thread
 	main           *Thread
 	globals        *Table
 	registry       *Table
@@ -146,7 +149,7 @@ func (state *State) Close() error {
 	if state == nil || state.runtime == nil {
 		return nil
 	}
-	if state.main != nil && state.main.activeNativeToken != 0 {
+	if state.active != nil || state.runtime.nativeCallDepth != 0 {
 		return ErrRunning
 	}
 	if state.runtime.closed.Swap(true) {
@@ -407,6 +410,8 @@ const (
 	ThreadReady ThreadStatus = iota
 	// ThreadRunning identifies the currently executing Thread.
 	ThreadRunning
+	// ThreadNormal identifies a coroutine waiting for a coroutine it resumed.
+	ThreadNormal
 	// ThreadSuspended identifies a coroutine stopped at yield.
 	ThreadSuspended
 	// ThreadDead identifies a coroutine that returned or failed.
@@ -418,7 +423,8 @@ const (
 // Thread is the canonical object for a Lua thread.
 //
 // The main thread and coroutines use the same representation. Execution
-// registers and activation records remain private.
+// registers and activation records remain private. Resume operations must be
+// serialized with every other operation on the owning State.
 //
 // A Thread must not be copied after first use. Retain and pass its pointer.
 type Thread struct {
