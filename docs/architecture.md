@@ -221,14 +221,36 @@ promptly so a warm reusable stack does not retain dead Lua graphs.
 ### Direct Lua-call checkpoint
 
 The compact frame is not by itself a fast call path. At core checkpoint
-`83dcf30`, diagnostic runs on an Apple M3 Pro with Go 1.25.1 put a
-fixed-arity loop making 1,000 Lua-to-Lua calls at about 48.1 microseconds,
-versus about 31.5 microseconds in frozen Badger `169b37d`. A 128-call upstream
-GopherLua `75f4976` fixture projected to about 35.5 microseconds per 1,000
-calls. The harnesses were not identical, so these figures locate a problem;
-they are not a qualification result. Their allocation-free execution makes
-heap allocation unlikely to be the primary cause, but does not isolate call
-transition cost from loop, dispatch, and callee-body work.
+`a845765`, an identical precompiled and warmed source benchmark on an Apple M3
+Pro with Go 1.25.1 measured these median costs per 1,000 direct fixed
+Lua-to-Lua calls:
+
+| Call shape | Badger | Frozen Badger `169b37d` | GopherLua `75f4976` | PUC 5.1.5 |
+| --- | ---: | ---: | ---: | ---: |
+| no results | 34.7 us | 29.5 us | 39.0 us | 19.3 us |
+| one result | 35.2 us | 29.1 us | 40.7 us | 19.1 us |
+| two results | 41.0 us | 39.9 us | 50.7 us | 24.9 us |
+| one result from a closed upvalue | 36.5 us | 29.6 us | 42.0 us | 18.2 us |
+
+Each engine compiled and initialized the same source outside the timed region,
+ran 10,000 untimed warmups, and then ran 15 samples of 5,000 outer
+invocations. Each outer invocation made 1,000 Lua-to-Lua calls. Current and
+frozen Badger executed without heap allocation; GopherLua allocated about
+14 KB in 54 allocations per outer invocation. Current Badger beats GopherLua
+in every cell, trails frozen Badger in every cell, and has a 1.82-times
+geometric-mean gap to PUC. The absolute cross-language ratios remain
+directional because the engines were measured sequentially without CPU
+affinity or power-state control; the relative diagnosis is large enough to be
+unambiguous.
+
+A CPU profile of the one-result case attributes about 34.5% of samples
+cumulatively to call entry and 15.5% to return completion. Window checks,
+activation commit, value reservation, result adjustment, and publication are
+individually visible despite zero heap allocation. This establishes that the
+gap is primarily repeated control and state transition work, not construction
+of the compact activation and not garbage collection. Profiles and raw local
+results remain outside source control; this section retains the actionable
+conclusion and enough detail to reproduce the checkpoint.
 
 PUC Lua 5.1 provides the relevant control-flow model. `OP_CALL` publishes the
 caller's PC, invokes `luaD_precall`, and, for a Lua callee, jumps to a
@@ -247,24 +269,29 @@ Badger should translate that model rather than reproduce its C details:
 3. Limit the first fast path to a direct Lua Function, fixed arguments and
    results, a non-vararg callee, sufficient value/frame capacity, satisfied
    limits, and no hook, native, yield, `__call`, or other semantic slow path.
-4. Use a small trusted helper for that transition. Sealed prototypes and
-   canonical Functions have already established ownership, executable shape,
-   and bytecode validity; internal calls must not repeat public-boundary
-   validation.
+4. Publish the caller PC before attempting entry, then use a small trusted
+   helper whose false result leaves values, frames, top, and extent unchanged.
+   Sealed prototypes and canonical Functions have already established
+   ownership, executable shape, and bytecode validity; internal calls must not
+   repeat public-boundary validation.
 5. On return, close open upvalues before moving or clearing registers, place
    results in the original callable slot, and restore the caller through the
    same reload seam. Preserve `stopDepth`, pending continuation resumption,
    caller PC and extents, top, tail-call bookkeeping, and dead-root clearing.
-   Do not add a second dispatch loop.
+   A direct return is eligible only when its result count is fixed, the
+   surviving caller remains above `stopDepth`, and popping the callee does not
+   make a continuation ready. A continuation attached to a deeper frame does
+   not by itself disqualify the call. Do not add a second dispatch loop.
 6. Make available value/frame capacity the cheap branch. Stack growth,
    resource failures, varargs, open calls, `__call`, native functions,
-   yielding, hooks, and initially pending continuations retain explicit slow
-   paths.
+   yielding, hooks, and continuation resumption retain explicit slow paths.
 7. Profile register nil-filling, dead-root clearing, result adjustment, and
    upvalue checks independently. PUC clears the complete unused register
    window, but Go pointer writes and garbage-collector liveness have different
    costs. Skipping initialization would require new definite-assignment and
-   observability analysis; the current verifier does not prove it.
+   observability analysis; the current verifier does not prove it. Internal
+   slot zero is a numeric zero rather than Lua nil, so unused registers and
+   missing results must use the canonical nil slot.
 8. Add callsite caching only if profiles still justify it after the structural
    transition is fixed.
 
@@ -272,12 +299,16 @@ The qualification gate is a same-source matrix covering fixed zero/one/many
 results, open results, excess and missing arguments, varargs, recursion, tail
 calls, closures and upvalues, nested continuations, protected-call boundaries,
 `__call`, limits, errors, and future native/yield cases. Warm fixed calls must
-remain allocation-free, beat frozen Badger and upstream GopherLua, and move
-toward the measured PUC 5.1 result. Repeated samples and a declared
-statistical comparison must show that unrelated numeric and table kernels do
-not regress. Assembly inspection must also confirm that the reload path does
-not enlarge the persistent activation or materially expand the executor's hot
-Go frame.
+remain allocation-free, beat the frozen Badger and upstream GopherLua
+comparators on the identical fixture, and close a material part of the current
+roughly 1.82-times geometric-mean gap to PUC 5.1. The first implementation
+target is at least a 20% reduction in all four fixed-call cells, with no cell
+slower than its checkpoint beyond measurement noise. That target is a tranche
+gate, not a claim that the remaining PUC gap is irreducible. Repeated samples
+and a declared statistical comparison must show that unrelated numeric and
+table kernels do not regress. Assembly inspection must also confirm that the
+reload path does not enlarge the persistent activation or materially expand
+the executor's hot Go frame.
 
 ## Execution
 
