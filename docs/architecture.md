@@ -72,6 +72,8 @@ Files are organized by substantial runtime concepts:
   closure publication, and function-definition sugar;
 - `compiler_call.go`: contiguous call windows, method calls, tail calls, and
   Lua 5.1 multiple-result adjustment;
+- `compiler_loop.go`: loop scopes, `break` exits, and numeric and generic
+  iteration layouts;
 - `constructor.go`: table-constructor grammar, record stores, list batching,
   and allocation hints;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
@@ -151,6 +153,17 @@ unwinding instead close the whole activation. Closure creation must read every
 binding before writing its destination, which makes `local function f()`
 recursive even when the closure destination and captured local are the same
 register.
+
+Loops keep their break targets separate from lexical blocks. A `break` closes
+only captured scopes inside the nearest loop, then joins an allocation-free
+exit list. `while` closes body locals before its back edge. `repeat...until`
+keeps body locals visible to the condition; when one is captured, distinct
+true and false cleanup paths close that iteration before exit or repetition.
+Numeric `for` uses the canonical four-register index/limit/step/visible-value
+window. Generic `for` uses three control registers plus visible results and
+reserves the three call slots required by `TFORLOOP`, even when fewer results
+are requested. The verifier requires canonical numeric-loop pairs and rejects
+iterator frames too small for that call window.
 
 Source vararg functions retain Lua 5.1's default compatibility layout: an
 implicit `arg` local follows fixed parameters, and it is materialized by call

@@ -285,7 +285,7 @@ func (parser *sourceParser) parseFunctionBody(
 			parser.function = parent
 		}()
 
-		returned, bodyError := parser.parseBlock()
+		terminated, bodyError := parser.parseBlock()
 		if bodyError != nil {
 			return nil, bodyError
 		}
@@ -294,7 +294,7 @@ func (parser *sourceParser) parseFunctionBody(
 			return nil, bodyError
 		}
 		closureLine = end.line
-		if !returned {
+		if !terminated {
 			child.leaveBlock(end.line)
 			child.emitABC(opReturn, 0, 1, 0, end.line)
 		} else {

@@ -654,16 +654,43 @@ func verifyPrototypeInstruction(
 		); syntaxError != nil {
 			return syntaxError
 		}
+		target := pc + 1 + code.sbx()
 		if syntaxError := prototype.checkControlTarget(
 			roles,
 			pc,
-			pc+1+code.sbx(),
+			target,
 			operation.String(),
 		); syntaxError != nil {
 			return syntaxError
 		}
 		if operation == opForPrep {
+			loop := prototype.code[target]
+			if loop.opcode() != opForLoop ||
+				loop.a() != code.a() ||
+				target+1+loop.sbx() != pc+1 {
+				return prototype.syntaxError(
+					pc,
+					"FORPREP is not paired with its FORLOOP",
+				)
+			}
 			return nil
+		}
+		preparation := target - 1
+		if preparation < 0 ||
+			roles[preparation] != executableWord {
+			return prototype.syntaxError(
+				pc,
+				"FORLOOP has no matching FORPREP",
+			)
+		}
+		prep := prototype.code[preparation]
+		if prep.opcode() != opForPrep ||
+			prep.a() != code.a() ||
+			preparation+1+prep.sbx() != pc {
+			return prototype.syntaxError(
+				pc,
+				"FORLOOP has no matching FORPREP",
+			)
 		}
 
 	case opIteratorLoop:
@@ -673,7 +700,7 @@ func verifyPrototypeInstruction(
 		if syntaxError := prototype.checkRegisterRange(
 			pc,
 			code.a(),
-			code.c()+3,
+			3+max(code.c(), 3),
 			"TFORLOOP registers",
 		); syntaxError != nil {
 			return syntaxError

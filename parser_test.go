@@ -702,7 +702,7 @@ func TestCompileSourceErrors(t *testing.T) {
 		{"missing assignment", "value + 1", "expected '='"},
 		{"return is last", "return 1; value = 2", "return must be the last"},
 		{"missing end", "do local x = 1", "expected end"},
-		{"unsupported statement", "while true do end", "unsupported statement"},
+		{"break outside loop", "break", "no loop to break"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -808,6 +808,11 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		"if left and (right or not fallback) then return value else return end",
 		"if not (left and right) then return elseif (not left) or right then return end",
 		"if condition then local captured = 1; sink = function() return captured end end",
+		"while running and not stopped do if finished then break end running = next(running) end",
+		"repeat local value = next() until value and ready",
+		"for index = first(), last(), step() do consume(index) end",
+		"for key, value in iterator, state, control do consume(key, value) end",
+		"repeat local value = 1; sink = function() return value end until done",
 		"if true return else",
 		"return (((((((((nil)))))))))",
 		"local =",

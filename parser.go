@@ -47,14 +47,14 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 		return nil, syntaxError
 	}
 	function.enterFunctionBlock()
-	returned, syntaxError := parser.parseBlock()
+	terminated, syntaxError := parser.parseBlock()
 	if syntaxError != nil {
 		return nil, syntaxError
 	}
 	if parser.current.kind != tokenEOF {
 		return nil, parser.expected(tokenEOF)
 	}
-	if !returned {
+	if !terminated {
 		function.leaveBlock(parser.current.line)
 		function.emitABC(opReturn, 0, 1, 0, parser.current.line)
 	} else {
@@ -157,17 +157,25 @@ func isBlockFollower(kind tokenKind) bool {
 
 func (parser *sourceParser) parseBlock() (bool, *Error) {
 	for !isBlockFollower(parser.current.kind) {
-		if parser.current.kind == tokenReturn {
-			if syntaxError := parser.parseReturn(); syntaxError != nil {
+		terminal := parser.current.kind
+		if terminal == tokenReturn || terminal == tokenBreak {
+			var syntaxError *Error
+			if terminal == tokenReturn {
+				syntaxError = parser.parseReturn()
+			} else {
+				syntaxError = parser.parseBreak()
+			}
+			if syntaxError != nil {
 				return false, syntaxError
 			}
-			if _, syntaxError := parser.accept(';'); syntaxError != nil {
+			if _, syntaxError = parser.accept(';'); syntaxError != nil {
 				return false, syntaxError
 			}
 			if !isBlockFollower(parser.current.kind) {
 				return false, parser.syntaxError(
 					parser.current.line,
-					"return must be the last statement in its block",
+					"%s must be the last statement in its block",
+					terminal,
 				)
 			}
 			return true, nil
@@ -190,10 +198,16 @@ func (parser *sourceParser) parseStatement() *Error {
 		return parser.parseDo()
 	case tokenFunction:
 		return parser.parseFunctionStatement()
+	case tokenFor:
+		return parser.parseFor()
 	case tokenIf:
 		return parser.parseIf()
 	case tokenLocal:
 		return parser.parseLocal()
+	case tokenRepeat:
+		return parser.parseRepeat()
+	case tokenWhile:
+		return parser.parseWhile()
 	case tokenName, '(':
 		return parser.parsePrefixStatement()
 	default:
@@ -259,7 +273,7 @@ func (parser *sourceParser) parseIf() *Error {
 		}
 
 		emitter.enterBlock()
-		returned, syntaxError := parser.parseBlock()
+		terminated, syntaxError := parser.parseBlock()
 		if syntaxError != nil {
 			return syntaxError
 		}
@@ -271,7 +285,7 @@ func (parser *sourceParser) parseIf() *Error {
 		if !hasNextArm && follower != tokenEnd {
 			return parser.expected(tokenEnd)
 		}
-		if hasNextArm && !returned {
+		if hasNextArm && !terminated {
 			exit := emitter.emitJump(exitLine)
 			endExits, syntaxError = emitter.joinJumps(
 				exit,

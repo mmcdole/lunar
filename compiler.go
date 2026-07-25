@@ -85,6 +85,7 @@ type functionState struct {
 	constantIndexes map[slot]int
 	locals          []activeLocal
 	blocks          []blockState
+	loops           []loopState
 	upvalues        []upvalueBinding
 	registerTop     int
 	registerHigh    int
@@ -622,7 +623,13 @@ func (function *functionState) patchConditionalJumps(
 func (function *functionState) patchConditionToHere(
 	list jumpList,
 ) *Error {
-	target := function.currentPC()
+	return function.patchCondition(list, function.currentPC())
+}
+
+func (function *functionState) patchCondition(
+	list jumpList,
+	target int,
+) *Error {
 	return function.patchConditionalJumps(
 		list,
 		target,
@@ -662,7 +669,16 @@ func (function *functionState) setJump(
 	list jumpList,
 	target int,
 ) *Error {
-	pc := list.pc()
+	return function.setControlTarget(list.pc(), target)
+}
+
+func (function *functionState) setControlTarget(
+	pc int,
+	target int,
+) *Error {
+	if pc < 0 || pc >= len(function.builder.code) {
+		panic("lua: invalid control instruction")
+	}
 	offset := target - (pc + 1)
 	if offset < -maxOperandsBx || offset > maxOperandsBx {
 		line := uint32(function.builder.debug.lines[pc])
@@ -681,6 +697,9 @@ func (function *functionState) finish(
 ) (*Prototype, *Error) {
 	if len(function.blocks) != 0 || len(function.locals) != 0 {
 		panic("lua: compiler sealed a function with an active lexical scope")
+	}
+	if len(function.loops) != 0 {
+		panic("lua: compiler sealed a function with an active loop")
 	}
 	if function.unresolvedJumps != 0 {
 		return nil, newSourceSyntaxError(
