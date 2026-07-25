@@ -760,11 +760,13 @@ func enterCallMetamethod(
 	called := thread.values[callBase]
 	function := callMetamethodFunction(thread, called)
 	if function == nil {
-		return newExecutionRuntimeError(
+		register := callBase - int(thread.frames[frameIndex].base)
+		return newExecutionTypeError(
 			thread,
 			frameIndex,
 			instructionPC,
-			"attempt to call a %s value",
+			register,
+			"call",
 			called.kind(),
 		)
 	}
@@ -804,6 +806,45 @@ func newExecutionRuntimeError(
 		description: message,
 		category:    RuntimeError,
 	}
+}
+
+func newExecutionTypeError(
+	thread *Thread,
+	frameIndex int,
+	pc int,
+	register int,
+	operation string,
+	kind Kind,
+) *Error {
+	prototype := thread.frames[frameIndex].function.prototype
+	category, name, found := prototype.describeOperand(pc, register)
+	if found {
+		return newExecutionRuntimeError(
+			thread,
+			frameIndex,
+			pc,
+			"attempt to %s %s '%s' (a %s value)",
+			operation,
+			category,
+			name,
+			kind,
+		)
+	}
+	return newExecutionRuntimeError(
+		thread,
+		frameIndex,
+		pc,
+		"attempt to %s a %s value",
+		operation,
+		kind,
+	)
+}
+
+func operandRegister(operand int) int {
+	if isConstantOperand(operand) {
+		return -1
+	}
+	return operand
 }
 
 func failExecution(

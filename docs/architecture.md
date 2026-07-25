@@ -659,10 +659,12 @@ Runtime failure snapshots the active Lua trace before one centralized unwind
 closes upvalues, drops activations, and clears dead stack roots. Engine-created
 syntax and resource failures carry an owned string error Value, matching Lua
 5.1's protected load/call boundary; a native callback may still raise any Lua
-Value. Ordinary Lua control flow does not use Go panic or interface-valued
-per-opcode results. The executor returns one small outcome only when it reaches
-its requested call depth or fails; coroutine support will add a yield outcome
-when it exists.
+Value. Type errors recover PUC-style local, upvalue, global, field, and method
+names by tracing verified bytecode only after failure; no provenance is stored
+in Values, activations, or the hot loop. Ordinary Lua control flow does not use
+Go panic or interface-valued per-opcode results. The executor returns one small
+outcome only when it reaches its requested call depth or fails; coroutine
+support will add a yield outcome when it exists.
 
 ## Build order
 

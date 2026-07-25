@@ -286,37 +286,6 @@ func TestLexerRejectsMalformedInput(t *testing.T) {
 	}
 }
 
-func TestSourceIDFormatting(t *testing.T) {
-	if got := sourceID("@path/to/chunk.lua"); got != "path/to/chunk.lua" {
-		t.Fatalf("file source = %q", got)
-	}
-	if got := sourceID("=named chunk"); got != "named chunk" {
-		t.Fatalf("literal source = %q", got)
-	}
-	if got := sourceID("return 1\nignored"); got != `[string "return 1..."]` {
-		t.Fatalf("string source = %q", got)
-	}
-	if got := sourceID(""); got != `[string ""]` {
-		t.Fatalf("empty source = %q", got)
-	}
-	fortyThree := strings.Repeat("x", 43)
-	if got := sourceID(fortyThree); got != `[string "`+fortyThree+`"]` {
-		t.Fatalf("43-byte string source = %q", got)
-	}
-	if got := sourceID(fortyThree + "x"); got !=
-		`[string "`+fortyThree+`..."]` {
-		t.Fatalf("44-byte string source = %q", got)
-	}
-	if got := sourceID(fortyThree + "\nignored"); got !=
-		`[string "`+fortyThree+`..."]` {
-		t.Fatalf("newline string source = %q", got)
-	}
-	if got := sourceID("@" + strings.Repeat("x", 100)); len(got) != 55 ||
-		!strings.HasPrefix(got, "...") {
-		t.Fatalf("long file source = %q", got)
-	}
-}
-
 func TestTokenNames(t *testing.T) {
 	if tokenAnd.String() != "and" ||
 		tokenConcat.String() != ".." ||

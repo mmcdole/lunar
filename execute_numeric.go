@@ -94,14 +94,17 @@ func slowArithmetic(
 	)
 	if !found {
 		invalid := left
+		invalidOperand := code.b()
 		if leftOK {
 			invalid = right
+			invalidOperand = code.c()
 		}
-		return newExecutionRuntimeError(
+		return newExecutionTypeError(
 			thread,
 			frameIndex,
 			instructionPC,
-			"attempt to perform arithmetic on a %s value",
+			operandRegister(invalidOperand),
+			"perform arithmetic on",
 			invalid.kind(),
 		)
 	}

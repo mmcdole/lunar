@@ -447,7 +447,7 @@ return nil
 		result.err == nil ||
 		!strings.Contains(
 			result.err.Error(),
-			"attempt to call a number value",
+			"attempt to call local 'invalid' (a number value)",
 		) {
 		t.Fatalf("iterator execution = %+v; want failure", result)
 	}

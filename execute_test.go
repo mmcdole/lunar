@@ -684,7 +684,10 @@ return captured()
 		t.Fatalf("execution result = %+v; want failure", result)
 	}
 	if result.err.Category() != RuntimeError ||
-		!strings.Contains(result.err.Error(), "attempt to call a number value") {
+		!strings.Contains(
+			result.err.Error(),
+			"attempt to call local 'captured' (a number value)",
+		) {
 		t.Fatalf("runtime error = %v", result.err)
 	}
 	traceback := result.err.Traceback()
@@ -857,7 +860,7 @@ return value()
 			result.err == nil ||
 			!strings.Contains(
 				result.err.Error(),
-				"attempt to call a table value",
+				"attempt to call local 'value' (a table value)",
 			) {
 			t.Fatalf("nonfunction __call result = %+v", result)
 		}

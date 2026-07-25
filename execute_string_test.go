@@ -182,7 +182,7 @@ func TestExecutorLengthRejectsValuesWithoutHandler(t *testing.T) {
 	if result.kind != executionFailed || result.err == nil ||
 		!strings.Contains(
 			result.err.Error(),
-			"attempt to get length of a boolean value",
+			"attempt to get length of local 'value' (a boolean value)",
 		) {
 		t.Fatalf("length failure = %+v", result)
 	}
@@ -501,7 +501,7 @@ return left .. middle .. right
 		result.err == nil ||
 		!strings.Contains(
 			result.err.Error(),
-			"attempt to concatenate a boolean value",
+			"attempt to concatenate local 'left' (a boolean value)",
 		) {
 		t.Fatalf("resumed concat failure = %+v", result)
 	}
@@ -582,19 +582,19 @@ func TestExecutorConcatReportsFirstNonCoercibleOperand(t *testing.T) {
 		name  string
 		left  Value
 		right Value
-		kind  string
+		local string
 	}{
 		{
 			name:  "left",
 			left:  Bool(true),
 			right: Number(1),
-			kind:  "boolean",
+			local: "left",
 		},
 		{
 			name:  "right",
 			left:  stateNeutralString("prefix"),
 			right: Bool(false),
-			kind:  "boolean",
+			local: "right",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -609,7 +609,8 @@ func TestExecutorConcatReportsFirstNonCoercibleOperand(t *testing.T) {
 				result.err == nil ||
 				!strings.Contains(
 					result.err.Error(),
-					"attempt to concatenate a "+test.kind+" value",
+					"attempt to concatenate local '"+test.local+
+						"' (a boolean value)",
 				) {
 				t.Fatalf("concat failure = %+v", result)
 			}

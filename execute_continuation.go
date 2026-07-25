@@ -59,11 +59,12 @@ func startMetamethodCall(
 	if !direct {
 		function = callMetamethodFunction(thread, callable)
 		if function == nil {
-			return newExecutionRuntimeError(
+			return newExecutionTypeError(
 				thread,
 				frameIndex,
 				instructionPC,
-				"attempt to call a %s value",
+				-1,
+				"call",
 				callable.kind(),
 			)
 		}
@@ -159,11 +160,12 @@ func startIteratorCall(
 	if !direct {
 		function = callMetamethodFunction(thread, generator)
 		if function == nil {
-			return newExecutionRuntimeError(
+			return newExecutionTypeError(
 				thread,
 				frameIndex,
 				instructionPC,
-				"attempt to call a %s value",
+				-1,
+				"call",
 				generator.kind(),
 			)
 		}

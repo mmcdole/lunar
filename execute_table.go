@@ -223,11 +223,19 @@ func slowTableGet(
 		} else {
 			method, found = metamethodSlot(thread, target, metaIndex)
 			if !found {
-				return newExecutionRuntimeError(
+				register := -1
+				if firstTarget {
+					switch operation {
+					case opGetTable, opSelf:
+						register = code.b()
+					}
+				}
+				return newExecutionTypeError(
 					thread,
 					frameIndex,
 					instructionPC,
-					"attempt to index a %s value",
+					register,
+					"index",
 					target.kind(),
 				)
 			}
@@ -346,11 +354,16 @@ func slowTableSet(
 				metaNewIndex,
 			)
 			if !found {
-				return newExecutionRuntimeError(
+				register := -1
+				if firstTarget && operation == opSetTable {
+					register = code.a()
+				}
+				return newExecutionTypeError(
 					thread,
 					frameIndex,
 					instructionPC,
-					"attempt to index a %s value",
+					register,
+					"index",
 					target.kind(),
 				)
 			}
@@ -446,11 +459,12 @@ func executeSetList(
 	base := int(frame.base)
 	tableSlot := thread.values[base+code.a()]
 	if tableSlot.kind() != TableKind {
-		return newExecutionRuntimeError(
+		return newExecutionTypeError(
 			thread,
 			frameIndex,
 			int(frame.pc)-1,
-			"attempt to index a %s value",
+			code.a(),
+			"index",
 			tableSlot.kind(),
 		)
 	}

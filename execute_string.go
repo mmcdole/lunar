@@ -47,11 +47,12 @@ func slowLength(
 		metaLength,
 	)
 	if !found {
-		return newExecutionRuntimeError(
+		return newExecutionTypeError(
 			thread,
 			frameIndex,
 			instructionPC,
-			"attempt to get length of a %s value",
+			code.b(),
+			"get length of",
 			source.kind(),
 		)
 	}
@@ -123,14 +124,17 @@ func slowConcat(
 		)
 		if !found {
 			invalid := left
+			invalidRegister := last - 1
 			if isDirectConcatValue(left) {
 				invalid = right
+				invalidRegister = last
 			}
-			return newExecutionRuntimeError(
+			return newExecutionTypeError(
 				thread,
 				frameIndex,
 				instructionPC,
-				"attempt to concatenate a %s value",
+				invalidRegister,
+				"concatenate",
 				invalid.kind(),
 			)
 		}

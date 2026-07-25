@@ -108,6 +108,181 @@ func (prototype *Prototype) LineAt(pc int) int {
 	return int(prototype.debug.lines[pc])
 }
 
+// describeOperand recovers the source-level name of a register on the cold
+// runtime-error path. Locals take precedence. Otherwise, verified bytecode is
+// traced forward to the last producer that can name the value.
+func (prototype *Prototype) describeOperand(
+	pc int,
+	register int,
+) (category string, name string, found bool) {
+	if prototype == nil ||
+		pc < 0 ||
+		pc >= len(prototype.code) ||
+		register < 0 ||
+		register >= int(prototype.registers) {
+		return "", "", false
+	}
+	if local := prototype.localAt(pc, register); local != nil {
+		return "local", diagnosticName(local.text), true
+	}
+
+	producer, found := prototype.registerProducer(pc, register)
+	if !found {
+		return "", "", false
+	}
+	switch producer.opcode() {
+	case opGetGlobal:
+		value := prototype.constants[producer.bx()]
+		return "global",
+			diagnosticName((*luaString)(value.ref).text),
+			true
+	case opGetUpvalue:
+		index := producer.b()
+		if prototype.debug != nil &&
+			index < len(prototype.debug.upvalues) {
+			return "upvalue",
+				diagnosticName(prototype.debug.upvalues[index].text),
+				true
+		}
+		return "upvalue", "?", true
+	case opGetTable:
+		return "field", prototype.constantOperandName(producer.c()), true
+	case opSelf:
+		return "method", prototype.constantOperandName(producer.c()), true
+	case opMove:
+		if producer.b() < producer.a() {
+			return prototype.describeOperand(pc, producer.b())
+		}
+	}
+	return "", "", false
+}
+
+func (prototype *Prototype) localAt(
+	pc int,
+	register int,
+) *luaString {
+	if prototype.debug == nil {
+		return nil
+	}
+	ordinal := register
+	for index := range prototype.debug.locals {
+		local := &prototype.debug.locals[index]
+		if int(local.startPC) <= pc && pc < int(local.endPC) {
+			if ordinal == 0 {
+				return local.name
+			}
+			ordinal--
+		}
+	}
+	return nil
+}
+
+func (prototype *Prototype) constantOperandName(operand int) string {
+	if !isConstantOperand(operand) {
+		return "?"
+	}
+	value := prototype.constants[constantIndex(operand)]
+	if value.kind() != StringKind {
+		return "?"
+	}
+	return diagnosticName((*luaString)(value.ref).text)
+}
+
+func diagnosticName(name string) string {
+	for index := 0; index < len(name); index++ {
+		if name[index] == 0 {
+			return name[:index]
+		}
+	}
+	return name
+}
+
+func (prototype *Prototype) registerProducer(
+	beforePC int,
+	register int,
+) (instruction, bool) {
+	producerPC := -1
+	for pc := 0; pc < beforePC; pc++ {
+		code := prototype.code[pc]
+		operation := code.opcode()
+		if instructionWritesRegister(code, register) {
+			producerPC = pc
+		}
+
+		switch operation {
+		case opForLoop, opForPrep, opJump:
+			destination := pc + 1 + code.sbx()
+			if destination > pc && destination <= beforePC {
+				pc += code.sbx()
+			}
+		case opSetList:
+			if code.c() == 0 {
+				pc++
+			}
+		case opClosure:
+			pc += int(prototype.children[code.bx()].upvalues)
+		}
+	}
+	if producerPC < 0 {
+		return 0, false
+	}
+	return prototype.code[producerPC], true
+}
+
+func instructionWritesRegister(code instruction, register int) bool {
+	if instructionWritesA(code.opcode()) && code.a() == register {
+		return true
+	}
+	switch code.opcode() {
+	case opLoadNil:
+		return code.a() <= register && register <= code.b()
+	case opSelf:
+		return register == code.a()+1
+	case opCall, opTailCall:
+		return register >= code.a()
+	case opIteratorLoop:
+		return register >= code.a()+2
+	default:
+		return false
+	}
+}
+
+func instructionWritesA(operation opcode) bool {
+	switch operation {
+	case opMove,
+		opLoadK,
+		opLoadBool,
+		opGetUpvalue,
+		opGetGlobal,
+		opGetTable,
+		opNewTable,
+		opSelf,
+		opAdd,
+		opSub,
+		opMul,
+		opDiv,
+		opMod,
+		opPow,
+		opUnaryMinus,
+		opNot,
+		opLength,
+		opConcat,
+		// Lua 5.1 marks TEST's A operand as defining A for symbolic
+		// diagnostics. This deliberately breaks provenance across a
+		// short-circuit expression even though TEST does not write at
+		// runtime.
+		opTest,
+		opTestSet,
+		opForLoop,
+		opForPrep,
+		opClosure,
+		opVararg:
+		return true
+	default:
+		return false
+	}
+}
+
 // prototypeBuilder is the only path from mutable compiler or loader state to
 // a Prototype. seal consumes it, verifies the complete instruction graph, and
 // copies every retained slice to its exact length.
