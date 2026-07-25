@@ -13,8 +13,9 @@ Executable state has one authoritative representation.
 The implementation is under active construction. The compact object model,
 Lua 5.1 bytecode, immutable verified prototypes, direct lexer, and the
 expression, assignment, call, constructor, and closure portions of the
-source compiler are in place. Full grammar coverage, the executor, and the
-standard libraries follow in that order.
+source compiler are in place, including conditional control flow. Full
+grammar coverage, the executor, and the standard libraries follow in that
+order.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

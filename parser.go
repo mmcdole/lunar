@@ -47,7 +47,7 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 		return nil, syntaxError
 	}
 	function.enterFunctionBlock()
-	returned, syntaxError := parser.parseBlock(tokenEOF)
+	returned, syntaxError := parser.parseBlock()
 	if syntaxError != nil {
 		return nil, syntaxError
 	}
@@ -146,14 +146,17 @@ func (parser *sourceParser) leaveNesting() {
 	parser.nesting--
 }
 
-func (parser *sourceParser) parseBlock(stop tokenKind) (bool, *Error) {
-	for parser.current.kind != stop {
-		if parser.current.kind == tokenEOF {
-			if stop == tokenEOF {
-				return false, nil
-			}
-			return false, parser.expected(stop)
-		}
+func isBlockFollower(kind tokenKind) bool {
+	switch kind {
+	case tokenElse, tokenElseIf, tokenEnd, tokenUntil, tokenEOF:
+		return true
+	default:
+		return false
+	}
+}
+
+func (parser *sourceParser) parseBlock() (bool, *Error) {
+	for !isBlockFollower(parser.current.kind) {
 		if parser.current.kind == tokenReturn {
 			if syntaxError := parser.parseReturn(); syntaxError != nil {
 				return false, syntaxError
@@ -161,7 +164,7 @@ func (parser *sourceParser) parseBlock(stop tokenKind) (bool, *Error) {
 			if _, syntaxError := parser.accept(';'); syntaxError != nil {
 				return false, syntaxError
 			}
-			if parser.current.kind != stop {
+			if !isBlockFollower(parser.current.kind) {
 				return false, parser.syntaxError(
 					parser.current.line,
 					"return must be the last statement in its block",
@@ -187,6 +190,8 @@ func (parser *sourceParser) parseStatement() *Error {
 		return parser.parseDo()
 	case tokenFunction:
 		return parser.parseFunctionStatement()
+	case tokenIf:
+		return parser.parseIf()
 	case tokenLocal:
 		return parser.parseLocal()
 	case tokenName, '(':
@@ -210,7 +215,7 @@ func (parser *sourceParser) parseDo() *Error {
 		return syntaxError
 	}
 	parser.function.enterBlock()
-	_, syntaxError := parser.parseBlock(tokenEnd)
+	_, syntaxError := parser.parseBlock()
 	if syntaxError != nil {
 		return syntaxError
 	}
@@ -220,6 +225,94 @@ func (parser *sourceParser) parseDo() *Error {
 	}
 	parser.function.leaveBlock(end.line)
 	return nil
+}
+
+func (parser *sourceParser) parseIf() *Error {
+	if syntaxError := parser.enterNesting(); syntaxError != nil {
+		return syntaxError
+	}
+	defer parser.leaveNesting()
+
+	emitter := parser.function
+	endExits := emptyJumpList
+	for {
+		if parser.current.kind != tokenIf &&
+			parser.current.kind != tokenElseIf {
+			panic("lua: compiler lost an if branch")
+		}
+		if syntaxError := parser.advance(); syntaxError != nil {
+			return syntaxError
+		}
+		condition, syntaxError := parser.parseExpression()
+		if syntaxError != nil {
+			return syntaxError
+		}
+		falseExits, syntaxError := parser.conditionFalseExits(
+			&condition,
+			condition.line,
+		)
+		if syntaxError != nil {
+			return syntaxError
+		}
+		if _, syntaxError = parser.expect(tokenThen); syntaxError != nil {
+			return syntaxError
+		}
+
+		emitter.enterBlock()
+		returned, syntaxError := parser.parseBlock()
+		if syntaxError != nil {
+			return syntaxError
+		}
+		exitLine := parser.previousLine
+		emitter.leaveBlock(exitLine)
+
+		follower := parser.current.kind
+		hasNextArm := follower == tokenElseIf || follower == tokenElse
+		if !hasNextArm && follower != tokenEnd {
+			return parser.expected(tokenEnd)
+		}
+		if hasNextArm && !returned {
+			exit := emitter.emitJump(exitLine)
+			endExits, syntaxError = emitter.joinJumps(
+				exit,
+				endExits,
+			)
+			if syntaxError != nil {
+				return syntaxError
+			}
+		}
+		if syntaxError = emitter.patchConditionToHere(
+			falseExits,
+		); syntaxError != nil {
+			return syntaxError
+		}
+
+		switch follower {
+		case tokenElseIf:
+			continue
+		case tokenElse:
+			if syntaxError = parser.advance(); syntaxError != nil {
+				return syntaxError
+			}
+			emitter.enterBlock()
+			_, syntaxError = parser.parseBlock()
+			if syntaxError != nil {
+				return syntaxError
+			}
+			exitLine = parser.previousLine
+			emitter.leaveBlock(exitLine)
+			if _, syntaxError = parser.expect(tokenEnd); syntaxError != nil {
+				return syntaxError
+			}
+			return emitter.patchJumpsToHere(endExits)
+
+		case tokenEnd:
+			if _, syntaxError = parser.expect(tokenEnd); syntaxError != nil {
+				return syntaxError
+			}
+			return emitter.patchJumpsToHere(endExits)
+		}
+	}
 }
 
 func (parser *sourceParser) parseLocal() *Error {
@@ -305,8 +398,7 @@ func (parser *sourceParser) parseReturn() *Error {
 	if syntaxError := parser.advance(); syntaxError != nil {
 		return syntaxError
 	}
-	if parser.current.kind == tokenEOF ||
-		parser.current.kind == tokenEnd ||
+	if isBlockFollower(parser.current.kind) ||
 		parser.current.kind == ';' {
 		parser.function.emitABC(opReturn, 0, 1, 0, line)
 		return nil

@@ -120,6 +120,46 @@ func plainNumericConstant(value compiledExpression) bool {
 		value.falseExits == emptyJumpList
 }
 
+// conditionFalseExits lowers a condition with its truthy path falling
+// through and returns every pending false exit.
+func (parser *sourceParser) conditionFalseExits(
+	value *compiledExpression,
+	line uint32,
+) (jumpList, *Error) {
+	emitter := parser.function
+	if value.kind == expressionConstant {
+		if !constantTruth(value.constant) {
+			exit := emitter.emitJump(line)
+			var syntaxError *Error
+			value.falseExits, syntaxError = emitter.joinJumps(
+				exit,
+				value.falseExits,
+			)
+			if syntaxError != nil {
+				return emptyJumpList, syntaxError
+			}
+		}
+		if syntaxError := emitter.patchConditionToHere(
+			value.trueExits,
+		); syntaxError != nil {
+			return emptyJumpList, syntaxError
+		}
+		value.trueExits = emptyJumpList
+	} else if syntaxError := parser.fallThroughIfTrue(
+		value,
+		line,
+	); syntaxError != nil {
+		return emptyJumpList, syntaxError
+	}
+
+	exits := value.falseExits
+	value.falseExits = emptyJumpList
+	if emitter.registerTop != emitter.registerFloor {
+		panic("lua: condition retained temporary registers")
+	}
+	return exits, nil
+}
+
 // fallThroughIfTrue makes the truthy path continue at the next instruction
 // and leaves every false path pending.
 func (parser *sourceParser) fallThroughIfTrue(
@@ -216,6 +256,21 @@ func (parser *sourceParser) emitValueExit(
 	truth bool,
 	line uint32,
 ) (jumpList, *Error) {
+	if register, ok := parser.function.takeDeferredNot(value); ok {
+		condition := 1
+		if truth {
+			condition = 0
+		}
+		parser.function.emitABC(
+			opTest,
+			register,
+			0,
+			condition,
+			line,
+		)
+		return parser.function.emitJump(line), nil
+	}
+
 	register, syntaxError := parser.expressionValueToRegister(value, line)
 	if syntaxError != nil {
 		return emptyJumpList, syntaxError

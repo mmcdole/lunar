@@ -285,7 +285,7 @@ func (parser *sourceParser) parseFunctionBody(
 			parser.function = parent
 		}()
 
-		returned, bodyError := parser.parseBlock(tokenEnd)
+		returned, bodyError := parser.parseBlock()
 		if bodyError != nil {
 			return nil, bodyError
 		}

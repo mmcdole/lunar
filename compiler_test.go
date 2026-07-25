@@ -269,6 +269,27 @@ func TestCompilerPatchesAllocationFreeJumpLists(t *testing.T) {
 	}
 }
 
+func TestCompilerReportsControlStructureBeyondJumpRange(t *testing.T) {
+	unit := newCompileUnit("@jumps.lua")
+	function, syntaxError := unit.newFunction(nil, 1, 0, 0)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	jump := function.emitJump(7)
+	syntaxError = function.setJump(
+		jump,
+		maxOperandsBx+2,
+	)
+	if syntaxError == nil ||
+		syntaxError.Category() != SyntaxError ||
+		!strings.Contains(
+			syntaxError.Error(),
+			"control structure is too long",
+		) {
+		t.Fatalf("out-of-range jump error = %v", syntaxError)
+	}
+}
+
 func TestCompilerRejectsUnresolvedControlFlow(t *testing.T) {
 	unit := newCompileUnit("@jumps.lua")
 	function, syntaxError := unit.newFunction(nil, 1, 0, 0)

@@ -95,9 +95,14 @@ return slot, or enclosing operand. Sealing rejects any unresolved result.
 Comparisons and logical operators remain control-flow expressions until a
 value is required. Separate true and false exit lists preserve Lua's
 operand-valued `and` and `or` semantics without eagerly constructing
-booleans. Flat, right-associated concatenation chains are emitted as one
-instruction over a contiguous register span. The executor must reduce that
-span from right to left so `__concat` calls observe Lua 5.1 ordering.
+booleans. Statement conditions consume those exits directly; `if` chains are
+lowered iteratively, and each arm closes its own captured locals before
+escaping to the merge point. A trailing `NOT` is removed when its only
+consumer is control flow, replacing it with one test of the original register
+at the opposite polarity. Flat, right-associated concatenation chains are
+emitted as one instruction over a contiguous register span. The executor must
+reduce that span from right to left so `__concat` calls observe Lua 5.1
+ordering.
 
 An indexed expression retains its table register and RK key until it is read
 or assigned. Its descriptor records the lowest temporary owning those

@@ -292,6 +292,33 @@ func (function *functionState) bindResult(pc, register int) {
 	function.pendingResults--
 }
 
+// takeDeferredNot removes an unbound trailing NOT so control-flow consumers
+// can branch on its input with inverted polarity. It returns false once any
+// later instruction makes removing the result unsafe.
+func (function *functionState) takeDeferredNot(
+	value *compiledExpression,
+) (int, bool) {
+	if value.kind != expressionDeferred ||
+		value.info != function.currentPC()-1 {
+		return 0, false
+	}
+	pc := value.info
+	code := function.builder.code[pc]
+	if code.opcode() != opNot || code.a() != noRegister {
+		return 0, false
+	}
+	if function.pendingResults == 0 ||
+		len(function.builder.debug.lines) != len(function.builder.code) {
+		panic("lua: deferred NOT bookkeeping is inconsistent")
+	}
+	function.builder.code = function.builder.code[:pc]
+	function.builder.debug.lines =
+		function.builder.debug.lines[:pc]
+	function.pendingResults--
+	value.kind = expressionInvalid
+	return code.b(), true
+}
+
 func (function *functionState) enterBlock() {
 	if function.registerTop != function.registerFloor {
 		panic("lua: compiler block entered with live temporaries")
