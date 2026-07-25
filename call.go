@@ -39,7 +39,7 @@ func (thread *Thread) pushFunctionCall(
 	argumentCount int,
 	wantedResults int,
 ) *Error {
-	if len(thread.frames) >= thread.state.options.MaxFrames {
+	if len(thread.frames) >= thread.frameLimit() {
 		return newResourceError("stack overflow")
 	}
 	layout, resourceError := thread.planFunctionCall(
@@ -128,7 +128,7 @@ func (thread *Thread) pushFunctionMetamethodCall(
 	argumentCount int,
 	wantedResults int,
 ) *Error {
-	if len(thread.frames) >= thread.state.options.MaxFrames {
+	if len(thread.frames) >= thread.frameLimit() {
 		return newResourceError("stack overflow")
 	}
 	thread.checkFunctionCallWindow(
@@ -332,7 +332,9 @@ func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
 	newTop := resultBase + outputCount
 	if wanted != allResults && frameIndex != 0 {
 		caller := thread.frames[frameIndex-1]
-		newTop = int(caller.base) + int(caller.function.prototype.registers)
+		if prototype := caller.function.prototype; prototype != nil {
+			newTop = int(caller.base) + int(prototype.registers)
+		}
 	}
 	thread.completeLuaReturn(
 		firstResult,
@@ -552,7 +554,7 @@ func (thread *Thread) planFunctionCallLayout(
 			required = resultEnd
 		}
 	}
-	if required > thread.state.options.MaxValues ||
+	if required > thread.valueLimit() ||
 		uint64(required) > uint64(^uint32(0)) {
 		return callLayout{}, newResourceError(
 			"value stack limit of %d exceeded",
@@ -712,7 +714,8 @@ func (thread *Thread) makeLegacyArgTable(
 }
 
 func (thread *Thread) reserveValues(required int) {
-	if required < 0 || required > thread.state.options.MaxValues {
+	limit := thread.valueLimit()
+	if required < 0 || required > limit {
 		panic("lua: invalid value stack reservation")
 	}
 	if required <= len(thread.values) {
@@ -723,7 +726,6 @@ func (thread *Thread) reserveValues(required int) {
 		return
 	}
 
-	limit := thread.state.options.MaxValues
 	capacity := cap(thread.values)
 	if capacity < 16 {
 		capacity = 16
@@ -754,14 +756,14 @@ func (thread *Thread) reserveValues(required int) {
 }
 
 func (thread *Thread) reserveFrames(required int) {
-	if required < 0 || required > thread.state.options.MaxFrames {
+	limit := thread.frameLimit()
+	if required < 0 || required > limit {
 		panic("lua: invalid call frame reservation")
 	}
 	if required <= cap(thread.frames) {
 		return
 	}
 
-	limit := thread.state.options.MaxFrames
 	capacity := cap(thread.frames)
 	if capacity < 8 {
 		capacity = 8

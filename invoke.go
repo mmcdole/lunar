@@ -152,7 +152,11 @@ func (state *State) prepareMainCall(
 		len(thread.frames) != 0 ||
 		len(thread.continuations) != 0 ||
 		thread.openUpvalues != nil ||
-		thread.activeNativeToken != 0 {
+		thread.activeNativeToken != 0 ||
+		thread.nativeCallDepth != 0 ||
+		thread.errorHandlerDepth != 0 ||
+		state.limits.values != state.options.MaxValues ||
+		state.limits.frames != state.options.MaxFrames {
 		panic("lua: ready main thread retains execution state")
 	}
 	if err := state.runtime.accept(callable); err != nil {
@@ -219,6 +223,12 @@ func (thread *Thread) resetMainCall() {
 	thread.top = 0
 	thread.frameExtent = 0
 	thread.activeNativeToken = 0
+	thread.nativeCallDepth = 0
+	thread.errorHandlerDepth = 0
+	thread.state.limits = resourceLimits{
+		values: thread.state.options.MaxValues,
+		frames: thread.state.options.MaxFrames,
+	}
 	thread.clearInactive(0, extent)
 	thread.status = ThreadReady
 }

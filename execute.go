@@ -697,7 +697,7 @@ func prepareOpenVararg(
 	destination int,
 	resultCount int,
 ) *Error {
-	limit := thread.state.options.MaxValues
+	limit := thread.valueLimit()
 	if destination < 0 ||
 		resultCount < 0 ||
 		destination > limit ||

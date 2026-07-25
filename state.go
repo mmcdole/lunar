@@ -37,14 +37,23 @@ var ErrCapacity = errors.New("lua: capacity hint is too large")
 // Options is copied by New. Mutating the caller's value after construction
 // does not affect a live State.
 type Options struct {
-	// MaxValues limits values held by the execution stack. Zero selects 65,536
-	// values. Exceeding the limit during Lua execution raises an ordinary Lua
-	// error classified as ResourceError.
+	// MaxValues limits values held by ordinary execution. Zero selects 65,536
+	// values. Exceeding the limit raises an ordinary Lua error classified as
+	// ResourceError. While an xpcall error handler runs, the runtime provides
+	// bounded emergency capacity of max(64, MaxValues/8) additional values so
+	// the handler can report an exhaustion failure.
 	MaxValues int
-	// MaxFrames limits nested Lua and native activations together. Zero selects
-	// 20,000 activations. Exceeding the limit raises Lua 5.1's ordinary "stack
-	// overflow" error, classified as ResourceError.
+	// MaxFrames limits ordinary nested Lua and native activations together.
+	// Zero selects 20,000 activations. Exceeding the limit raises Lua 5.1's
+	// ordinary "stack overflow" error, classified as ResourceError. An xpcall
+	// error handler receives bounded emergency capacity of
+	// max(8, MaxFrames/8) additional activations.
 	MaxFrames int
+}
+
+type resourceLimits struct {
+	values int
+	frames int
 }
 
 const (
@@ -88,6 +97,7 @@ type State struct {
 	noCopy         noCopy
 	runtime        *runtimeState
 	options        Options
+	limits         resourceLimits
 	main           *Thread
 	globals        *Table
 	registry       *Table
@@ -107,7 +117,14 @@ func New(options Options) (*State, error) {
 	}
 
 	rt := &runtimeState{}
-	state := &State{runtime: rt, options: options}
+	state := &State{
+		runtime: rt,
+		options: options,
+		limits: resourceLimits{
+			values: options.MaxValues,
+			frames: options.MaxFrames,
+		},
+	}
 	state.main = &Thread{
 		objectHeader: objectHeader{owner: rt},
 		state:        state,
@@ -414,6 +431,8 @@ type Thread struct {
 	top               int
 	frameExtent       int
 	activeNativeToken uint64
+	nativeCallDepth   uint16
+	errorHandlerDepth uint16
 	status            ThreadStatus
 	main              bool
 }

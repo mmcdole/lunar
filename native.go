@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	maxNativeCaptures = 255
-	nativeTerminalBit = uint64(1) << 63
-	nativeTokenMask   = nativeTerminalBit - 1
+	maxNativeCaptures  = 255
+	maxNativeCallDepth = 200
+	nativeTerminalBit  = uint64(1) << 63
+	nativeTokenMask    = nativeTerminalBit - 1
 )
 
 // ErrInvalidNativeFunction reports construction with a nil native entry.
@@ -472,7 +473,7 @@ func (frame Frame) prepareResults(
 		outputCount = wanted
 	}
 	resultBase := int(call.resultBase)
-	limit := frame.thread.state.options.MaxValues
+	limit := frame.thread.valueLimit()
 	if outputCount < 0 ||
 		resultBase < 0 ||
 		resultBase > limit ||
@@ -528,9 +529,18 @@ func invokeNativeCall(thread *Thread) *Error {
 	if thread == nil ||
 		thread.state == nil ||
 		thread.owner == nil ||
-		thread.activeNativeToken != 0 ||
 		len(thread.frames) == 0 {
 		panic("lua: invalid native callback entry")
+	}
+	parentToken := thread.activeNativeToken
+	switch {
+	case parentToken == 0 && thread.nativeCallDepth != 0:
+		panic("lua: native callback depth has no active token")
+	case parentToken != 0 &&
+		(parentToken&nativeTerminalBit != 0 || thread.nativeCallDepth == 0):
+		panic("lua: invalid parent native callback")
+	case int(thread.nativeCallDepth) >= thread.nativeCallLimit():
+		return newResourceError("C stack overflow")
 	}
 	call := &thread.frames[len(thread.frames)-1]
 	function := call.function
@@ -546,12 +556,14 @@ func invokeNativeCall(thread *Thread) *Error {
 
 	token := thread.nextNativeToken()
 	thread.activeNativeToken = token
+	thread.nativeCallDepth++
 	callbackReturned := false
-	nativeDepth := len(thread.frames) - 1
+	nativeFrameDepth := len(thread.frames) - 1
 	defer func() {
-		thread.clearNativeToken(token)
+		thread.activeNativeToken = parentToken
+		thread.nativeCallDepth--
 		if !callbackReturned {
-			thread.unwindCalls(nativeDepth)
+			thread.unwindCalls(nativeFrameDepth)
 		}
 	}()
 
@@ -602,13 +614,6 @@ func (thread *Thread) nextNativeToken() uint64 {
 	}
 	thread.owner.nativeSequence++
 	return thread.owner.nativeSequence
-}
-
-func (thread *Thread) clearNativeToken(token uint64) {
-	active := thread.activeNativeToken
-	if active == token || active == token|nativeTerminalBit {
-		thread.activeNativeToken = 0
-	}
 }
 
 func newNativeRuntimeError(thread *Thread, message string) *Error {

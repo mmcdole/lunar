@@ -60,3 +60,32 @@ func TestZeroPublicObjectsAreNotCanonical(t *testing.T) {
 		t.Fatal("zero Function must not manufacture a valid canonical identity")
 	}
 }
+
+func TestPublicBaseLibraryProtectedCalls(t *testing.T) {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+	chunk, err := state.LoadString("@public-base.lua", `
+local ok, value = pcall(function() return 42 end)
+return ok, value
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || !results[0].Truth() {
+		t.Fatalf("pcall results = %v", results)
+	}
+	number, ok := results[1].AsNumber()
+	if !ok || number != 42 {
+		t.Fatalf("pcall value = (%v, %v); want 42", number, ok)
+	}
+}

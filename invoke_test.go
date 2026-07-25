@@ -1251,16 +1251,22 @@ func assertRootThreadReady(t *testing.T, thread *Thread) {
 		thread.frameExtent != 0 ||
 		len(thread.frames) != 0 ||
 		len(thread.continuations) != 0 ||
-		thread.openUpvalues != nil {
+		thread.openUpvalues != nil ||
+		thread.activeNativeToken != 0 ||
+		thread.nativeCallDepth != 0 ||
+		thread.errorHandlerDepth != 0 {
 		t.Fatalf(
 			"root thread retained execution state: status=%v top=%d extent=%d "+
-				"frames=%d continuations=%d upvalues=%p",
+				"frames=%d continuations=%d upvalues=%p token=%d native=%d handler=%d",
 			thread.status,
 			thread.top,
 			thread.frameExtent,
 			len(thread.frames),
 			len(thread.continuations),
 			thread.openUpvalues,
+			thread.activeNativeToken,
+			thread.nativeCallDepth,
+			thread.errorHandlerDepth,
 		)
 	}
 	for index, value := range thread.values {

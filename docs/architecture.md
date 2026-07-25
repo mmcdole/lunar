@@ -102,10 +102,13 @@ Files are organized by substantial runtime concepts:
   list installation, and indexed metamethod resolution;
 - `native.go`: borrowed native call frames, typed argument and result access,
   captured values, terminal outcomes, and the Go callback seam;
+- `protected.go`: metadata-only protected checkpoints, live-stack error
+  handlers, emergency quota headroom, and compact result publication;
 - `load.go`: public source compilation and State-bound Function loading;
 - `invoke.go`: protected main-Thread calls and owning or caller-supplied result
   egress;
-- later `library_*.go`: standard libraries using native frames.
+- `library_base.go`: the Lua 5.1 base library using native frames; later
+  `library_*.go` files add the remaining standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -682,16 +685,22 @@ is only additional classification for Go callers, not a separate uncatchable
 control-flow class. Actual Go allocation failure is not treated as a recoverable
 Lua quota failure.
 
-Lua `pcall` and `xpcall` will install protected checkpoints inside this same
+Lua `pcall` and `xpcall` install metadata-only checkpoints inside this same
 executor rather than recursively invoking the public `State.Call` boundary.
-The checkpoint must intercept an error before root unwind, allow an `xpcall`
-handler to inspect the still-live failing frames, then close upvalues and
-restore frames, continuations, and value extents only to the protected depth.
-It preserves arbitrary Lua error values; a handler failure becomes Lua 5.1's
-fixed `error in error handling` value. Deterministic ResourceError values are
-catchable there. A future controlled allocator failure would instead need
-Lua's distinct source-less, handler-skipping memory-error path; an unrecoverable
-Go runtime allocation failure is not converted.
+A checkpoint intercepts failure before traceback allocation or unwind.
+`xpcall` runs its exact-Function handler above the still-live failing frames,
+then closes scratch upvalues and restores only frames, continuations, and
+value extents created above the protected depth. Lua-visible mutations remain.
+Arbitrary error Values retain identity; a missing or failing handler becomes
+Lua 5.1's fixed `error in error handling` value.
+
+Error handlers share bounded, non-compounding emergency capacity beyond the
+configured frame, value, and native-call limits. The normal limits and
+capacity-based fast-call admission are restored before the protecting native
+call returns. Deterministic ResourceError values are catchable. A future
+controlled allocator failure would instead need Lua's distinct source-less,
+handler-skipping memory-error path; an unrecoverable Go runtime allocation
+failure is not converted.
 
 Type errors recover PUC-style local, upvalue, global, field, and method names by
 tracing verified bytecode only after failure; no provenance is stored in Values,

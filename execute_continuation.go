@@ -69,7 +69,7 @@ func startMetamethodCall(
 			)
 		}
 	}
-	if len(thread.frames) >= thread.state.options.MaxFrames {
+	if len(thread.frames) >= thread.frameLimit() {
 		return newResourceError("stack overflow")
 	}
 
@@ -82,7 +82,7 @@ func startMetamethodCall(
 		stagedValues++
 		callArgumentCount++
 	}
-	limit := thread.state.options.MaxValues
+	limit := thread.valueLimit()
 	if scratchBase < 0 ||
 		scratchBase > limit ||
 		stagedValues > limit-scratchBase ||
@@ -167,7 +167,7 @@ func startIteratorCall(
 			)
 		}
 	}
-	if len(thread.frames) >= thread.state.options.MaxFrames {
+	if len(thread.frames) >= thread.frameLimit() {
 		return newResourceError("stack overflow")
 	}
 

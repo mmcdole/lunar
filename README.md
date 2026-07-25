@@ -25,8 +25,10 @@ typed Frames over the same compact stack, including calls from metamethod and
 iterator continuations. Go can compile State-neutral Prototypes, load them
 into distinct States, and invoke Lua or callable objects through protected
 `Call` and caller-buffer `CallInto` boundaries. Warmed nonallocating calls
-through `CallInto` add no boundary allocation. Contexts, coroutines, and the
-standard libraries are still under construction.
+through `CallInto` add no boundary allocation. The explicitly opened base
+library now includes Lua 5.1 `pcall` and `xpcall` over the same executor;
+their warmed success paths allocate nothing. Contexts, coroutines, and the
+remainder of the standard libraries are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.
