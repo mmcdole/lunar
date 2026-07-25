@@ -15,6 +15,35 @@ type Function struct {
 	upvalues    []*upvalue
 }
 
+func newLuaFunction(
+	owner *runtimeState,
+	prototype *Prototype,
+	environment *Table,
+	upvalues []*upvalue,
+) *Function {
+	if owner == nil || prototype == nil || !prototype.sealed {
+		panic("lua: invalid Lua function")
+	}
+	if environment == nil || environment.owner != owner {
+		panic("lua: invalid Lua function environment")
+	}
+	if len(upvalues) != int(prototype.upvalues) {
+		panic("lua: Lua function upvalue count does not match its prototype")
+	}
+	ownedUpvalues := exactSlice(upvalues)
+	for _, value := range ownedUpvalues {
+		if value == nil {
+			panic("lua: Lua function has a nil upvalue")
+		}
+	}
+	return &Function{
+		objectHeader: objectHeader{owner: owner},
+		prototype:    prototype,
+		environment:  environment,
+		upvalues:     ownedUpvalues,
+	}
+}
+
 // Value returns the owning Lua value for function.
 func (function *Function) Value() Value {
 	if function == nil || function.owner == nil {

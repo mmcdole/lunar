@@ -79,9 +79,12 @@ Files are organized by substantial runtime concepts:
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
 - `function.go`: canonical functions and compact upvalues;
+- `call.go`: compact activations, shared-stack call layout, varargs, tail
+  replacement, and result adjustment;
 - later `load.go`: source and bytecode loading;
 - later `execute.go`: dispatch and activations;
-- later `call.go`: Lua/native calls, frames, outcomes, and continuations; and
+- later native-frame additions to `call.go`: Go calls, outcomes, and
+  continuations; and
 - later `library_*.go`: standard libraries using native frames.
 
 A file is split only when the resulting modules have independently meaningful
@@ -171,6 +174,32 @@ setup only when the function never uses `...`. Encountering a vararg
 expression clears that requirement. This preserves the standard Lua 5.1
 distribution's behavior without putting an argument table on functions that
 use the current vararg expression.
+
+## Calls and activations
+
+Every Thread owns one contiguous compact-slot stack shared by all active Lua
+calls. An activation stores only a canonical Function, register base, result
+destination, published program counter, argument count, the caller's saved
+frame high-water mark, and requested result count. On 64-bit systems it is 32
+bytes. Register windows are ranges in the shared stack; they are not slices
+retained by the activation, so stack growth cannot invalidate a frame or open
+upvalue. The saved high-water mark makes dead-suffix cleanup constant-time
+even when nested frame ends are not monotonic.
+
+Fixed-argument functions reuse the call's argument area as register zero.
+Vararg functions leave their original arguments below the activation and copy
+only fixed parameters to a fresh register window above them, matching Lua
+5.1's call layout. The activation's result destination and parameter count
+therefore locate the hidden varargs without another pointer or slice. Thread
+top is the fixed frame end during ordinary execution and becomes the exact
+boundary only while arguments or results are open.
+
+Tail calls move their callable and arguments to the current activation's
+original result destination, close its open upvalues, and replace the
+activation in place. Normal Lua calls and returns will therefore remain
+iterative inside one executor rather than recursing through Go. Inactive stack
+slots and popped activations are cleared promptly so a warm reusable stack
+does not retain dead Lua graphs.
 
 ## Build order
 

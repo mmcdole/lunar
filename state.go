@@ -117,6 +117,9 @@ func (state *State) Close() error {
 	if state.main != nil {
 		state.main.closeUpvalues(0)
 		state.main.values = nil
+		state.main.frames = nil
+		state.main.top = 0
+		state.main.frameExtent = 0
 		state.main.status = ThreadClosed
 	}
 	state.globals = nil
@@ -380,7 +383,10 @@ type Thread struct {
 	objectHeader
 	state        *State
 	values       []slot
+	frames       []activation
 	openUpvalues *upvalue
+	top          int
+	frameExtent  int
 	status       ThreadStatus
 	main         bool
 }

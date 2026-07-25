@@ -104,6 +104,14 @@ func newSourceSyntaxError(
 	}
 }
 
+func newResourceError(format string, arguments ...any) *Error {
+	return &Error{
+		value:       Nil(),
+		description: fmt.Sprintf(format, arguments...),
+		category:    ResourceError,
+	}
+}
+
 const maxSourceID = 59
 
 func sourceID(source string) string {
