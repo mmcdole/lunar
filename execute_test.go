@@ -312,7 +312,7 @@ end
 	if !ok || len(closure.upvalues) != 1 {
 		t.Fatalf("closure result = %v", thread.values[0].owningValue())
 	}
-	if closure.upvalues[0].thread != nil || thread.openUpvalues != nil {
+	if testUpvalueIsOpen(closure.upvalues[0]) || thread.openUpvalues != nil {
 		t.Fatal("return left the captured local open")
 	}
 
@@ -1194,7 +1194,7 @@ return get, set
 		len(getter.upvalues) != 1 ||
 		len(setter.upvalues) != 1 ||
 		getter.upvalues[0] != setter.upvalues[0] ||
-		getter.upvalues[0].thread != nil {
+		testUpvalueIsOpen(getter.upvalues[0]) {
 		t.Fatal("sibling closures do not share one closed upvalue")
 	}
 
@@ -1208,6 +1208,32 @@ return get, set
 	thread, result = executeTestFunction(t, state, getter)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(99))
+}
+
+func TestExecutorRecursiveClosureRetainsSelfAcrossGC(t *testing.T) {
+	state, thread, result := executeTestChunk(t, `
+local function recurse()
+	return recurse
+end
+return recurse
+`)
+	defer state.Close()
+	assertExecutionReturned(t, result)
+	function, ok := thread.values[0].owningValue().Function()
+	if !ok || len(function.upvalues) != 1 {
+		t.Fatal("recursive closure did not capture itself")
+	}
+	if testUpvalueIsOpen(function.upvalues[0]) {
+		t.Fatal("returned recursive closure left its upvalue open")
+	}
+
+	runtime.GC()
+	thread, result = executeTestFunction(t, state, function)
+	assertExecutionReturned(t, result)
+	returned, ok := thread.values[0].owningValue().Function()
+	if !ok || returned != function {
+		t.Fatal("recursive closure lost its identity across collection")
+	}
 }
 
 func TestExecutorClosesCapturedBlockBeforeRegisterReuse(t *testing.T) {
@@ -1251,7 +1277,7 @@ return getter
 	getter, ok := thread.values[0].owningValue().Function()
 	if !ok ||
 		len(getter.upvalues) != 1 ||
-		getter.upvalues[0].thread != nil {
+		testUpvalueIsOpen(getter.upvalues[0]) {
 		t.Fatal("block closure retained an open stack value")
 	}
 	thread, result = executeTestFunction(t, state, getter)
@@ -1493,42 +1519,57 @@ end
 		},
 	} {
 		b.Run(test.name, func(b *testing.B) {
-			state, err := New(Options{})
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.Cleanup(func() {
-				_ = state.Close()
-			})
-			initializer := compileTestFunction(
+			benchmarkExecutorSource(
 				b,
-				state,
 				"@call-matrix.lua",
 				test.source,
+				iterations,
+				"lua-calls/op",
+				Number(iterations),
 			)
-			thread, result := executeTestFunction(
+		})
+	}
+}
+
+func BenchmarkExecutorUpvalueLoop(b *testing.B) {
+	const iterations = 1000
+	for _, test := range []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "closed read",
+			source: `
+local captured = 17
+function benchmark_kernel(iterations)
+	local value
+	for _ = 1, iterations do
+		value = captured
+	end
+	return value
+end
+`,
+		},
+		{
+			name: "closed write",
+			source: `
+local captured = 0
+function benchmark_kernel(iterations)
+	for value = 1, iterations do
+		captured = value
+	end
+	return captured
+end
+`,
+		},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			benchmarkExecutorSource(
 				b,
-				state,
-				initializer,
-			)
-			if result.kind != executionReturned ||
-				result.err != nil ||
-				thread.top != 0 {
-				b.Fatalf("call benchmark initialization = %+v", result)
-			}
-			value, valueErr := state.Global("benchmark_kernel")
-			if valueErr != nil {
-				b.Fatal(valueErr)
-			}
-			function, ok := value.Function()
-			if !ok {
-				b.Fatal("call benchmark did not publish benchmark_kernel")
-			}
-			b.ReportMetric(iterations, "lua-calls/op")
-			benchmarkExecutorFunction(
-				b,
-				state,
-				function,
+				"@upvalue-loop.lua",
+				test.source,
+				iterations,
+				"upvalue-ops/op",
 				Number(iterations),
 			)
 		})
@@ -1662,6 +1703,41 @@ func benchmarkExecutorFunction(
 	for range b.N {
 		benchmarkRunExecutor(thread, function, argumentSlots)
 	}
+}
+
+func benchmarkExecutorSource(
+	b *testing.B,
+	name string,
+	source string,
+	operations int,
+	metric string,
+	arguments ...Value,
+) {
+	b.Helper()
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	initializer := compileTestFunction(b, state, name, source)
+	thread, result := executeTestFunction(b, state, initializer)
+	if result.kind != executionReturned ||
+		result.err != nil ||
+		thread.top != 0 {
+		b.Fatalf("benchmark initialization = %+v", result)
+	}
+	value, valueErr := state.Global("benchmark_kernel")
+	if valueErr != nil {
+		b.Fatal(valueErr)
+	}
+	function, ok := value.Function()
+	if !ok {
+		b.Fatal("benchmark did not publish benchmark_kernel")
+	}
+	b.ReportMetric(float64(operations), metric)
+	benchmarkExecutorFunction(b, state, function, arguments...)
 }
 
 func benchmarkRunExecutor(

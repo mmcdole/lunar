@@ -198,9 +198,10 @@ destination, published program counter, compressed eliminated-tail-call
 count, the caller's saved frame high-water mark, and requested result count.
 On 64-bit systems it is 32 bytes. Register windows are ranges in the shared
 stack; they are not slices retained by the activation, so stack growth cannot
-invalidate a frame or open upvalue. The saved high-water mark makes
-dead-suffix cleanup constant-time even when nested frame ends are not
-monotonic.
+invalidate a frame. Open upvalues use typed pointers into the value stack;
+the one operation that replaces its backing array retargets every open cell
+before execution resumes. The saved high-water mark makes dead-suffix cleanup
+constant-time even when nested frame ends are not monotonic.
 
 Fixed-argument functions reuse the call's argument area as register zero.
 Vararg functions leave their original arguments below the activation and copy
@@ -371,7 +372,60 @@ remains exactly 160 bytes. The executor text grows by 16 bytes. Returning the
 already-fetched instruction through `code[pc-1]`, rather than retaining a
 separate instruction local across the exit, is intentional: it prevents the
 Go compiler from adding 16 bytes to the executor frame. The next call-related
-question is closed-upvalue addressing, not another callsite cache.
+question was closed-upvalue addressing, not another callsite cache.
+
+### Permanent upvalue cells
+
+An upvalue has one permanent typed cell pointer. While it is open, the pointer
+addresses its captured register in the Thread value stack and its embedded
+storage records the absolute stack index used for ordering and relocation.
+When the register closes, its value moves into that storage and the pointer is
+retargeted to it. Reads and writes therefore use the same single pointer
+indirection in both states; the executor does not branch on open versus closed
+or reload a Thread, slice, and dynamic index.
+
+The representation is 32 bytes on 64-bit systems:
+
+```text
+cell *slot
+next *upvalue
+storage slot
+```
+
+This follows the permanent-cell principle used by PUC Lua while keeping every
+Go pointer visible to the collector. A self-pointer into embedded storage and
+an interior pointer into the value-stack array are both typed Go pointers.
+Stack growth copies the stack first and then walks the descending open-upvalue
+list once to retarget cells. Return, tail-call replacement, unwind, explicit
+close, and State close copy the value through `writeSlot` before releasing the
+stack root. Lua Functions validate their private upvalue slice at construction,
+so GETUPVAL and SETUPVAL need no defensive nil checks in the hot executor.
+
+Against the fixed-transition checkpoint, 20 alternating one-CPU pairs measured
+the 1,000-call closed-upvalue cell 1.88% faster, with a 95% ratio interval of
+0.9750 to 0.9874. Isolated 1,000-operation read and write loops were unchanged
+within noise and remained allocation-free. Zero-, one-, and two-result control
+calls changed by less than 0.3% in paired medians. The arm64 executor frame
+remains 160 bytes and its text shrinks by 208 bytes. Creating and closing one
+escaping upvalue improved from 23.26 to 21.18 ns in a separate 20-pair gate;
+its allocator charge fell from 48 to 32 bytes while retaining one allocation.
+
+Matched PUC 5.1.5 controls locate the remaining difference outside the
+upvalue cell:
+
+| 1,000 operations | Badger | PUC 5.1.5 | Ratio |
+| --- | ---: | ---: | ---: |
+| closed upvalue read | 4.463 us | 3.306 us | 1.350x |
+| closed upvalue write | 4.437 us | 2.883 us | 1.539x |
+| local-register move control | 4.55 us | 3.32 us | about 1.37x |
+| child call reading an open upvalue | 21.894 us | 19.588 us | 1.118x |
+
+Closed-upvalue access is now at least as fast as Badger's ordinary local-slot
+path. Profiles attribute the residual principally to instruction dispatch,
+numeric-loop conversion, slot writes, and Go slice/bounds machinery rather
+than upvalue state selection. Future call work should target those general
+costs or register initialization, not layer another special upvalue cache over
+the permanent cell.
 
 ## Execution
 

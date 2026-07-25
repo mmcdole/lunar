@@ -2,10 +2,17 @@ package lua
 
 import (
 	"errors"
+	"runtime"
 	"testing"
+	"unsafe"
 )
 
 func TestCompactUpvalueLifecycle(t *testing.T) {
+	size := unsafe.Sizeof(upvalue{})
+	wantSize := 2*unsafe.Sizeof(uintptr(0)) + unsafe.Sizeof(slot{})
+	if size != wantSize {
+		t.Fatalf("upvalue size = %d bytes; want %d", size, wantSize)
+	}
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +40,7 @@ func TestCompactUpvalueLifecycle(t *testing.T) {
 	}
 
 	thread.closeUpvalues(2)
-	if high.thread != nil || high.index != -1 {
+	if testUpvalueIsOpen(high) {
 		t.Fatal("high upvalue did not close")
 	}
 	if thread.openUpvalues != middle {
@@ -44,7 +51,7 @@ func TestCompactUpvalueLifecycle(t *testing.T) {
 	}
 
 	thread.closeUpvalues(0)
-	if thread.openUpvalues != nil || middle.thread != nil {
+	if thread.openUpvalues != nil || testUpvalueIsOpen(middle) {
 		t.Fatal("remaining upvalues did not close")
 	}
 	middle.write(slotFromValue(Bool(true)))
@@ -55,6 +62,67 @@ func TestCompactUpvalueLifecycle(t *testing.T) {
 	closed := newClosedUpvalue(nilSlot)
 	if !closed.read().owningValue().IsNil() {
 		t.Fatal("new closed upvalue did not retain nil")
+	}
+}
+
+func testUpvalueIsOpen(upvalue *upvalue) bool {
+	return upvalue != nil &&
+		upvalue.cell != nil &&
+		upvalue.cell != &upvalue.storage
+}
+
+func TestLuaFunctionRejectsInvalidUpvalueCell(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	builder := testPrototypeBuilder(makeABC(opReturn, 0, 1, 0))
+	builder.upvalues = 1
+	prototype, syntaxError := builder.seal()
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("function accepted an upvalue without a value cell")
+		}
+	}()
+	newLuaFunctionOwned(
+		state.runtime,
+		prototype,
+		state.globals,
+		[]*upvalue{{}},
+	)
+}
+
+func TestStateClosePreservesRetainedOpenUpvalue(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := state.MainThread()
+	retained, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread.values = []slot{slotFromTable(retained)}
+	upvalue := thread.captureUpvalue(0)
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if thread.openUpvalues != nil || testUpvalueIsOpen(upvalue) {
+		t.Fatal("state close left a retained upvalue open")
+	}
+	if thread.values != nil {
+		t.Fatal("state close retained the thread value stack")
+	}
+
+	runtime.GC()
+	value, ok := upvalue.read().owningValue().Table()
+	if !ok || value != retained {
+		t.Fatalf("closed upvalue retained (%p, %v); want %p", value, ok, retained)
 	}
 }
 

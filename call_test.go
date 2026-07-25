@@ -381,7 +381,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	assertTestSlot(t, thread.values[0], second.Value())
 	assertTestSlot(t, thread.values[1], Number(10))
 	assertTestSlot(t, thread.values[2], Number(20))
-	if captured.thread != nil {
+	if testUpvalueIsOpen(captured) {
 		t.Fatal("tail replacement left a current-frame upvalue open")
 	}
 	assertTestSlot(t, captured.read(), capturedValue)
@@ -426,6 +426,7 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 	capturedIndex := int(frame.base)
 	thread.values[capturedIndex] = slotFromValue(state.String("before growth"))
 	captured := thread.captureUpvalue(capturedIndex)
+	oldCell := captured.cell
 	oldCapacity := cap(thread.values)
 
 	callBase := int(frame.base) + 1
@@ -436,9 +437,63 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 	if cap(thread.values) <= oldCapacity {
 		t.Fatalf("value stack capacity did not grow beyond %d", oldCapacity)
 	}
+	if captured.cell == oldCell ||
+		captured.cell != &thread.values[capturedIndex] {
+		t.Fatal("stack growth did not retarget the open upvalue cell")
+	}
 	assertTestSlot(t, captured.read(), state.String("before growth"))
 	captured.write(slotFromValue(Number(42)))
 	assertTestSlot(t, thread.values[capturedIndex], Number(42))
+}
+
+func TestValueStackGrowthRetargetsOpenUpvalueCells(t *testing.T) {
+	state, err := New(Options{MaxValues: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	thread := state.MainThread()
+	thread.values = make([]slot, 4, 4)
+	lowValue := state.String("low")
+	highValue := state.String("high")
+	thread.values[1] = slotFromValue(lowValue)
+	thread.values[3] = slotFromValue(highValue)
+	low := thread.captureUpvalue(1)
+	high := thread.captureUpvalue(3)
+	firstBacking := thread.values
+
+	thread.reserveValues(32)
+	if low.cell != &thread.values[1] ||
+		high.cell != &thread.values[3] {
+		t.Fatal("first growth did not retarget every open upvalue")
+	}
+	firstBacking[1] = slotFromValue(Number(1))
+	firstBacking[3] = slotFromValue(Number(3))
+	assertTestSlot(t, low.read(), lowValue)
+	assertTestSlot(t, high.read(), highValue)
+	runtime.GC()
+
+	secondBacking := thread.values
+	thread.reserveValues(128)
+	if low.cell != &thread.values[1] ||
+		high.cell != &thread.values[3] {
+		t.Fatal("second growth did not retarget every open upvalue")
+	}
+	secondBacking[1] = slotFromValue(Number(11))
+	secondBacking[3] = slotFromValue(Number(13))
+	assertTestSlot(t, low.read(), lowValue)
+	assertTestSlot(t, high.read(), highValue)
+	runtime.GC()
+
+	thread.closeUpvalues(0)
+	if testUpvalueIsOpen(low) || testUpvalueIsOpen(high) {
+		t.Fatal("closing did not retarget upvalues to embedded storage")
+	}
+	thread.values[1] = slotFromValue(Number(21))
+	thread.values[3] = slotFromValue(Number(23))
+	runtime.GC()
+	assertTestSlot(t, low.read(), lowValue)
+	assertTestSlot(t, high.read(), highValue)
 }
 
 func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
@@ -481,7 +536,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 			thread.top,
 		)
 	}
-	if childUpvalue.thread != nil || rootUpvalue.thread != thread {
+	if testUpvalueIsOpen(childUpvalue) || !testUpvalueIsOpen(rootUpvalue) {
 		t.Fatal("partial unwind closed the wrong upvalues")
 	}
 	assertTestSlot(t, childUpvalue.read(), state.String("child"))
@@ -495,7 +550,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 	if len(thread.frames) != 0 ||
 		thread.top != 0 ||
 		thread.frameExtent != 0 ||
-		rootUpvalue.thread != nil {
+		testUpvalueIsOpen(rootUpvalue) {
 		t.Fatal("root unwind did not release the execution stack")
 	}
 	assertTestSlot(t, rootUpvalue.read(), state.String("root"))
@@ -915,7 +970,8 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 				t.Fatal("staged returns use different source bases")
 			}
 			assertTestThreadStateEqual(t, fast, checked)
-			if fastUpvalue.thread != nil || checkedUpvalue.thread != nil {
+			if testUpvalueIsOpen(fastUpvalue) ||
+				testUpvalueIsOpen(checkedUpvalue) {
 				t.Fatal("return left a callee upvalue open")
 			}
 			if !rawSlotEqual(fastUpvalue.read(), checkedUpvalue.read()) {
@@ -1048,7 +1104,8 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("tail value limit error = %v", callErr)
 		}
-		if captured.thread != thread ||
+		if !testUpvalueIsOpen(captured) ||
+			captured.cell != &thread.values[int(frame.base)] ||
 			thread.top != beforeTop ||
 			!slices.Equal(thread.values, beforeValues) ||
 			!slices.Equal(thread.frames, beforeFrames) {

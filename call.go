@@ -706,6 +706,9 @@ func (thread *Thread) reserveValues(required int) {
 	grown := make([]slot, required, capacity)
 	copy(grown, thread.values)
 	thread.values = grown
+	for upvalue := thread.openUpvalues; upvalue != nil; upvalue = upvalue.next {
+		upvalue.cell = &thread.values[upvalue.stackIndex()]
+	}
 }
 
 func (thread *Thread) reserveFrames(required int) {

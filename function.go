@@ -45,8 +45,8 @@ func newLuaFunctionOwned(
 		panic("lua: Lua function upvalue count does not match its prototype")
 	}
 	for _, value := range upvalues {
-		if value == nil {
-			panic("lua: Lua function has a nil upvalue")
+		if value == nil || value.cell == nil {
+			panic("lua: Lua function has an invalid upvalue")
 		}
 	}
 	return &Function{
@@ -85,15 +85,19 @@ func (function *Function) UpvalueCount() int {
 	return len(function.upvalues)
 }
 
+// An upvalue's cell points into a Thread value stack while open. storage.bits
+// holds the absolute stack index needed for ordering and relocation. Once
+// closed, cell points at storage, which holds the Lua value.
 type upvalue struct {
-	thread *Thread
-	index  int
-	closed slot
-	next   *upvalue
+	cell    *slot
+	next    *upvalue
+	storage slot
 }
 
 func newClosedUpvalue(value slot) *upvalue {
-	return &upvalue{index: -1, closed: value}
+	created := &upvalue{storage: value}
+	created.cell = &created.storage
+	return created
 }
 
 func (thread *Thread) captureUpvalue(index int) *upvalue {
@@ -101,48 +105,43 @@ func (thread *Thread) captureUpvalue(index int) *upvalue {
 		panic("lua: invalid open upvalue index")
 	}
 	link := &thread.openUpvalues
-	for *link != nil && (*link).index > index {
+	for *link != nil && (*link).stackIndex() > index {
 		link = &(*link).next
 	}
-	if *link != nil && (*link).index == index {
+	if *link != nil && (*link).stackIndex() == index {
 		return *link
 	}
-	created := &upvalue{thread: thread, index: index, next: *link}
+	created := &upvalue{
+		next:    *link,
+		storage: slot{bits: uint64(index)},
+	}
+	created.cell = &thread.values[index]
 	*link = created
 	return created
 }
 
 func (upvalue *upvalue) read() slot {
-	if upvalue == nil {
-		panic("lua: nil upvalue")
-	}
-	if upvalue.thread == nil {
-		return upvalue.closed
-	}
-	return upvalue.thread.values[upvalue.index]
+	return *upvalue.cell
 }
 
 func (upvalue *upvalue) write(value slot) {
-	if upvalue == nil {
-		panic("lua: nil upvalue")
-	}
-	if upvalue.thread == nil {
-		writeSlot(&upvalue.closed, value)
-		return
-	}
-	writeSlot(&upvalue.thread.values[upvalue.index], value)
+	writeSlot(upvalue.cell, value)
+}
+
+func (upvalue *upvalue) stackIndex() int {
+	return int(upvalue.storage.bits)
 }
 
 func (thread *Thread) closeUpvalues(from int) {
 	if thread == nil {
 		return
 	}
-	for thread.openUpvalues != nil && thread.openUpvalues.index >= from {
+	for thread.openUpvalues != nil &&
+		thread.openUpvalues.stackIndex() >= from {
 		upvalue := thread.openUpvalues
 		thread.openUpvalues = upvalue.next
+		writeSlot(&upvalue.storage, *upvalue.cell)
+		upvalue.cell = &upvalue.storage
 		upvalue.next = nil
-		upvalue.closed = thread.values[upvalue.index]
-		upvalue.thread = nil
-		upvalue.index = -1
 	}
 }
