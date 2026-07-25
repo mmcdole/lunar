@@ -218,6 +218,67 @@ calls and returns therefore remain iterative inside one executor rather than
 recursing through Go. Inactive stack slots and popped activations are cleared
 promptly so a warm reusable stack does not retain dead Lua graphs.
 
+### Direct Lua-call checkpoint
+
+The compact frame is not by itself a fast call path. At core checkpoint
+`83dcf30`, diagnostic runs on an Apple M3 Pro with Go 1.25.1 put a
+fixed-arity loop making 1,000 Lua-to-Lua calls at about 48.1 microseconds,
+versus about 31.5 microseconds in frozen Badger `169b37d`. A 128-call upstream
+GopherLua `75f4976` fixture projected to about 35.5 microseconds per 1,000
+calls. The harnesses were not identical, so these figures locate a problem;
+they are not a qualification result. Their allocation-free execution makes
+heap allocation unlikely to be the primary cause, but does not isolate call
+transition cost from loop, dispatch, and callee-body work.
+
+PUC Lua 5.1 provides the relevant control-flow model. `OP_CALL` publishes the
+caller's PC, invokes `luaD_precall`, and, for a Lua callee, jumps to a
+`reentry` label inside `luaV_execute`. `OP_RETURN` invokes `luaD_poscall` and
+jumps to the same label. Ordinary Lua calls do not return through a separate
+outer dispatcher. The reentry reloads the closure, base, constants, and PC
+after the stack may have moved.
+
+Badger should translate that model rather than reproduce its C details:
+
+1. Before implementation, add identical source and loop-count fixtures to
+   Badger, frozen Badger, upstream GopherLua, and PUC 5.1. Compile and warm
+   each engine independently outside the timed region.
+2. Keep direct fixed-arity Lua calls and their common fixed-result returns
+   inside the executor, with a frame-reload label after each transition.
+3. Limit the first fast path to a direct Lua Function, fixed arguments and
+   results, a non-vararg callee, sufficient value/frame capacity, satisfied
+   limits, and no hook, native, yield, `__call`, or other semantic slow path.
+4. Use a small trusted helper for that transition. Sealed prototypes and
+   canonical Functions have already established ownership, executable shape,
+   and bytecode validity; internal calls must not repeat public-boundary
+   validation.
+5. On return, close open upvalues before moving or clearing registers, place
+   results in the original callable slot, and restore the caller through the
+   same reload seam. Preserve `stopDepth`, pending continuation resumption,
+   caller PC and extents, top, tail-call bookkeeping, and dead-root clearing.
+   Do not add a second dispatch loop.
+6. Make available value/frame capacity the cheap branch. Stack growth,
+   resource failures, varargs, open calls, `__call`, native functions,
+   yielding, hooks, and initially pending continuations retain explicit slow
+   paths.
+7. Profile register nil-filling, dead-root clearing, result adjustment, and
+   upvalue checks independently. PUC clears the complete unused register
+   window, but Go pointer writes and garbage-collector liveness have different
+   costs. Skipping initialization would require new definite-assignment and
+   observability analysis; the current verifier does not prove it.
+8. Add callsite caching only if profiles still justify it after the structural
+   transition is fixed.
+
+The qualification gate is a same-source matrix covering fixed zero/one/many
+results, open results, excess and missing arguments, varargs, recursion, tail
+calls, closures and upvalues, nested continuations, protected-call boundaries,
+`__call`, limits, errors, and future native/yield cases. Warm fixed calls must
+remain allocation-free, beat frozen Badger and upstream GopherLua, and move
+toward the measured PUC 5.1 result. Repeated samples and a declared
+statistical comparison must show that unrelated numeric and table kernels do
+not regress. Assembly inspection must also confirm that the reload path does
+not enlarge the persistent activation or materially expand the executor's hot
+Go frame.
+
 ## Execution
 
 Execution is split into one iterative dense instruction switch and one cold
@@ -356,7 +417,7 @@ depth or fails; coroutine support will add a yield outcome when it exists.
 2. State-neutral immutable strings and compact tables.
 3. A direct recursive-descent compiler producing verified immutable
    Prototypes without retaining an AST.
-4. Executor, calls, upvalues, errors, and coroutines.
+4. Executor, PUC-style direct-call reentry, upvalues, errors, and coroutines.
 5. Native-frame standard libraries and embedding operations.
 6. Debug facilities and optional extensions.
 7. Profile-driven quickening, inline caches, and executor specialization.
