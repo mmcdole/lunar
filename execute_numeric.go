@@ -177,7 +177,7 @@ func slowEquality(
 		executionContinuation{
 			nextPC: uint32(nextPC),
 			code:   code,
-			flags:  continuationComparison,
+			mode:   continuationCompare,
 		},
 	)
 }
@@ -232,7 +232,7 @@ func slowOrder(
 		event = metaLessEqual
 	}
 	method, found := matchingMetamethod(thread, left, right, event)
-	flags := uint32(continuationComparison)
+	mode := continuationCompare
 	if !found && code.opcode() == opLessEqual {
 		method, found = matchingMetamethod(
 			thread,
@@ -242,7 +242,7 @@ func slowOrder(
 		)
 		if found {
 			left, right = right, left
-			flags |= continuationInvert
+			mode = continuationCompareInverted
 		}
 	}
 	if !found {
@@ -268,7 +268,7 @@ func slowOrder(
 		executionContinuation{
 			nextPC: uint32(nextPC),
 			code:   code,
-			flags:  flags,
+			mode:   mode,
 		},
 	)
 }

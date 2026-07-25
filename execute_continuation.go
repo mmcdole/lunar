@@ -1,15 +1,19 @@
 package lua
 
+type continuationMode uint32
+
 const (
-	continuationComparison uint32 = 1 << iota
-	continuationInvert
-	continuationIgnoreResult
+	continuationStoreResult continuationMode = iota
+	continuationDiscardResult
+	continuationCompare
+	continuationCompareInverted
 	continuationConcat
+	continuationIterator
 )
 
-// executionContinuation records only work suspended while a Lua metamethod
-// runs. Ordinary calls need no continuation: their destination and result
-// count already live in the activation.
+// executionContinuation records only work suspended across a Lua call.
+// Ordinary calls need no continuation: their destination and result count
+// already live in the activation.
 type executionContinuation struct {
 	frameDepth  uint32
 	scratchBase uint32
@@ -17,7 +21,7 @@ type executionContinuation struct {
 	savedExtent uint32
 	nextPC      uint32
 	code        instruction
-	flags       uint32
+	mode        continuationMode
 }
 
 //go:noinline
@@ -36,6 +40,20 @@ func startMetamethodCall(
 	if argumentCount < 0 || argumentCount > 3 ||
 		(wantedResults != 0 && wantedResults != 1) {
 		panic("lua: invalid metamethod call shape")
+	}
+	switch continuation.mode {
+	case continuationStoreResult:
+		if wantedResults == 0 {
+			continuation.mode = continuationDiscardResult
+		}
+	case continuationCompare,
+		continuationCompareInverted,
+		continuationConcat:
+		if wantedResults != 1 {
+			panic("lua: invalid metamethod continuation mode")
+		}
+	default:
+		panic("lua: invalid metamethod continuation mode")
 	}
 	function, direct := luaFunctionSlot(callable)
 	if !direct {
@@ -114,10 +132,85 @@ func startMetamethodCall(
 	continuation.scratchBase = uint32(scratchBase)
 	continuation.savedTop = uint32(savedTop)
 	continuation.savedExtent = uint32(savedExtent)
-	if wantedResults == 0 {
-		continuation.flags |= continuationIgnoreResult
-	}
 	thread.commitLuaCall(function, layout, stageEnd)
+	thread.continuations = append(thread.continuations, continuation)
+	return nil
+}
+
+// startIteratorCall stages the generic-for generator and its two arguments in
+// the verified scratch window. All resource checks complete before those
+// caller registers are changed.
+//
+//go:noinline
+func startIteratorCall(
+	thread *Thread,
+	frameIndex int,
+	code instruction,
+) *Error {
+	frame := thread.frames[frameIndex]
+	nextPC := int(frame.pc)
+	instructionPC := nextPC - 1
+	base := int(frame.base) + code.a()
+	generator := thread.values[base]
+	state := thread.values[base+1]
+	control := thread.values[base+2]
+
+	function, direct := luaFunctionSlot(generator)
+	if !direct {
+		function = luaCallMetamethod(thread, generator)
+		if function == nil {
+			return newExecutionRuntimeError(
+				thread,
+				frameIndex,
+				instructionPC,
+				"attempt to call a %s value",
+				generator.kind(),
+			)
+		}
+	}
+	if len(thread.frames) >= thread.state.options.MaxFrames {
+		return newResourceError(
+			"lua: call frame limit of %d exceeded",
+			thread.state.options.MaxFrames,
+		)
+	}
+
+	callBase := base + 3
+	argumentCount := 2
+	if !direct {
+		argumentCount++
+	}
+	layout, resourceError := thread.planLuaCallLayout(
+		function,
+		callBase,
+		argumentCount,
+		code.c(),
+	)
+	if resourceError != nil {
+		return resourceError
+	}
+
+	savedTop := thread.top
+	savedExtent := thread.frameExtent
+	oldExtent := thread.liveValueExtent()
+	thread.reserveValues(layout.required)
+	thread.reserveFrames(len(thread.frames) + 1)
+	writeSlot(&thread.values[callBase], generator)
+	writeSlot(&thread.values[callBase+1], state)
+	writeSlot(&thread.values[callBase+2], control)
+	if !direct {
+		thread.insertCallMetamethod(function, callBase, 2)
+	}
+
+	continuation := executionContinuation{
+		frameDepth:  uint32(len(thread.frames)),
+		savedTop:    uint32(savedTop),
+		savedExtent: uint32(savedExtent),
+		nextPC:      uint32(nextPC),
+		code:        code,
+		mode:        continuationIterator,
+	}
+	thread.commitLuaCall(function, layout, oldExtent)
 	thread.continuations = append(thread.continuations, continuation)
 	return nil
 }
@@ -129,10 +222,16 @@ func resumeExecutionContinuation(thread *Thread) *Error {
 	if int(continuation.frameDepth) != len(thread.frames) {
 		panic("lua: execution continuation resumed at the wrong depth")
 	}
+	if continuation.mode == continuationIterator {
+		thread.continuations[last] = executionContinuation{}
+		thread.continuations = thread.continuations[:last]
+		resumeIteratorContinuation(thread, continuation)
+		return nil
+	}
 
 	scratchBase := int(continuation.scratchBase)
 	result := nilSlot
-	if continuation.flags&continuationIgnoreResult == 0 {
+	if continuation.mode != continuationDiscardResult {
 		result = thread.values[scratchBase]
 	}
 	previousExtent := thread.liveValueExtent()
@@ -144,30 +243,32 @@ func resumeExecutionContinuation(thread *Thread) *Error {
 
 	frameIndex := int(continuation.frameDepth) - 1
 	frame := &thread.frames[frameIndex]
-	if continuation.flags&continuationIgnoreResult != 0 {
+	switch continuation.mode {
+	case continuationDiscardResult:
 		frame.pc = continuation.nextPC
 		return nil
-	}
-	if continuation.flags&continuationConcat != 0 {
+	case continuationConcat:
 		frame.pc = continuation.nextPC
 		writeSlot(
 			&thread.values[int(frame.base)+continuation.code.c()],
 			result,
 		)
 		return slowConcat(thread, frameIndex, continuation.code)
-	}
-	if continuation.flags&continuationComparison == 0 {
+	case continuationStoreResult:
 		writeSlot(
 			&thread.values[int(frame.base)+continuation.code.a()],
 			result,
 		)
 		frame.pc = continuation.nextPC
 		return nil
+	case continuationCompare, continuationCompareInverted:
+	default:
+		panic("lua: invalid execution continuation mode")
 	}
 
 	truth := result.ref != nilMarkerPointer &&
 		result.ref != falseMarkerPointer
-	if continuation.flags&continuationInvert != 0 {
+	if continuation.mode == continuationCompareInverted {
 		truth = !truth
 	}
 	setComparisonPC(
@@ -178,6 +279,27 @@ func resumeExecutionContinuation(thread *Thread) *Error {
 		truth,
 	)
 	return nil
+}
+
+func resumeIteratorContinuation(
+	thread *Thread,
+	continuation executionContinuation,
+) {
+	frameIndex := int(continuation.frameDepth) - 1
+	frame := &thread.frames[frameIndex]
+	base := int(frame.base) + continuation.code.a()
+	followerPC := int(continuation.nextPC)
+	nextPC := followerPC + 1
+	first := thread.values[base+3]
+	if first.kind() != NilKind {
+		writeSlot(&thread.values[base+2], first)
+		follower := frame.function.prototype.code[followerPC]
+		if follower.opcode() != opJump {
+			panic("lua: TFORLOOP continuation lost its jump")
+		}
+		nextPC += follower.sbx()
+	}
+	frame.pc = uint32(nextPC)
 }
 
 func setComparisonPC(

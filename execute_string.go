@@ -149,7 +149,7 @@ func slowConcat(
 			executionContinuation{
 				nextPC: uint32(nextPC),
 				code:   resume,
-				flags:  continuationConcat,
+				mode:   continuationConcat,
 			},
 		)
 	}

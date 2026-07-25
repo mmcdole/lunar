@@ -122,6 +122,15 @@ driver:
 				); failure != nil {
 					return failExecution(thread, stopDepth, failure)
 				}
+			case opIteratorLoop:
+				frameIndex := len(thread.frames) - 1
+				if failure := startIteratorCall(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
 			case opCall:
 				frameIndex := len(thread.frames) - 1
 				frame := thread.frames[frameIndex]
@@ -586,6 +595,10 @@ func runInstructions(thread *Thread) instruction {
 				writeSlot(&values[register+3], value)
 				pc += current.sbx()
 			}
+
+		case opIteratorLoop:
+			thread.frames[frameIndex].pc = uint32(pc)
+			return current
 
 		default:
 			thread.frames[frameIndex].pc = uint32(pc)

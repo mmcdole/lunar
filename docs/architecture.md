@@ -90,8 +90,8 @@ Files are organized by substantial runtime concepts:
   preparation, and numeric event selection;
 - `execute_string.go`: primitive length, batched concatenation, and string
   event reduction;
-- `execute_metamethod.go`: allocation-free suspension and resumption around
-  Lua metamethod calls;
+- `execute_continuation.go`: allocation-free suspension and resumption around
+  Lua calls that require post-call execution work;
 - `execute_table.go`: globals, table access, method lookup, constructors,
   list installation, and indexed metamethod resolution;
 - later `load.go`: source and bytecode loading;
@@ -352,12 +352,24 @@ exact reduced pair before reduction continues, so later pairs observe event
 mutation performed by earlier handlers. Public Values are never constructed
 by this path.
 
-A metamethod call appends a compact continuation beside, rather than inside,
-the activation. The continuation records only result placement, comparison
-branching, or the remaining concatenation range and survives ordinary nested
-and tail calls. It is removed on completion or centralized unwind. Frame and
-value limits are checked before scratch arguments, an activation, or a
-continuation are published, so resource failure is atomic.
+Generic iteration retains the canonical generator, state, and control in
+`R(A)` through `R(A+2)`. Each `TFORLOOP` stages those values in its verified
+three-slot call window, invokes the generator with exactly `(state, control)`,
+and requests exactly `C` results. A callable object receives itself before
+those two arguments through the ordinary one-level `__call` rule. Short
+returns are nil-filled, excess returns are discarded, and only a nil first
+result terminates the loop; false is a valid next control value. A nonnil
+first result replaces hidden control before the paired jump is taken.
+Configured frame and value failures are checked before the call window
+changes, so failed iteration setup is atomic.
+
+A Lua call with pending executor work appends a compact continuation beside,
+rather than inside, the activation. The continuation records only result
+placement, comparison branching, the remaining concatenation range, or
+generic-iterator completion and survives ordinary nested and tail calls. It
+is removed on completion or centralized unwind. Frame and value limits are
+checked before scratch arguments, an activation, or a continuation are
+published, so resource failure is atomic.
 
 Table instructions enter small non-reentrant compact-slot read and write
 helpers directly from the switch. They complete raw hits, ordinary

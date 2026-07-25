@@ -696,6 +696,27 @@ func TestLoopOpcodeVerificationEnforcesCanonicalFramesAndPairs(t *testing.T) {
 	if _, syntaxError := validIterator.seal(); syntaxError != nil {
 		t.Fatalf("valid one-result TFORLOOP: %v", syntaxError)
 	}
+	for _, test := range []struct {
+		results   int
+		registers int
+	}{
+		{results: 3, registers: 6},
+		{results: 4, registers: 7},
+	} {
+		builder := testPrototypeBuilder(
+			makeABC(opIteratorLoop, 0, 0, test.results),
+			makeAsBx(opJump, 0, 0),
+			makeABC(opReturn, 0, 1, 0),
+		)
+		builder.registers = test.registers
+		if _, syntaxError := builder.seal(); syntaxError != nil {
+			t.Fatalf(
+				"valid %d-result TFORLOOP: %v",
+				test.results,
+				syntaxError,
+			)
+		}
+	}
 
 	shortIterator := testPrototypeBuilder(
 		makeABC(opIteratorLoop, 0, 0, 1),
@@ -704,6 +725,13 @@ func TestLoopOpcodeVerificationEnforcesCanonicalFramesAndPairs(t *testing.T) {
 	)
 	shortIterator.registers = 5
 	assertPrototypeSyntaxError(t, shortIterator)
+	wideShortIterator := testPrototypeBuilder(
+		makeABC(opIteratorLoop, 0, 0, 4),
+		makeAsBx(opJump, 0, 0),
+		makeABC(opReturn, 0, 1, 0),
+	)
+	wideShortIterator.registers = 6
+	assertPrototypeSyntaxError(t, wideShortIterator)
 	for _, code := range [][]instruction{
 		{
 			makeABC(opIteratorLoop, 0, 0, 0),
