@@ -567,10 +567,25 @@ func TestCompileSourceIndexesCallResult(t *testing.T) {
 	}
 }
 
-func TestCompileSourceRejectsAmbiguousOrIncompleteCalls(t *testing.T) {
+func TestCompileSourceRejectsAmbiguousCalls(t *testing.T) {
 	for _, source := range []string{
 		"function_value\n()",
 		"function_value -- comment\n()",
+		"object:method\n()",
+	} {
+		_, syntaxError := compileSource("@invalid.lua", source)
+		const want = "invalid.lua:2: ambiguous syntax " +
+			"(function call x new statement) near '('"
+		if syntaxError == nil ||
+			syntaxError.Category() != SyntaxError ||
+			syntaxError.Error() != want {
+			t.Fatalf("%q: syntax error = %v, want %q", source, syntaxError, want)
+		}
+	}
+}
+
+func TestCompileSourceRejectsIncompleteCalls(t *testing.T) {
+	for _, source := range []string{
 		"function_value",
 		"(function_value)",
 		"return function_value(",

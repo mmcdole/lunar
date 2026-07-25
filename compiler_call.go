@@ -114,13 +114,6 @@ func (parser *sourceParser) parseCallSuffix(
 	function compiledExpression,
 ) (compiledExpression, *Error) {
 	line := parser.current.line
-	if parser.current.kind == '(' &&
-		parser.current.line != parser.previousLine {
-		return compiledExpression{}, parser.syntaxError(
-			line,
-			"ambiguous syntax between a function call and a new statement",
-		)
-	}
 	base, syntaxError := parser.expressionToNextRegister(
 		&function,
 		line,
@@ -196,7 +189,8 @@ func (parser *sourceParser) parseCallArguments(
 		if parser.current.line != parser.previousLine {
 			return compiledExpression{}, parser.syntaxError(
 				parser.current.line,
-				"ambiguous syntax between a function call and a new statement",
+				"ambiguous syntax (function call x new statement) near %s",
+				parser.current.kind,
 			)
 		}
 		if syntaxError := parser.advance(); syntaxError != nil {

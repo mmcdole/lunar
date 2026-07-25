@@ -382,8 +382,8 @@ func (parser *sourceParser) emitUnary(
 	default:
 		panic("lua: unknown unary operator")
 	}
-	parser.releaseExpressionTemporaries(value)
 	pc := parser.function.emitDeferredABC(opcode, register, 0, line)
+	parser.releaseExpressionTemporaries(value)
 	return compiledExpression{
 		kind: expressionDeferred,
 		info: pc,
@@ -464,8 +464,8 @@ func (parser *sourceParser) emitBinary(
 		case binaryPower:
 			opcode = opPow
 		}
-		parser.releaseExpressionTemporaries(left, right)
 		pc := emitter.emitDeferredABC(opcode, leftRK, rightRK, line)
+		parser.releaseExpressionTemporaries(left, right)
 		return compiledExpression{
 			kind: expressionDeferred,
 			info: pc,
