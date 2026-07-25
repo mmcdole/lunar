@@ -53,6 +53,13 @@ driver:
 		}
 		for {
 			if thread.frames[len(thread.frames)-1].function.prototype == nil {
+				if thread.contextBudget != 0 {
+					if failure := pollExecutionContext(
+						thread,
+					); failure != nil {
+						return stopExecution(thread, failure)
+					}
+				}
 				if failure := invokeNativeCall(thread); failure != nil {
 					return stopExecution(thread, failure)
 				}
@@ -196,6 +203,13 @@ driver:
 					return stopExecution(thread, failure)
 				}
 			case opTailCall:
+				if thread.contextStepDue() {
+					if failure := pollExecutionContext(
+						thread,
+					); failure != nil {
+						return stopExecution(thread, failure)
+					}
+				}
 				frameIndex := len(thread.frames) - 1
 				frame := thread.frames[frameIndex]
 				callBase := int(frame.base) + current.a()
@@ -238,6 +252,11 @@ driver:
 					return stopExecution(thread, failure)
 				}
 			case opReturn:
+				if thread.contextBudget != 0 {
+					if failure := pollExecutionContext(thread); failure != nil {
+						return stopExecution(thread, failure)
+					}
+				}
 				frame := thread.frames[len(thread.frames)-1]
 				firstResult := int(frame.base) + current.a()
 				resultCount := current.b() - 1
@@ -283,6 +302,12 @@ driver:
 				); failure != nil {
 					return stopExecution(thread, failure)
 				}
+			case opContextPoll:
+				if failure := pollExecutionContext(thread); failure != nil {
+					return stopExecution(thread, failure)
+				}
+				frame := &thread.frames[len(thread.frames)-1]
+				frame.pc = uint32(int(frame.pc) + current.sbx())
 			default:
 				frameIndex := len(thread.frames) - 1
 				return stopExecution(
@@ -324,9 +349,30 @@ reload:
 	base := int(thread.frames[len(thread.frames)-1].base)
 	pc := int(thread.frames[len(thread.frames)-1].pc)
 	code := prototype.code
+	var current instruction
+	goto dispatch
 
+contextBackedge:
+	{
+		// Keep polling in one cold block above dispatch. Duplicating this check
+		// grows the loop and its frame; placing it below dispatch adds another
+		// branch to every ordinary instruction.
+		budget := thread.contextBudget
+		if budget != 0 {
+			budget--
+			thread.contextBudget = budget
+			if budget == 0 {
+				thread.frames[len(thread.frames)-1].pc =
+					uint32(pc - current.sbx())
+				return current.executorOutcome(opContextPoll)
+			}
+		}
+	}
+	goto dispatch
+
+dispatch:
 	for {
-		current := code[pc]
+		current = code[pc]
 		pc++
 
 		switch current.opcode() {
@@ -474,7 +520,11 @@ reload:
 			return current
 
 		case opJump:
-			pc += current.sbx()
+			offset := current.sbx()
+			pc += offset
+			if offset < 0 {
+				goto contextBackedge
+			}
 
 		case opEqual:
 			left := operandSlot(
@@ -509,7 +559,12 @@ reload:
 			if equal == (current.a() != 0) {
 				jump := code[pc]
 				pc++
-				pc += jump.sbx()
+				offset := jump.sbx()
+				pc += offset
+				if offset < 0 {
+					current = jump
+					goto contextBackedge
+				}
 			} else {
 				pc++
 			}
@@ -548,7 +603,12 @@ reload:
 			if result == (current.a() != 0) {
 				jump := code[pc]
 				pc++
-				pc += jump.sbx()
+				offset := jump.sbx()
+				pc += offset
+				if offset < 0 {
+					current = jump
+					goto contextBackedge
+				}
 			} else {
 				pc++
 			}
@@ -560,7 +620,12 @@ reload:
 			if truth == (current.c() != 0) {
 				jump := code[pc]
 				pc++
-				pc += jump.sbx()
+				offset := jump.sbx()
+				pc += offset
+				if offset < 0 {
+					current = jump
+					goto contextBackedge
+				}
 			} else {
 				pc++
 			}
@@ -573,7 +638,12 @@ reload:
 				writeSlot(&values[base+current.a()], source)
 				jump := code[pc]
 				pc++
-				pc += jump.sbx()
+				offset := jump.sbx()
+				pc += offset
+				if offset < 0 {
+					current = jump
+					goto contextBackedge
+				}
 			} else {
 				pc++
 			}
@@ -638,7 +708,11 @@ reload:
 				value := numberSlot(index)
 				writeSlot(&values[register], value)
 				writeSlot(&values[register+3], value)
-				pc += current.sbx()
+				offset := current.sbx()
+				pc += offset
+				if offset < 0 {
+					goto contextBackedge
+				}
 			}
 
 		case opIteratorLoop:
@@ -878,7 +952,7 @@ func stopExecution(thread *Thread, failure *Error) executionResult {
 	if failure == nil {
 		panic("lua: executor failed without an error")
 	}
-	positionExecutionResourceFailure(thread, failure)
+	positionExecutionFailure(thread, failure)
 	return executionResult{
 		kind: executionFailed,
 		err:  failure,
@@ -909,14 +983,13 @@ func snapshotExecutionFailure(
 	)
 }
 
-func positionExecutionResourceFailure(
+func positionExecutionFailure(
 	thread *Thread,
 	failure *Error,
 ) {
 	if failure == nil ||
-		failure.category != ResourceError ||
-		!failure.resourcePositionable ||
-		failure.resourcePositioned ||
+		!failure.sourcePositionable ||
+		failure.sourcePositioned ||
 		len(failure.traceback) != 0 {
 		return
 	}
@@ -926,7 +999,7 @@ func positionExecutionResourceFailure(
 			frame.function.prototype == nil {
 			continue
 		}
-		failure.positionResourceFailure(
+		failure.positionExecutionFailure(
 			thread.state,
 			frame.function.prototype,
 			int(frame.pc)-1,

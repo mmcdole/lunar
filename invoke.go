@@ -1,6 +1,9 @@
 package lua
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // ResultCapacityError reports that CallInto produced more results than its
 // destination can hold.
@@ -40,6 +43,32 @@ func (state *State) Call(
 	arguments ...Value,
 ) ([]Value, error) {
 	results, _, err := state.callMain(
+		nil,
+		callable,
+		arguments,
+		nil,
+		true,
+	)
+	return results, err
+}
+
+// CallContext invokes callable like Call while making ctx available to native
+// callbacks and interrupting Lua execution when ctx is cancelled.
+//
+// A nil context returns ErrNilContext. Lifecycle, ownership, and argument
+// errors take precedence over a context already cancelled at admission. Once
+// execution starts, cancellation is returned as a *Error categorized
+// ContextError. Lua-visible side effects completed before cancellation remain.
+func (state *State) CallContext(
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) ([]Value, error) {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+	results, _, err := state.callMain(
+		ctx,
 		callable,
 		arguments,
 		nil,
@@ -65,6 +94,32 @@ func (state *State) CallInto(
 	destination []Value,
 ) (count int, err error) {
 	_, count, err = state.callMain(
+		nil,
+		callable,
+		arguments,
+		destination,
+		false,
+	)
+	return count, err
+}
+
+// CallIntoContext invokes callable like CallContext and writes results into
+// destination.
+//
+// On cancellation count is zero and destination is unchanged. When callable
+// itself does not allocate, a warm call with a non-cancelled context and
+// sufficient caller-provided storage adds no boundary allocation.
+func (state *State) CallIntoContext(
+	ctx context.Context,
+	callable Value,
+	arguments []Value,
+	destination []Value,
+) (count int, err error) {
+	if ctx == nil {
+		return 0, ErrNilContext
+	}
+	_, count, err = state.callMain(
+		ctx,
 		callable,
 		arguments,
 		destination,
@@ -74,6 +129,7 @@ func (state *State) CallInto(
 }
 
 func (state *State) callMain(
+	ctx context.Context,
 	callable Value,
 	arguments []Value,
 	destination []Value,
@@ -84,11 +140,24 @@ func (state *State) callMain(
 		return nil, 0, err
 	}
 
+	contextInstalled := ctx != nil
+	if contextInstalled {
+		execution, failure := prepareExecutionContext(ctx)
+		if failure != nil {
+			return nil, 0, failure
+		}
+		state.beginExecutionContext(execution)
+		thread.resetContextBudget()
+	}
 	state.active = thread
 	thread.status = ThreadRunning
 	defer func() {
 		thread.resetMainCall()
 		state.active = nil
+		if contextInstalled {
+			thread.contextBudget = 0
+			state.endExecutionContext()
+		}
 	}()
 
 	required := 1 + len(arguments)
@@ -161,7 +230,11 @@ func (state *State) prepareMainCall(
 		thread.activeNativeToken != 0 ||
 		thread.nativeCallDepth != 0 ||
 		thread.errorHandlerDepth != 0 ||
+		thread.contextBudget != 0 ||
 		state.runtime.nativeCallDepth != 0 ||
+		state.execution.context != nil ||
+		state.execution.done != nil ||
+		state.execution.failure != nil ||
 		state.limits.values != state.options.MaxValues ||
 		state.limits.frames != state.options.MaxFrames {
 		panic("lua: ready main thread retains execution state")

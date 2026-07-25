@@ -33,8 +33,10 @@ and resume the same compact activation stack, including the Lua 5.1
 paths allocate nothing. A native callback can synchronously reenter Lua
 through protected `Frame.Call` or caller-buffer `Frame.CallInto` without a
 second executor or object representation; warmed `CallInto` paths allocate
-nothing. Contexts and the remainder of the standard libraries are still under
-construction.
+nothing. Context-aware calls and coroutine resumes provide bounded cooperative
+cancellation without changing the raw execution path or retaining a caller's
+context across suspension. The remainder of the standard libraries is still
+under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

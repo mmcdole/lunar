@@ -104,6 +104,7 @@ type State struct {
 	main           *Thread
 	globals        *Table
 	registry       *Table
+	execution      executionContext
 	typeMetatables [TableKind + 1]*Table
 }
 
@@ -439,6 +440,7 @@ type Thread struct {
 	activeNativeToken uint64
 	nativeCallDepth   uint16
 	errorHandlerDepth uint16
+	contextBudget     uint16
 	status            ThreadStatus
 	main              bool
 }

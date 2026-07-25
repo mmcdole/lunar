@@ -56,6 +56,7 @@ const (
 	opSetGlobalMiss
 	opSetTableMiss
 	opSelfMiss
+	opContextPoll
 )
 
 const (
@@ -178,6 +179,14 @@ func makeAsBx(operation opcode, a, sbx int) instruction {
 
 func (code instruction) opcode() opcode {
 	return opcode(code & ((1 << opcodeBits) - 1))
+}
+
+func (code instruction) executorOutcome(operation opcode) instruction {
+	if operation < opCount || operation >= 1<<opcodeBits {
+		panic("lua: invalid private executor outcome")
+	}
+	const opcodeMask = instruction((1 << opcodeBits) - 1)
+	return code&^opcodeMask | instruction(operation)
 }
 
 func (code instruction) withOpcode(operation opcode) instruction {

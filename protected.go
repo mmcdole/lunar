@@ -237,7 +237,7 @@ func runProtectedCall(
 		return frame.sealError(failure)
 	}
 
-	positionExecutionResourceFailure(thread, failure)
+	positionExecutionFailure(thread, failure)
 	errorValue := slotFromValue(failure.value)
 	if !hasHandler {
 		checkpoint.restore(thread, true)

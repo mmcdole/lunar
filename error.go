@@ -18,7 +18,8 @@ const (
 	// resource-limit failure. It remains an ordinary Lua error; the category
 	// is additional information for Go callers.
 	ResourceError
-	// ContextError identifies cancellation or deadline expiry.
+	// ContextError identifies cancellation or deadline expiry requested by
+	// the host. Lua protected calls do not catch it.
 	ContextError
 )
 
@@ -41,13 +42,13 @@ type TraceFrame struct {
 // never invokes Lua, tostring, or a metamethod, so Error remains safe after the
 // owning State closes.
 type Error struct {
-	value                Value
-	description          string
-	traceback            []TraceFrame
-	category             ErrorCategory
-	resourcePositionable bool
-	resourcePositioned   bool
-	cause                error
+	value              Value
+	description        string
+	traceback          []TraceFrame
+	category           ErrorCategory
+	sourcePositionable bool
+	sourcePositioned   bool
+	cause              error
 }
 
 // Error returns a stable non-executing description.
@@ -115,10 +116,10 @@ func newSourceSyntaxError(
 func newResourceError(format string, arguments ...any) *Error {
 	message := fmt.Sprintf(format, arguments...)
 	return &Error{
-		value:                errorStringValue(message),
-		description:          message,
-		category:             ResourceError,
-		resourcePositionable: true,
+		value:              errorStringValue(message),
+		description:        message,
+		category:           ResourceError,
+		sourcePositionable: true,
 	}
 }
 
@@ -134,22 +135,21 @@ func executionErrorDescription(
 	return fmt.Sprintf("%s: %s", source, message)
 }
 
-func (err *Error) positionResourceFailure(
+func (err *Error) positionExecutionFailure(
 	state *State,
 	prototype *Prototype,
 	pc int,
 ) {
 	if err == nil ||
-		err.category != ResourceError ||
-		!err.resourcePositionable ||
-		err.resourcePositioned ||
+		!err.sourcePositionable ||
+		err.sourcePositioned ||
 		prototype == nil {
 		return
 	}
 	message := executionErrorDescription(prototype, pc, err.description)
 	err.value = state.String(message)
 	err.description = message
-	err.resourcePositioned = true
+	err.sourcePositioned = true
 }
 
 func errorStringValue(message string) Value {

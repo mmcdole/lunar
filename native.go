@@ -738,6 +738,40 @@ func invokeNativeCall(thread *Thread) *Error {
 		depth:  len(thread.frames),
 	})
 	callbackReturned = true
+	if failure := validateNativeOutcome(
+		thread,
+		outcome,
+		token,
+		nativeFrameDepth,
+	); failure != nil {
+		return failure
+	}
+	if thread.contextBudget != 0 {
+		if failure := pollExecutionContext(thread); failure != nil {
+			return failure
+		}
+	}
+
+	switch outcome.kind {
+	case nativeOutcomeReturn:
+		thread.finishNativeCall(int(outcome.resultCount))
+		return nil
+	case nativeOutcomeError:
+		return outcome.failure
+	case nativeOutcomeYield:
+		thread.status = ThreadSuspended
+		return nil
+	default:
+		panic("lua: validated invalid native outcome")
+	}
+}
+
+func validateNativeOutcome(
+	thread *Thread,
+	outcome Outcome,
+	token uint64,
+	nativeFrameDepth int,
+) *Error {
 	if outcome.owner != thread.owner ||
 		outcome.token != token ||
 		thread.activeNativeToken != token|nativeTerminalBit {
@@ -746,45 +780,30 @@ func invokeNativeCall(thread *Thread) *Error {
 			"native function returned an invalid outcome",
 		)
 	}
-
+	valid := false
 	switch outcome.kind {
 	case nativeOutcomeReturn:
-		if outcome.failure != nil {
-			return newNativeRuntimeError(
-				thread,
-				"native function returned an invalid outcome",
-			)
-		}
-		thread.finishNativeCall(int(outcome.resultCount))
-		return nil
+		valid = outcome.failure == nil
 	case nativeOutcomeError:
-		if outcome.failure == nil || outcome.resultCount != 0 {
-			return newNativeRuntimeError(
-				thread,
-				"native function returned an invalid outcome",
-			)
-		}
-		return outcome.failure
+		valid = outcome.failure != nil &&
+			outcome.resultCount == 0
 	case nativeOutcomeYield:
 		call := &thread.frames[nativeFrameDepth]
 		resultBase := int(call.resultBase)
-		if outcome.failure != nil ||
-			resultBase < 0 ||
-			resultBase > thread.top ||
-			int(outcome.resultCount) != thread.top-resultBase {
-			return newNativeRuntimeError(
-				thread,
-				"native function returned an invalid outcome",
-			)
-		}
-		thread.status = ThreadSuspended
-		return nil
+		valid = outcome.failure == nil &&
+			resultBase >= 0 &&
+			resultBase <= thread.top &&
+			int(outcome.resultCount) == thread.top-resultBase
 	default:
-		return newNativeRuntimeError(
-			thread,
-			"native function returned an invalid outcome",
-		)
+		valid = false
 	}
+	if valid {
+		return nil
+	}
+	return newNativeRuntimeError(
+		thread,
+		"native function returned an invalid outcome",
+	)
 }
 
 func (thread *Thread) nextNativeToken() uint64 {

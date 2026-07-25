@@ -109,6 +109,8 @@ Files are organized by substantial runtime concepts:
   egress;
 - `coroutine.go`: canonical Thread construction, compact resume transfer,
   suspension lifecycle, and State-wide execution ownership;
+- `context.go`: operation-scoped context ownership, polling budgets, and
+  cancellation failures;
 - `library_base.go` and `library_coroutine.go`: the implemented Lua 5.1
   runtime library surface using native frames; later `library_*.go` files add
   the remaining standard libraries.
@@ -537,11 +539,41 @@ Reentrant `Frame.Call` and `Frame.CallInto` use the nested checkpoint described
 below. A yield crossing that native/API boundary is a Lua 5.1 error. The
 checkpoint restores the original argument top and frame extent before the
 callback resumes, so argument access continues to describe the same call.
-Future context-aware public calls will make their active context available
-through `Frame.Context` and inherit it through nested calls. Active Thread
-ownership and aggregate native-call depth are State-wide, so nested coroutine
-resumes cannot evade the native-depth limit and State close cannot race a
-callback on any Thread.
+Context-aware public calls make their active context available through
+`Frame.Context` and inherit it through nested calls. Active Thread ownership
+and aggregate native-call depth are State-wide, so nested coroutine resumes
+cannot evade the native-depth limit and State close cannot race a callback on
+any Thread.
+
+### Context-aware execution
+
+`CallContext`, `CallIntoContext`, `ResumeContext`, and `ResumeIntoContext`
+attach a context to one public execution operation. The context is not part of
+a State or Thread and is cleared before the operation returns. In particular,
+a coroutine does not retain a context while suspended; each later resume may
+use a different context or the raw context-free boundary.
+
+Cancellation is a host interruption, not a Lua value raised by `error`.
+`pcall`, `xpcall`, `coroutine.resume`, and `coroutine.wrap` therefore cannot
+catch it. Go receives a `ContextError` for which `errors.Is` recognizes both
+`ctx.Err()` and a distinct `context.Cause(ctx)`. Work performed before a
+cancellation safepoint remains visible.
+
+The executor samples cancellation at backward control-flow edges, tail-call
+transitions, native-call boundaries, and final return or yield. A bounded
+backedge budget keeps the channel check out of ordinary instruction dispatch.
+This is cooperative cancellation, not a per-instruction deadline. A
+`NativeFunc` must observe `Frame.Context` itself while it blocks or performs
+long-running Go work; the runtime checks again after the callback returns but
+cannot preempt Go code.
+
+The executor has one source and one dispatch loop. A single cold backedge block
+preserves its 160-byte frame and the direct ordinary dispatch branch. On the
+standing Apple M3 Pro benchmark, active polling adds about 4.1% to a numeric
+loop and roughly 1% to representative field and Lua-call loops, with no
+allocation. Tiny public boundaries instead use an absolute budget: their fixed
+admission and final checks can add roughly 10–14 ns even though no work is
+boxed or allocated.
 
 ### Native-call checkpoint
 
