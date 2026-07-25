@@ -91,6 +91,13 @@ booleans. Flat, right-associated concatenation chains are emitted as one
 instruction over a contiguous register span. The executor must reduce that
 span from right to left so `__concat` calls observe Lua 5.1 ordering.
 
+An indexed expression retains its table register and RK key until it is read
+or assigned. Its descriptor records the lowest temporary owning those
+operands, allowing a chained read to overwrite that slot only after both
+operands have been captured by `GETTABLE`. This preserves left-to-right
+evaluation without allocating an intermediate node or extending temporary
+lifetimes across the enclosing expression.
+
 ## Build order
 
 1. Canonical Value and object ownership.

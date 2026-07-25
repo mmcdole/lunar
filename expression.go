@@ -9,6 +9,7 @@ const (
 	expressionGlobal
 	expressionDeferred
 	expressionTemporary
+	expressionIndexed
 	expressionCondition
 	expressionVararg
 )
@@ -16,14 +17,19 @@ const (
 // compiledExpression is a transient, move-only description of a source
 // expression. A deferred expression owns an instruction whose destination is
 // not bound yet. A condition owns the pending jump immediately following its
-// comparison. The exit lists preserve Lua's operand-valued and/or semantics.
+// comparison. An indexed expression retains its table register and RK key;
+// ownedBase is the lowest temporary keeping those operands live. The exit
+// lists preserve Lua's operand-valued and/or semantics.
 type compiledExpression struct {
 	constant   slot
 	trueExits  jumpList
 	falseExits jumpList
 	kind       expressionKind
 	info       int
+	aux        int
+	ownedBase  int
 	line       uint32
+	assignable bool
 }
 
 type expressionList struct {
@@ -299,12 +305,8 @@ func (parser *sourceParser) parsePrimary() (compiledExpression, *Error) {
 			constant: prototypeStringSlot(text),
 			line:     value.line,
 		}, nil
-	case tokenName:
-		name := parser.unit.internToken(value)
-		if syntaxError := parser.advance(); syntaxError != nil {
-			return compiledExpression{}, syntaxError
-		}
-		return parser.resolveVariable(name, value.line)
+	case tokenName, '(':
+		return parser.parsePrefixExpression()
 	case tokenDots:
 		if !parser.function.isVararg() {
 			return compiledExpression{}, parser.syntaxError(
@@ -319,31 +321,141 @@ func (parser *sourceParser) parsePrimary() (compiledExpression, *Error) {
 			kind: expressionVararg,
 			line: value.line,
 		}, nil
-	case '(':
-		if syntaxError := parser.advance(); syntaxError != nil {
-			return compiledExpression{}, syntaxError
-		}
-		expression, syntaxError := parser.parseExpression()
-		if syntaxError != nil {
-			return compiledExpression{}, syntaxError
-		}
-		if _, syntaxError = parser.expect(')'); syntaxError != nil {
-			return compiledExpression{}, syntaxError
-		}
-		if expression.kind == expressionVararg {
-			if _, syntaxError = parser.expressionToTemporary(
-				&expression,
-				value.line,
-			); syntaxError != nil {
-				return compiledExpression{}, syntaxError
-			}
-		}
-		return expression, nil
 	default:
 		return compiledExpression{}, parser.syntaxError(
 			value.line,
 			"expected expression near %s",
 			value.kind,
 		)
+	}
+}
+
+func (parser *sourceParser) parsePrefixExpression() (
+	compiledExpression,
+	*Error,
+) {
+	var value compiledExpression
+	switch prefix := parser.current; prefix.kind {
+	case tokenName:
+		name := parser.unit.internToken(prefix)
+		if syntaxError := parser.advance(); syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		var syntaxError *Error
+		value, syntaxError = parser.resolveVariable(name, prefix.line)
+		if syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+	case '(':
+		if syntaxError := parser.advance(); syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		var syntaxError *Error
+		value, syntaxError = parser.parseExpression()
+		if syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		if _, syntaxError = parser.expect(')'); syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+		value.assignable = false
+		if value.kind == expressionVararg {
+			if _, syntaxError = parser.expressionToTemporary(
+				&value,
+				prefix.line,
+			); syntaxError != nil {
+				return compiledExpression{}, syntaxError
+			}
+		}
+	default:
+		return compiledExpression{}, parser.syntaxError(
+			prefix.line,
+			"expected prefix expression near %s",
+			prefix.kind,
+		)
+	}
+
+	for {
+		var syntaxError *Error
+		switch parser.current.kind {
+		case '.':
+			value, syntaxError = parser.parseFieldSuffix(value)
+		case '[':
+			value, syntaxError = parser.parseIndexSuffix(value)
+		default:
+			return value, nil
+		}
+		if syntaxError != nil {
+			return compiledExpression{}, syntaxError
+		}
+	}
+}
+
+func (parser *sourceParser) parseFieldSuffix(
+	table compiledExpression,
+) (compiledExpression, *Error) {
+	line := parser.current.line
+	tableRegister, syntaxError := parser.expressionToRegister(&table, line)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	if syntaxError = parser.advance(); syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	name, syntaxError := parser.expect(tokenName)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	key := compiledExpression{
+		kind:     expressionConstant,
+		constant: prototypeStringSlot(parser.unit.internToken(name)),
+		line:     name.line,
+	}
+	keyOperand, syntaxError := parser.expressionToRK(&key, name.line)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	return indexedExpression(table, tableRegister, key, keyOperand, line), nil
+}
+
+func (parser *sourceParser) parseIndexSuffix(
+	table compiledExpression,
+) (compiledExpression, *Error) {
+	line := parser.current.line
+	tableRegister, syntaxError := parser.expressionToRegister(&table, line)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	if syntaxError = parser.advance(); syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	key, syntaxError := parser.parseExpression()
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	if _, syntaxError = parser.expect(']'); syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	keyOperand, syntaxError := parser.expressionToRK(&key, line)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
+	return indexedExpression(table, tableRegister, key, keyOperand, line), nil
+}
+
+func indexedExpression(
+	table compiledExpression,
+	tableRegister int,
+	key compiledExpression,
+	keyOperand int,
+	line uint32,
+) compiledExpression {
+	return compiledExpression{
+		kind:       expressionIndexed,
+		info:       tableRegister,
+		aux:        keyOperand,
+		ownedBase:  lowestExpressionTemporary(table, key),
+		line:       line,
+		assignable: true,
 	}
 }

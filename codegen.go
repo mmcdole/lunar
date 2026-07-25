@@ -86,6 +86,40 @@ func (parser *sourceParser) adjustExpressionList(
 	return base, nil
 }
 
+func (parser *sourceParser) storeExpression(
+	target *compiledExpression,
+	value *compiledExpression,
+	line uint32,
+) *Error {
+	emitter := parser.function
+	switch target.kind {
+	case expressionLocal:
+		return parser.writeExpression(value, target.info, line)
+	case expressionGlobal:
+		register, syntaxError := parser.expressionToRegister(value, line)
+		if syntaxError != nil {
+			return syntaxError
+		}
+		emitter.emitABx(opSetGlobal, register, target.info, line)
+	case expressionIndexed:
+		operand, syntaxError := parser.expressionToRK(value, line)
+		if syntaxError != nil {
+			return syntaxError
+		}
+		emitter.emitABC(
+			opSetTable,
+			target.info,
+			target.aux,
+			operand,
+			line,
+		)
+	default:
+		panic("lua: expression is not assignable")
+	}
+	parser.releaseExpressionTemporaries(*target, *value)
+	return nil
+}
+
 func isArithmeticOperator(operation binaryOperator) bool {
 	switch operation {
 	case binaryAdd, binarySubtract, binaryMultiply, binaryDivide,
@@ -481,21 +515,36 @@ func foldNumericBinary(
 	}, true
 }
 
+func lowestExpressionTemporary(values ...compiledExpression) int {
+	base := noRegister
+	for _, value := range values {
+		var candidate int
+		switch value.kind {
+		case expressionTemporary:
+			candidate = value.info
+		case expressionIndexed:
+			candidate = value.ownedBase
+		default:
+			continue
+		}
+		if candidate < base {
+			base = candidate
+		}
+	}
+	return base
+}
+
 // A temporary result owns the lowest register in the live suffix used to
-// compute it. Releasing that register therefore releases every operand
-// temporary above it while preserving locals and surrounding expressions.
+// compute it. Indexed expressions similarly own the lowest temporary holding
+// their table or key. Releasing that register releases every operand above it
+// while preserving locals and surrounding expressions.
 func (parser *sourceParser) releaseExpressionTemporaries(
 	values ...compiledExpression,
 ) {
 	emitter := parser.function
-	mark := emitter.registerTop
-	for _, value := range values {
-		if value.kind == expressionTemporary && value.info < mark {
-			mark = value.info
-		}
-	}
-	if mark < emitter.registerTop {
-		emitter.releaseRegisters(mark)
+	base := lowestExpressionTemporary(values...)
+	if base != noRegister {
+		emitter.releaseRegisters(base)
 	}
 }
 
@@ -546,6 +595,18 @@ func (parser *sourceParser) expressionValueToRegister(
 	switch value.kind {
 	case expressionLocal, expressionTemporary:
 		return value.info, nil
+	case expressionIndexed:
+		if value.ownedBase != noRegister {
+			register := value.ownedBase
+			if syntaxError := parser.writeExpression(
+				value,
+				register,
+				line,
+			); syntaxError != nil {
+				return 0, syntaxError
+			}
+			return register, nil
+		}
 	case expressionCondition, expressionInvalid:
 		panic("lua: conditional expression has no fall-through value")
 	}
@@ -579,6 +640,18 @@ func (parser *sourceParser) expressionToTemporary(
 			}
 		}
 		return value.info, nil
+	}
+	if value.kind == expressionIndexed &&
+		value.ownedBase != noRegister {
+		register := value.ownedBase
+		if syntaxError := parser.writeExpression(
+			value,
+			register,
+			line,
+		); syntaxError != nil {
+			return 0, syntaxError
+		}
+		return register, nil
 	}
 	register, syntaxError := parser.function.reserveRegisters(1, line)
 	if syntaxError != nil {
@@ -701,6 +774,18 @@ func (parser *sourceParser) writeExpressionValue(
 		emitter.bindResult(value.info, target)
 	case expressionGlobal:
 		emitter.emitABx(opGetGlobal, target, value.info, line)
+	case expressionIndexed:
+		emitter.emitABC(opGetTable, target, value.info, value.aux, line)
+		if value.ownedBase != noRegister {
+			switch {
+			case target == value.ownedBase:
+				emitter.releaseRegisters(target + 1)
+			case target < value.ownedBase:
+				emitter.releaseRegisters(value.ownedBase)
+			default:
+				panic("lua: indexed result overlaps its operand temporaries")
+			}
+		}
 	case expressionVararg:
 		emitter.emitABC(opVararg, target, 2, 0, line)
 	default:
@@ -708,5 +793,8 @@ func (parser *sourceParser) writeExpressionValue(
 	}
 	value.kind = expressionTemporary
 	value.info = target
+	value.aux = 0
+	value.ownedBase = noRegister
+	value.assignable = false
 	return nil
 }

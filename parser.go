@@ -165,7 +165,7 @@ func (parser *sourceParser) parseStatement() *Error {
 		return parser.parseDo()
 	case tokenLocal:
 		return parser.parseLocal()
-	case tokenName:
+	case tokenName, '(':
 		return parser.parseAssignment()
 	default:
 		return parser.syntaxError(
@@ -273,14 +273,16 @@ func (parser *sourceParser) parseLocal() *Error {
 }
 
 func (parser *sourceParser) parseAssignment() *Error {
-	nameToken := parser.current
-	name := parser.unit.internToken(nameToken)
-	target, syntaxError := parser.resolveVariable(name, nameToken.line)
+	line := parser.current.line
+	target, syntaxError := parser.parsePrefixExpression()
 	if syntaxError != nil {
 		return syntaxError
 	}
-	if syntaxError = parser.advance(); syntaxError != nil {
-		return syntaxError
+	if !target.assignable {
+		return parser.syntaxError(
+			line,
+			"assignment target is not a variable",
+		)
 	}
 	if _, syntaxError = parser.expect('='); syntaxError != nil {
 		return syntaxError
@@ -290,37 +292,20 @@ func (parser *sourceParser) parseAssignment() *Error {
 		return syntaxError
 	}
 	defer parser.releaseExpressionList(values)
-	if target.kind == expressionLocal && values.valueCount == 1 {
+	if values.valueCount == 1 {
 		value := &parser.values[values.valueBase]
-		return parser.writeExpression(value, target.info, nameToken.line)
+		return parser.storeExpression(&target, value, line)
 	}
-	base, syntaxError := parser.adjustExpressionList(values, 1, nameToken.line)
+	base, syntaxError := parser.adjustExpressionList(values, 1, line)
 	if syntaxError != nil {
 		return syntaxError
 	}
-	switch target.kind {
-	case expressionLocal:
-		value := compiledExpression{
-			kind: expressionTemporary,
-			info: base,
-			line: nameToken.line,
-		}
-		return parser.writeExpression(
-			&value,
-			target.info,
-			nameToken.line,
-		)
-	case expressionGlobal:
-		parser.function.emitABx(
-			opSetGlobal,
-			base,
-			target.info,
-			nameToken.line,
-		)
-		return nil
-	default:
-		panic("lua: assignment target is not a variable")
+	value := compiledExpression{
+		kind: expressionTemporary,
+		info: base,
+		line: line,
 	}
+	return parser.storeExpression(&target, &value, line)
 }
 
 func (parser *sourceParser) parseReturn() *Error {
@@ -393,9 +378,10 @@ func (parser *sourceParser) resolveVariable(
 ) (compiledExpression, *Error) {
 	if register, ok := parser.function.localRegister(name); ok {
 		return compiledExpression{
-			kind: expressionLocal,
-			info: register,
-			line: line,
+			kind:       expressionLocal,
+			info:       register,
+			line:       line,
+			assignable: true,
 		}, nil
 	}
 	index, syntaxError := parser.function.constant(
@@ -406,8 +392,9 @@ func (parser *sourceParser) resolveVariable(
 		return compiledExpression{}, syntaxError
 	}
 	return compiledExpression{
-		kind: expressionGlobal,
-		info: index,
-		line: line,
+		kind:       expressionGlobal,
+		info:       index,
+		line:       line,
+		assignable: true,
 	}, nil
 }
