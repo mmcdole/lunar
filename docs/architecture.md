@@ -225,15 +225,15 @@ directly executes control flow, moves, loads, upvalue access, number-only
 arithmetic and comparisons, and prepared numeric loops. Ordinary instructions
 neither publish frame state nor reread the activation.
 
-An instruction that can call, allocate, grow a stack, coerce a string, invoke
-a metamethod, or construct an error publishes its program counter and returns
-that instruction to the driver. The driver performs the cold operation and
-re-enters the same switch. This boundary is deliberately an instruction
-value, not an interface or handler object. It keeps call setup and semantic
-temporaries out of the switch's live set, which matters because Go allocates
-registers for a whole function rather than for each switch arm. The design
-keeps one dispatch implementation while allowing uncommon semantics to have
-ordinary, testable functions.
+An instruction that can call or re-enter Lua, grow the execution stack,
+coerce a string, invoke a metamethod, or construct an error publishes its
+program counter and returns that instruction to the driver. The driver
+performs the cold operation and re-enters the same switch. This boundary is
+deliberately an instruction value, not an interface or handler object. It
+keeps call setup and semantic temporaries out of the switch's live set, which
+matters because Go allocates registers for a whole function rather than for
+each switch arm. The design keeps one dispatch implementation while allowing
+uncommon semantics to have ordinary, testable functions.
 
 While the switch is active, the activation stack and compact value stack
 cannot grow, Lua cannot be re-entered, and its cached frame pointer and slices
@@ -279,15 +279,22 @@ completion or centralized unwind. Frame and value limits are checked before
 scratch arguments, an activation, or a continuation are published, so
 resource failure is atomic.
 
-Table instructions keep their complete semantics in a cold compact-slot
-helper rather than enlarging the dense switch. Raw non-nil hits bypass
-metamethods. Missing reads and writes follow at most 100 `__index` or
-`__newindex` targets; only a Function-valued event is called, while every
-other event value is the next target. Getter continuations retain one result,
-and setter continuations request and retain none. Nil and NaN are read misses
-but remain invalid keys when resolution reaches a table write. An existing
-write resolves its array or hash location once and updates that exact
-location; it does not repeat the key lookup after deciding that
+Table instructions enter small non-reentrant compact-slot read and write
+helpers directly from the switch. They complete raw hits, ordinary
+no-metatable misses, and raw inserts without returning through the driver.
+Table storage may grow there because it cannot replace the activation or
+value-stack slices cached by the switch. A miss that needs semantic resolution
+returns a private outcome opcode; the cold helper therefore continues at
+metamethod lookup without repeating the raw table probe. These outcome opcodes
+are never legal in a Prototype.
+
+Raw non-nil hits bypass metamethods. Missing reads and writes follow at most
+100 `__index` or `__newindex` targets; only a Function-valued event is called,
+while every other event value is the next target. Getter continuations retain
+one result, and setter continuations request and retain none. Nil and NaN are
+read misses but remain invalid keys when resolution reaches a table write. An
+existing write resolves its array or hash location once and updates that
+exact location; it does not repeat the key lookup after deciding that
 `__newindex` must be bypassed.
 
 Globals use the executing Function's environment, never an implicit State
@@ -297,12 +304,14 @@ results through Thread top, and installs an ordinary contiguous constructor
 batch with one array growth pass. These paths operate only on compact slots;
 they do not materialize public Values.
 
-The table helper remains outside `runInstructions` intentionally. On arm64,
-adding an ordinary table call to the switch more than doubled its stack frame,
-while even a call-free table probe enlarged it. Raw-hit quickening will be
-introduced only with layout generations and assembly gates; it must preserve
-the current 80-byte arm64 switch frame or show a representative whole-program
-win large enough to justify changing it.
+The raw table seam enlarges the arm64 `runInstructions` frame from 80 to 160
+bytes. This is one constant Go frame for the interpreter invocation, not one
+frame per Lua activation. The larger frame is retained only because
+representative dense, sparse, string-field, global, method, missing-field,
+polymorphic, and constructor workloads improve while allocation counts remain
+unchanged. Full metamethod cases retain the cold path. Further in-switch
+specialization remains subject to both assembly inspection and
+whole-workload gates.
 
 Numeric `for` converts its hidden initial value, limit, and step exactly once
 at `FORPREP`, stores numbers back into the canonical four-register window,

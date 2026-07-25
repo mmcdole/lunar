@@ -40,7 +40,8 @@ driver:
 		for {
 			current := runInstructions(thread)
 			switch current.opcode() {
-			case opGetGlobal, opGetTable, opSelf:
+			case opGetGlobal, opGetTable, opSelf,
+				opGetGlobalMiss, opGetTableMiss, opSelfMiss:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowTableGet(
 					thread,
@@ -49,7 +50,8 @@ driver:
 				); failure != nil {
 					return failExecution(thread, stopDepth, failure)
 				}
-			case opSetGlobal, opSetTable:
+			case opSetGlobal, opSetTable,
+				opSetGlobalMiss, opSetTableMiss:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowTableSet(
 					thread,
@@ -296,6 +298,22 @@ func runInstructions(thread *Thread) instruction {
 			function.upvalues[current.b()].write(
 				values[base+current.a()],
 			)
+
+		case opGetGlobal, opGetTable, opSelf:
+			result := executeRawTableGet(thread, current)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[frameIndex].pc = uint32(pc)
+			return result
+
+		case opSetGlobal, opSetTable:
+			result := executeRawTableSet(thread, current)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[frameIndex].pc = uint32(pc)
+			return result
 
 		case opAdd, opSub, opMul, opDiv, opMod:
 			left := operandSlot(

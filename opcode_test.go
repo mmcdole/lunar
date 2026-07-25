@@ -89,6 +89,19 @@ func TestInstructionFieldsAndPatching(t *testing.T) {
 			abc.c(),
 		)
 	}
+	miss := abc.withOpcode(opSetTableMiss)
+	if miss.opcode() != opSetTableMiss ||
+		miss.a() != abc.a() ||
+		miss.b() != abc.b() ||
+		miss.c() != abc.c() {
+		t.Fatalf(
+			"opcode patch decoded as %s A=%d B=%d C=%d",
+			miss.opcode(),
+			miss.a(),
+			miss.b(),
+			miss.c(),
+		)
+	}
 
 	maxABC := makeABC(opVararg, maxOperandA, maxOperandB, maxOperandC)
 	if maxABC.opcode() != opVararg ||

@@ -2,6 +2,167 @@ package lua
 
 const maxTableMetamethodChain = 100
 
+const tableInstructionHandled = instruction(opTableHandled)
+
+func rawTableMissOpcode(operation opcode) opcode {
+	switch operation {
+	case opGetGlobal:
+		return opGetGlobalMiss
+	case opGetTable:
+		return opGetTableMiss
+	case opSetGlobal:
+		return opSetGlobalMiss
+	case opSetTable:
+		return opSetTableMiss
+	case opSelf:
+		return opSelfMiss
+	default:
+		panic("lua: invalid raw table opcode")
+	}
+}
+
+func tableSourceOpcode(operation opcode) (opcode, bool) {
+	switch operation {
+	case opGetGlobalMiss:
+		return opGetGlobal, true
+	case opGetTableMiss:
+		return opGetTable, true
+	case opSetGlobalMiss:
+		return opSetGlobal, true
+	case opSetTableMiss:
+		return opSetTable, true
+	case opSelfMiss:
+		return opSelf, true
+	default:
+		return operation, false
+	}
+}
+
+// executeRawTableGet completes reads that cannot invoke Lua or construct an
+// error. It is called directly by the instruction loop so common reads avoid
+// a return through the cold semantic driver.
+//
+//go:noinline
+func executeRawTableGet(
+	thread *Thread,
+	code instruction,
+) instruction {
+	frame := thread.frames[len(thread.frames)-1]
+	base := int(frame.base)
+	var target, key slot
+
+	switch code.opcode() {
+	case opGetGlobal:
+		target = slotFromTable(frame.function.environment)
+		key = frame.function.prototype.constants[code.bx()]
+	case opGetTable:
+		target = thread.values[base+code.b()]
+		key = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.c(),
+		)
+	case opSelf:
+		target = thread.values[base+code.b()]
+		// SELF publishes its receiver before reading RK(C), including when
+		// C aliases A+1.
+		writeSlot(&thread.values[base+code.a()+1], target)
+		key = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.c(),
+		)
+	default:
+		panic("lua: invalid raw table read opcode")
+	}
+
+	if target.kind() != TableKind {
+		return code
+	}
+	table := (*Table)(target.ref)
+	result, found := table.rawSlot(key)
+	if !found {
+		if table.metatable == nil ||
+			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+			writeSlot(&thread.values[base+code.a()], nilSlot)
+			return tableInstructionHandled
+		}
+		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+	}
+	writeSlot(&thread.values[base+code.a()], result)
+	return tableInstructionHandled
+}
+
+// executeRawTableSet completes writes that cannot invoke Lua or construct an
+// error.
+//
+//go:noinline
+func executeRawTableSet(
+	thread *Thread,
+	code instruction,
+) instruction {
+	frame := thread.frames[len(thread.frames)-1]
+	base := int(frame.base)
+	var target, key, value slot
+
+	switch code.opcode() {
+	case opSetGlobal:
+		target = slotFromTable(frame.function.environment)
+		key = frame.function.prototype.constants[code.bx()]
+		value = thread.values[base+code.a()]
+	case opSetTable:
+		target = thread.values[base+code.a()]
+		key = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.b(),
+		)
+		value = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.c(),
+		)
+	default:
+		panic("lua: invalid raw table write opcode")
+	}
+
+	if target.kind() != TableKind {
+		return code
+	}
+	table := (*Table)(target.ref)
+	normalized, index, arrayKey, hash, status :=
+		normalizeTableKey(key)
+	if status != tableKeyValid {
+		return code
+	}
+	_, location, found := table.resolveNormalizedSlot(
+		normalized,
+		index,
+		arrayKey,
+		hash,
+	)
+	if !found {
+		if table.metatable == nil ||
+			table.metatable.absentMetamethods&metaNewIndex.bit() != 0 {
+			table.rawSetNormalizedSlot(
+				normalized,
+				index,
+				arrayKey,
+				hash,
+				value,
+			)
+			return tableInstructionHandled
+		}
+		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+	}
+	table.replaceResolvedSlot(location, value)
+	return tableInstructionHandled
+}
+
 //go:noinline
 func slowTableGet(
 	thread *Thread,
@@ -14,7 +175,8 @@ func slowTableGet(
 	base := int(frame.base)
 	var target, key slot
 
-	switch code.opcode() {
+	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
+	switch operation {
 	case opGetGlobal:
 		target = slotFromTable(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
@@ -41,14 +203,17 @@ func slowTableGet(
 		panic("lua: invalid table read opcode")
 	}
 
+	firstTarget := true
 	for range maxTableMetamethodChain {
 		var method slot
 		var found bool
 		if target.kind() == TableKind {
 			table := (*Table)(target.ref)
-			if result, found := table.rawSlot(key); found {
-				writeSlot(&thread.values[base+code.a()], result)
-				return nil
+			if !skipInitialRaw || !firstTarget {
+				if result, found := table.rawSlot(key); found {
+					writeSlot(&thread.values[base+code.a()], result)
+					return nil
+				}
 			}
 			method, found = metamethodSlot(thread, target, metaIndex)
 			if !found {
@@ -84,6 +249,7 @@ func slowTableGet(
 				},
 			)
 		}
+		firstTarget = false
 		target = method
 	}
 
@@ -107,7 +273,8 @@ func slowTableSet(
 	base := int(frame.base)
 	var target, key, value slot
 
-	switch code.opcode() {
+	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
+	switch operation {
 	case opSetGlobal:
 		target = slotFromTable(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
@@ -130,6 +297,7 @@ func slowTableSet(
 		panic("lua: invalid table write opcode")
 	}
 
+	firstTarget := true
 	for range maxTableMetamethodChain {
 		var method slot
 		var found bool
@@ -145,14 +313,16 @@ func slowTableSet(
 					status,
 				)
 			}
-			if _, location, present := table.resolveNormalizedSlot(
-				normalized,
-				index,
-				arrayKey,
-				hash,
-			); present {
-				table.replaceResolvedSlot(location, value)
-				return nil
+			if !skipInitialRaw || !firstTarget {
+				if _, location, present := table.resolveNormalizedSlot(
+					normalized,
+					index,
+					arrayKey,
+					hash,
+				); present {
+					table.replaceResolvedSlot(location, value)
+					return nil
+				}
 			}
 			method, found = metamethodSlot(
 				thread,
@@ -202,6 +372,7 @@ func slowTableSet(
 				},
 			)
 		}
+		firstTarget = false
 		target = method
 	}
 

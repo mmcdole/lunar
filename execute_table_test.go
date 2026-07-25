@@ -114,6 +114,144 @@ func TestExecutorTableWriteRejectsInvalidKeysBeforeMetamethods(t *testing.T) {
 	}
 }
 
+func TestExecutorRawTablePathObservesMetamethodChanges(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	getterTarget, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getterMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		getterTarget.Value(),
+		getterMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+	getterCaller := compileTestFunction(t, state, "@get.lua", `
+local target = ...
+return target.missing
+`)
+	thread, result := executeTestFunction(
+		t,
+		state,
+		getterCaller,
+		getterTarget.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, Nil())
+	if getterMetatable.absentMetamethods&metaIndex.bit() == 0 {
+		t.Fatal("initial read did not cache absent __index")
+	}
+
+	getter := compileTestFunction(t, state, "@index.lua", `return 41`)
+	if err := getterMetatable.RawSetString(
+		"__index",
+		getter.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	thread, result = executeTestFunction(
+		t,
+		state,
+		getterCaller,
+		getterTarget.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, Number(41))
+
+	replacementGetter := compileTestFunction(
+		t,
+		state,
+		"@replacement-index.lua",
+		`return 42`,
+	)
+	replacementMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := replacementMetatable.RawSetString(
+		"__index",
+		replacementGetter.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		getterTarget.Value(),
+		replacementMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+	thread, result = executeTestFunction(
+		t,
+		state,
+		getterCaller,
+		getterTarget.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, Number(42))
+
+	setterTarget, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setterTarget.RawSetString("recorded", Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	setterMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		setterTarget.Value(),
+		setterMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+	setterCaller := compileTestFunction(t, state, "@set.lua", `
+local target = ...
+target.missing = nil
+return target.recorded
+`)
+	thread, result = executeTestFunction(
+		t,
+		state,
+		setterCaller,
+		setterTarget.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, Number(0))
+	if setterMetatable.absentMetamethods&metaNewIndex.bit() == 0 {
+		t.Fatal("initial write did not cache absent __newindex")
+	}
+
+	setter := compileTestFunction(t, state, "@newindex.lua", `
+local target = ...
+target.recorded = 23
+`)
+	if err := setterMetatable.RawSetString(
+		"__newindex",
+		setter.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	thread, result = executeTestFunction(
+		t,
+		state,
+		setterCaller,
+		setterTarget.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, Number(23))
+}
+
 func TestExecutorIndexMetamethodSemantics(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -1011,6 +1149,33 @@ return target:method(7)
 		state.String("overlap"),
 		target.Value(),
 	)
+
+	if err := target.RawSet(target.Value(), Nil()); err != nil {
+		t.Fatal(err)
+	}
+	index := compileTestFunction(t, state, "@overlap-index.lua", `
+local _, key = ...
+return key
+`)
+	metatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := metatable.RawSetString("__index", index.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(target.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+	thread, result = executeTestFunction(
+		t,
+		state,
+		overlap,
+		target.Value(),
+		state.String("discarded key"),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, target.Value(), target.Value())
 }
 
 func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
@@ -1499,6 +1664,157 @@ local sum = 0
 for index = 1, 100 do
 	table.value = index
 	sum = sum + table.value
+end
+return sum
+`)
+	benchmarkExecutorFunction(b, state, function, table.Value())
+}
+
+func BenchmarkExecutorStringFieldReadLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := table.RawSetString("value", Number(1)); err != nil {
+		b.Fatal(err)
+	}
+	function := compileTestFunction(b, state, "@string-read.lua", `
+local table = ...
+local sum = 0
+for index = 1, 100 do
+	sum = sum + table.value
+end
+return sum
+`)
+	benchmarkExecutorFunction(b, state, function, table.Value())
+}
+
+func BenchmarkExecutorStringFieldWriteLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := table.RawSetString("value", Number(0)); err != nil {
+		b.Fatal(err)
+	}
+	function := compileTestFunction(b, state, "@string-write.lua", `
+local table = ...
+for index = 1, 100 do
+	table.value = index
+end
+return table.value
+`)
+	benchmarkExecutorFunction(b, state, function, table.Value())
+}
+
+func BenchmarkExecutorMissingFieldLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	function := compileTestFunction(b, state, "@missing-field.lua", `
+local table = ...
+local value
+for index = 1, 100 do
+	value = table.missing
+end
+return value
+`)
+	benchmarkExecutorFunction(b, state, function, table.Value())
+}
+
+func BenchmarkExecutorPolymorphicFieldLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	left, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	right, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := left.RawSetString("value", Number(1)); err != nil {
+		b.Fatal(err)
+	}
+	if err := right.RawSetString("value", Number(2)); err != nil {
+		b.Fatal(err)
+	}
+	function := compileTestFunction(b, state, "@polymorphic-field.lua", `
+local left, right = ...
+local sum = 0
+for index = 1, 100 do
+	local target = left
+	if index % 2 == 0 then
+		target = right
+	end
+	sum = sum + target.value
+end
+return sum
+`)
+	benchmarkExecutorFunction(
+		b,
+		state,
+		function,
+		left.Value(),
+		right.Value(),
+	)
+}
+
+func BenchmarkExecutorIndexMetamethodLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	getter := compileTestFunction(b, state, "@index.lua", `return 1`)
+	metatable, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := metatable.RawSetString("__index", getter.Value()); err != nil {
+		b.Fatal(err)
+	}
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := state.SetMetatable(table.Value(), metatable); err != nil {
+		b.Fatal(err)
+	}
+	function := compileTestFunction(b, state, "@index-loop.lua", `
+local table = ...
+local sum = 0
+for index = 1, 100 do
+	sum = sum + table.missing
 end
 return sum
 `)

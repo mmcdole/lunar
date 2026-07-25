@@ -48,6 +48,16 @@ const (
 	opCount
 )
 
+// These outcomes are private executor seams, never valid Prototype opcodes.
+const (
+	opTableHandled opcode = opCount + iota
+	opGetGlobalMiss
+	opGetTableMiss
+	opSetGlobalMiss
+	opSetTableMiss
+	opSelfMiss
+)
+
 const (
 	opcodeBits    = 6
 	operandABits  = 8
@@ -168,6 +178,14 @@ func makeAsBx(operation opcode, a, sbx int) instruction {
 
 func (code instruction) opcode() opcode {
 	return opcode(code & ((1 << opcodeBits) - 1))
+}
+
+func (code instruction) withOpcode(operation opcode) instruction {
+	if operation >= 1<<opcodeBits {
+		panic("lua: instruction opcode is out of range")
+	}
+	mask := instruction((1 << opcodeBits) - 1)
+	return code&^mask | instruction(operation)
 }
 
 func (code instruction) a() int {

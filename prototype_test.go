@@ -345,6 +345,15 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
+			name: "executor outcome opcode",
+			builder: func() *prototypeBuilder {
+				return testPrototypeBuilder(
+					instruction(opGetTableMiss),
+					makeABC(opReturn, 0, 1, 0),
+				)
+			},
+		},
+		{
 			name: "malformed constant",
 			builder: func() *prototypeBuilder {
 				builder := testPrototypeBuilder(
