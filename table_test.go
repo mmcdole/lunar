@@ -54,9 +54,33 @@ func TestTableRawScalarAccess(t *testing.T) {
 	if err := table.RawSet(Number(math.NaN()), Bool(true)); !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("NaN key error = %v, want ErrInvalidKey", err)
 	}
+	for _, key := range []Value{Nil(), Number(math.NaN())} {
+		got, err := table.RawGet(key)
+		if err != nil || !got.IsNil() {
+			t.Fatalf("RawGet(%v) = (%v, %v), want (nil, nil)", key, got, err)
+		}
+	}
 	var invalid Value
 	if err := table.RawSet(Bool(true), invalid); !errors.Is(err, ErrInvalidValue) {
 		t.Fatalf("invalid value error = %v, want ErrInvalidValue", err)
+	}
+	if err := table.RawSet(invalid, Bool(true)); !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("invalid key error = %v, want ErrInvalidValue", err)
+	}
+	other, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	foreign, err := other.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSet(
+		foreign.Value(),
+		Bool(true),
+	); !errors.Is(err, ErrForeignValue) {
+		t.Fatalf("foreign key error = %v, want ErrForeignValue", err)
 	}
 }
 
@@ -205,7 +229,7 @@ func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 	}
 }
 
-func TestTableDeletionAndVersions(t *testing.T) {
+func TestTableDeletionAndMetamethodInvalidation(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -219,8 +243,8 @@ func TestTableDeletionAndVersions(t *testing.T) {
 	if err := table.RawSetString("ordinary", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if table.structuralVersion != 1 || table.metamethodVersion != 0 {
-		t.Fatalf("initial versions = (%d, %d)", table.structuralVersion, table.metamethodVersion)
+	if table.structuralVersion != 1 {
+		t.Fatalf("initial structural version = %d", table.structuralVersion)
 	}
 	if err := table.RawSetString("ordinary", Number(2)); err != nil {
 		t.Fatal(err)
@@ -228,18 +252,47 @@ func TestTableDeletionAndVersions(t *testing.T) {
 	if table.structuralVersion != 1 {
 		t.Fatalf("value update changed structural version to %d", table.structuralVersion)
 	}
+	target, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(target.Value(), table); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := metamethodSlot(
+		state.MainThread(),
+		slotFromValue(target.Value()),
+		metaIndex,
+	); found || table.absentMetamethods&metaIndex.bit() == 0 {
+		t.Fatal("missing __index was not cached")
+	}
+
 	if err := table.RawSetString("__index", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	metamethodVersion := table.metamethodVersion
-	if metamethodVersion == 0 {
-		t.Fatal("metamethod insertion did not invalidate absence state")
+	if table.absentMetamethods&metaIndex.bit() != 0 {
+		t.Fatal("metamethod insertion did not invalidate cached absence")
+	}
+	method, found := metamethodSlot(
+		state.MainThread(),
+		slotFromValue(target.Value()),
+		metaIndex,
+	)
+	if !found || !rawSlotEqual(method, numberSlot(1)) {
+		t.Fatal("inserted __index was not found")
 	}
 	if err := table.RawSetString("__index", Nil()); err != nil {
 		t.Fatal(err)
 	}
-	if table.metamethodVersion != metamethodVersion+1 {
-		t.Fatal("metamethod deletion did not invalidate absence state")
+	if table.absentMetamethods&metaIndex.bit() != 0 {
+		t.Fatal("metamethod deletion retained stale absence state")
+	}
+	if _, found := metamethodSlot(
+		state.MainThread(),
+		slotFromValue(target.Value()),
+		metaIndex,
+	); found || table.absentMetamethods&metaIndex.bit() == 0 {
+		t.Fatal("deleted __index was not recached as absent")
 	}
 	if got := table.RawGetString("__index"); !got.IsNil() {
 		t.Fatalf("deleted key = %v, want nil", got)

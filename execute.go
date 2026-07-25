@@ -40,6 +40,30 @@ driver:
 		for {
 			current := runInstructions(thread)
 			switch current.opcode() {
+			case opGetGlobal, opGetTable, opSelf:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowTableGet(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
+			case opSetGlobal, opSetTable:
+				frameIndex := len(thread.frames) - 1
+				if failure := slowTableSet(
+					thread,
+					frameIndex,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
+			case opNewTable:
+				executeNewTable(
+					thread,
+					len(thread.frames)-1,
+					current,
+				)
 			case opAdd, opSub, opMul, opDiv, opMod, opPow, opUnaryMinus:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowArithmetic(
@@ -178,6 +202,14 @@ driver:
 				); failure != nil {
 					return failExecution(thread, stopDepth, failure)
 				}
+			case opSetList:
+				if failure := executeSetList(
+					thread,
+					len(thread.frames)-1,
+					current,
+				); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
 			default:
 				frameIndex := len(thread.frames) - 1
 				return failExecution(
@@ -195,6 +227,18 @@ driver:
 		}
 	}
 	return executionResult{kind: executionReturned}
+}
+
+func operandSlot(
+	values []slot,
+	constants []slot,
+	base int,
+	operand int,
+) slot {
+	if isConstantOperand(operand) {
+		return constants[constantIndex(operand)]
+	}
+	return values[base+operand]
 }
 
 // runInstructions owns the compact dispatch frame. Operations that need
@@ -524,7 +568,7 @@ func installClosure(
 	)
 	writeSlot(
 		&thread.values[int(frame.base)+code.a()],
-		slotFromValue(closure.Value()),
+		slotFromFunction(closure),
 	)
 	return bindingPC + count
 }

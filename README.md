@@ -17,9 +17,10 @@ source compiler are in place, including conditionals, `while`,
 `repeat...until`, numeric and generic `for`, and `break`. The private
 executor runs compact calls, closures, upvalues, varargs, control flow,
 numeric arithmetic and comparison, numeric loops, and their Lua 5.1
-metamethods. Table instructions, generic iteration, remaining operators,
-public source execution, and the standard libraries are still under
-construction.
+metamethods. It also runs globals, table reads and writes, method lookup,
+table constructors, and Lua 5.1 `__index` and `__newindex` resolution.
+Generic iteration, remaining operators, public source execution, and the
+standard libraries are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

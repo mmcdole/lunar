@@ -87,7 +87,11 @@ Files are organized by substantial runtime concepts:
 - `execute.go`: the compact instruction switch, cold execution driver, calls,
   runtime faults, and traceback capture;
 - `execute_numeric.go`: cold numeric coercion, comparisons, numeric-loop
-  preparation, and resumable metamethod calls;
+  preparation, and numeric event selection;
+- `execute_metamethod.go`: allocation-free suspension and resumption around
+  Lua metamethod calls;
+- `execute_table.go`: globals, table access, method lookup, constructors,
+  list installation, and indexed metamethod resolution;
 - later `load.go`: source and bytecode loading;
 - later native-frame additions to `call.go`: Go calls, outcomes, and
   continuations; and
@@ -127,8 +131,11 @@ receiver when present, explicit arguments, then results. Only the final
 unparenthesized call or vararg expression in a list may remain open. Open
 producers are emitted directly beside their consuming call, return, or
 `SETLIST`; prototype verification rejects any broken adjacency. `SELF` may
-legally overlap its output base with its receiver register, so the executor
-must capture the receiver and key before writing either output.
+legally overlap its output base with its receiver register. The executor
+therefore retains the receiver, publishes it to `R(A+1)`, then reads the key
+and performs lookup in the same order as Lua 5.1. This preserves even the
+observable behavior of verified bytecode whose key register overlaps
+`R(A+1)`.
 
 A table constructor pins its table at the bottom of its temporary register
 suffix. Record fields are evaluated and stored immediately; list fields are
@@ -271,6 +278,28 @@ branching and survives ordinary nested and tail calls. It is removed on
 completion or centralized unwind. Frame and value limits are checked before
 scratch arguments, an activation, or a continuation are published, so
 resource failure is atomic.
+
+Table instructions keep their complete semantics in a cold compact-slot
+helper rather than enlarging the dense switch. Raw non-nil hits bypass
+metamethods. Missing reads and writes follow at most 100 `__index` or
+`__newindex` targets; only a Function-valued event is called, while every
+other event value is the next target. Getter continuations retain one result,
+and setter continuations request and retain none. Nil and NaN are read misses
+but remain invalid keys when resolution reaches a table write.
+
+Globals use the executing Function's environment, never an implicit State
+global. `NEWTABLE` decodes both floating-byte operands and clamps their
+advisory capacities before allocation. `SETLIST` is raw, consumes open
+results through Thread top, and installs an ordinary contiguous constructor
+batch with one array growth pass. These paths operate only on compact slots;
+they do not materialize public Values.
+
+The table helper remains outside `runInstructions` intentionally. On arm64,
+adding an ordinary table call to the switch more than doubled its stack frame,
+while even a call-free table probe enlarged it. Raw-hit quickening will be
+introduced only with layout generations and assembly gates; it must preserve
+the current 80-byte arm64 switch frame or show a representative whole-program
+win large enough to justify changing it.
 
 Numeric `for` converts its hidden initial value, limit, and step exactly once
 at `FORPREP`, stores numbers back into the canonical four-register window,

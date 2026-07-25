@@ -67,13 +67,12 @@ type runtimeState struct {
 // mutation. Owning Values and object handles may be retained by other
 // goroutines, but their operations remain subject to the same rule.
 type State struct {
-	runtime              *runtimeState
-	options              Options
-	main                 *Thread
-	globals              *Table
-	registry             *Table
-	typeMetatables       [TableKind + 1]*Table
-	typeMetatableVersion [TableKind + 1]uint64
+	runtime        *runtimeState
+	options        Options
+	main           *Thread
+	globals        *Table
+	registry       *Table
+	typeMetatables [TableKind + 1]*Table
 }
 
 // New constructs an empty State.
@@ -262,7 +261,6 @@ func (state *State) SetMetatable(value Value, metatable *Table) error {
 		data.metatable = metatable
 	default:
 		state.typeMetatables[value.Kind()] = metatable
-		state.typeMetatableVersion[value.Kind()]++
 	}
 	return nil
 }

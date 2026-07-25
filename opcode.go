@@ -267,18 +267,22 @@ func intToFloatingByte(value int) int {
 }
 
 func floatingByteToInt(value int) int {
-	if value < 0 || value > 0xff {
-		panic("lua: floating byte is out of range")
-	}
-	if value < 8 {
-		return value
-	}
-	mantissa := uint((value & 7) + 8)
-	exponent := uint((value >> 3) - 1)
-	decoded := mantissa << exponent
-	maxInt := uint(^uint(0) >> 1)
+	decoded := floatingByteToUint64(value)
+	maxInt := uint64(^uint(0) >> 1)
 	if decoded > maxInt {
 		panic("lua: floating byte exceeds integer range")
 	}
 	return int(decoded)
+}
+
+func floatingByteToUint64(value int) uint64 {
+	if value < 0 || value > 0xff {
+		panic("lua: floating byte is out of range")
+	}
+	if value < 8 {
+		return uint64(value)
+	}
+	mantissa := uint64((value & 7) + 8)
+	exponent := uint((value >> 3) - 1)
+	return mantissa << exponent
 }

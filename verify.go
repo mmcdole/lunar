@@ -796,6 +796,20 @@ func verifyOpenResultFlow(
 					"open results are not consumed by the following instruction",
 				)
 			}
+			consumer := prototype.code[nextPC]
+			firstConsumed := consumer.a()
+			switch consumer.opcode() {
+			case opCall, opTailCall, opSetList:
+				firstConsumed++
+			}
+			if code.a() < firstConsumed {
+				return prototype.syntaxError(
+					pc,
+					"open result base %d precedes consumer base %d",
+					code.a(),
+					firstConsumed,
+				)
+			}
 		}
 	}
 	return nil

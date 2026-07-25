@@ -446,7 +446,7 @@ func (thread *Thread) insertCallMetamethod(
 	)
 	writeSlot(
 		&thread.values[callBase],
-		slotFromValue(function.Value()),
+		slotFromFunction(function),
 	)
 }
 
@@ -509,7 +509,7 @@ func (thread *Thread) makeLegacyArgTable(
 		slot{bits: math.Float64bits(float64(extraCount))},
 		name.hash,
 	)
-	return slotFromValue(table.Value())
+	return slotFromTable(table)
 }
 
 func (thread *Thread) reserveValues(required int) {

@@ -40,7 +40,7 @@ type Table struct {
 	store             tableStore
 	metatable         *Table
 	structuralVersion uint64
-	metamethodVersion uint64
+	absentMetamethods uint32
 }
 
 func newTable(owner *runtimeState, arrayHint, recordHint int) *Table {
@@ -60,20 +60,20 @@ func (table *Table) Value() Value {
 	return objectValue(TableKind, unsafe.Pointer(table))
 }
 
+func slotFromTable(table *Table) slot {
+	return objectSlot(TableKind, unsafe.Pointer(table))
+}
+
 // RawGet returns the value associated with key without invoking metamethods.
 // A missing key returns Nil.
 func (table *Table) RawGet(key Value) (Value, error) {
-	normalized, index, arrayKey, hash, err := table.normalizeKey(key)
-	if err != nil {
+	if table == nil || table.owner == nil {
+		return Value{}, ErrClosed
+	}
+	if err := table.owner.accept(key); err != nil {
 		return Value{}, err
 	}
-	if arrayKey {
-		if value, found := table.rawIntSlot(index); found {
-			return value.owningValue(), nil
-		}
-		return nilValue, nil
-	}
-	if value, found := table.store.get(normalized, hash); found {
+	if value, found := table.rawSlot(slotFromValue(key)); found {
 		return value.owningValue(), nil
 	}
 	return nilValue, nil
@@ -88,21 +88,14 @@ func (table *Table) RawSet(key, value Value) error {
 	if err := table.owner.accept(value); err != nil {
 		return err
 	}
-	normalized, index, arrayKey, hash, err := table.normalizeKey(key)
-	if err != nil {
+	if err := table.owner.accept(key); err != nil {
 		return err
 	}
-
-	valueSlot := slotFromValue(value)
-	structural, changed := table.set(normalized, index, arrayKey, hash, valueSlot)
-	if structural {
-		table.structuralVersion++
-	}
-	if changed && normalized.kind() == StringKind {
-		text := (*luaString)(normalized.ref).text
-		if isMetamethodName(text) {
-			table.metamethodVersion++
-		}
+	if table.rawSetSlot(
+		slotFromValue(key),
+		slotFromValue(value),
+	) != tableKeyValid {
+		return ErrInvalidKey
 	}
 	return nil
 }
@@ -127,10 +120,7 @@ func (table *Table) RawSetInt(key int, value Value) error {
 	if err := table.owner.accept(value); err != nil {
 		return err
 	}
-	structural, _ := table.setInteger(key, slotFromValue(value))
-	if structural {
-		table.structuralVersion++
-	}
+	table.rawSetIntegerSlot(key, slotFromValue(value))
 	return nil
 }
 
@@ -180,8 +170,8 @@ func (table *Table) RawSetString(key string, value Value) error {
 	if structural {
 		table.structuralVersion++
 	}
-	if changed && isMetamethodName(key) {
-		table.metamethodVersion++
+	if changed {
+		table.absentMetamethods = 0
 	}
 	return nil
 }
@@ -291,34 +281,40 @@ func (table *Table) checkMutable() error {
 	return nil
 }
 
-func (table *Table) normalizeKey(
-	key Value,
-) (normalized slot, index int, arrayKey bool, hash uint64, err error) {
-	if table == nil || table.owner == nil {
-		return slot{}, 0, false, 0, ErrClosed
-	}
-	if err = table.owner.accept(key); err != nil {
-		return slot{}, 0, false, 0, err
-	}
+type tableKeyStatus uint8
 
-	normalized = slotFromValue(key)
+const (
+	tableKeyValid tableKeyStatus = iota
+	tableKeyNil
+	tableKeyNaN
+)
+
+func normalizeTableKey(
+	key slot,
+) (
+	normalized slot,
+	index int,
+	arrayKey bool,
+	hash uint64,
+	status tableKeyStatus,
+) {
+	normalized = key
 	switch normalized.kind() {
 	case NilKind:
-		return slot{}, 0, false, 0, ErrInvalidKey
+		status = tableKeyNil
+		return
 	case NumberKind:
 		number := math.Float64frombits(normalized.bits)
 		if math.IsNaN(number) {
-			return slot{}, 0, false, 0, ErrInvalidKey
+			status = tableKeyNaN
+			return
 		}
 		if number == 0 {
 			normalized.bits = 0
 		}
-		if number >= 1 && number <= float64(maxTableHint) {
-			candidate := int(number)
-			if float64(candidate) == number {
-				index = candidate
-				arrayKey = true
-			}
+		if candidate, ok := positiveIntegerIndex(number); ok {
+			index = candidate
+			arrayKey = true
 		}
 		if !arrayKey {
 			hash = hashNumber(number)
@@ -328,7 +324,117 @@ func (table *Table) normalizeKey(
 	default:
 		hash = hashReference(normalized)
 	}
-	return normalized, index, arrayKey, hash, nil
+	return
+}
+
+func (table *Table) rawSlot(key slot) (slot, bool) {
+	normalized, index, arrayKey, hash, status :=
+		normalizeTableKey(key)
+	if status != tableKeyValid {
+		return nilSlot, false
+	}
+	return table.rawNormalizedSlot(
+		normalized,
+		index,
+		arrayKey,
+		hash,
+	)
+}
+
+func (table *Table) rawNormalizedSlot(
+	key slot,
+	index int,
+	arrayKey bool,
+	hash uint64,
+) (slot, bool) {
+	if arrayKey {
+		return table.rawIntSlot(index)
+	}
+	return table.store.get(key, hash)
+}
+
+func (table *Table) rawSetSlot(key, value slot) tableKeyStatus {
+	normalized, index, arrayKey, hash, status :=
+		normalizeTableKey(key)
+	if status != tableKeyValid {
+		return status
+	}
+	table.rawSetNormalizedSlot(
+		normalized,
+		index,
+		arrayKey,
+		hash,
+		value,
+	)
+	return tableKeyValid
+}
+
+func (table *Table) rawSetNormalizedSlot(
+	key slot,
+	index int,
+	arrayKey bool,
+	hash uint64,
+	value slot,
+) {
+	structural, changed := table.set(
+		key,
+		index,
+		arrayKey,
+		hash,
+		value,
+	)
+	table.recordMutation(structural, changed)
+}
+
+func (table *Table) rawSetIntegerSlot(key int, value slot) {
+	structural, _ := table.setInteger(key, value)
+	if structural {
+		table.structuralVersion++
+	}
+}
+
+func (table *Table) rawSetList(first int, values []slot) {
+	if len(values) == 0 {
+		return
+	}
+	if first == len(table.array)+1 && table.store.integerKeys == 0 {
+		last := len(values)
+		for last > 0 && values[last-1].kind() == NilKind {
+			last--
+		}
+		if last == 0 {
+			return
+		}
+
+		oldLength := len(table.array)
+		table.growArray(oldLength + last)
+		inserted := 0
+		for index, value := range values[:last] {
+			writeSlot(&table.array[oldLength+index], value)
+			if value.kind() != NilKind {
+				inserted++
+			}
+		}
+		table.arrayUsed += inserted
+		table.structuralVersion += uint64(inserted)
+		return
+	}
+
+	for offset, value := range values {
+		table.rawSetIntegerSlot(first+offset, value)
+	}
+}
+
+func (table *Table) recordMutation(
+	structural bool,
+	changed bool,
+) {
+	if structural {
+		table.structuralVersion++
+	}
+	if changed {
+		table.absentMetamethods = 0
+	}
 }
 
 func (table *Table) set(
@@ -444,6 +550,11 @@ func (table *Table) setArray(index int, value slot) (structural, changed bool) {
 }
 
 func (table *Table) growArrayWith(length int, value slot) {
+	table.growArray(length)
+	writeSlot(&table.array[length-1], value)
+}
+
+func (table *Table) growArray(length int) {
 	oldLength := len(table.array)
 	if length <= cap(table.array) {
 		table.array = table.array[:length]
@@ -463,10 +574,9 @@ func (table *Table) growArrayWith(length int, value slot) {
 		copy(grown, table.array)
 		table.array = grown
 	}
-	for index := oldLength; index < length-1; index++ {
+	for index := oldLength; index < length; index++ {
 		table.array[index] = nilSlot
 	}
-	writeSlot(&table.array[length-1], value)
 }
 
 func (table *Table) promoteArrayTail() {
@@ -702,21 +812,28 @@ func isPositiveIntegerKey(key slot) bool {
 	if key.kind() != NumberKind {
 		return false
 	}
-	number := math.Float64frombits(key.bits)
-	return number >= 1 && number <= float64(maxTableHint) &&
-		float64(int(number)) == number
+	_, ok := positiveIntegerIndex(math.Float64frombits(key.bits))
+	return ok
 }
 
 func arrayIndex(key slot) (int, bool) {
 	if key.kind() != NumberKind {
 		return 0, false
 	}
-	number := math.Float64frombits(key.bits)
-	if number < 1 || number > float64(maxTableHint) {
+	return positiveIntegerIndex(math.Float64frombits(key.bits))
+}
+
+func positiveIntegerIndex(number float64) (int, bool) {
+	limit := float64(int(^uint(0) >> 1))
+	const largestExactFloatInteger = 1 << 53
+	if limit > largestExactFloatInteger {
+		limit = largestExactFloatInteger
+	}
+	if number < 1 || number > limit {
 		return 0, false
 	}
 	index := int(number)
-	return index, float64(index) == number
+	return index, index > 0 && float64(index) == number
 }
 
 func hashTableKey(key slot) (uint64, error) {
@@ -776,16 +893,4 @@ func mixHash(value uint64) uint64 {
 		return value + 2
 	}
 	return value
-}
-
-func isMetamethodName(name string) bool {
-	switch name {
-	case "__index", "__newindex", "__mode", "__call", "__metatable",
-		"__tostring", "__len", "__unm", "__add", "__sub", "__mul",
-		"__div", "__mod", "__pow", "__concat", "__eq", "__lt", "__le",
-		"__gc":
-		return true
-	default:
-		return false
-	}
 }

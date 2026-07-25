@@ -47,11 +47,25 @@ var metamethodNames = [...]string{
 	metaGC:         "__gc",
 }
 
+var metamethodNameHashes = func() (hashes [metamethodCount]uint64) {
+	for event, name := range metamethodNames {
+		hashes[event] = hashString(name)
+	}
+	return hashes
+}()
+
 func (event metamethod) name() string {
 	if event >= metamethodCount {
 		panic("lua: invalid metamethod")
 	}
 	return metamethodNames[event]
+}
+
+func (event metamethod) bit() uint32 {
+	if event >= metamethodCount {
+		panic("lua: invalid metamethod")
+	}
+	return uint32(1) << event
 }
 
 func metatableForSlot(thread *Thread, value slot) *Table {
@@ -78,8 +92,16 @@ func metamethodSlot(
 	if metatable == nil {
 		return nilSlot, false
 	}
-	result, found := metatable.rawStringSlot(event.name())
+	bit := event.bit()
+	if metatable.absentMetamethods&bit != 0 {
+		return nilSlot, false
+	}
+	result, found := metatable.store.getString(
+		event.name(),
+		metamethodNameHashes[event],
+	)
 	if !found || result.kind() == NilKind {
+		metatable.absentMetamethods |= bit
 		return nilSlot, false
 	}
 	return result, true

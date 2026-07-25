@@ -65,6 +65,10 @@ func (function *Function) Value() Value {
 	return objectValue(FunctionKind, unsafe.Pointer(function))
 }
 
+func slotFromFunction(function *Function) slot {
+	return objectSlot(FunctionKind, unsafe.Pointer(function))
+}
+
 // Prototype returns function's immutable Prototype.
 func (function *Function) Prototype() *Prototype {
 	if function == nil {

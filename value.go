@@ -76,6 +76,10 @@ type slot struct {
 	bits uint64
 }
 
+func numberSlot(value float64) slot {
+	return slot{bits: math.Float64bits(value)}
+}
+
 type scalarMarker struct {
 	id byte
 }
@@ -268,10 +272,14 @@ func (kind Kind) isReference() bool {
 }
 
 func objectValue(kind Kind, pointer unsafe.Pointer) Value {
+	return objectSlot(kind, pointer).owningValue()
+}
+
+func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 	if !kind.isReference() || pointer == nil {
 		panic("lua: invalid canonical object")
 	}
-	return Value{ref: pointer, bits: uint64(kind)}
+	return slot{ref: pointer, bits: uint64(kind)}
 }
 
 func stringValue(pointer *luaString) Value {

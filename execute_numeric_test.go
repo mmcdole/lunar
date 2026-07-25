@@ -1098,6 +1098,9 @@ func TestExecutorMetamethodLimitFailuresAreAtomic(t *testing.T) {
 				slotFromValue(handler.Value()),
 				numberSlot(1),
 				numberSlot(2),
+				numberSlot(3),
+				3,
+				0,
 				executionContinuation{},
 			)
 			if callErr == nil || callErr.Category() != ResourceError {
@@ -1138,6 +1141,9 @@ return invalid()
 		slotFromValue(handler.Value()),
 		numberSlot(1),
 		numberSlot(2),
+		nilSlot,
+		2,
+		1,
 		executionContinuation{},
 	); callErr != nil {
 		t.Fatal(callErr)

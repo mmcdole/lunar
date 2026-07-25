@@ -521,6 +521,41 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
+			name: "open result before return window",
+			builder: func() *prototypeBuilder {
+				return testPrototypeBuilder(
+					makeABC(opCall, 0, 1, 0),
+					makeABC(opReturn, 1, 0, 0),
+				)
+			},
+		},
+		{
+			name: "open result before call arguments",
+			builder: func() *prototypeBuilder {
+				builder := testPrototypeBuilder(
+					makeABC(opVararg, 0, 0, 0),
+					makeABC(opCall, 1, 0, 2),
+					makeABC(opReturn, 1, 2, 0),
+				)
+				builder.registers = 3
+				builder.varargFlags = varargIsVararg
+				return builder
+			},
+		},
+		{
+			name: "open result before setlist values",
+			builder: func() *prototypeBuilder {
+				builder := testPrototypeBuilder(
+					makeABC(opVararg, 0, 0, 0),
+					makeABC(opSetList, 2, 0, 1),
+					makeABC(opReturn, 0, 1, 0),
+				)
+				builder.registers = 3
+				builder.varargFlags = varargIsVararg
+				return builder
+			},
+		},
+		{
 			name: "nil child",
 			builder: func() *prototypeBuilder {
 				builder := testPrototypeBuilder(
