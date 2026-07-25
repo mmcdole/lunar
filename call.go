@@ -63,6 +63,67 @@ func (thread *Thread) pushLuaCall(
 	return nil
 }
 
+// tryEnterFixedLuaCall enters the common direct fixed Lua call without
+// repeating public-boundary validation or growing either execution stack.
+// False leaves the execution stacks unchanged so the checked path can grow
+// them or report a configured resource failure.
+//
+//go:noinline
+func (thread *Thread) tryEnterFixedLuaCall(code instruction) bool {
+	if code.opcode() != opCall {
+		return false
+	}
+	if code.b() == 0 || code.c() == 0 {
+		return false
+	}
+	callerBase := int(thread.frames[len(thread.frames)-1].base)
+	callBase := callerBase + code.a()
+	function, direct := luaFunctionSlot(thread.values[callBase])
+	if !direct {
+		return false
+	}
+	argumentCount := code.b() - 1
+	wantedResults := code.c() - 1
+	prototype := function.prototype
+	if prototype.varargFlags&varargIsVararg != 0 ||
+		len(thread.frames) >= thread.state.options.MaxFrames ||
+		len(thread.frames) >= cap(thread.frames) {
+		return false
+	}
+
+	base := callBase + 1
+	argumentEnd := base + argumentCount
+	frameEnd := base + int(prototype.registers)
+	resultEnd := callBase + wantedResults
+	required := argumentEnd
+	if frameEnd > required {
+		required = frameEnd
+	}
+	if resultEnd > required {
+		required = resultEnd
+	}
+	if required < 0 ||
+		required > thread.state.options.MaxValues ||
+		uint64(required) > uint64(^uint32(0)) ||
+		required > cap(thread.values) {
+		return false
+	}
+
+	oldExtent := thread.liveValueExtent()
+	if required > len(thread.values) {
+		thread.values = thread.values[:required]
+	}
+	thread.commitLuaCall(function, luaCallLayout{
+		base:          base,
+		resultBase:    callBase,
+		frameEnd:      frameEnd,
+		required:      required,
+		argumentCount: argumentCount,
+		wantedResults: wantedResults,
+	}, oldExtent)
+	return true
+}
+
 func (thread *Thread) pushLuaMetamethodCall(
 	function *Function,
 	callBase int,
@@ -256,6 +317,49 @@ func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
 		panic("lua: adjusted result range is outside the value stack")
 	}
 
+	thread.completeLuaReturn(firstResult, resultCount)
+}
+
+// tryCompleteFixedLuaReturn completes the common fixed-result nested return.
+// False leaves the current activation unchanged for the checked executor path.
+//
+//go:noinline
+func (thread *Thread) tryCompleteFixedLuaReturn(
+	stopDepth int,
+	code instruction,
+) bool {
+	if code.b() == 0 {
+		return false
+	}
+	postDepth := len(thread.frames) - 1
+	frame := thread.frames[postDepth]
+	if frame.wantedResults == allResults || postDepth <= stopDepth {
+		return false
+	}
+	if count := len(thread.continuations); count != 0 &&
+		int(thread.continuations[count-1].frameDepth) == postDepth {
+		return false
+	}
+	thread.completeLuaReturn(
+		int(frame.base)+code.a(),
+		code.b()-1,
+	)
+	return true
+}
+
+// completeLuaReturn completes a verified return without repeating range
+// validation. Result sources may overlap their destination.
+//
+//go:noinline
+func (thread *Thread) completeLuaReturn(firstResult, resultCount int) {
+	frameIndex := len(thread.frames) - 1
+	frame := thread.frames[frameIndex]
+	resultBase := int(frame.resultBase)
+	wanted := int(frame.wantedResults)
+	outputCount := resultCount
+	if wanted != allResults {
+		outputCount = wanted
+	}
 	oldExtent := thread.liveValueExtent()
 
 	thread.closeUpvalues(int(frame.base))

@@ -40,7 +40,7 @@ driver:
 			}
 		}
 		for {
-			current := runInstructions(thread)
+			current := runInstructions(thread, stopDepth)
 			switch current.opcode() {
 			case opGetGlobal, opGetTable, opSelf,
 				opGetGlobalMiss, opGetTableMiss, opSelfMiss:
@@ -275,14 +275,13 @@ func operandSlot(
 // runInstructions owns the compact dispatch frame. Operations that need
 // coercion or metamethod machinery publish their PC and return to execute,
 // keeping cold semantic state out of this function's register allocation.
-func runInstructions(thread *Thread) instruction {
-	frameIndex := len(thread.frames) - 1
-	frame := &thread.frames[frameIndex]
-	function := frame.function
+func runInstructions(thread *Thread, stopDepth int) instruction {
+reload:
+	function := thread.frames[len(thread.frames)-1].function
 	prototype := function.prototype
 	values := thread.values
-	base := int(frame.base)
-	pc := int(frame.pc)
+	base := int(thread.frames[len(thread.frames)-1].base)
+	pc := int(thread.frames[len(thread.frames)-1].pc)
 	code := prototype.code
 
 	for {
@@ -333,7 +332,7 @@ func runInstructions(thread *Thread) instruction {
 			if result == tableInstructionHandled {
 				break
 			}
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return result
 
 		case opSetGlobal, opSetTable:
@@ -341,7 +340,7 @@ func runInstructions(thread *Thread) instruction {
 			if result == tableInstructionHandled {
 				break
 			}
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return result
 
 		case opAdd, opSub, opMul, opDiv, opMod:
@@ -380,11 +379,11 @@ func runInstructions(thread *Thread) instruction {
 				)
 				break
 			}
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opPow:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opUnaryMinus:
@@ -396,7 +395,7 @@ func runInstructions(thread *Thread) instruction {
 				)
 				break
 			}
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opNot:
@@ -425,12 +424,12 @@ func runInstructions(thread *Thread) instruction {
 					(*Table)(source.ref),
 				)
 			default:
-				thread.frames[frameIndex].pc = uint32(pc)
+				thread.frames[len(thread.frames)-1].pc = uint32(pc)
 				return current
 			}
 
 		case opConcat:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opJump:
@@ -461,7 +460,7 @@ func runInstructions(thread *Thread) instruction {
 			case left.kind() == StringKind ||
 				left.kind() == TableKind ||
 				left.kind() == UserDataKind:
-				thread.frames[frameIndex].pc = uint32(pc)
+				thread.frames[len(thread.frames)-1].pc = uint32(pc)
 				return current
 			default:
 				equal = false
@@ -502,7 +501,7 @@ func runInstructions(thread *Thread) instruction {
 				}
 			}
 			if !compared {
-				thread.frames[frameIndex].pc = uint32(pc)
+				thread.frames[len(thread.frames)-1].pc = uint32(pc)
 				return current
 			}
 			if result == (current.a() != 0) {
@@ -538,28 +537,35 @@ func runInstructions(thread *Thread) instruction {
 				pc++
 			}
 
-		case opCall:
+		case opCall, opReturn:
+			frameIndex := len(thread.frames) - 1
 			thread.frames[frameIndex].pc = uint32(pc)
-			return current
+			if current.opcode() == opReturn {
+				if frameIndex <= stopDepth {
+					return current
+				}
+				if thread.tryCompleteFixedLuaReturn(stopDepth, current) {
+					goto reload
+				}
+			} else if thread.tryEnterFixedLuaCall(current) {
+				goto reload
+			}
+			return code[pc-1]
 
 		case opTailCall:
-			thread.frames[frameIndex].pc = uint32(pc)
-			return current
-
-		case opReturn:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opClose:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opClosure:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opVararg:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opForPrep:
@@ -580,7 +586,7 @@ func runInstructions(thread *Thread) instruction {
 				pc += current.sbx()
 				break
 			}
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		case opForLoop:
@@ -597,11 +603,11 @@ func runInstructions(thread *Thread) instruction {
 			}
 
 		case opIteratorLoop:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
 		default:
-			thread.frames[frameIndex].pc = uint32(pc)
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 		}
 	}

@@ -564,7 +564,7 @@ end
 			); callErr != nil {
 				t.Fatal(callErr)
 			}
-			current := runInstructions(thread)
+			current := runInstructions(thread, 0)
 			if current.opcode() != opIteratorLoop {
 				t.Fatalf("executor stopped at %s; want TFORLOOP", current.opcode())
 			}

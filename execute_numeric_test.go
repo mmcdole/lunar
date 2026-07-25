@@ -406,6 +406,66 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 		assertExecutionValues(t, thread, Nil())
 	})
 
+	t.Run("fixed call beneath pending continuation", func(t *testing.T) {
+		state, err := New(Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		handler := compileTestFunction(t, state, "@handler.lua", `
+local left, right = ...
+local function keep(value)
+	return value
+end
+local result = keep(right)
+return result
+`)
+		if len(handler.prototype.children) != 1 ||
+			handler.prototype.children[0].varargFlags&varargIsVararg != 0 {
+			t.Fatal("continuation helper did not compile as a fixed function")
+		}
+		var call instruction
+		for _, code := range handler.prototype.code {
+			if code.opcode() == opCall {
+				call = code
+				break
+			}
+		}
+		if call.opcode() != opCall ||
+			call.b() != 2 ||
+			call.c() != 2 {
+			t.Fatalf(
+				"continuation helper CALL = B:%d C:%d; want B:2 C:2",
+				call.b(),
+				call.c(),
+			)
+		}
+
+		left := metamethodTestTable(t, state, "__add", handler.Value())
+		right, err := state.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		caller := compileTestFunction(
+			t,
+			state,
+			"@caller.lua",
+			`local left, right = ...; return left + right`,
+		)
+		thread, result := executeTestFunction(
+			t,
+			state,
+			caller,
+			left.Value(),
+			right.Value(),
+		)
+		assertExecutionReturned(t, result)
+		assertExecutionValues(t, thread, right.Value())
+		if len(thread.continuations) != 0 {
+			t.Fatal("fixed nested call retained the outer continuation")
+		}
+	})
+
 	t.Run("tail-call handler", func(t *testing.T) {
 		state, err := New(Options{MaxFrames: 2})
 		if err != nil {

@@ -91,6 +91,206 @@ return first, second
 	assertExecutionValues(t, thread, Number(10), Number(20))
 }
 
+func TestExecutorDirectFixedCallsAdjustArgumentsAndResults(t *testing.T) {
+	const source = `
+local function none(value)
+	local copy = value
+end
+local function one(value)
+	return value
+end
+local function pair(left, right)
+	return right, left
+end
+
+none(1)
+local padded, missing = one(2)
+local truncated = pair(3, 4)
+local missing_right, missing_left = pair(5)
+local excess = one(6, 7)
+local exact_right, exact_left = pair(8, 9)
+return padded, missing, truncated, missing_right, missing_left,
+	excess, exact_right, exact_left
+`
+	prototype, syntaxError := compileSource("@direct-calls.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 3 {
+		t.Fatalf(
+			"direct-call fixture has %d children; want 3",
+			len(prototype.children),
+		)
+	}
+	for index, child := range prototype.children {
+		if child.varargFlags&varargIsVararg != 0 {
+			t.Fatalf("direct callee %d compiled as vararg", index)
+		}
+	}
+
+	var calls []instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opCall {
+			calls = append(calls, code)
+		}
+	}
+	wantShapes := [][2]int{
+		{2, 1},
+		{2, 3},
+		{3, 2},
+		{2, 3},
+		{3, 2},
+		{3, 3},
+	}
+	if len(calls) != len(wantShapes) {
+		t.Fatalf(
+			"direct-call fixture emitted %d CALLs; want %d",
+			len(calls),
+			len(wantShapes),
+		)
+	}
+	for index, want := range wantShapes {
+		if calls[index].b() != want[0] ||
+			calls[index].c() != want[1] {
+			t.Fatalf(
+				"CALL %d = B:%d C:%d; want B:%d C:%d",
+				index,
+				calls[index].b(),
+				calls[index].c(),
+				want[0],
+				want[1],
+			)
+		}
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	thread, result := executeTestFunction(t, state, function)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(
+		t,
+		thread,
+		Number(2),
+		Nil(),
+		Number(4),
+		Nil(),
+		Number(5),
+		Number(6),
+		Number(9),
+		Number(8),
+	)
+}
+
+func TestExecutorFixedCallSlowShapes(t *testing.T) {
+	const source = `
+local function variable(...)
+	return ...
+end
+local function produce()
+	return 2, 3
+end
+local function collect(first, second, third)
+	return first, second, third
+end
+local function open_return()
+	return 4, produce()
+end
+
+local variable_first = variable(1, 9)
+local first, second, third = collect(1, produce())
+local fourth, fifth, sixth = open_return()
+return variable_first, first, second, third, fourth, fifth, sixth
+`
+	prototype, syntaxError := compileSource("@slow-calls.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 4 {
+		t.Fatalf(
+			"slow-call fixture has %d children; want 4",
+			len(prototype.children),
+		)
+	}
+	if prototype.children[0].varargFlags&varargIsVararg == 0 {
+		t.Fatal("variable callee did not compile as vararg")
+	}
+	for index := 1; index < len(prototype.children); index++ {
+		if prototype.children[index].varargFlags&varargIsVararg != 0 {
+			t.Fatalf("fixed callee %d compiled as vararg", index)
+		}
+	}
+
+	var calls []instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opCall {
+			calls = append(calls, code)
+		}
+	}
+	wantShapes := [][2]int{
+		{3, 2},
+		{1, 0},
+		{0, 4},
+		{1, 4},
+	}
+	if len(calls) != len(wantShapes) {
+		t.Fatalf(
+			"slow-call fixture emitted %d CALLs; want %d",
+			len(calls),
+			len(wantShapes),
+		)
+	}
+	for index, want := range wantShapes {
+		if calls[index].b() != want[0] ||
+			calls[index].c() != want[1] {
+			t.Fatalf(
+				"CALL %d = B:%d C:%d; want B:%d C:%d",
+				index,
+				calls[index].b(),
+				calls[index].c(),
+				want[0],
+				want[1],
+			)
+		}
+	}
+	openReturn := prototype.children[3]
+	var openCall, openResult bool
+	for _, code := range openReturn.code {
+		switch code.opcode() {
+		case opCall:
+			openCall = code.c() == 0
+		case opReturn:
+			openResult = code.b() == 0
+		}
+	}
+	if !openCall || !openResult {
+		t.Fatal("open-return fixture did not emit open CALL and RETURN")
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	thread, result := executeTestFunction(t, state, function)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(
+		t,
+		thread,
+		Number(1),
+		Number(1),
+		Number(2),
+		Number(3),
+		Number(4),
+		Number(2),
+		Number(3),
+	)
+}
+
 func TestExecutorClosesCapturedValuesAtReturn(t *testing.T) {
 	const source = `
 local value = ...
@@ -123,6 +323,189 @@ end
 	result = execute(thread, 0)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, stateNeutralString("captured"))
+}
+
+func TestExecutorDirectReturnClosesUpvalues(t *testing.T) {
+	const source = `local function make(value)
+	local function get()
+		return value
+	end
+	return get
+end
+local get = make("captured")
+local result = get()
+return result`
+	prototype, syntaxError := compileSource("@direct-upvalue.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 1 ||
+		len(prototype.children[0].children) != 1 {
+		t.Fatal("direct-upvalue fixture has unexpected closure structure")
+	}
+	makePrototype := prototype.children[0]
+	getPrototype := makePrototype.children[0]
+	if makePrototype.varargFlags&varargIsVararg != 0 ||
+		getPrototype.varargFlags&varargIsVararg != 0 {
+		t.Fatal("direct-upvalue fixture compiled a callee as vararg")
+	}
+	var calls []instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opCall {
+			calls = append(calls, code)
+		}
+	}
+	if len(calls) != 2 ||
+		calls[0].b() != 2 ||
+		calls[0].c() != 2 ||
+		calls[1].b() != 1 ||
+		calls[1].c() != 2 {
+		t.Fatalf("direct-upvalue CALL shapes = %#v", calls)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	thread, result := executeTestFunction(t, state, function)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, state.String("captured"))
+	if thread.openUpvalues != nil {
+		t.Fatal("direct returns retained an open upvalue")
+	}
+}
+
+func TestExecutorRunsTransitiveUpvalueBinding(t *testing.T) {
+	const source = `
+local captured = ...
+return function()
+	return function()
+		return captured
+	end
+end
+`
+	prototype, syntaxError := compileSource("@transitive-upvalue.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 1 ||
+		len(prototype.children[0].children) != 1 {
+		t.Fatal("compiler did not produce the expected closure chain")
+	}
+	middlePrototype := prototype.children[0]
+	closurePC := opcodeIndex(middlePrototype.code, opClosure)
+	if closurePC < 0 || closurePC+1 >= len(middlePrototype.code) {
+		t.Fatal("middle function has no complete closure instruction")
+	}
+	binding := middlePrototype.code[closurePC+1]
+	if binding.opcode() != opGetUpvalue || binding.b() != 0 {
+		t.Fatalf(
+			"inner closure binding = %s B:%d; want GETUPVAL 0",
+			binding.opcode(),
+			binding.b(),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	thread := state.MainThread()
+	setTestCall(
+		thread,
+		0,
+		function,
+		stateNeutralString("grandparent"),
+	)
+	if callErr := thread.pushLuaCall(function, 0, 1, 1); callErr != nil {
+		t.Fatal(callErr)
+	}
+	result := execute(thread, 0)
+	assertExecutionReturned(t, result)
+
+	middle, ok := thread.values[0].owningValue().Function()
+	if !ok {
+		t.Fatalf(
+			"root result = %v; want middle closure",
+			thread.values[0].owningValue(),
+		)
+	}
+	if callErr := thread.pushLuaCall(middle, 0, 0, 1); callErr != nil {
+		t.Fatal(callErr)
+	}
+	result = execute(thread, 0)
+	assertExecutionReturned(t, result)
+
+	inner, ok := thread.values[0].owningValue().Function()
+	if !ok {
+		t.Fatalf(
+			"middle result = %v; want inner closure",
+			thread.values[0].owningValue(),
+		)
+	}
+	if callErr := thread.pushLuaCall(inner, 0, 0, 1); callErr != nil {
+		t.Fatal(callErr)
+	}
+	result = execute(thread, 0)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(
+		t,
+		thread,
+		stateNeutralString("grandparent"),
+	)
+}
+
+func TestExecutorRunsNot(t *testing.T) {
+	const source = `local value = ...; return not value`
+	prototype, syntaxError := compileSource("@not.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if opcodeIndex(prototype.code, opNot) < 0 {
+		t.Fatal("value-producing not did not compile to NOT")
+	}
+
+	tests := []struct {
+		name string
+		arg  Value
+		want Value
+	}{
+		{name: "truthy", arg: Number(0), want: Bool(false)},
+		{name: "false", arg: Bool(false), want: Bool(true)},
+		{name: "nil", arg: Nil(), want: Bool(true)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state, err := New(Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			function := newLuaFunction(
+				state.runtime,
+				prototype,
+				state.globals,
+				nil,
+			)
+			thread := state.MainThread()
+			setTestCall(thread, 0, function, test.arg)
+			if callErr := thread.pushLuaCall(
+				function,
+				0,
+				1,
+				1,
+			); callErr != nil {
+				t.Fatal(callErr)
+			}
+			result := execute(thread, 0)
+			assertExecutionReturned(t, result)
+			assertExecutionValues(t, thread, test.want)
+		})
+	}
 }
 
 func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
@@ -179,6 +562,82 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 		if err := state.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
+	compiled, syntaxError := compileSource(
+		"@testset.lua",
+		`local value = ...; return value and "replacement"`,
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if opcodeIndex(compiled.code, opTestSet) < 0 {
+		t.Fatal("operand-valued and did not compile to TESTSET")
+	}
+
+	builder := testPrototypeBuilder(
+		makeABC(opTestSet, 0, 1, 0),
+		makeAsBx(opJump, 0, 0),
+		makeABC(opReturn, 0, 2, 0),
+	)
+	builder.parameters = 2
+	builder.registers = 2
+	prototype, syntaxError := builder.seal()
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	tests := []struct {
+		name   string
+		source Value
+		want   Value
+	}{
+		{
+			name:   "matching condition copies source",
+			source: Bool(false),
+			want:   Bool(false),
+		},
+		{
+			name:   "nonmatching condition preserves destination",
+			source: Number(7),
+			want:   stateNeutralString("preserved"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state, err := New(Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			function := newLuaFunction(
+				state.runtime,
+				prototype,
+				state.globals,
+				nil,
+			)
+			thread := state.MainThread()
+			setTestCall(
+				thread,
+				0,
+				function,
+				stateNeutralString("preserved"),
+				test.source,
+			)
+			if callErr := thread.pushLuaCall(
+				function,
+				0,
+				2,
+				1,
+			); callErr != nil {
+				t.Fatal(callErr)
+			}
+			result := execute(thread, 0)
+			assertExecutionReturned(t, result)
+			assertExecutionValues(t, thread, test.want)
+		})
 	}
 }
 
@@ -527,6 +986,62 @@ return result
 	}
 }
 
+func TestExecutorDirectCallPublishesCallerPC(t *testing.T) {
+	const source = `local function fail(value)
+	return value()
+end
+local result = fail(42)
+return result`
+	prototype, syntaxError := compileSource("@direct-trace.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 1 ||
+		prototype.children[0].varargFlags&varargIsVararg != 0 {
+		t.Fatal("direct-trace callee did not compile as a fixed function")
+	}
+	var call instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opCall {
+			call = code
+			break
+		}
+	}
+	if call.opcode() != opCall || call.b() != 2 || call.c() != 2 {
+		t.Fatalf(
+			"direct-trace CALL = B:%d C:%d; want B:2 C:2",
+			call.b(),
+			call.c(),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	thread, result := executeTestFunction(t, state, function)
+	if result.kind != executionFailed || result.err == nil {
+		t.Fatalf("direct-trace execution = %+v; want failure", result)
+	}
+	traceback := result.err.Traceback()
+	if len(traceback) != 2 ||
+		traceback[0].Source != "@direct-trace.lua" ||
+		traceback[0].Line != 2 ||
+		traceback[0].TailCalls != 0 ||
+		traceback[1].Source != "@direct-trace.lua" ||
+		traceback[1].Line != 4 ||
+		traceback[1].TailCalls != 0 {
+		t.Fatalf("direct-trace traceback = %+v", traceback)
+	}
+	if len(thread.frames) != 0 ||
+		thread.top != 0 ||
+		thread.frameExtent != 0 {
+		t.Fatal("direct-trace failure retained execution state")
+	}
+}
+
 func TestExecutorPartialFailurePreservesSuspendedCaller(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -569,6 +1084,81 @@ return value()
 			thread.frameExtent,
 		)
 	}
+	assertTestSlot(t, thread.values[retainedIndex], retained)
+	thread.unwindLuaCalls(0)
+}
+
+func TestExecutorDirectReturnHonorsStopDepth(t *testing.T) {
+	const source = `local value = ...
+local function identity(item)
+	return item
+end
+local result = identity(value)
+return result`
+	prototype, syntaxError := compileSource("@partial-return.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 1 ||
+		prototype.children[0].varargFlags&varargIsVararg != 0 {
+		t.Fatal("partial-return helper did not compile as a fixed function")
+	}
+	var call instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opCall {
+			call = code
+			break
+		}
+	}
+	if call.opcode() != opCall || call.b() != 2 || call.c() != 2 {
+		t.Fatalf(
+			"partial-return CALL = B:%d C:%d; want B:2 C:2",
+			call.b(),
+			call.c(),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	thread := state.MainThread()
+	caller := newTestLuaFunction(t, state, 0, 6, 0, 0)
+	child := newLuaFunction(state.runtime, prototype, state.globals, nil)
+
+	setTestCall(thread, 0, caller)
+	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+		t.Fatal(callErr)
+	}
+	callerFrame := thread.frames[0]
+	retainedIndex := int(callerFrame.base)
+	retained := state.String("suspended caller")
+	thread.values[retainedIndex] = slotFromValue(retained)
+	callBase := int(callerFrame.base) + 1
+	thread.values[callBase] = slotFromValue(child.Value())
+	thread.values[callBase+1] = numberSlot(42)
+	if callErr := thread.pushLuaCall(child, callBase, 1, 1); callErr != nil {
+		t.Fatal(callErr)
+	}
+
+	result := execute(thread, 1)
+	assertExecutionReturned(t, result)
+	if len(thread.frames) != 1 ||
+		thread.frames[0] != callerFrame ||
+		thread.top != int(callerFrame.base)+
+			int(caller.prototype.registers) ||
+		thread.frameExtent != thread.top ||
+		len(thread.continuations) != 0 {
+		t.Fatalf(
+			"partial return left %d frames, top %d, extent %d, %d continuations",
+			len(thread.frames),
+			thread.top,
+			thread.frameExtent,
+			len(thread.continuations),
+		)
+	}
+	assertTestSlot(t, thread.values[callBase], Number(42))
 	assertTestSlot(t, thread.values[retainedIndex], retained)
 	thread.unwindLuaCalls(0)
 }
@@ -709,6 +1299,83 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 	}
 }
 
+func TestExecutorWarmNestedFixedCallsDoNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	const source = `local function increment(value)
+	return value + 1
+end
+return function(value)
+	local result = increment(value)
+	return result
+end`
+	prototype, syntaxError := compileSource("@warm-calls.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	if len(prototype.children) != 2 {
+		t.Fatalf(
+			"warm-call fixture has %d children; want 2",
+			len(prototype.children),
+		)
+	}
+	increment := prototype.children[0]
+	kernelPrototype := prototype.children[1]
+	if increment.varargFlags&varargIsVararg != 0 ||
+		kernelPrototype.varargFlags&varargIsVararg != 0 {
+		t.Fatal("warm-call fixture compiled a callee as vararg")
+	}
+	var call instruction
+	for _, code := range kernelPrototype.code {
+		if code.opcode() == opCall {
+			call = code
+			break
+		}
+	}
+	if call.opcode() != opCall || call.b() != 2 || call.c() != 2 {
+		t.Fatalf(
+			"warm nested CALL = B:%d C:%d; want B:2 C:2",
+			call.b(),
+			call.c(),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	initializer := newLuaFunction(
+		state.runtime,
+		prototype,
+		state.globals,
+		nil,
+	)
+	thread, result := executeTestFunction(t, state, initializer)
+	assertExecutionReturned(t, result)
+	if thread.top != 1 {
+		t.Fatalf("warm-call initializer returned %d values; want 1", thread.top)
+	}
+	kernel, ok := thread.values[0].owningValue().Function()
+	if !ok {
+		t.Fatal("warm-call initializer did not return a function")
+	}
+
+	thread.reserveValues(32)
+	thread.reserveFrames(8)
+	arguments := []slot{numberSlot(41)}
+	run := func() {
+		benchmarkRunExecutor(thread, kernel, arguments)
+		number, ok := slotToNumber(thread.values[0])
+		if !ok || number != 42 {
+			panic("unexpected nested call result")
+		}
+	}
+	run()
+	if allocations := testing.AllocsPerRun(1000, run); allocations != 0 {
+		t.Fatalf("warm nested call allocations = %v; want 0", allocations)
+	}
+}
+
 func BenchmarkExecutorDispatch256Moves(b *testing.B) {
 	code := make([]instruction, 0, 257)
 	for range 256 {
@@ -734,7 +1401,7 @@ func BenchmarkExecutorDispatch256Moves(b *testing.B) {
 	b.ReportMetric(257, "opcodes/op")
 }
 
-func BenchmarkExecutorFixedCallReturn(b *testing.B) {
+func BenchmarkExecutorVarargCallReturn(b *testing.B) {
 	state, err := New(Options{})
 	if err != nil {
 		b.Fatal(err)
@@ -756,6 +1423,116 @@ return result
 		callee.Value(),
 		Number(17),
 	)
+}
+
+func BenchmarkExecutorLuaCallMatrix(b *testing.B) {
+	const iterations = 1000
+	for _, test := range []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "zero results",
+			source: `
+local function consume(value)
+	local copy = value
+end
+function benchmark_kernel(iterations)
+	for value = 1, iterations do
+		consume(value)
+	end
+	return iterations
+end
+`,
+		},
+		{
+			name: "one result",
+			source: `
+local function identity(value)
+	return value
+end
+function benchmark_kernel(iterations)
+	local value = 1
+	for _ = 1, iterations do
+		value = identity(value)
+	end
+	return value
+end
+`,
+		},
+		{
+			name: "two results",
+			source: `
+local function swap(left, right)
+	return right, left
+end
+function benchmark_kernel(iterations)
+	local left, right = 1, 2
+	for _ = 1, iterations do
+		left, right = swap(left, right)
+	end
+	return left + right
+end
+`,
+		},
+		{
+			name: "closed upvalue",
+			source: `
+local captured = 17
+local function read()
+	return captured
+end
+function benchmark_kernel(iterations)
+	local value
+	for _ = 1, iterations do
+		value = read()
+	end
+	return value
+end
+`,
+		},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			state, err := New(Options{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() {
+				_ = state.Close()
+			})
+			initializer := compileTestFunction(
+				b,
+				state,
+				"@call-matrix.lua",
+				test.source,
+			)
+			thread, result := executeTestFunction(
+				b,
+				state,
+				initializer,
+			)
+			if result.kind != executionReturned ||
+				result.err != nil ||
+				thread.top != 0 {
+				b.Fatalf("call benchmark initialization = %+v", result)
+			}
+			value, valueErr := state.Global("benchmark_kernel")
+			if valueErr != nil {
+				b.Fatal(valueErr)
+			}
+			function, ok := value.Function()
+			if !ok {
+				b.Fatal("call benchmark did not publish benchmark_kernel")
+			}
+			b.ReportMetric(iterations, "lua-calls/op")
+			benchmarkExecutorFunction(
+				b,
+				state,
+				function,
+				Number(iterations),
+			)
+		})
+	}
 }
 
 func BenchmarkExecutorClosedUpvalueCall(b *testing.B) {

@@ -500,6 +500,156 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 	assertTestSlot(t, rootUpvalue.read(), state.String("root"))
 }
 
+func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
+	type snapshot struct {
+		values      []slot
+		frames      []activation
+		top         int
+		frameExtent int
+		valueCap    int
+		frameCap    int
+		valueData   *slot
+		frameData   *activation
+	}
+	takeSnapshot := func(thread *Thread) snapshot {
+		before := snapshot{
+			values:      slices.Clone(thread.values),
+			frames:      slices.Clone(thread.frames),
+			top:         thread.top,
+			frameExtent: thread.frameExtent,
+			valueCap:    cap(thread.values),
+			frameCap:    cap(thread.frames),
+		}
+		if len(thread.values) != 0 {
+			before.valueData = &thread.values[0]
+		}
+		if len(thread.frames) != 0 {
+			before.frameData = &thread.frames[0]
+		}
+		return before
+	}
+	assertUnchanged := func(t *testing.T, thread *Thread, before snapshot) {
+		t.Helper()
+		if thread.top != before.top ||
+			thread.frameExtent != before.frameExtent ||
+			!slices.Equal(thread.values, before.values) ||
+			!slices.Equal(thread.frames, before.frames) {
+			t.Fatal("fixed-call fast miss mutated execution state")
+		}
+		if len(thread.values) != 0 && &thread.values[0] != before.valueData {
+			t.Fatal("fixed-call fast miss replaced the value stack")
+		}
+		if len(thread.frames) != 0 && &thread.frames[0] != before.frameData {
+			t.Fatal("fixed-call fast miss replaced the activation stack")
+		}
+	}
+	stage := func(
+		t *testing.T,
+		options Options,
+		calleeRegisters int,
+	) (*State, *Thread, *Function, int, instruction) {
+		t.Helper()
+		state, err := New(options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thread := state.MainThread()
+		caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
+		callee := newTestLuaFunction(t, state, 0, calleeRegisters, 0, 0)
+		setTestCall(thread, 0, caller)
+		if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+			state.Close()
+			t.Fatal(callErr)
+		}
+		callBase := int(thread.frames[0].base) + 1
+		thread.values[callBase] = slotFromFunction(callee)
+		return state, thread, callee, callBase, makeABC(opCall, 1, 1, 1)
+	}
+
+	t.Run("value capacity", func(t *testing.T) {
+		state, thread, callee, callBase, code := stage(
+			t,
+			Options{MaxValues: 128},
+			64,
+		)
+		defer state.Close()
+		before := takeSnapshot(thread)
+
+		if thread.tryEnterFixedLuaCall(code) {
+			t.Fatal("fixed call unexpectedly entered without value capacity")
+		}
+		assertUnchanged(t, thread, before)
+		if callErr := thread.pushLuaCall(callee, callBase, 0, 0); callErr != nil {
+			t.Fatal(callErr)
+		}
+		if len(thread.frames) != 2 || cap(thread.values) <= before.valueCap {
+			t.Fatal("checked fixed call did not grow the value stack")
+		}
+	})
+
+	t.Run("value limit", func(t *testing.T) {
+		state, thread, callee, callBase, code := stage(
+			t,
+			Options{MaxValues: 8},
+			8,
+		)
+		defer state.Close()
+		before := takeSnapshot(thread)
+
+		if thread.tryEnterFixedLuaCall(code) {
+			t.Fatal("fixed call unexpectedly entered beyond the value limit")
+		}
+		assertUnchanged(t, thread, before)
+		callErr := thread.pushLuaCall(callee, callBase, 0, 0)
+		if callErr == nil || callErr.Category() != ResourceError {
+			t.Fatalf("value limit error = %v", callErr)
+		}
+		assertUnchanged(t, thread, before)
+	})
+
+	t.Run("frame capacity", func(t *testing.T) {
+		state, thread, callee, callBase, code := stage(
+			t,
+			Options{MaxFrames: 2},
+			2,
+		)
+		defer state.Close()
+		thread.frames = slices.Clip(thread.frames)
+		before := takeSnapshot(thread)
+
+		if thread.tryEnterFixedLuaCall(code) {
+			t.Fatal("fixed call unexpectedly entered without frame capacity")
+		}
+		assertUnchanged(t, thread, before)
+		if callErr := thread.pushLuaCall(callee, callBase, 0, 0); callErr != nil {
+			t.Fatal(callErr)
+		}
+		if len(thread.frames) != 2 || cap(thread.frames) <= before.frameCap {
+			t.Fatal("checked fixed call did not grow the activation stack")
+		}
+	})
+
+	t.Run("frame limit", func(t *testing.T) {
+		state, thread, callee, callBase, code := stage(
+			t,
+			Options{MaxFrames: 1},
+			2,
+		)
+		defer state.Close()
+		before := takeSnapshot(thread)
+
+		if thread.tryEnterFixedLuaCall(code) {
+			t.Fatal("fixed call unexpectedly entered beyond the frame limit")
+		}
+		assertUnchanged(t, thread, before)
+		callErr := thread.pushLuaCall(callee, callBase, 0, 0)
+		if callErr == nil || callErr.Category() != ResourceError {
+			t.Fatalf("frame limit error = %v", callErr)
+		}
+		assertUnchanged(t, thread, before)
+	})
+}
+
 func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 	t.Run("values", func(t *testing.T) {
 		state, err := New(Options{MaxValues: 4})

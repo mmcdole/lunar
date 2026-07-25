@@ -259,7 +259,7 @@ jumps to the same label. Ordinary Lua calls do not return through a separate
 outer dispatcher. The reentry reloads the closure, base, constants, and PC
 after the stack may have moved.
 
-Badger should translate that model rather than reproduce its C details:
+Badger translates that model rather than reproducing its C details:
 
 1. Before implementation, add identical source and loop-count fixtures to
    Badger, frozen Badger, upstream GopherLua, and PUC 5.1. Compile and warm
@@ -310,6 +310,23 @@ table kernels do not regress. Assembly inspection must also confirm that the
 reload path does not enlarge the persistent activation or materially expand
 the executor's hot Go frame.
 
+The implemented direct-reentry path passes that gate:
+
+| Call shape | Before reentry | Direct reentry | Change |
+| --- | ---: | ---: | ---: |
+| no results | 34.674 us | 25.929 us | -25.2% |
+| one result | 35.233 us | 26.072 us | -26.0% |
+| two results | 41.011 us | 32.146 us | -21.6% |
+| one result from a closed upvalue | 36.495 us | 27.757 us | -23.9% |
+
+The four-cell geometric mean is 24.2% faster than the pre-reentry checkpoint,
+12.2% faster than frozen Badger, and 35.0% faster than GopherLua. Every cell
+is allocation-free and faster than both Go comparators. The remaining
+geometric-mean gap to PUC 5.1.5 is 37.9%. The persistent activation remains
+32 bytes and the arm64 executor frame remains 160 bytes. Interleaved control
+runs kept numeric loops, raw dispatch, and table construction within roughly
+1% of the pre-reentry medians with unchanged allocation counts.
+
 ## Execution
 
 Execution is split into one iterative dense instruction switch and one cold
@@ -319,20 +336,27 @@ directly executes control flow, moves, loads, upvalue access, number-only
 arithmetic and comparisons, and prepared numeric loops. Ordinary instructions
 neither publish frame state nor reread the activation.
 
-An instruction that can call or re-enter Lua, grow the execution stack,
-coerce a string, invoke a metamethod, or construct an error publishes its
-program counter and returns that instruction to the driver. The driver
-performs the cold operation and re-enters the same switch. This boundary is
-deliberately an instruction value, not an interface or handler object. It
-keeps call setup and semantic temporaries out of the switch's live set, which
-matters because Go allocates registers for a whole function rather than for
-each switch arm. The design keeps one dispatch implementation while allowing
-uncommon semantics to have ordinary, testable functions.
+An instruction that must grow an execution-stack backing array, coerce a
+string, invoke a metamethod, construct an error, or use an open or vararg call
+shape publishes its program counter and returns that instruction to the
+driver. The driver performs the cold operation and re-enters the same switch.
+This boundary is deliberately an instruction value, not an interface or
+handler object. It keeps semantic temporaries out of the switch's live set,
+which matters because Go allocates registers for a whole function rather than
+for each switch arm.
 
-While the switch is active, the activation stack and compact value stack
-cannot grow, Lua cannot be re-entered, and its cached frame pointer and slices
-remain valid. Calls, returns, stack growth, errors, and future yield points are
-therefore explicit reload seams.
+Direct fixed Lua calls and their fixed-result nested returns are the deliberate
+exception. When existing value and activation capacity is sufficient, trusted
+helpers commit the transition and jump to one executor reload label. The
+reload refreshes the Function, Prototype, bases, PC, code, and value slice
+after frame depth or slice length changes. A failed fast admission changes
+nothing and returns to the checked driver, which grows capacity or reports the
+resource failure. The design therefore keeps one dispatch implementation
+without routing ordinary Lua calls through the outer driver.
+
+While the switch is active, execution-stack backing arrays cannot be replaced
+and cached frame state remains valid. Calls, returns, errors, and future yield
+points are explicit reload or exit seams.
 
 Direct Lua functions take the inline call path. Other values use a cold raw
 `__call` lookup, insert the original value as argument one, and then enter the
@@ -444,9 +468,9 @@ and keeps the visible loop variable separate. Zero and NaN steps follow Lua
 The executor assumes only immutable, sealed Prototypes. Prototype
 verification is therefore responsible for instruction bounds, register and
 constant operands, closure binding words, test/jump pairs, and open-result
-adjacency. Unsupported instructions currently fail at the private execution
-boundary; source execution remains private until every verified opcode family
-has a complete implementation.
+adjacency. Every verified Lua 5.1 opcode has a private-core execution route.
+The executor's default failure remains a fail-closed invariant guard for an
+invalid internal instruction, rather than a fallback to another interpreter.
 
 Runtime failure snapshots the active Lua trace before one centralized unwind
 closes upvalues, drops activations, and clears dead stack roots. Ordinary Lua
