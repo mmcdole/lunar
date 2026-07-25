@@ -322,10 +322,56 @@ The implemented direct-reentry path passes that gate:
 The four-cell geometric mean is 24.2% faster than the pre-reentry checkpoint,
 12.2% faster than frozen Badger, and 35.0% faster than GopherLua. Every cell
 is allocation-free and faster than both Go comparators. The remaining
-geometric-mean gap to PUC 5.1.5 is 37.9%. The persistent activation remains
-32 bytes and the arm64 executor frame remains 160 bytes. Interleaved control
-runs kept numeric loops, raw dispatch, and table construction within roughly
-1% of the pre-reentry medians with unchanged allocation counts.
+geometric-mean gap to PUC 5.1.5 at that checkpoint is 37.9%.
+
+A follow-up profile showed that direct reentry still passed fixed calls
+through generic layout, vararg, activation-append, and result-adjustment
+machinery. The fixed transition now relies on facts already proved by the
+bytecode verifier and private runtime:
+
+- fixed argument and result windows fit the caller's live frame, so only the
+  callee frame end can extend the value stack;
+- value and activation capacities cannot exceed their immutable configured
+  limits;
+- entering a call cannot reduce the live extent, so it has no dead suffix to
+  clear;
+- a successfully returning activation is unobservable and need not publish
+  its final program counter; and
+- zero, one, and two adjusted results can be moved directly, with both sources
+  loaded before an overlapping two-result write.
+
+The checked and trusted paths still share the canonical fixed-register setup,
+activation publication, and return mutation. The trusted path merely resolves
+policy before entering those operations. Upvalues close before result moves,
+pointer writes retain Go barriers, missing results receive canonical nil,
+dead roots are cleared, and larger result counts retain overlap-safe slice
+copying.
+
+A fresh alternating run of the same exact-source protocol measured:
+
+| Call shape | Direct reentry `dabfc53` | Fixed transition | Change | PUC 5.1.5 |
+| --- | ---: | ---: | ---: | ---: |
+| no results | 25.384 us | 18.812 us | -25.9% | 22.160 us |
+| one result | 26.103 us | 20.559 us | -21.2% | 19.546 us |
+| two results | 32.157 us | 27.312 us | -15.1% | 26.236 us |
+| one result from a closed upvalue | 27.765 us | 21.553 us | -22.4% | 18.164 us |
+
+Every Badger cell remains allocation-free, and every improvement over
+`dabfc53` is significant at p < 0.0001. The four-cell geometric mean is 21.2%
+faster than `dabfc53`, directionally 31.1% faster than frozen Badger and 49.2%
+faster than GopherLua, and 2.5% slower than PUC 5.1. Zero-result calls beat
+PUC in this run; one- and two-result calls are within 5.2%, while closed
+upvalue access is the remaining 18.7% outlier. Absolute cross-language ratios
+remain directional because the binaries execute sequentially and the PUC
+phase visibly drifts, but fixed Lua calls have reached PUC geometric-mean
+territory.
+
+The persistent activation remains 32 bytes and the arm64 executor frame
+remains exactly 160 bytes. The executor text grows by 16 bytes. Returning the
+already-fetched instruction through `code[pc-1]`, rather than retaining a
+separate instruction local across the exit, is intentional: it prevents the
+Go compiler from adding 16 bytes to the executor frame. The next call-related
+question is closed-upvalue addressing, not another callsite cache.
 
 ## Execution
 

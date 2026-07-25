@@ -539,15 +539,13 @@ reload:
 
 		case opCall, opReturn:
 			frameIndex := len(thread.frames) - 1
-			thread.frames[frameIndex].pc = uint32(pc)
-			if current.opcode() == opReturn {
-				if frameIndex <= stopDepth {
-					return current
-				}
-				if thread.tryCompleteFixedLuaReturn(stopDepth, current) {
+			if current.opcode() == opCall {
+				thread.frames[frameIndex].pc = uint32(pc)
+				if thread.tryEnterFixedLuaCall(base, current) {
 					goto reload
 				}
-			} else if thread.tryEnterFixedLuaCall(current) {
+			} else if frameIndex > stopDepth &&
+				thread.tryCompleteFixedLuaReturn(frameIndex, current) {
 				goto reload
 			}
 			return code[pc-1]

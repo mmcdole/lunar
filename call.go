@@ -68,59 +68,60 @@ func (thread *Thread) pushLuaCall(
 // False leaves the execution stacks unchanged so the checked path can grow
 // them or report a configured resource failure.
 //
+// Verified fixed argument and result windows already fit the caller's live
+// frame, so only the callee frame end can extend the value stack. The reserve
+// helpers bound backing capacities by the immutable resource limits; a
+// capacity hit therefore also proves those limits. Entry cannot lower the
+// live extent and consequently has no dead suffix to clear.
+//
 //go:noinline
-func (thread *Thread) tryEnterFixedLuaCall(code instruction) bool {
-	if code.opcode() != opCall {
+func (thread *Thread) tryEnterFixedLuaCall(
+	callerBase int,
+	code instruction,
+) bool {
+	argumentField := code.b()
+	resultField := code.c()
+	if argumentField == 0 || resultField == 0 {
 		return false
 	}
-	if code.b() == 0 || code.c() == 0 {
-		return false
-	}
-	callerBase := int(thread.frames[len(thread.frames)-1].base)
 	callBase := callerBase + code.a()
-	function, direct := luaFunctionSlot(thread.values[callBase])
-	if !direct {
+	callable := thread.values[callBase]
+	if callable.ref == nil || callable.bits != uint64(FunctionKind) {
 		return false
 	}
-	argumentCount := code.b() - 1
-	wantedResults := code.c() - 1
+	function := (*Function)(callable.ref)
+	argumentCount := argumentField - 1
+	wantedResults := resultField - 1
 	prototype := function.prototype
 	if prototype.varargFlags&varargIsVararg != 0 ||
-		len(thread.frames) >= thread.state.options.MaxFrames ||
 		len(thread.frames) >= cap(thread.frames) {
 		return false
 	}
 
 	base := callBase + 1
-	argumentEnd := base + argumentCount
 	frameEnd := base + int(prototype.registers)
-	resultEnd := callBase + wantedResults
-	required := argumentEnd
-	if frameEnd > required {
-		required = frameEnd
-	}
-	if resultEnd > required {
-		required = resultEnd
-	}
-	if required < 0 ||
-		required > thread.state.options.MaxValues ||
-		uint64(required) > uint64(^uint32(0)) ||
-		required > cap(thread.values) {
+	if frameEnd < 0 ||
+		uint64(frameEnd) > uint64(^uint32(0)) ||
+		frameEnd > cap(thread.values) {
 		return false
 	}
 
-	oldExtent := thread.liveValueExtent()
-	if required > len(thread.values) {
-		thread.values = thread.values[:required]
+	if frameEnd > len(thread.values) {
+		thread.values = thread.values[:frameEnd]
 	}
-	thread.commitLuaCall(function, luaCallLayout{
-		base:          base,
-		resultBase:    callBase,
-		frameEnd:      frameEnd,
-		required:      required,
-		argumentCount: argumentCount,
-		wantedResults: wantedResults,
-	}, oldExtent)
+	thread.setupFixedLuaCall(
+		prototype,
+		base,
+		frameEnd,
+		argumentCount,
+	)
+	thread.publishLuaCall(
+		function,
+		base,
+		callBase,
+		frameEnd,
+		wantedResults,
+	)
 	return true
 }
 
@@ -168,20 +169,37 @@ func (thread *Thread) commitLuaCall(
 	layout luaCallLayout,
 	oldExtent int,
 ) {
-	callerExtent := thread.frameExtent
 	thread.setupLuaCall(function, layout)
-	thread.frames = append(thread.frames, activation{
-		function:      function,
-		base:          uint32(layout.base),
-		resultBase:    uint32(layout.resultBase),
-		callerExtent:  uint32(callerExtent),
-		wantedResults: int32(layout.wantedResults),
-	})
-	thread.top = layout.frameEnd
-	if layout.frameEnd > thread.frameExtent {
-		thread.frameExtent = layout.frameEnd
-	}
+	thread.publishLuaCall(
+		function,
+		layout.base,
+		layout.resultBase,
+		layout.frameEnd,
+		layout.wantedResults,
+	)
 	thread.clearDeadSuffix(oldExtent)
+}
+
+func (thread *Thread) publishLuaCall(
+	function *Function,
+	base int,
+	resultBase int,
+	frameEnd int,
+	wantedResults int,
+) {
+	frameIndex := len(thread.frames)
+	thread.frames = thread.frames[:frameIndex+1]
+	thread.frames[frameIndex] = activation{
+		function:      function,
+		base:          uint32(base),
+		resultBase:    uint32(resultBase),
+		callerExtent:  uint32(thread.frameExtent),
+		wantedResults: int32(wantedResults),
+	}
+	thread.top = frameEnd
+	if frameEnd > thread.frameExtent {
+		thread.frameExtent = frameEnd
+	}
 }
 
 func (thread *Thread) replaceLuaCall(
@@ -317,32 +335,46 @@ func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
 		panic("lua: adjusted result range is outside the value stack")
 	}
 
-	thread.completeLuaReturn(firstResult, resultCount)
+	newTop := resultBase + outputCount
+	if wanted != allResults && frameIndex != 0 {
+		caller := thread.frames[frameIndex-1]
+		newTop = int(caller.base) + int(caller.function.prototype.registers)
+	}
+	thread.completeLuaReturn(
+		firstResult,
+		resultCount,
+		outputCount,
+		newTop,
+	)
 }
 
 // tryCompleteFixedLuaReturn completes the common fixed-result nested return.
-// False leaves the current activation unchanged for the checked executor path.
+// The executor supplies a postDepth above its stop depth, which proves that a
+// caller exists. False leaves the current activation unchanged for the
+// checked executor path.
 //
 //go:noinline
 func (thread *Thread) tryCompleteFixedLuaReturn(
-	stopDepth int,
+	postDepth int,
 	code instruction,
 ) bool {
 	if code.b() == 0 {
 		return false
 	}
-	postDepth := len(thread.frames) - 1
 	frame := thread.frames[postDepth]
-	if frame.wantedResults == allResults || postDepth <= stopDepth {
+	if frame.wantedResults == allResults {
 		return false
 	}
 	if count := len(thread.continuations); count != 0 &&
 		int(thread.continuations[count-1].frameDepth) == postDepth {
 		return false
 	}
+	caller := thread.frames[postDepth-1]
 	thread.completeLuaReturn(
 		int(frame.base)+code.a(),
 		code.b()-1,
+		int(frame.wantedResults),
+		int(caller.base)+int(caller.function.prototype.registers),
 	)
 	return true
 }
@@ -351,15 +383,15 @@ func (thread *Thread) tryCompleteFixedLuaReturn(
 // validation. Result sources may overlap their destination.
 //
 //go:noinline
-func (thread *Thread) completeLuaReturn(firstResult, resultCount int) {
+func (thread *Thread) completeLuaReturn(
+	firstResult int,
+	resultCount int,
+	outputCount int,
+	newTop int,
+) {
 	frameIndex := len(thread.frames) - 1
 	frame := thread.frames[frameIndex]
 	resultBase := int(frame.resultBase)
-	wanted := int(frame.wantedResults)
-	outputCount := resultCount
-	if wanted != allResults {
-		outputCount = wanted
-	}
 	oldExtent := thread.liveValueExtent()
 
 	thread.closeUpvalues(int(frame.base))
@@ -367,21 +399,28 @@ func (thread *Thread) completeLuaReturn(firstResult, resultCount int) {
 	if copyCount > outputCount {
 		copyCount = outputCount
 	}
-	copy(
-		thread.values[resultBase:resultBase+copyCount],
-		thread.values[firstResult:firstResult+copyCount],
-	)
+	switch copyCount {
+	case 0:
+	case 1:
+		value := thread.values[firstResult]
+		writeSlot(&thread.values[resultBase], value)
+	case 2:
+		first := thread.values[firstResult]
+		second := thread.values[firstResult+1]
+		writeSlot(&thread.values[resultBase], first)
+		writeSlot(&thread.values[resultBase+1], second)
+	default:
+		copy(
+			thread.values[resultBase:resultBase+copyCount],
+			thread.values[firstResult:firstResult+copyCount],
+		)
+	}
 	thread.fillNil(resultBase+copyCount, resultBase+outputCount)
 
 	thread.frames[frameIndex] = activation{}
 	thread.frames = thread.frames[:frameIndex]
 	thread.frameExtent = int(frame.callerExtent)
 
-	newTop := resultBase + outputCount
-	if wanted != allResults && len(thread.frames) != 0 {
-		caller := thread.frames[len(thread.frames)-1]
-		newTop = int(caller.base) + int(caller.function.prototype.registers)
-	}
 	thread.top = newTop
 	thread.clearDeadSuffix(oldExtent)
 }
@@ -586,12 +625,26 @@ func (thread *Thread) setupLuaCall(
 		return
 	}
 
+	thread.setupFixedLuaCall(
+		prototype,
+		layout.base,
+		layout.frameEnd,
+		layout.argumentCount,
+	)
+}
+
+func (thread *Thread) setupFixedLuaCall(
+	prototype *Prototype,
+	base int,
+	frameEnd int,
+	argumentCount int,
+) {
+	parameters := int(prototype.parameters)
 	preserved := parameters
-	arguments := layout.argumentCount
-	if preserved > arguments {
-		preserved = arguments
+	if preserved > argumentCount {
+		preserved = argumentCount
 	}
-	thread.fillNil(layout.base+preserved, layout.frameEnd)
+	thread.fillNil(base+preserved, frameEnd)
 }
 
 func (thread *Thread) makeLegacyArgTable(

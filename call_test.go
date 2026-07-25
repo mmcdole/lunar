@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"runtime"
 	"slices"
 	"testing"
 	"unsafe"
@@ -575,7 +576,10 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		defer state.Close()
 		before := takeSnapshot(thread)
 
-		if thread.tryEnterFixedLuaCall(code) {
+		if thread.tryEnterFixedLuaCall(
+			int(thread.frames[len(thread.frames)-1].base),
+			code,
+		) {
 			t.Fatal("fixed call unexpectedly entered without value capacity")
 		}
 		assertUnchanged(t, thread, before)
@@ -596,7 +600,10 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		defer state.Close()
 		before := takeSnapshot(thread)
 
-		if thread.tryEnterFixedLuaCall(code) {
+		if thread.tryEnterFixedLuaCall(
+			int(thread.frames[len(thread.frames)-1].base),
+			code,
+		) {
 			t.Fatal("fixed call unexpectedly entered beyond the value limit")
 		}
 		assertUnchanged(t, thread, before)
@@ -617,7 +624,10 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		thread.frames = slices.Clip(thread.frames)
 		before := takeSnapshot(thread)
 
-		if thread.tryEnterFixedLuaCall(code) {
+		if thread.tryEnterFixedLuaCall(
+			int(thread.frames[len(thread.frames)-1].base),
+			code,
+		) {
 			t.Fatal("fixed call unexpectedly entered without frame capacity")
 		}
 		assertUnchanged(t, thread, before)
@@ -638,7 +648,10 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		defer state.Close()
 		before := takeSnapshot(thread)
 
-		if thread.tryEnterFixedLuaCall(code) {
+		if thread.tryEnterFixedLuaCall(
+			int(thread.frames[len(thread.frames)-1].base),
+			code,
+		) {
 			t.Fatal("fixed call unexpectedly entered beyond the frame limit")
 		}
 		assertUnchanged(t, thread, before)
@@ -648,6 +661,282 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		}
 		assertUnchanged(t, thread, before)
 	})
+}
+
+func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	dirty, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name            string
+		callerRegisters int
+		callRegister    int
+		parameters      int
+		calleeRegisters int
+		argumentCount   int
+		wantedResults   int
+	}{
+		{
+			name:            "missing arguments and padded results",
+			callerRegisters: 8,
+			callRegister:    2,
+			parameters:      3,
+			calleeRegisters: 5,
+			argumentCount:   1,
+			wantedResults:   2,
+		},
+		{
+			name:            "exact arguments and one result",
+			callerRegisters: 8,
+			callRegister:    2,
+			parameters:      2,
+			calleeRegisters: 4,
+			argumentCount:   2,
+			wantedResults:   1,
+		},
+		{
+			name:            "excess arguments and several results",
+			callerRegisters: 7,
+			callRegister:    2,
+			parameters:      1,
+			calleeRegisters: 3,
+			argumentCount:   3,
+			wantedResults:   3,
+		},
+		{
+			name:            "callee extends the value stack",
+			callerRegisters: 4,
+			callRegister:    1,
+			parameters:      1,
+			calleeRegisters: 10,
+			argumentCount:   1,
+			wantedResults:   0,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			caller := newTestLuaFunction(
+				t,
+				state,
+				0,
+				test.callerRegisters,
+				0,
+				0,
+			)
+			callee := newTestLuaFunction(
+				t,
+				state,
+				test.parameters,
+				test.calleeRegisters,
+				0,
+				0,
+			)
+			stage := func() (*Thread, int) {
+				thread := &Thread{
+					objectHeader: objectHeader{owner: state.runtime},
+					state:        state,
+					values:       make([]slot, 0, 64),
+					frames:       make([]activation, 0, 4),
+					status:       ThreadReady,
+				}
+				setTestCall(thread, 0, caller)
+				if callErr := thread.pushLuaCall(
+					caller,
+					0,
+					0,
+					0,
+				); callErr != nil {
+					t.Fatal(callErr)
+				}
+				callerFrame := thread.frames[0]
+				for index := int(callerFrame.base); index < thread.frameExtent; index++ {
+					thread.values[index] = slotFromTable(dirty)
+				}
+				callBase := int(callerFrame.base) + test.callRegister
+				thread.values[callBase] = slotFromFunction(callee)
+				for index := 0; index < test.argumentCount; index++ {
+					thread.values[callBase+1+index] = slotFromValue(
+						Number(float64(index + 1)),
+					)
+				}
+				return thread, callBase
+			}
+
+			fast, fastCallBase := stage()
+			checked, checkedCallBase := stage()
+			code := makeABC(
+				opCall,
+				test.callRegister,
+				test.argumentCount+1,
+				test.wantedResults+1,
+			)
+			if !fast.tryEnterFixedLuaCall(
+				int(fast.frames[len(fast.frames)-1].base),
+				code,
+			) {
+				t.Fatal("fixed call did not use the fast entry")
+			}
+			if callErr := checked.pushLuaCall(
+				callee,
+				checkedCallBase,
+				test.argumentCount,
+				test.wantedResults,
+			); callErr != nil {
+				t.Fatal(callErr)
+			}
+			if fastCallBase != checkedCallBase {
+				t.Fatal("staged calls use different result bases")
+			}
+			assertTestThreadStateEqual(t, fast, checked)
+		})
+	}
+}
+
+func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	dirty, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstReference, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondReference, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := newTestLuaFunction(t, state, 0, 6, 0, 0)
+	callee := newTestLuaFunction(t, state, 0, 10, 0, 0)
+
+	for _, test := range []struct {
+		name          string
+		firstOffset   int
+		resultCount   int
+		wantedResults int
+		references    bool
+	}{
+		{
+			name:          "no results",
+			resultCount:   0,
+			wantedResults: 0,
+		},
+		{
+			name:          "missing results",
+			resultCount:   1,
+			wantedResults: 3,
+		},
+		{
+			name:          "discarded results",
+			resultCount:   3,
+			wantedResults: 1,
+		},
+		{
+			name:          "overlapping reference result windows",
+			resultCount:   2,
+			wantedResults: 2,
+			references:    true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stage := func() (*Thread, int, *upvalue) {
+				thread := &Thread{
+					objectHeader: objectHeader{owner: state.runtime},
+					state:        state,
+					values:       make([]slot, 0, 64),
+					frames:       make([]activation, 0, 4),
+					status:       ThreadReady,
+				}
+				setTestCall(thread, 0, caller)
+				if callErr := thread.pushLuaCall(
+					caller,
+					0,
+					0,
+					0,
+				); callErr != nil {
+					t.Fatal(callErr)
+				}
+				callerFrame := thread.frames[0]
+				callBase := int(callerFrame.base) + 2
+				thread.values[callBase] = slotFromFunction(callee)
+				if callErr := thread.pushLuaCall(
+					callee,
+					callBase,
+					0,
+					test.wantedResults,
+				); callErr != nil {
+					t.Fatal(callErr)
+				}
+				calleeFrame := thread.frames[1]
+				firstResult := int(calleeFrame.base) + test.firstOffset
+				for index := int(calleeFrame.base); index < thread.frameExtent; index++ {
+					thread.values[index] = slotFromTable(dirty)
+				}
+				for index := 0; index < test.resultCount; index++ {
+					value := numberSlot(float64(index + 1))
+					if test.references {
+						references := []*Table{
+							firstReference,
+							secondReference,
+						}
+						value = slotFromTable(references[index])
+					}
+					thread.values[firstResult+index] = value
+				}
+				capturedIndex := thread.frameExtent - 1
+				capturedValue := state.String("captured return register")
+				thread.values[capturedIndex] = slotFromValue(capturedValue)
+				return thread, firstResult, thread.captureUpvalue(capturedIndex)
+			}
+
+			fast, fastFirst, fastUpvalue := stage()
+			checked, checkedFirst, checkedUpvalue := stage()
+			code := makeABC(
+				opReturn,
+				test.firstOffset,
+				test.resultCount+1,
+				0,
+			)
+			if !fast.tryCompleteFixedLuaReturn(len(fast.frames)-1, code) {
+				t.Fatal("fixed return did not use the fast completion")
+			}
+			checked.finishLuaCall(checkedFirst, test.resultCount)
+			if fastFirst != checkedFirst {
+				t.Fatal("staged returns use different source bases")
+			}
+			assertTestThreadStateEqual(t, fast, checked)
+			if fastUpvalue.thread != nil || checkedUpvalue.thread != nil {
+				t.Fatal("return left a callee upvalue open")
+			}
+			if !rawSlotEqual(fastUpvalue.read(), checkedUpvalue.read()) {
+				t.Fatal("fast and checked return closed different values")
+			}
+			if test.references {
+				runtime.GC()
+				resultBase := int(fast.frames[0].base) + 2
+				assertTestSlot(
+					t,
+					fast.values[resultBase],
+					firstReference.Value(),
+				)
+				assertTestSlot(
+					t,
+					fast.values[resultBase+1],
+					secondReference.Value(),
+				)
+			}
+		})
+	}
 }
 
 func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
@@ -938,5 +1227,25 @@ func assertTestValue(t *testing.T, got, want Value) {
 	t.Helper()
 	if !rawSlotEqual(slotFromValue(got), slotFromValue(want)) {
 		t.Fatalf("value = %v (%s), want %v (%s)", got, got.Kind(), want, want.Kind())
+	}
+}
+
+func assertTestThreadStateEqual(t *testing.T, got, want *Thread) {
+	t.Helper()
+	if got.top != want.top ||
+		got.frameExtent != want.frameExtent ||
+		!slices.Equal(got.values, want.values) ||
+		!slices.Equal(got.frames, want.frames) {
+		t.Fatalf(
+			"thread state differs:\nfast: top=%d extent=%d values=%v frames=%+v\nchecked: top=%d extent=%d values=%v frames=%+v",
+			got.top,
+			got.frameExtent,
+			got.values,
+			got.frames,
+			want.top,
+			want.frameExtent,
+			want.values,
+			want.frames,
+		)
 	}
 }
