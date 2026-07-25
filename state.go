@@ -48,8 +48,16 @@ const (
 	maxTableHint     = 1 << 20
 )
 
+// noCopy lets go vet reject copying canonical runtime objects after first use.
+// It occupies no storage.
+type noCopy struct{}
+
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}
+
 type objectHeader struct {
-	owner *runtimeState
+	noCopy noCopy
+	owner  *runtimeState
 }
 
 // runtimeState is the lightweight ownership token shared by canonical
@@ -57,8 +65,9 @@ type objectHeader struct {
 // object roots. Retaining one object therefore does not pin an unrelated Lua
 // graph.
 type runtimeState struct {
-	closed  atomic.Bool
-	strings stringPool
+	closed         atomic.Bool
+	strings        stringPool
+	nativeSequence uint64
 }
 
 // State owns one Lua runtime, its global environment, and its main Thread.
@@ -66,7 +75,10 @@ type runtimeState struct {
 // A State has one active executor. Callers must serialize execution and
 // mutation. Owning Values and object handles may be retained by other
 // goroutines, but their operations remain subject to the same rule.
+//
+// A State must not be copied after first use. Retain and pass its pointer.
 type State struct {
+	noCopy         noCopy
 	runtime        *runtimeState
 	options        Options
 	main           *Thread
@@ -108,6 +120,9 @@ func New(options Options) (*State, error) {
 func (state *State) Close() error {
 	if state == nil || state.runtime == nil {
 		return nil
+	}
+	if state.main != nil && state.main.activeNativeToken != 0 {
+		return ErrRunning
 	}
 	if state.runtime.closed.Swap(true) {
 		return nil
@@ -378,17 +393,20 @@ const (
 //
 // The main thread and coroutines use the same representation. Execution
 // registers and activation records remain private.
+//
+// A Thread must not be copied after first use. Retain and pass its pointer.
 type Thread struct {
 	objectHeader
-	state         *State
-	values        []slot
-	frames        []activation
-	continuations []executionContinuation
-	openUpvalues  *upvalue
-	top           int
-	frameExtent   int
-	status        ThreadStatus
-	main          bool
+	state             *State
+	values            []slot
+	frames            []activation
+	continuations     []executionContinuation
+	openUpvalues      *upvalue
+	top               int
+	frameExtent       int
+	activeNativeToken uint64
+	status            ThreadStatus
+	main              bool
 }
 
 // Value returns the owning Lua value for thread.
@@ -424,6 +442,8 @@ func (thread *Thread) IsMain() bool {
 //
 // The payload is opaque to Lua unless native functions expose operations on
 // it. Metatable and environment changes are controlled by State operations.
+//
+// UserData must not be copied after first use. Retain and pass its pointer.
 type UserData struct {
 	objectHeader
 	payload     any

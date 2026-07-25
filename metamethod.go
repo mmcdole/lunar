@@ -136,11 +136,11 @@ func matchingMetamethod(
 	return leftMethod, true
 }
 
-func luaCallMetamethod(thread *Thread, value slot) *Function {
+func callMetamethodFunction(thread *Thread, value slot) *Function {
 	method, found := metamethodSlot(thread, value, metaCall)
 	if !found {
 		return nil
 	}
-	function, _ := luaFunctionSlot(method)
+	function, _ := functionSlot(method)
 	return function
 }

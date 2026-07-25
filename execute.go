@@ -17,7 +17,7 @@ type executionResult struct {
 	kind executionResultKind
 }
 
-// execute runs Lua activations until the stack returns to stopDepth. It keeps
+// execute runs activations until the stack returns to stopDepth. It keeps
 // the current frame's hot state in Go locals and publishes only at seams that
 // can replace a frame, grow the value stack, or leave the executor.
 func execute(thread *Thread, stopDepth int) executionResult {
@@ -40,6 +40,22 @@ driver:
 			}
 		}
 		for {
+			if thread.frames[len(thread.frames)-1].function.prototype == nil {
+				if failure := invokeNativeCall(thread); failure != nil {
+					return failExecution(thread, stopDepth, failure)
+				}
+				if len(thread.frames) == stopDepth {
+					return executionResult{kind: executionReturned}
+				}
+				if len(thread.continuations) != 0 {
+					last := len(thread.continuations) - 1
+					if int(thread.continuations[last].frameDepth) ==
+						len(thread.frames) {
+						continue driver
+					}
+				}
+				continue
+			}
 			current := runInstructions(thread, stopDepth)
 			switch current.opcode() {
 			case opGetGlobal, opGetTable, opSelf,
@@ -140,9 +156,9 @@ driver:
 					argumentCount = thread.top - callBase - 1
 				}
 				wantedResults := current.c() - 1
-				callee, direct := luaFunctionSlot(thread.values[callBase])
+				callee, direct := functionSlot(thread.values[callBase])
 				if !direct {
-					failure := enterLuaCallMetamethod(
+					failure := enterCallMetamethod(
 						thread,
 						frameIndex,
 						int(frame.pc)-1,
@@ -156,7 +172,7 @@ driver:
 					}
 					continue
 				}
-				if failure := thread.pushLuaCall(
+				if failure := thread.pushFunctionCall(
 					callee,
 					callBase,
 					argumentCount,
@@ -172,9 +188,9 @@ driver:
 				if current.b() == 0 {
 					argumentCount = thread.top - callBase - 1
 				}
-				callee, direct := luaFunctionSlot(thread.values[callBase])
+				callee, direct := functionSlot(thread.values[callBase])
 				if !direct {
-					failure := enterLuaCallMetamethod(
+					failure := enterCallMetamethod(
 						thread,
 						frameIndex,
 						int(frame.pc)-1,
@@ -188,7 +204,7 @@ driver:
 					}
 					continue
 				}
-				if failure := thread.replaceLuaCall(
+				if failure := thread.replaceFunctionCall(
 					callee,
 					callBase,
 					argumentCount,
@@ -319,11 +335,11 @@ reload:
 		case opGetUpvalue:
 			writeSlot(
 				&values[base+current.a()],
-				function.upvalues[current.b()].read(),
+				function.luaUpvalueUnchecked(current.b()).read(),
 			)
 
 		case opSetUpvalue:
-			function.upvalues[current.b()].write(
+			function.luaUpvalueUnchecked(current.b()).write(
 				values[base+current.a()],
 			)
 
@@ -636,7 +652,7 @@ func installClosure(
 				int(frame.base) + binding.b(),
 			)
 		} else {
-			bindings[index] = parent.upvalues[binding.b()]
+			bindings[index] = parent.luaUpvalueUnchecked(binding.b())
 		}
 	}
 	closure := newLuaFunctionOwned(
@@ -722,7 +738,7 @@ func executeVararg(
 	return nil
 }
 
-func luaFunctionSlot(value slot) (*Function, bool) {
+func functionSlot(value slot) (*Function, bool) {
 	if value.kind() != FunctionKind {
 		return nil, false
 	}
@@ -732,7 +748,7 @@ func luaFunctionSlot(value slot) (*Function, bool) {
 // Keep call-metamethod lookup and call-window insertion off direct calls.
 //
 //go:noinline
-func enterLuaCallMetamethod(
+func enterCallMetamethod(
 	thread *Thread,
 	frameIndex int,
 	instructionPC int,
@@ -742,7 +758,7 @@ func enterLuaCallMetamethod(
 	tail bool,
 ) *Error {
 	called := thread.values[callBase]
-	function := luaCallMetamethod(thread, called)
+	function := callMetamethodFunction(thread, called)
 	if function == nil {
 		return newExecutionRuntimeError(
 			thread,
@@ -753,13 +769,13 @@ func enterLuaCallMetamethod(
 		)
 	}
 	if tail {
-		return thread.replaceLuaMetamethodCall(
+		return thread.replaceFunctionMetamethodCall(
 			function,
 			callBase,
 			argumentCount,
 		)
 	}
-	return thread.pushLuaMetamethodCall(
+	return thread.pushFunctionMetamethodCall(
 		function,
 		callBase,
 		argumentCount,
@@ -801,7 +817,7 @@ func failExecution(
 	if len(failure.traceback) == 0 {
 		failure.traceback = executionTraceback(thread, stopDepth)
 	}
-	thread.unwindLuaCalls(stopDepth)
+	thread.unwindCalls(stopDepth)
 	return executionResult{
 		kind: executionFailed,
 		err:  failure,
@@ -813,6 +829,14 @@ func executionTraceback(thread *Thread, stopDepth int) []TraceFrame {
 	for index := len(thread.frames) - 1; index >= stopDepth; index-- {
 		frame := &thread.frames[index]
 		prototype := frame.function.prototype
+		if prototype == nil {
+			traceback = append(traceback, TraceFrame{
+				Source:    "=[Go]",
+				Function:  "native function",
+				TailCalls: frame.tailCalls,
+			})
+			continue
+		}
 		pc := int(frame.pc) - 1
 		traceback = append(traceback, TraceFrame{
 			Source:    prototype.SourceName(),

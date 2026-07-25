@@ -49,6 +49,8 @@ type tableLocation struct {
 // Its storage, metatable, traversal state, and cache generations are private.
 // Table methods are raw: they never invoke Lua or consult metamethods.
 // Metamethod-aware operations belong to State and Frame.
+//
+// A Table must not be copied after first use. Retain and pass its pointer.
 type Table struct {
 	objectHeader
 	array             []slot

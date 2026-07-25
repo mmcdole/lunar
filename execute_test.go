@@ -309,15 +309,16 @@ end
 		t.Fatalf("closure result count = %d; want 1", thread.top)
 	}
 	closure, ok := thread.values[0].owningValue().Function()
-	if !ok || len(closure.upvalues) != 1 {
+	if !ok || closure.UpvalueCount() != 1 {
 		t.Fatalf("closure result = %v", thread.values[0].owningValue())
 	}
-	if testUpvalueIsOpen(closure.upvalues[0]) || thread.openUpvalues != nil {
+	if testUpvalueIsOpen(testFunctionUpvalue(closure, 0)) ||
+		thread.openUpvalues != nil {
 		t.Fatal("return left the captured local open")
 	}
 
 	thread.top = 1
-	if callErr := thread.pushLuaCall(closure, 0, 0, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(closure, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	result = execute(thread, 0)
@@ -421,7 +422,7 @@ end
 		function,
 		stateNeutralString("grandparent"),
 	)
-	if callErr := thread.pushLuaCall(function, 0, 1, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	result := execute(thread, 0)
@@ -434,7 +435,7 @@ end
 			thread.values[0].owningValue(),
 		)
 	}
-	if callErr := thread.pushLuaCall(middle, 0, 0, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(middle, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	result = execute(thread, 0)
@@ -447,7 +448,7 @@ end
 			thread.values[0].owningValue(),
 		)
 	}
-	if callErr := thread.pushLuaCall(inner, 0, 0, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(inner, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	result = execute(thread, 0)
@@ -493,7 +494,7 @@ func TestExecutorRunsNot(t *testing.T) {
 			)
 			thread := state.MainThread()
 			setTestCall(thread, 0, function, test.arg)
-			if callErr := thread.pushLuaCall(
+			if callErr := thread.pushFunctionCall(
 				function,
 				0,
 				1,
@@ -547,7 +548,7 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 		)
 		thread := state.MainThread()
 		setTestCall(thread, 0, function, test.arg)
-		if callErr := thread.pushLuaCall(function, 0, 1, 1); callErr != nil {
+		if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 			t.Fatal(callErr)
 		}
 		result := execute(thread, 0)
@@ -626,7 +627,7 @@ func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
 				stateNeutralString("preserved"),
 				test.source,
 			)
-			if callErr := thread.pushLuaCall(
+			if callErr := thread.pushFunctionCall(
 				function,
 				0,
 				2,
@@ -661,7 +662,7 @@ func TestExecutorHonorsLoadBoolSkip(t *testing.T) {
 	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
 	thread := state.MainThread()
 	setTestCall(thread, 0, function)
-	if callErr := thread.pushLuaCall(function, 0, 0, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	result := execute(thread, 0)
@@ -1056,7 +1057,7 @@ return value()
 `)
 
 	setTestCall(thread, 0, caller)
-	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	callerFrame := thread.frames[0]
@@ -1066,7 +1067,7 @@ return value()
 	callBase := retainedIndex + 1
 	thread.values[callBase] = slotFromValue(failing.Value())
 	thread.values[callBase+1] = slotFromValue(Number(9))
-	if callErr := thread.pushLuaCall(failing, callBase, 1, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(failing, callBase, 1, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 
@@ -1085,7 +1086,7 @@ return value()
 		)
 	}
 	assertTestSlot(t, thread.values[retainedIndex], retained)
-	thread.unwindLuaCalls(0)
+	thread.unwindCalls(0)
 }
 
 func TestExecutorDirectReturnHonorsStopDepth(t *testing.T) {
@@ -1128,7 +1129,7 @@ return result`
 	child := newLuaFunction(state.runtime, prototype, state.globals, nil)
 
 	setTestCall(thread, 0, caller)
-	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	callerFrame := thread.frames[0]
@@ -1138,7 +1139,7 @@ return result`
 	callBase := int(callerFrame.base) + 1
 	thread.values[callBase] = slotFromValue(child.Value())
 	thread.values[callBase+1] = numberSlot(42)
-	if callErr := thread.pushLuaCall(child, callBase, 1, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(child, callBase, 1, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 
@@ -1160,7 +1161,7 @@ return result`
 	}
 	assertTestSlot(t, thread.values[callBase], Number(42))
 	assertTestSlot(t, thread.values[retainedIndex], retained)
-	thread.unwindLuaCalls(0)
+	thread.unwindCalls(0)
 }
 
 func TestExecutorSharesAndClosesCapturedUpvalues(t *testing.T) {
@@ -1191,10 +1192,10 @@ return get, set
 	setter, setOK := thread.values[1].owningValue().Function()
 	if !getOK ||
 		!setOK ||
-		len(getter.upvalues) != 1 ||
-		len(setter.upvalues) != 1 ||
-		getter.upvalues[0] != setter.upvalues[0] ||
-		testUpvalueIsOpen(getter.upvalues[0]) {
+		getter.UpvalueCount() != 1 ||
+		setter.UpvalueCount() != 1 ||
+		testFunctionUpvalue(getter, 0) != testFunctionUpvalue(setter, 0) ||
+		testUpvalueIsOpen(testFunctionUpvalue(getter, 0)) {
 		t.Fatal("sibling closures do not share one closed upvalue")
 	}
 
@@ -1220,10 +1221,10 @@ return recurse
 	defer state.Close()
 	assertExecutionReturned(t, result)
 	function, ok := thread.values[0].owningValue().Function()
-	if !ok || len(function.upvalues) != 1 {
+	if !ok || function.UpvalueCount() != 1 {
 		t.Fatal("recursive closure did not capture itself")
 	}
-	if testUpvalueIsOpen(function.upvalues[0]) {
+	if testUpvalueIsOpen(testFunctionUpvalue(function, 0)) {
 		t.Fatal("returned recursive closure left its upvalue open")
 	}
 
@@ -1276,8 +1277,8 @@ return getter
 	assertExecutionReturned(t, result)
 	getter, ok := thread.values[0].owningValue().Function()
 	if !ok ||
-		len(getter.upvalues) != 1 ||
-		testUpvalueIsOpen(getter.upvalues[0]) {
+		getter.UpvalueCount() != 1 ||
+		testUpvalueIsOpen(testFunctionUpvalue(getter, 0)) {
 		t.Fatal("block closure retained an open stack value")
 	}
 	thread, result = executeTestFunction(t, state, getter)
@@ -1311,7 +1312,7 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 		thread.values[0] = slotFromValue(function.Value())
 		thread.values[1] = slotFromValue(Number(17))
 		thread.top = 2
-		if callErr := thread.pushLuaCall(function, 0, 1, 1); callErr != nil {
+		if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 			panic(callErr)
 		}
 		result := execute(thread, 0)
@@ -1628,7 +1629,7 @@ func executeTestChunk(
 	)
 	thread := state.MainThread()
 	setTestCall(thread, 0, function, arguments...)
-	if callErr := thread.pushLuaCall(
+	if callErr := thread.pushFunctionCall(
 		function,
 		0,
 		len(arguments),
@@ -1670,7 +1671,7 @@ func executeTestFunction(
 	thread.frameExtent = 0
 	thread.clearInactive(0, oldExtent)
 	setTestCall(thread, 0, function, arguments...)
-	if callErr := thread.pushLuaCall(
+	if callErr := thread.pushFunctionCall(
 		function,
 		0,
 		len(arguments),
@@ -1752,7 +1753,7 @@ func benchmarkRunExecutor(
 	thread.values[0] = slotFromValue(function.Value())
 	copy(thread.values[1:], arguments)
 	thread.top = 1 + len(arguments)
-	if callErr := thread.pushLuaCall(
+	if callErr := thread.pushFunctionCall(
 		function,
 		0,
 		len(arguments),

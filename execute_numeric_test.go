@@ -1138,7 +1138,7 @@ func TestExecutorMetamethodLimitFailuresAreAtomic(t *testing.T) {
 				0,
 			)
 			setTestCall(thread, 0, caller)
-			if callErr := thread.pushLuaCall(
+			if callErr := thread.pushFunctionCall(
 				caller,
 				0,
 				0,
@@ -1190,7 +1190,7 @@ local invalid = 1
 return invalid()
 `)
 	setTestCall(thread, 0, caller)
-	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	callerFrame := thread.frames[0]

@@ -18,7 +18,7 @@ func TestLuaCallPlacesFixedArguments(t *testing.T) {
 	thread := state.MainThread()
 
 	setTestCall(thread, 0, function, Number(10))
-	if callErr := thread.pushLuaCall(function, 0, 1, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame := thread.frames[0]
@@ -45,7 +45,7 @@ func TestLuaCallPlacesFixedArguments(t *testing.T) {
 		Number(40),
 		Number(50),
 	)
-	if callErr := thread.pushLuaCall(function, 0, 4, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 4, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	assertTestSlot(t, thread.values[1], Number(20))
@@ -81,7 +81,7 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 		Nil(),
 		Number(40),
 	)
-	if callErr := thread.pushLuaCall(function, 0, 4, allResults); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 4, allResults); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame := thread.frames[0]
@@ -103,7 +103,7 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 	thread.finishLuaCall(5, 0)
 
 	setTestCall(thread, 0, function)
-	if callErr := thread.pushLuaCall(function, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
@@ -116,7 +116,7 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 	thread.finishLuaCall(3, 0)
 
 	setTestCall(thread, 0, function, Number(50), Number(60))
-	if callErr := thread.pushLuaCall(function, 0, 2, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 2, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
@@ -151,7 +151,7 @@ func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
 		Nil(),
 		Number(40),
 	)
-	if callErr := thread.pushLuaCall(legacy, 0, 4, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(legacy, 0, 4, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame := thread.frames[0]
@@ -181,7 +181,7 @@ func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
 		Number(20),
 		Number(30),
 	)
-	if callErr := thread.pushLuaCall(modern, 0, 3, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(modern, 0, 3, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
@@ -233,7 +233,7 @@ func TestLuaCallAdjustsOverlappingResults(t *testing.T) {
 			function := newTestLuaFunction(t, state, 0, 6, 0, 0)
 
 			setTestCall(thread, 0, function)
-			if callErr := thread.pushLuaCall(
+			if callErr := thread.pushFunctionCall(
 				function,
 				0,
 				0,
@@ -279,7 +279,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 	callee := newTestLuaFunction(t, state, 1, 2, 0, 0)
 
 	setTestCall(thread, 0, caller)
-	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	callerFrame := thread.frames[0]
@@ -290,7 +290,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 	callBase := int(callerFrame.base) + 2
 	thread.values[callBase] = slotFromValue(callee.Value())
 	thread.values[callBase+1] = slotFromValue(Number(7))
-	if callErr := thread.pushLuaCall(callee, callBase, 1, 1); callErr != nil {
+	if callErr := thread.pushFunctionCall(callee, callBase, 1, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	assertTestSlot(t, thread.values[retainedIndex], retained)
@@ -308,7 +308,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 	openBase := int(callerFrame.base) + 3
 	thread.values[openBase] = slotFromValue(callee.Value())
 	thread.values[openBase+1] = slotFromValue(Number(11))
-	if callErr := thread.pushLuaCall(callee, openBase, 1, allResults); callErr != nil {
+	if callErr := thread.pushFunctionCall(callee, openBase, 1, allResults); callErr != nil {
 		t.Fatal(callErr)
 	}
 	openFrame := thread.frames[1]
@@ -352,7 +352,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	)
 
 	setTestCall(thread, 0, first)
-	if callErr := thread.pushLuaCall(first, 0, 0, 2); callErr != nil {
+	if callErr := thread.pushFunctionCall(first, 0, 0, 2); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame := thread.frames[0]
@@ -365,7 +365,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	thread.values[callBase] = slotFromValue(second.Value())
 	thread.values[callBase+1] = slotFromValue(Number(10))
 	thread.values[callBase+2] = slotFromValue(Number(20))
-	if callErr := thread.replaceLuaCall(second, callBase, 2); callErr != nil {
+	if callErr := thread.replaceFunctionCall(second, callBase, 2); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
@@ -389,7 +389,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	callBase = int(frame.base) + 2
 	thread.values[callBase] = slotFromValue(third.Value())
 	thread.values[callBase+1] = slotFromValue(Number(30))
-	if callErr := thread.replaceLuaCall(third, callBase, 1); callErr != nil {
+	if callErr := thread.replaceFunctionCall(third, callBase, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
@@ -419,7 +419,7 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 	large := newTestLuaFunction(t, state, 0, 64, 0, 0)
 
 	setTestCall(thread, 0, caller)
-	if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	frame := thread.frames[0]
@@ -431,7 +431,7 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 
 	callBase := int(frame.base) + 1
 	thread.values[callBase] = slotFromValue(large.Value())
-	if callErr := thread.pushLuaCall(large, callBase, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(large, callBase, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	if cap(thread.values) <= oldCapacity {
@@ -506,7 +506,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 	function := newTestLuaFunction(t, state, 0, 6, 0, 0)
 
 	setTestCall(thread, 0, function)
-	if callErr := thread.pushLuaCall(function, 0, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, 0, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	root := thread.frames[0]
@@ -516,7 +516,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 
 	callBase := int(root.base) + 2
 	thread.values[callBase] = slotFromValue(function.Value())
-	if callErr := thread.pushLuaCall(function, callBase, 0, 0); callErr != nil {
+	if callErr := thread.pushFunctionCall(function, callBase, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
 	child := thread.frames[1]
@@ -525,7 +525,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 	childUpvalue := thread.captureUpvalue(childIndex)
 	childExtent := thread.frameExtent
 
-	thread.unwindLuaCalls(1)
+	thread.unwindCalls(1)
 	if len(thread.frames) != 1 ||
 		thread.frameExtent != int(root.base)+int(root.function.prototype.registers) ||
 		thread.top != thread.frameExtent {
@@ -546,7 +546,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 		}
 	}
 
-	thread.unwindLuaCalls(0)
+	thread.unwindCalls(0)
 	if len(thread.frames) != 0 ||
 		thread.top != 0 ||
 		thread.frameExtent != 0 ||
@@ -613,7 +613,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 		callee := newTestLuaFunction(t, state, 0, calleeRegisters, 0, 0)
 		setTestCall(thread, 0, caller)
-		if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 			state.Close()
 			t.Fatal(callErr)
 		}
@@ -638,7 +638,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 			t.Fatal("fixed call unexpectedly entered without value capacity")
 		}
 		assertUnchanged(t, thread, before)
-		if callErr := thread.pushLuaCall(callee, callBase, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(callee, callBase, 0, 0); callErr != nil {
 			t.Fatal(callErr)
 		}
 		if len(thread.frames) != 2 || cap(thread.values) <= before.valueCap {
@@ -662,7 +662,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 			t.Fatal("fixed call unexpectedly entered beyond the value limit")
 		}
 		assertUnchanged(t, thread, before)
-		callErr := thread.pushLuaCall(callee, callBase, 0, 0)
+		callErr := thread.pushFunctionCall(callee, callBase, 0, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("value limit error = %v", callErr)
 		}
@@ -686,7 +686,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 			t.Fatal("fixed call unexpectedly entered without frame capacity")
 		}
 		assertUnchanged(t, thread, before)
-		if callErr := thread.pushLuaCall(callee, callBase, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(callee, callBase, 0, 0); callErr != nil {
 			t.Fatal(callErr)
 		}
 		if len(thread.frames) != 2 || cap(thread.frames) <= before.frameCap {
@@ -710,7 +710,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 			t.Fatal("fixed call unexpectedly entered beyond the frame limit")
 		}
 		assertUnchanged(t, thread, before)
-		callErr := thread.pushLuaCall(callee, callBase, 0, 0)
+		callErr := thread.pushFunctionCall(callee, callBase, 0, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("frame limit error = %v", callErr)
 		}
@@ -801,7 +801,7 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 					status:       ThreadReady,
 				}
 				setTestCall(thread, 0, caller)
-				if callErr := thread.pushLuaCall(
+				if callErr := thread.pushFunctionCall(
 					caller,
 					0,
 					0,
@@ -837,7 +837,7 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 			) {
 				t.Fatal("fixed call did not use the fast entry")
 			}
-			if callErr := checked.pushLuaCall(
+			if callErr := checked.pushFunctionCall(
 				callee,
 				checkedCallBase,
 				test.argumentCount,
@@ -913,7 +913,7 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 					status:       ThreadReady,
 				}
 				setTestCall(thread, 0, caller)
-				if callErr := thread.pushLuaCall(
+				if callErr := thread.pushFunctionCall(
 					caller,
 					0,
 					0,
@@ -924,7 +924,7 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 				callerFrame := thread.frames[0]
 				callBase := int(callerFrame.base) + 2
 				thread.values[callBase] = slotFromFunction(callee)
-				if callErr := thread.pushLuaCall(
+				if callErr := thread.pushFunctionCall(
 					callee,
 					callBase,
 					0,
@@ -1008,7 +1008,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		before := slices.Clone(thread.values)
 		beforeTop := thread.top
 
-		callErr := thread.pushLuaCall(function, 0, 0, 0)
+		callErr := thread.pushFunctionCall(function, 0, 0, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("value limit error = %v", callErr)
 		}
@@ -1029,7 +1029,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 		callee := newTestLuaFunction(t, state, 0, 2, 0, 0)
 		setTestCall(thread, 0, caller)
-		if callErr := thread.pushLuaCall(caller, 0, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
 			t.Fatal(callErr)
 		}
 		callBase := int(thread.frames[0].base) + 1
@@ -1038,7 +1038,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		beforeFrames := slices.Clone(thread.frames)
 		beforeTop := thread.top
 
-		callErr := thread.pushLuaCall(callee, callBase, 0, 0)
+		callErr := thread.pushFunctionCall(callee, callBase, 0, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("frame limit error = %v", callErr)
 		}
@@ -1061,7 +1061,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		before := slices.Clone(thread.values)
 		beforeTop := thread.top
 
-		callErr := thread.pushLuaCall(function, 0, 0, 5)
+		callErr := thread.pushFunctionCall(function, 0, 0, 5)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("result limit error = %v", callErr)
 		}
@@ -1089,7 +1089,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			0,
 		)
 		setTestCall(thread, 0, current)
-		if callErr := thread.pushLuaCall(current, 0, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(current, 0, 0, 0); callErr != nil {
 			t.Fatal(callErr)
 		}
 		frame := thread.frames[0]
@@ -1100,7 +1100,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		beforeFrames := slices.Clone(thread.frames)
 		beforeTop := thread.top
 
-		callErr := thread.replaceLuaCall(tooLarge, callBase, 0)
+		callErr := thread.replaceFunctionCall(tooLarge, callBase, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("tail value limit error = %v", callErr)
 		}
@@ -1133,7 +1133,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		beforeValues := slices.Clone(thread.values)
 		beforeTop := thread.top
 
-		callErr := thread.pushLuaMetamethodCall(handler, 0, 2, 0)
+		callErr := thread.pushFunctionMetamethodCall(handler, 0, 2, 0)
 		if callErr == nil || callErr.Category() != ResourceError {
 			t.Fatalf("metamethod value limit error = %v", callErr)
 		}
@@ -1165,7 +1165,7 @@ func TestLuaCallTracksDeepFrameExtentExactly(t *testing.T) {
 			callBase = int(thread.frames[len(thread.frames)-1].base)
 			thread.values[callBase] = slotFromValue(function.Value())
 		}
-		if callErr := thread.pushLuaCall(function, callBase, 0, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(function, callBase, 0, 0); callErr != nil {
 			t.Fatalf("depth %d: %v", index, callErr)
 		}
 	}
@@ -1211,13 +1211,13 @@ func TestLuaCallFoundationStaysCompactAndAllocationFreeWhenWarm(t *testing.T) {
 		thread.values[1] = slotFromValue(Number(10))
 		thread.values[2] = slotFromValue(Number(20))
 		thread.top = 3
-		if callErr := thread.pushLuaCall(first, 0, 2, 0); callErr != nil {
+		if callErr := thread.pushFunctionCall(first, 0, 2, 0); callErr != nil {
 			panic(callErr)
 		}
 		callBase := int(thread.frames[0].base) + 2
 		thread.values[callBase] = slotFromValue(tail.Value())
 		thread.values[callBase+1] = slotFromValue(Number(30))
-		if callErr := thread.replaceLuaCall(tail, callBase, 1); callErr != nil {
+		if callErr := thread.replaceFunctionCall(tail, callBase, 1); callErr != nil {
 			panic(callErr)
 		}
 		thread.finishLuaCall(int(thread.frames[0].base), 0)

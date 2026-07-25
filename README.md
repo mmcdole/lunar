@@ -20,8 +20,10 @@ numeric arithmetic and comparison, numeric and generic iteration, and their
 Lua 5.1 metamethods. It also runs globals, table reads and writes, method
 lookup, table constructors, and Lua 5.1 `__index` and `__newindex`
 resolution. It also implements Lua 5.1 length and right-to-left concatenation
-semantics. Public source execution and the standard libraries are still under
-construction.
+semantics. Lua can now call allocation-free Go functions through borrowed
+typed Frames over the same compact stack, including calls from metamethod and
+iterator continuations. Public source execution and the standard libraries
+are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

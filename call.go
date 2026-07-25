@@ -4,7 +4,7 @@ import "math"
 
 const allResults = -1
 
-// activation is the complete persistent state of one Lua call. The executor
+// activation is the complete persistent state of one call. The executor
 // keeps its hot program counter, base, code, and constants in local variables
 // and publishes them here only at call, return, yield, and error seams.
 type activation struct {
@@ -24,7 +24,7 @@ func (frame activation) varargCount() int {
 		int(frame.function.prototype.parameters)
 }
 
-type luaCallLayout struct {
+type callLayout struct {
 	base          int
 	resultBase    int
 	frameEnd      int
@@ -33,7 +33,7 @@ type luaCallLayout struct {
 	wantedResults int
 }
 
-func (thread *Thread) pushLuaCall(
+func (thread *Thread) pushFunctionCall(
 	function *Function,
 	resultBase int,
 	argumentCount int,
@@ -45,7 +45,7 @@ func (thread *Thread) pushLuaCall(
 			thread.state.options.MaxFrames,
 		)
 	}
-	layout, resourceError := thread.planLuaCall(
+	layout, resourceError := thread.planFunctionCall(
 		function,
 		resultBase,
 		resultBase,
@@ -59,7 +59,7 @@ func (thread *Thread) pushLuaCall(
 	thread.reserveValues(layout.required)
 	thread.reserveFrames(len(thread.frames) + 1)
 	oldExtent := thread.liveValueExtent()
-	thread.commitLuaCall(function, layout, oldExtent)
+	thread.commitFunctionCall(function, layout, oldExtent)
 	return nil
 }
 
@@ -115,7 +115,7 @@ func (thread *Thread) tryEnterFixedLuaCall(
 		frameEnd,
 		argumentCount,
 	)
-	thread.publishLuaCall(
+	thread.publishFunctionCall(
 		function,
 		base,
 		callBase,
@@ -125,7 +125,7 @@ func (thread *Thread) tryEnterFixedLuaCall(
 	return true
 }
 
-func (thread *Thread) pushLuaMetamethodCall(
+func (thread *Thread) pushFunctionMetamethodCall(
 	function *Function,
 	callBase int,
 	argumentCount int,
@@ -137,7 +137,7 @@ func (thread *Thread) pushLuaMetamethodCall(
 			thread.state.options.MaxFrames,
 		)
 	}
-	thread.checkLuaCallWindow(
+	thread.checkFunctionCallWindow(
 		function,
 		callBase,
 		argumentCount,
@@ -146,7 +146,7 @@ func (thread *Thread) pushLuaMetamethodCall(
 	if argumentCount == int(^uint(0)>>1) {
 		return newResourceError("lua: value stack index overflow")
 	}
-	layout, resourceError := thread.planLuaCallLayout(
+	layout, resourceError := thread.planFunctionCallLayout(
 		function,
 		callBase,
 		argumentCount+1,
@@ -160,17 +160,17 @@ func (thread *Thread) pushLuaMetamethodCall(
 	thread.reserveFrames(len(thread.frames) + 1)
 	oldExtent := thread.liveValueExtent()
 	thread.insertCallMetamethod(function, callBase, argumentCount)
-	thread.commitLuaCall(function, layout, oldExtent)
+	thread.commitFunctionCall(function, layout, oldExtent)
 	return nil
 }
 
-func (thread *Thread) commitLuaCall(
+func (thread *Thread) commitFunctionCall(
 	function *Function,
-	layout luaCallLayout,
+	layout callLayout,
 	oldExtent int,
 ) {
-	thread.setupLuaCall(function, layout)
-	thread.publishLuaCall(
+	thread.setupFunctionCall(function, layout)
+	thread.publishFunctionCall(
 		function,
 		layout.base,
 		layout.resultBase,
@@ -180,7 +180,7 @@ func (thread *Thread) commitLuaCall(
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) publishLuaCall(
+func (thread *Thread) publishFunctionCall(
 	function *Function,
 	base int,
 	resultBase int,
@@ -202,7 +202,7 @@ func (thread *Thread) publishLuaCall(
 	}
 }
 
-func (thread *Thread) replaceLuaCall(
+func (thread *Thread) replaceFunctionCall(
 	function *Function,
 	callBase int,
 	argumentCount int,
@@ -212,7 +212,7 @@ func (thread *Thread) replaceLuaCall(
 	}
 	index := len(thread.frames) - 1
 	current := thread.frames[index]
-	layout, resourceError := thread.planLuaCall(
+	layout, resourceError := thread.planFunctionCall(
 		function,
 		callBase,
 		int(current.resultBase),
@@ -225,7 +225,7 @@ func (thread *Thread) replaceLuaCall(
 
 	thread.reserveValues(layout.required)
 	oldExtent := thread.liveValueExtent()
-	thread.commitLuaTailCall(
+	thread.commitTailCall(
 		function,
 		callBase,
 		argumentCount,
@@ -235,7 +235,7 @@ func (thread *Thread) replaceLuaCall(
 	return nil
 }
 
-func (thread *Thread) replaceLuaMetamethodCall(
+func (thread *Thread) replaceFunctionMetamethodCall(
 	function *Function,
 	callBase int,
 	argumentCount int,
@@ -244,7 +244,7 @@ func (thread *Thread) replaceLuaMetamethodCall(
 		panic("lua: tail call without an activation")
 	}
 	current := thread.frames[len(thread.frames)-1]
-	thread.checkLuaCallWindow(
+	thread.checkFunctionCallWindow(
 		function,
 		callBase,
 		argumentCount,
@@ -253,7 +253,7 @@ func (thread *Thread) replaceLuaMetamethodCall(
 	if argumentCount == int(^uint(0)>>1) {
 		return newResourceError("lua: value stack index overflow")
 	}
-	layout, resourceError := thread.planLuaCallLayout(
+	layout, resourceError := thread.planFunctionCallLayout(
 		function,
 		int(current.resultBase),
 		argumentCount+1,
@@ -266,7 +266,7 @@ func (thread *Thread) replaceLuaMetamethodCall(
 	thread.reserveValues(layout.required)
 	oldExtent := thread.liveValueExtent()
 	thread.insertCallMetamethod(function, callBase, argumentCount)
-	thread.commitLuaTailCall(
+	thread.commitTailCall(
 		function,
 		callBase,
 		argumentCount+1,
@@ -276,11 +276,11 @@ func (thread *Thread) replaceLuaMetamethodCall(
 	return nil
 }
 
-func (thread *Thread) commitLuaTailCall(
+func (thread *Thread) commitTailCall(
 	function *Function,
 	callBase int,
 	argumentCount int,
-	layout luaCallLayout,
+	layout callLayout,
 	oldExtent int,
 ) {
 	index := len(thread.frames) - 1
@@ -292,7 +292,7 @@ func (thread *Thread) commitLuaTailCall(
 		thread.values[layout.resultBase:layout.resultBase+valueCount],
 		thread.values[callBase:callBase+valueCount],
 	)
-	thread.setupLuaCall(function, layout)
+	thread.setupFunctionCall(function, layout)
 
 	thread.frames[index] = activation{
 		function:      function,
@@ -348,6 +348,46 @@ func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
 	)
 }
 
+// finishNativeCall publishes results already written at resultBase by a
+// terminal Frame method and removes the native activation.
+func (thread *Thread) finishNativeCall(outputCount int) {
+	if len(thread.frames) == 0 {
+		panic("lua: native return without an activation")
+	}
+	frameIndex := len(thread.frames) - 1
+	frame := thread.frames[frameIndex]
+	if frame.function == nil ||
+		frame.function.prototype != nil ||
+		outputCount < 0 {
+		panic("lua: invalid native return")
+	}
+	wanted := int(frame.wantedResults)
+	if wanted != allResults && outputCount != wanted {
+		panic("lua: native return count was not adjusted")
+	}
+	resultBase := int(frame.resultBase)
+	if resultBase < 0 ||
+		resultBase > len(thread.values) ||
+		outputCount > len(thread.values)-resultBase {
+		panic("lua: native return range is outside the value stack")
+	}
+
+	oldExtent := thread.liveValueExtent()
+	thread.frames[frameIndex] = activation{}
+	thread.frames = thread.frames[:frameIndex]
+	thread.frameExtent = int(frame.callerExtent)
+
+	newTop := resultBase + outputCount
+	if wanted != allResults && frameIndex != 0 {
+		caller := thread.frames[frameIndex-1]
+		if prototype := caller.function.prototype; prototype != nil {
+			newTop = int(caller.base) + int(prototype.registers)
+		}
+	}
+	thread.top = newTop
+	thread.clearDeadSuffix(oldExtent)
+}
+
 // tryCompleteFixedLuaReturn completes the common fixed-result nested return.
 // The executor supplies a postDepth above its stop depth, which proves that a
 // caller exists. False leaves the current activation unchanged for the
@@ -379,7 +419,7 @@ func (thread *Thread) tryCompleteFixedLuaReturn(
 	return true
 }
 
-// completeLuaReturn completes a verified return without repeating range
+// completeLuaReturn completes a verified Lua return without repeating range
 // validation. Result sources may overlap their destination.
 //
 //go:noinline
@@ -425,7 +465,7 @@ func (thread *Thread) completeLuaReturn(
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) unwindLuaCalls(stopDepth int) {
+func (thread *Thread) unwindCalls(stopDepth int) {
 	if stopDepth < 0 || stopDepth > len(thread.frames) {
 		panic("lua: invalid call unwind depth")
 	}
@@ -458,15 +498,15 @@ func (thread *Thread) unwindLuaCalls(stopDepth int) {
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) planLuaCall(
+func (thread *Thread) planFunctionCall(
 	function *Function,
 	callBase int,
 	resultBase int,
 	argumentCount int,
 	wantedResults int,
-) (luaCallLayout, *Error) {
-	thread.checkLuaCall(function, callBase, argumentCount, wantedResults)
-	return thread.planLuaCallLayout(
+) (callLayout, *Error) {
+	thread.checkFunctionCall(function, callBase, argumentCount, wantedResults)
+	return thread.planFunctionCallLayout(
 		function,
 		resultBase,
 		argumentCount,
@@ -474,42 +514,45 @@ func (thread *Thread) planLuaCall(
 	)
 }
 
-func (thread *Thread) planLuaCallLayout(
+func (thread *Thread) planFunctionCallLayout(
 	function *Function,
 	resultBase int,
 	argumentCount int,
 	wantedResults int,
-) (luaCallLayout, *Error) {
+) (callLayout, *Error) {
 	if resultBase < 0 {
 		panic("lua: negative result base")
 	}
 	maxInt := int(^uint(0) >> 1)
 	if resultBase == maxInt || argumentCount > maxInt-resultBase-1 {
-		return luaCallLayout{}, newResourceError("lua: value stack index overflow")
+		return callLayout{}, newResourceError("lua: value stack index overflow")
 	}
 
 	argumentEnd := resultBase + 1 + argumentCount
 	base := resultBase + 1
-	if function.prototype.varargFlags&varargIsVararg != 0 {
-		padded := argumentCount
-		if parameters := int(function.prototype.parameters); padded < parameters {
-			padded = parameters
+	frameEnd := argumentEnd
+	if prototype := function.prototype; prototype != nil {
+		if prototype.varargFlags&varargIsVararg != 0 {
+			padded := argumentCount
+			if parameters := int(prototype.parameters); padded < parameters {
+				padded = parameters
+			}
+			argumentEnd = resultBase + 1 + padded
+			base = argumentEnd
 		}
-		argumentEnd = resultBase + 1 + padded
-		base = argumentEnd
+		registers := int(prototype.registers)
+		if registers > maxInt-base {
+			return callLayout{}, newResourceError("lua: value stack index overflow")
+		}
+		frameEnd = base + registers
 	}
-	registers := int(function.prototype.registers)
-	if registers > maxInt-base {
-		return luaCallLayout{}, newResourceError("lua: value stack index overflow")
-	}
-	frameEnd := base + registers
 	required := argumentEnd
 	if frameEnd > required {
 		required = frameEnd
 	}
 	if wantedResults != allResults {
 		if wantedResults > maxInt-resultBase {
-			return luaCallLayout{}, newResourceError("lua: value stack index overflow")
+			return callLayout{}, newResourceError("lua: value stack index overflow")
 		}
 		if resultEnd := resultBase + wantedResults; resultEnd > required {
 			required = resultEnd
@@ -517,12 +560,12 @@ func (thread *Thread) planLuaCallLayout(
 	}
 	if required > thread.state.options.MaxValues ||
 		uint64(required) > uint64(^uint32(0)) {
-		return luaCallLayout{}, newResourceError(
+		return callLayout{}, newResourceError(
 			"lua: value stack limit of %d exceeded",
 			thread.state.options.MaxValues,
 		)
 	}
-	return luaCallLayout{
+	return callLayout{
 		base:          base,
 		resultBase:    resultBase,
 		frameEnd:      frameEnd,
@@ -532,13 +575,13 @@ func (thread *Thread) planLuaCallLayout(
 	}, nil
 }
 
-func (thread *Thread) checkLuaCall(
+func (thread *Thread) checkFunctionCall(
 	function *Function,
 	callBase int,
 	argumentCount int,
 	wantedResults int,
 ) {
-	thread.checkLuaCallWindow(
+	thread.checkFunctionCallWindow(
 		function,
 		callBase,
 		argumentCount,
@@ -551,7 +594,7 @@ func (thread *Thread) checkLuaCall(
 	}
 }
 
-func (thread *Thread) checkLuaCallWindow(
+func (thread *Thread) checkFunctionCallWindow(
 	function *Function,
 	callBase int,
 	argumentCount int,
@@ -562,9 +605,11 @@ func (thread *Thread) checkLuaCallWindow(
 	}
 	if function == nil ||
 		function.owner != thread.owner ||
-		function.prototype == nil ||
-		!function.prototype.sealed {
-		panic("lua: call to an invalid Lua function")
+		(function.prototype != nil && !function.prototype.sealed) ||
+		(function.prototype == nil &&
+			(function.body == nil ||
+				function.nativeBodyUnchecked().entry == nil)) {
+		panic("lua: call to an invalid function")
 	}
 	if callBase < 0 ||
 		argumentCount < 0 ||
@@ -593,10 +638,13 @@ func (thread *Thread) insertCallMetamethod(
 	)
 }
 
-func (thread *Thread) setupLuaCall(
+func (thread *Thread) setupFunctionCall(
 	function *Function,
-	layout luaCallLayout,
+	layout callLayout,
 ) {
+	if function.prototype == nil {
+		return
+	}
 	prototype := function.prototype
 	parameters := int(prototype.parameters)
 	if prototype.varargFlags&varargIsVararg != 0 {
@@ -649,7 +697,7 @@ func (thread *Thread) setupFixedLuaCall(
 
 func (thread *Thread) makeLegacyArgTable(
 	prototype *Prototype,
-	layout luaCallLayout,
+	layout callLayout,
 ) slot {
 	extraCount := layout.argumentCount - int(prototype.parameters)
 	if extraCount < 0 {

@@ -556,7 +556,7 @@ end
 			)
 			thread := state.MainThread()
 			setTestCall(thread, 0, caller, generator)
-			if callErr := thread.pushLuaCall(
+			if callErr := thread.pushFunctionCall(
 				caller,
 				0,
 				1,

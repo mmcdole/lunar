@@ -11,7 +11,7 @@ const (
 	continuationIterator
 )
 
-// executionContinuation records only work suspended across a Lua call.
+// executionContinuation records only work suspended across a function call.
 // Ordinary calls need no continuation: their destination and result count
 // already live in the activation.
 type executionContinuation struct {
@@ -55,9 +55,9 @@ func startMetamethodCall(
 	default:
 		panic("lua: invalid metamethod continuation mode")
 	}
-	function, direct := luaFunctionSlot(callable)
+	function, direct := functionSlot(callable)
 	if !direct {
-		function = luaCallMetamethod(thread, callable)
+		function = callMetamethodFunction(thread, callable)
 		if function == nil {
 			return newExecutionRuntimeError(
 				thread,
@@ -94,7 +94,7 @@ func startMetamethodCall(
 			limit,
 		)
 	}
-	layout, resourceError := thread.planLuaCallLayout(
+	layout, resourceError := thread.planFunctionCallLayout(
 		function,
 		scratchBase,
 		callArgumentCount,
@@ -132,7 +132,7 @@ func startMetamethodCall(
 	continuation.scratchBase = uint32(scratchBase)
 	continuation.savedTop = uint32(savedTop)
 	continuation.savedExtent = uint32(savedExtent)
-	thread.commitLuaCall(function, layout, stageEnd)
+	thread.commitFunctionCall(function, layout, stageEnd)
 	thread.continuations = append(thread.continuations, continuation)
 	return nil
 }
@@ -155,9 +155,9 @@ func startIteratorCall(
 	state := thread.values[base+1]
 	control := thread.values[base+2]
 
-	function, direct := luaFunctionSlot(generator)
+	function, direct := functionSlot(generator)
 	if !direct {
-		function = luaCallMetamethod(thread, generator)
+		function = callMetamethodFunction(thread, generator)
 		if function == nil {
 			return newExecutionRuntimeError(
 				thread,
@@ -180,7 +180,7 @@ func startIteratorCall(
 	if !direct {
 		argumentCount++
 	}
-	layout, resourceError := thread.planLuaCallLayout(
+	layout, resourceError := thread.planFunctionCallLayout(
 		function,
 		callBase,
 		argumentCount,
@@ -210,7 +210,7 @@ func startIteratorCall(
 		code:        code,
 		mode:        continuationIterator,
 	}
-	thread.commitLuaCall(function, layout, oldExtent)
+	thread.commitFunctionCall(function, layout, oldExtent)
 	thread.continuations = append(thread.continuations, continuation)
 	return nil
 }

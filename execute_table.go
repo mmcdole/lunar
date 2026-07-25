@@ -232,7 +232,7 @@ func slowTableGet(
 				)
 			}
 		}
-		if _, callable := luaFunctionSlot(method); callable {
+		if _, callable := functionSlot(method); callable {
 			return startMetamethodCall(
 				thread,
 				frameIndex,
@@ -355,7 +355,7 @@ func slowTableSet(
 				)
 			}
 		}
-		if _, callable := luaFunctionSlot(method); callable {
+		if _, callable := functionSlot(method); callable {
 			return startMetamethodCall(
 				thread,
 				frameIndex,

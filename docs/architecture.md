@@ -8,6 +8,9 @@ embedding stack made from Go interface values.
 
 1. Each reference object has exactly one canonical Go object. Immutable
    strings have value semantics; pointer identity is an internal optimization.
+   Canonical objects are retained and passed by pointer; copying a pointer is
+   ordinary, but copying or overwriting the pointed-to struct is unsupported
+   and guarded by `go vet`.
 2. `Value` is an owning, opaque, compact value. It never hides a Go pointer in
    an integer.
 3. Registers, table slots, closed upvalues, call arguments, and call results
@@ -94,9 +97,9 @@ Files are organized by substantial runtime concepts:
   Lua calls that require post-call execution work;
 - `execute_table.go`: globals, table access, method lookup, constructors,
   list installation, and indexed metamethod resolution;
+- `native.go`: borrowed native call frames, typed argument and result access,
+  captured values, terminal outcomes, and the Go callback seam;
 - later `load.go`: source and bytecode loading;
-- later native-frame additions to `call.go`: Go calls, outcomes, and
-  continuations; and
 - later `library_*.go`: standard libraries using native frames.
 
 A file is split only when the resulting modules have independently meaningful
@@ -469,10 +472,66 @@ same Go invocation. They never recurse through Go. Returns copy compact slots
 directly into the caller's result window, and open calls and returns use
 Thread top as their exact dynamic boundary. Closure creation captures
 absolute stack indexes, reads every binding word before publishing the new
-closure, and adopts its engine-owned upvalue slice without another copy.
+closure, and adopts its engine-owned upvalue storage without another copy.
 Closure instantiation and open-vararg stack growth stay behind cold helpers so
 their allocation and error machinery does not enlarge the always-hot switch
 frame.
+
+Native Go functions use the same activation, argument window, result
+destination, `__call` insertion, tail replacement, continuation, and result
+adjustment machinery. A callback receives one borrowed `Frame` over the
+compact stack and returns a token-bound terminal `Outcome`; it does not
+receive a public interface-value stack. Exact typed reads and scalar returns
+therefore avoid materializing `Value`. General owning Values remain available
+when a callback needs to retain a reference or return a heterogeneous result.
+Captured Values live in fixed private compact storage, corresponding to Lua
+5.1 C-closure upvalues.
+
+Compact function slots retain Lua's single public `function` kind while one
+private high tag bit distinguishes a Go callback from a Lua closure. Direct
+Lua-call admission can therefore reject Go functions from the slot tag,
+without first chasing the Function to inspect its body. This mirrors PUC's
+private closure subtypes without exposing another public value kind.
+
+Frames become invalid as soon as they produce a return or error outcome.
+Construction and result preflight reject foreign Values before changing the
+stack. A Lua error retains the native activation long enough to capture it in
+the traceback and then follows centralized unwind. A Go panic is not
+translated into a Lua value; the borrowed native activation and token are
+removed before the panic propagates. A successful Outcome retains only the
+lightweight runtime identity and token, not the executing Thread or the
+State's object graph.
+
+Yield and reentrant Frame calls are separate later outcomes rather than
+implicit behavior in the first callback ABI. A future `Frame.Call` may
+re-enter Lua synchronously, but a yield crossing that native/API boundary is
+a Lua 5.1 error. It must restore the original argument top and frame extent
+before the callback resumes so argument access continues to describe the
+same call. Native yield itself will be a terminal outcome, equivalent to
+returning `lua_yield`, and will be admitted only at a resumable native-call
+position. Context-aware public calls will make their active context available
+through `Frame.Context` and inherit it through nested calls. When coroutines
+are introduced, active native execution tracking moves to runtime scope so
+State close cannot race a callback on any Thread.
+
+### Native-call checkpoint
+
+On the same Apple M3 Pro and Go 1.25.1 setup used for the executor checkpoints,
+the warm checked activation and Frame boundary currently measures:
+
+| Outcome shape | Time | Allocations |
+| --- | ---: | ---: |
+| no results | 30.7 ns | 0 |
+| one scalar result | 33.8 ns | 0 |
+| two owning Value results | 35.5 ns | 0 |
+| read and return one capture | 38.2 ns | 0 |
+
+An executor benchmark making 1,000 calls from Lua measures the Go callback
+and an equivalent tiny Lua closure at roughly 49–50 microseconds each; recent
+samples put the Go callback about 3% ahead, but the defensible conclusion is
+parity within low-single-digit measurement variation. Both paths allocate
+zero bytes. A Lua Function is 32 bytes, and a native Function plus its entry
+and capture-slice header is 64 bytes before capture backing storage.
 
 Runtime number coercion accepts numbers and complete numeric strings. The
 shared parser recognizes signed decimal fractions and exponents, signed
@@ -584,10 +643,12 @@ depth or fails; coroutine support will add a yield outcome when it exists.
 2. State-neutral immutable strings and compact tables.
 3. A direct recursive-descent compiler producing verified immutable
    Prototypes without retaining an AST.
-4. Executor, PUC-style direct-call reentry, upvalues, errors, and coroutines.
-5. Native-frame standard libraries and embedding operations.
-6. Debug facilities and optional extensions.
-7. Profile-driven quickening, inline caches, and executor specialization.
+4. Executor, PUC-style direct-call reentry, upvalues, and errors.
+5. Native frames plus public source loading and protected calls.
+6. Context polling, coroutines, yield, and reentrant native calls.
+7. Standard libraries and embedding operations.
+8. Debug facilities and optional extensions.
+9. Profile-driven quickening, inline caches, and executor specialization.
 
 The compiler remains in the root package so it can build private compact
 constants without introducing an exported intermediate representation.
