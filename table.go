@@ -256,6 +256,9 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 	arrayStart := 0
 	storeStart := 0
 	if previous.kind() != NilKind {
+		// PUC Lua 5.1 treats an exact positive integer within the allocated
+		// array part as a traversal position even when its slot is nil. This
+		// permits next to continue after deletion of the current array field.
 		if index, ok := arrayIndex(previous); ok && index <= len(table.array) {
 			arrayStart = index
 		} else {

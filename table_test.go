@@ -442,6 +442,48 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	}
 }
 
+func TestTableTraversalAcceptsArrayHoleAsContinuation(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(4, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 4; index++ {
+		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := table.RawSetInt(3, Nil()); err != nil {
+		t.Fatal(err)
+	}
+
+	key, value, found, err := table.next(numberSlot(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found ||
+		math.Float64frombits(key.bits) != 4 ||
+		math.Float64frombits(value.bits) != 4 {
+		t.Fatalf(
+			"next after array hole = (%v, %v, %v), want (4, 4, true)",
+			key,
+			value,
+			found,
+		)
+	}
+
+	if err := table.RawSetInt(4, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, found, err := table.next(numberSlot(3)); err != nil || found {
+		t.Fatalf("next after trailing array holes = (found %v, err %v)", found, err)
+	}
+}
+
 func TestTableRawLenSequence(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
