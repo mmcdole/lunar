@@ -1,6 +1,9 @@
 package lua
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 var tableLibraryFunctions = [...]struct {
 	name  string
@@ -50,18 +53,27 @@ func (state *State) OpenTable() error {
 }
 
 // tableConcat follows Lua 5.1's argument order exactly: the separator is
-// validated before the table, then the bounds. Values are appended straight
-// into one byte buffer, so a numeric element is spelled once and no
-// intermediate Lua string is created.
+// validated before the table, then the bounds. It validates and sizes the
+// complete result before allocating one backing buffer. Numeric elements are
+// formatted into stack scratch, and a strings.Builder transfers ownership of
+// its buffer to the resulting string without another content copy.
 func tableConcat(frame Frame) Outcome {
-	var separator []byte
+	var separatorString string
+	var separatorNumber [32]byte
+	var separatorBytes []byte
 	if value, present := frame.argument(1); present &&
 		value.kind() != NilKind {
-		text, ok := appendTextSlot(nil, value)
-		if !ok {
+		switch value.kind() {
+		case StringKind:
+			separatorString = (*luaString)(value.ref).text
+		case NumberKind:
+			separatorBytes = appendLuaNumber(
+				separatorNumber[:0],
+				math.Float64frombits(value.bits),
+			)
+		default:
 			return baseArgumentTypeError(frame, 1, "string")
 		}
-		separator = text
 	}
 	target, ok := frame.Table(0)
 	if !ok {
@@ -84,11 +96,26 @@ func tableConcat(frame Frame) Outcome {
 		}
 	}
 
-	var text []byte
-	for index := first; index <= last; index++ {
+	if first > last {
+		return frame.ReturnString("")
+	}
+
+	separatorLength := len(separatorString) + len(separatorBytes)
+	maxInt := int(^uint(0) >> 1)
+	total := 0
+	var numberBuffer [32]byte
+	for index := first; ; index++ {
 		element, _ := target.rawIntSlot(index)
-		appended, valid := appendTextSlot(text, element)
-		if !valid {
+		length := 0
+		switch element.kind() {
+		case StringKind:
+			length = len((*luaString)(element.ref).text)
+		case NumberKind:
+			length = len(appendLuaNumber(
+				numberBuffer[:0],
+				math.Float64frombits(element.bits),
+			))
+		default:
 			return libraryError(
 				frame,
 				"invalid value (%s) at index %d in table for 'concat'",
@@ -96,12 +123,49 @@ func tableConcat(frame Frame) Outcome {
 				index,
 			)
 		}
-		text = appended
-		if index != last {
-			text = append(text, separator...)
+		if length > maxInt-total {
+			return frame.sealError(
+				newResourceError("string length overflow"),
+			)
+		}
+		total += length
+		if index == last {
+			break
+		}
+		if separatorLength > maxInt-total {
+			return frame.sealError(
+				newResourceError("string length overflow"),
+			)
+		}
+		total += separatorLength
+	}
+
+	if total == 0 {
+		return frame.ReturnString("")
+	}
+	var builder strings.Builder
+	builder.Grow(total)
+	for index := first; ; index++ {
+		element, _ := target.rawIntSlot(index)
+		if element.kind() == StringKind {
+			builder.WriteString((*luaString)(element.ref).text)
+		} else {
+			formatted := appendLuaNumber(
+				numberBuffer[:0],
+				math.Float64frombits(element.bits),
+			)
+			_, _ = builder.Write(formatted)
+		}
+		if index == last {
+			break
+		}
+		if separatorString != "" {
+			builder.WriteString(separatorString)
+		} else if len(separatorBytes) != 0 {
+			_, _ = builder.Write(separatorBytes)
 		}
 	}
-	return frame.ReturnString(string(text))
+	return frame.ReturnString(builder.String())
 }
 
 // tableForEach traverses the whole table and stops at the first non-nil
@@ -292,6 +356,27 @@ func tableSort(frame Frame) Outcome {
 		}
 		comparator = value
 	}
+
+	// Lua 5.1's sort calls lua_settop(L, 2) before the first comparison.
+	// Keep the compact equivalent: arguments beyond the comparator cease to
+	// be roots and cannot consume the nested comparator call's value budget.
+	// The caller extent remains live, so trimming the borrowed native frame
+	// cannot discard registers owned by its Lua caller.
+	call := frame.activation()
+	thread := frame.thread
+	argumentEnd := int(call.base) + 2
+	if thread.top > argumentEnd {
+		previousTop := thread.top
+		previousExtent := thread.liveValueExtent()
+		thread.clearInactive(argumentEnd, previousTop)
+		thread.top = argumentEnd
+		thread.frameExtent = int(call.callerExtent)
+		if argumentEnd > thread.frameExtent {
+			thread.frameExtent = argumentEnd
+		}
+		thread.clearDeadSuffix(previousExtent)
+	}
+
 	if failure := sortRange(
 		frame,
 		target,
@@ -477,21 +562,4 @@ func sortLess(
 		return false, failure
 	}
 	return truthySlot(result), nil
-}
-
-// appendTextSlot appends value's Lua string spelling and reports whether the
-// value had one. Strings and numbers do, matching lua_isstring; a number uses
-// the same primitive spelling the runtime uses elsewhere.
-func appendTextSlot(destination []byte, value slot) ([]byte, bool) {
-	switch value.kind() {
-	case StringKind:
-		return append(destination, (*luaString)(value.ref).text...), true
-	case NumberKind:
-		return appendLuaNumber(
-			destination,
-			math.Float64frombits(value.bits),
-		), true
-	default:
-		return destination, false
-	}
 }

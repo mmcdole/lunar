@@ -220,6 +220,87 @@ return table.concat(outer, ","), table.concat(inner, ",")
 	}
 }
 
+func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
+	t *testing.T,
+) {
+	const valueLimit = 8
+	state, err := New(Options{
+		MaxValues: valueLimit,
+		MaxFrames: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenTable(); err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := state.NewTable(2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.RawSetInt(1, Number(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.RawSetInt(2, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	released := false
+	comparator, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		called = true
+		call := frame.activation()
+		if frame.depth == 2 {
+			sortCall := frame.thread.frames[frame.depth-2]
+			released = int(call.resultBase) == int(sortCall.base)+2
+			for index := frame.thread.top; index < len(frame.thread.values); index++ {
+				if frame.thread.values[index] != (slot{}) {
+					released = false
+					break
+				}
+			}
+		}
+		return frame.ReturnBool(false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	libraryValue, err := state.Global("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	library, ok := libraryValue.Table()
+	if !ok {
+		t.Fatalf("table = %v; want table", libraryValue)
+	}
+	sort := library.RawGetString("sort")
+	arguments := []Value{
+		target.Value(),
+		comparator.Value(),
+		Number(1),
+		Number(2),
+		Number(3),
+		Number(4),
+		Number(5),
+	}
+	count, err := state.CallInto(sort, arguments, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("table.sort returned %d results; want 0", count)
+	}
+	if !called {
+		t.Fatal("table.sort did not call its comparator")
+	}
+	if !released {
+		t.Fatal("table.sort retained arguments above its comparator")
+	}
+}
+
 // TestTableLibraryCallbackFailuresCarryATraceback confirms the unprotected
 // call path follows the executor's segment rule. A comparator failure unwinds
 // through the comparator, the native sort, the Lua function that called sort,
@@ -383,6 +464,54 @@ end
 	}
 }
 
+func TestWarmTableConcatUsesOneBackingAllocation(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state := newStateWithTable(t)
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@concat-alloc.lua", `
+local concat = table.concat
+local values = {"alpha", "beta", "gamma"}
+return function()
+	return concat(values, "|")
+end
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("loader produced %d results; want 1", len(results))
+	}
+	body := results[0]
+	var destination [1]Value
+	for index := 0; index < 64; index++ {
+		if _, err := state.CallInto(
+			body,
+			nil,
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allocations := testing.AllocsPerRun(64, func() {
+		if _, err := state.CallInto(
+			body,
+			nil,
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocations != 1 {
+		t.Fatalf("warm concat allocated %v times per run; want 1", allocations)
+	}
+	if text, ok := destination[0].AsString(); !ok ||
+		text != "alpha|beta|gamma" {
+		t.Fatalf("warm concat result = %v", destination[0])
+	}
+}
+
 func newStateWithTable(t *testing.T) *State {
 	t.Helper()
 	state, err := New(Options{})
@@ -396,6 +525,47 @@ func newStateWithTable(t *testing.T) *State {
 		t.Fatal(err)
 	}
 	return state
+}
+
+func BenchmarkTableConcat(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		b.Fatal(err)
+	}
+	if err := state.OpenTable(); err != nil {
+		b.Fatal(err)
+	}
+
+	chunk := mustLoadString(b, state, "@concat-benchmark.lua", `
+local concat = table.concat
+local values = {"alpha", "beta", "gamma"}
+return function()
+	return concat(values, "|")
+end
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		b.Fatal(err)
+	}
+	body := results[0]
+	var destination [1]Value
+	for index := 0; index < 64; index++ {
+		if _, err := state.CallInto(body, nil, destination[:]); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		if _, err := state.CallInto(body, nil, destination[:]); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 var tableLibraryLua51Cases = []lua51Case{
