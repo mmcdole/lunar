@@ -361,52 +361,46 @@ func resumeThread(
 		panic("lua: invalid internal coroutine resume")
 	}
 	state := thread.state
-	// A public context is installed only after resume status and resource
-	// preflight succeeds. Its presence is therefore the admission token for
-	// this external resume; internal coroutine resumes always have a caller.
-	prevalidated := caller == nil && state.execution.context != nil
-	if !prevalidated {
-		if caller == nil {
-			if state.active != nil {
-				panic("lua: external coroutine resume while state is active")
-			}
-		} else {
-			if caller == thread {
-				return threadResumeResult{
-					thread: thread,
-					failure: newCoroutineFailure(
-						state,
-						"cannot resume running coroutine",
-					),
-					status: thread.status,
-				}
-			}
-			if caller.owner != thread.owner ||
-				caller.state != state ||
-				state.active != caller ||
-				caller.status != ThreadRunning {
-				panic("lua: invalid internal coroutine caller")
-			}
+	if caller == nil {
+		if state.active != nil {
+			panic("lua: external coroutine resume while state is active")
 		}
-		if thread.status != ThreadSuspended {
+	} else {
+		if caller == thread {
 			return threadResumeResult{
 				thread: thread,
 				failure: newCoroutineFailure(
 					state,
-					fmt.Sprintf(
-						"cannot resume %s coroutine",
-						coroutineStatusName(caller, thread),
-					),
+					"cannot resume running coroutine",
 				),
 				status: thread.status,
 			}
 		}
-		if failure := thread.preflightResume(arguments.count()); failure != nil {
-			return threadResumeResult{
-				thread:  thread,
-				failure: failure,
-				status:  thread.status,
-			}
+		if caller.owner != thread.owner ||
+			caller.state != state ||
+			state.active != caller ||
+			caller.status != ThreadRunning {
+			panic("lua: invalid internal coroutine caller")
+		}
+	}
+	if thread.status != ThreadSuspended {
+		return threadResumeResult{
+			thread: thread,
+			failure: newCoroutineFailure(
+				state,
+				fmt.Sprintf(
+					"cannot resume %s coroutine",
+					coroutineStatusName(caller, thread),
+				),
+			),
+			status: thread.status,
+		}
+	}
+	if failure := thread.preflightResume(arguments.count()); failure != nil {
+		return threadResumeResult{
+			thread:  thread,
+			failure: failure,
+			status:  thread.status,
 		}
 	}
 	previousActive := state.active
