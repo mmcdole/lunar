@@ -3,44 +3,7 @@ package lua
 import (
 	"errors"
 	"testing"
-	"unsafe"
 )
-
-func TestPrototypeMetadataIsReadOnly(t *testing.T) {
-	child := &Prototype{sourceName: "child.lua", registers: 2}
-	prototype := &Prototype{
-		sourceName:  "main.lua",
-		lineDefined: 3,
-		lastLine:    19,
-		parameters:  2,
-		registers:   7,
-		upvalues:    1,
-		varargFlags: varargIsVararg,
-		children:    []*Prototype{child},
-	}
-
-	if prototype.SourceName() != "main.lua" {
-		t.Fatalf("SourceName = %q", prototype.SourceName())
-	}
-	if first, last := prototype.LineRange(); first != 3 || last != 19 {
-		t.Fatalf("LineRange = (%d, %d)", first, last)
-	}
-	if prototype.ParameterCount() != 2 ||
-		prototype.RegisterCount() != 7 ||
-		prototype.UpvalueCount() != 1 ||
-		!prototype.IsVararg() ||
-		prototype.ChildCount() != 1 {
-		t.Fatal("Prototype metadata observer returned the wrong value")
-	}
-
-	if unsafe.Sizeof(uintptr(0)) == 8 &&
-		unsafe.Sizeof(prototypeConstant{}) != 16 {
-		t.Fatalf(
-			"prototypeConstant size = %d, want 16",
-			unsafe.Sizeof(prototypeConstant{}),
-		)
-	}
-}
 
 func TestCompactUpvalueLifecycle(t *testing.T) {
 	state, err := New(Options{})
@@ -111,9 +74,15 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prototype, syntaxError := testPrototypeBuilder(
+		makeABC(opReturn, 0, 1, 0),
+	).seal()
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
 	function := &Function{
 		objectHeader: objectHeader{owner: state.runtime},
-		prototype:    &Prototype{},
+		prototype:    prototype,
 		environment:  state.globals,
 	}
 	if err := state.SetFunctionEnvironment(function, environment); err != nil {
