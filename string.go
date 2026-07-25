@@ -9,7 +9,6 @@ const (
 )
 
 type luaString struct {
-	objectHeader
 	text string
 	hash uint64
 }
@@ -27,15 +26,10 @@ type stringSetShard struct {
 // every transient string for the lifetime of the State. It is runtime-local;
 // State's single-executor contract removes synchronization from this hot path.
 type stringPool struct {
-	owner     *runtimeState
 	closed    bool
 	empty     *luaString
 	probation [stringProbationShardCount]*stringSetShard
 	protected [stringProtectedShardCount]*stringSetShard
-}
-
-func (pool *stringPool) init(owner *runtimeState) {
-	pool.owner = owner
 }
 
 func (pool *stringPool) make(text string) *luaString {
@@ -70,10 +64,17 @@ func (pool *stringPool) hash(text string) uint64 {
 }
 
 func (pool *stringPool) newString(text string, hash uint64) *luaString {
+	return newHashedString(text, hash)
+}
+
+func newLuaString(text string) *luaString {
+	return newHashedString(text, hashString(text))
+}
+
+func newHashedString(text string, hash uint64) *luaString {
 	return &luaString{
-		objectHeader: objectHeader{owner: pool.owner},
-		text:         text,
-		hash:         hash,
+		text: text,
+		hash: hash,
 	}
 }
 

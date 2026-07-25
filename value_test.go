@@ -24,11 +24,8 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(tableEntry{}); size != 40 {
 			t.Fatalf("table entry size = %d, want 40", size)
 		}
-		if size := unsafe.Sizeof(prototypeConstant{}); size != 16 {
-			t.Fatalf("prototype constant size = %d, want 16", size)
-		}
-		if size := unsafe.Sizeof(luaString{}); size != 32 {
-			t.Fatalf("luaString size = %d, want 32", size)
+		if size := unsafe.Sizeof(luaString{}); size != 24 {
+			t.Fatalf("luaString size = %d, want 24", size)
 		}
 		if size := unsafe.Sizeof(stringPool{}); size > 224 {
 			t.Fatalf("stringPool header size = %d, want at most 224", size)
@@ -154,15 +151,25 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 	if err := table.RawSetString("foreign", otherTable.Value()); !errors.Is(err, ErrForeignValue) {
 		t.Fatalf("foreign table error = %v, want ErrForeignValue", err)
 	}
-	if err := table.RawSetString("foreign-string", other.String("x")); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign string error = %v, want ErrForeignValue", err)
+	shared := other.String("x")
+	if err := table.RawSetString("shared-string", shared); err != nil {
+		t.Fatalf("state-neutral string rejected: %v", err)
+	}
+	if err := other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := table.RawGetString("shared-string"); got.String() != "x" {
+		t.Fatalf("state-neutral string = %v, want x", got)
+	}
+	if equal, err := state.RawEqual(shared, state.String("x")); err != nil || !equal {
+		t.Fatalf("state-neutral equality after origin close = (%v, %v)", equal, err)
 	}
 	if err := table.RawSetString("number", Number(4)); err != nil {
 		t.Fatalf("state-independent scalar rejected: %v", err)
 	}
 }
 
-func TestStringOwnershipAndBoundedAdmission(t *testing.T) {
+func TestStringIdentityAndBoundedAdmission(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)

@@ -281,8 +281,6 @@ func stringValue(pointer *luaString) Value {
 
 func (value Value) owner() *runtimeState {
 	switch value.Kind() {
-	case StringKind:
-		return (*luaString)(value.ref).owner
 	case FunctionKind:
 		return (*Function)(value.ref).owner
 	case UserDataKind:

@@ -89,7 +89,6 @@ func New(options Options) (*State, error) {
 	}
 
 	rt := &runtimeState{}
-	rt.strings.init(rt)
 	state := &State{runtime: rt, options: options}
 	state.main = &Thread{
 		objectHeader: objectHeader{owner: rt},
@@ -136,10 +135,9 @@ func (state *State) MainThread() *Thread {
 
 // String returns an owning Lua string Value.
 //
-// The source bytes are retained immutably and never alias mutable memory.
-// Observation of the returned string remains safe after the State is closed.
-// Calling String after Close is permitted; it constructs an uncached,
-// observation-only Value owned by the closed runtime.
+// Strings are immutable and State-neutral. A returned Value may be shared
+// among States and remains safe after this State is closed. Calling String
+// after Close is permitted and constructs an uncached Value.
 func (state *State) String(text string) Value {
 	if state == nil || state.runtime == nil {
 		return Value{}
