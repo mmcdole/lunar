@@ -59,6 +59,11 @@ Files are organized by substantial runtime concepts:
 - `table.go`: dense and hash storage plus raw table semantics;
 - `opcode.go`: canonical Lua 5.1 instruction encoding;
 - `lexer.go`: direct source scanning with one-token lookahead;
+- `compiler.go`: per-compilation ownership plus mutable function emission
+  state;
+- `parser.go`: recursive-descent chunk, statement, scope, and name parsing;
+- `expression.go`: transient expressions, precedence, register placement, and
+  constant folding;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
 - `function.go`: canonical functions and compact upvalues;
