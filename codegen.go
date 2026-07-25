@@ -27,7 +27,24 @@ func (parser *sourceParser) adjustExpressionList(
 	lastIndex := len(values) - 1
 	last := &values[lastIndex]
 	fixed := lastIndex
-	if last.kind == expressionVararg {
+	switch {
+	case canExpandResults(*last) && last.kind == expressionCall:
+		results := wanted - fixed
+		if results < 0 {
+			results = 0
+		}
+		if last.aux != base+fixed {
+			panic("lua: compiler lost call result register order")
+		}
+		if syntaxError := parser.setCallResultCount(
+			last,
+			results,
+			last.line,
+		); syntaxError != nil {
+			return 0, syntaxError
+		}
+		fixed += results
+	case canExpandResults(*last) && last.kind == expressionVararg:
 		results := wanted - fixed
 		if results < 0 {
 			results = 0
@@ -52,7 +69,7 @@ func (parser *sourceParser) adjustExpressionList(
 			)
 		}
 		fixed += results
-	} else {
+	default:
 		register, syntaxError := parser.expressionToTemporary(
 			last,
 			last.line,
@@ -524,6 +541,8 @@ func lowestExpressionTemporary(values ...compiledExpression) int {
 			candidate = value.info
 		case expressionIndexed:
 			candidate = value.ownedBase
+		case expressionCall:
+			candidate = value.aux
 		default:
 			continue
 		}
@@ -595,6 +614,8 @@ func (parser *sourceParser) expressionValueToRegister(
 	switch value.kind {
 	case expressionLocal, expressionTemporary:
 		return value.info, nil
+	case expressionCall:
+		return parser.forceSingleCallResult(value), nil
 	case expressionIndexed:
 		if value.ownedBase != noRegister {
 			register := value.ownedBase
@@ -640,6 +661,20 @@ func (parser *sourceParser) expressionToTemporary(
 			}
 		}
 		return value.info, nil
+	}
+	if value.kind == expressionCall {
+		register := parser.forceSingleCallResult(value)
+		if value.trueExits != emptyJumpList ||
+			value.falseExits != emptyJumpList {
+			if syntaxError := parser.writeExpression(
+				value,
+				register,
+				line,
+			); syntaxError != nil {
+				return 0, syntaxError
+			}
+		}
+		return register, nil
 	}
 	if value.kind == expressionIndexed &&
 		value.ownedBase != noRegister {
@@ -785,6 +820,16 @@ func (parser *sourceParser) writeExpressionValue(
 			default:
 				panic("lua: indexed result overlaps its operand temporaries")
 			}
+		}
+	case expressionCall:
+		base := parser.forceSingleCallResult(value)
+		switch {
+		case target == base:
+		case target < base:
+			emitter.emitABC(opMove, target, base, 0, line)
+			emitter.releaseRegisters(base)
+		default:
+			panic("lua: call result overlaps its call window")
 		}
 	case expressionVararg:
 		emitter.emitABC(opVararg, target, 2, 0, line)

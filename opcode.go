@@ -206,6 +206,14 @@ func (code instruction) withB(b int) instruction {
 	return code&^mask | instruction(b)<<operandBShift
 }
 
+func (code instruction) withC(c int) instruction {
+	if c < 0 || c > maxOperandC {
+		panic("lua: instruction C operand is out of range")
+	}
+	mask := instruction(maxOperandC) << operandCShift
+	return code&^mask | instruction(c)<<operandCShift
+}
+
 func (code instruction) withBx(bx int) instruction {
 	if bx < 0 || bx > maxOperandBx {
 		panic("lua: instruction Bx operand is out of range")

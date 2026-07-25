@@ -10,6 +10,7 @@ const (
 	expressionDeferred
 	expressionTemporary
 	expressionIndexed
+	expressionCall
 	expressionCondition
 	expressionVararg
 )
@@ -18,8 +19,10 @@ const (
 // expression. A deferred expression owns an instruction whose destination is
 // not bound yet. A condition owns the pending jump immediately following its
 // comparison. An indexed expression retains its table register and RK key;
-// ownedBase is the lowest temporary keeping those operands live. The exit
-// lists preserve Lua's operand-valued and/or semantics.
+// ownedBase is the lowest temporary keeping those operands live. A call owns
+// the fixed register base in aux and the CALL instruction in info until its
+// consumer fixes the result count. The exit lists preserve Lua's
+// operand-valued and/or semantics.
 type compiledExpression struct {
 	constant   slot
 	trueExits  jumpList
@@ -359,7 +362,10 @@ func (parser *sourceParser) parsePrefixExpression() (
 			return compiledExpression{}, syntaxError
 		}
 		value.assignable = false
-		if value.kind == expressionVararg {
+		switch value.kind {
+		case expressionCall:
+			parser.forceSingleCallResult(&value)
+		case expressionVararg:
 			if _, syntaxError = parser.expressionToTemporary(
 				&value,
 				prefix.line,
@@ -382,6 +388,10 @@ func (parser *sourceParser) parsePrefixExpression() (
 			value, syntaxError = parser.parseFieldSuffix(value)
 		case '[':
 			value, syntaxError = parser.parseIndexSuffix(value)
+		case ':':
+			value, syntaxError = parser.parseMethodCall(value)
+		case '(', tokenString:
+			value, syntaxError = parser.parseCallSuffix(value)
 		default:
 			return value, nil
 		}

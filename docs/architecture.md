@@ -66,6 +66,8 @@ Files are organized by substantial runtime concepts:
   grammar;
 - `codegen.go`: expression lowering, register placement, conditional exits,
   and constant folding;
+- `compiler_call.go`: contiguous call windows, method calls, tail calls, and
+  Lua 5.1 multiple-result adjustment;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
 - `function.go`: canonical functions and compact upvalues;
@@ -97,6 +99,14 @@ operands, allowing a chained read to overwrite that slot only after both
 operands have been captured by `GETTABLE`. This preserves left-to-right
 evaluation without allocating an intermediate node or extending temporary
 lifetimes across the enclosing expression.
+
+A function call owns one contiguous register window: callable, implicit
+receiver when present, explicit arguments, then results. Only the final
+unparenthesized call or vararg expression in a list may remain open. Open
+producers are emitted directly beside their consuming call, return, or
+`SETLIST`; prototype verification rejects any broken adjacency. `SELF` may
+legally overlap its output base with its receiver register, so the executor
+must capture the receiver and key before writing either output.
 
 ## Build order
 

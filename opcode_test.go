@@ -162,6 +162,14 @@ func TestInstructionFieldsAndPatching(t *testing.T) {
 		t.Fatalf("patching B changed another field: before %#08x, after %#08x", abc, patchedB)
 	}
 
+	patchedC := abc.withC(0x155)
+	if patchedC.opcode() != abc.opcode() ||
+		patchedC.a() != abc.a() ||
+		patchedC.b() != abc.b() ||
+		patchedC.c() != 0x155 {
+		t.Fatalf("patching C changed another field: before %#08x, after %#08x", abc, patchedC)
+	}
+
 	patchedBx := abx.withBx(0x15555)
 	if patchedBx.opcode() != abx.opcode() ||
 		patchedBx.a() != abx.a() ||

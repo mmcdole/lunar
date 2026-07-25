@@ -6,13 +6,14 @@ const (
 )
 
 type sourceParser struct {
-	unit     *compileUnit
-	lexer    *lexer
-	current  token
-	function *functionState
-	names    []*luaString
-	values   []compiledExpression
-	nesting  int
+	unit         *compileUnit
+	lexer        *lexer
+	current      token
+	function     *functionState
+	names        []*luaString
+	values       []compiledExpression
+	nesting      int
+	previousLine uint32
 }
 
 // compileSource compiles one Lua source chunk directly into an immutable
@@ -67,6 +68,7 @@ func (parser *sourceParser) advance() *Error {
 			cause:       err,
 		}
 	}
+	parser.previousLine = parser.current.line
 	parser.current = value
 	return nil
 }
@@ -166,7 +168,7 @@ func (parser *sourceParser) parseStatement() *Error {
 	case tokenLocal:
 		return parser.parseLocal()
 	case tokenName, '(':
-		return parser.parseAssignment()
+		return parser.parsePrefixStatement()
 	default:
 		return parser.syntaxError(
 			parser.current.line,
@@ -272,11 +274,23 @@ func (parser *sourceParser) parseLocal() *Error {
 	return nil
 }
 
-func (parser *sourceParser) parseAssignment() *Error {
+func (parser *sourceParser) parsePrefixStatement() *Error {
 	line := parser.current.line
 	target, syntaxError := parser.parsePrefixExpression()
 	if syntaxError != nil {
 		return syntaxError
+	}
+	if parser.current.kind != '=' {
+		if target.kind != expressionCall {
+			if target.assignable {
+				return parser.expected('=')
+			}
+			return parser.syntaxError(
+				line,
+				"statement is neither an assignment nor a function call",
+			)
+		}
+		return parser.setCallResultCount(&target, 0, line)
 	}
 	if !target.assignable {
 		return parser.syntaxError(
@@ -330,7 +344,7 @@ func (parser *sourceParser) parseReturn() *Error {
 	lastIndex := len(expressions) - 1
 	last := &expressions[lastIndex]
 
-	if len(expressions) == 1 && last.kind != expressionVararg {
+	if len(expressions) == 1 && !canExpandResults(*last) {
 		register, registerError := parser.expressionToRegister(
 			last,
 			last.line,
@@ -342,7 +356,24 @@ func (parser *sourceParser) parseReturn() *Error {
 		return nil
 	}
 
-	if last.kind == expressionVararg {
+	if canExpandResults(*last) && last.kind == expressionCall {
+		if last.aux != values.registerBase+lastIndex {
+			panic("lua: compiler lost return call register order")
+		}
+		if len(expressions) == 1 {
+			parser.makeTailCall(last)
+		} else if syntaxError = parser.setCallResultCount(
+			last,
+			openResultCount,
+			last.line,
+		); syntaxError != nil {
+			return syntaxError
+		}
+		emitter.emitABC(opReturn, values.registerBase, 0, 0, line)
+		return nil
+	}
+
+	if canExpandResults(*last) && last.kind == expressionVararg {
 		target, reserveError := emitter.reserveRegisters(1, last.line)
 		if reserveError != nil {
 			return reserveError
