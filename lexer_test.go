@@ -166,7 +166,7 @@ func TestLexerLongDelimitersAndCommentFallback(t *testing.T) {
 }
 
 func TestLexerNumerals(t *testing.T) {
-	source := "0 1.25 1. .5 1.e2 1e3 1E-2 0xff 0XFFFFFFFFFFFFFFFF 0xffffffffffffffffffff 1e400"
+	source := "0 1.25 1. .5 1.e2 1e3 1E-2 0xe 0x1e2 0xff 0XFFFFFFFFFFFFFFFF 0xffffffffffffffffffff 1e400"
 	lex := newLexer("numbers.lua", source)
 	want := []float64{
 		0,
@@ -176,6 +176,8 @@ func TestLexerNumerals(t *testing.T) {
 		100,
 		1000,
 		0.01,
+		14,
+		482,
 		255,
 		float64(^uint64(0)),
 		math.Ldexp(1, 80),
@@ -246,6 +248,10 @@ func TestLexerRejectsMalformedInput(t *testing.T) {
 		{"exponent sign", "1e+", "malformed number"},
 		{"hex", "0xno", "malformed number"},
 		{"empty hex", "0x", "malformed number"},
+		{"hex exponent", "0x1p2", "malformed number"},
+		{"uppercase hex exponent", "0XfP2", "malformed number"},
+		{"signed hex exponent", "0x1p+2", "malformed number"},
+		{"negative hex exponent", "0x1p-2", "malformed number"},
 		{"number suffix", "123abc", "malformed number"},
 		{"number underscore", "1_0", "malformed number"},
 		{"quoted newline", "'first\nsecond'", "unfinished string"},

@@ -301,9 +301,12 @@ func parseNumber(literal string) (float64, error) {
 	if len(literal) > 2 &&
 		literal[0] == '0' &&
 		(literal[1] == 'x' || literal[1] == 'X') {
-		if !strings.ContainsAny(literal[2:], "pP") {
-			normalized += "p0"
+		for index := 2; index < len(literal); index++ {
+			if !isHexDigit(literal[index]) {
+				return 0, strconv.ErrSyntax
+			}
 		}
+		normalized += "p0"
 	}
 
 	number, err := strconv.ParseFloat(normalized, 64)
@@ -593,6 +596,12 @@ func keyword(text string) tokenKind {
 
 func isDigit(value byte) bool {
 	return value >= '0' && value <= '9'
+}
+
+func isHexDigit(value byte) bool {
+	return isDigit(value) ||
+		value >= 'a' && value <= 'f' ||
+		value >= 'A' && value <= 'F'
 }
 
 func isNameStart(value byte) bool {

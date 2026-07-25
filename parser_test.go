@@ -705,6 +705,7 @@ func TestCompileSourceErrors(t *testing.T) {
 		{"break outside loop", "break", "no loop to break"},
 		{"leading empty statement", "; value = 1", "unsupported statement"},
 		{"repeated semicolon", "value = 1;; value = 2", "unsupported statement"},
+		{"hexadecimal fraction", "return 0x1.2", "return must be the last"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
