@@ -40,10 +40,7 @@ func (thread *Thread) pushFunctionCall(
 	wantedResults int,
 ) *Error {
 	if len(thread.frames) >= thread.state.options.MaxFrames {
-		return newResourceError(
-			"lua: call frame limit of %d exceeded",
-			thread.state.options.MaxFrames,
-		)
+		return newResourceError("stack overflow")
 	}
 	layout, resourceError := thread.planFunctionCall(
 		function,
@@ -132,10 +129,7 @@ func (thread *Thread) pushFunctionMetamethodCall(
 	wantedResults int,
 ) *Error {
 	if len(thread.frames) >= thread.state.options.MaxFrames {
-		return newResourceError(
-			"lua: call frame limit of %d exceeded",
-			thread.state.options.MaxFrames,
-		)
+		return newResourceError("stack overflow")
 	}
 	thread.checkFunctionCallWindow(
 		function,
@@ -144,7 +138,7 @@ func (thread *Thread) pushFunctionMetamethodCall(
 		wantedResults,
 	)
 	if argumentCount == int(^uint(0)>>1) {
-		return newResourceError("lua: value stack index overflow")
+		return newResourceError("value stack index overflow")
 	}
 	layout, resourceError := thread.planFunctionCallLayout(
 		function,
@@ -251,7 +245,7 @@ func (thread *Thread) replaceFunctionMetamethodCall(
 		int(current.wantedResults),
 	)
 	if argumentCount == int(^uint(0)>>1) {
-		return newResourceError("lua: value stack index overflow")
+		return newResourceError("value stack index overflow")
 	}
 	layout, resourceError := thread.planFunctionCallLayout(
 		function,
@@ -525,7 +519,7 @@ func (thread *Thread) planFunctionCallLayout(
 	}
 	maxInt := int(^uint(0) >> 1)
 	if resultBase == maxInt || argumentCount > maxInt-resultBase-1 {
-		return callLayout{}, newResourceError("lua: value stack index overflow")
+		return callLayout{}, newResourceError("value stack index overflow")
 	}
 
 	argumentEnd := resultBase + 1 + argumentCount
@@ -542,7 +536,7 @@ func (thread *Thread) planFunctionCallLayout(
 		}
 		registers := int(prototype.registers)
 		if registers > maxInt-base {
-			return callLayout{}, newResourceError("lua: value stack index overflow")
+			return callLayout{}, newResourceError("value stack index overflow")
 		}
 		frameEnd = base + registers
 	}
@@ -552,7 +546,7 @@ func (thread *Thread) planFunctionCallLayout(
 	}
 	if wantedResults != allResults {
 		if wantedResults > maxInt-resultBase {
-			return callLayout{}, newResourceError("lua: value stack index overflow")
+			return callLayout{}, newResourceError("value stack index overflow")
 		}
 		if resultEnd := resultBase + wantedResults; resultEnd > required {
 			required = resultEnd
@@ -561,7 +555,7 @@ func (thread *Thread) planFunctionCallLayout(
 	if required > thread.state.options.MaxValues ||
 		uint64(required) > uint64(^uint32(0)) {
 		return callLayout{}, newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			thread.state.options.MaxValues,
 		)
 	}

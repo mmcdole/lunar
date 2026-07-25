@@ -722,6 +722,360 @@ func TestStateCallResourceFailureLeavesMainThreadReusable(t *testing.T) {
 	assertTestValues(t, results, Number(1))
 }
 
+func assertStringLuaError(
+	t *testing.T,
+	got error,
+	category ErrorCategory,
+	message string,
+	trace ...TraceFrame,
+) *Error {
+	t.Helper()
+	var luaErr *Error
+	if !errors.As(got, &luaErr) {
+		t.Fatalf("error = %v; want *Error", got)
+	}
+	if luaErr.Category() != category || luaErr.Error() != message {
+		t.Fatalf(
+			"error = (%v, %q); want (%v, %q)",
+			luaErr.Category(),
+			luaErr.Error(),
+			category,
+			message,
+		)
+	}
+	if value, ok := luaErr.Value().AsString(); !ok || value != message {
+		t.Fatalf(
+			"error value = (%q, %v); want %q",
+			value,
+			ok,
+			message,
+		)
+	}
+	actualTrace := luaErr.Traceback()
+	if len(actualTrace) != len(trace) {
+		t.Fatalf("traceback = %+v; want %+v", actualTrace, trace)
+	}
+	for index := range trace {
+		if actualTrace[index].Source != trace[index].Source ||
+			actualTrace[index].Line != trace[index].Line ||
+			actualTrace[index].TailCalls != trace[index].TailCalls {
+			t.Fatalf("traceback = %+v; want %+v", actualTrace, trace)
+		}
+	}
+	return luaErr
+}
+
+func TestStateCallPositionsLuaResourceFailures(t *testing.T) {
+	t.Run("recursive Lua call", func(t *testing.T) {
+		state, err := New(Options{MaxFrames: 3})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		function := mustLoadString(t, state, "@resource.lua", `
+local function recurse()
+	return 1 + recurse()
+end
+return recurse()
+`)
+		_, callErr := state.Call(function.Value())
+		const message = "resource.lua:3: stack overflow"
+		assertStringLuaError(
+			t,
+			callErr,
+			ResourceError,
+			message,
+			TraceFrame{Source: "@resource.lua", Line: 3},
+			TraceFrame{Source: "@resource.lua", Line: 3},
+			TraceFrame{
+				Source:    "@resource.lua",
+				Line:      3,
+				TailCalls: 1,
+			},
+		)
+		if _, repeated := state.Call(function.Value()); repeated == nil ||
+			repeated.Error() != message {
+			t.Fatalf("repeated recursive call error = %v", repeated)
+		}
+		after := mustLoadString(t, state, "@after-resource.lua", `return 42`)
+		results, afterErr := state.Call(after.Value())
+		if afterErr != nil {
+			t.Fatal(afterErr)
+		}
+		assertTestValues(t, results, Number(42))
+	})
+
+	t.Run("Lua call value window", func(t *testing.T) {
+		const limit = 8
+		state, err := New(Options{MaxValues: limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		factory := mustLoadString(t, state, "@large-child.lua", `
+return function()
+	local a, b, c, d, e, f, g, h, i = 1, 2, 3, 4, 5, 6, 7, 8, 9
+	return a
+end
+`)
+		created, err := state.Call(factory.Value())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(created) != 1 {
+			t.Fatalf("large child count = %d; want 1", len(created))
+		}
+		child, ok := created[0].Function()
+		if !ok {
+			t.Fatalf("large child = %v; want function", created[0])
+		}
+		caller := mustLoadString(t, state, "@pure-value-resource.lua", `
+local child = ...
+return child()
+`)
+		_, callErr := state.Call(caller.Value(), child.Value())
+		const message = "pure-value-resource.lua:3: value stack limit of 8 exceeded"
+		assertStringLuaError(
+			t,
+			callErr,
+			ResourceError,
+			message,
+			TraceFrame{
+				Source: "@pure-value-resource.lua",
+				Line:   3,
+			},
+		)
+	})
+
+	t.Run("proper tail calls reuse the frame quota", func(t *testing.T) {
+		state, err := New(Options{MaxFrames: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		function := mustLoadString(t, state, "@tail-resource.lua", `
+local function descend(count)
+	if count == 0 then
+		return count
+	end
+	return descend(count - 1)
+end
+return descend(...)
+`)
+		results, callErr := state.Call(function.Value(), Number(10_000))
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		assertTestValues(t, results, Number(0))
+	})
+
+	t.Run("metamethod call", func(t *testing.T) {
+		state, err := New(Options{MaxFrames: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		handler := mustLoadString(t, state, "@handler.lua", `return 99`)
+		metatable, err := state.NewTable(0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = metatable.RawSetString("__index", handler.Value()); err != nil {
+			t.Fatal(err)
+		}
+		target, err := state.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = state.SetMetatable(target.Value(), metatable); err != nil {
+			t.Fatal(err)
+		}
+		caller := mustLoadString(t, state, "@metamethod-resource.lua", `
+local target = ...
+return target.missing
+`)
+		_, callErr := state.Call(caller.Value(), target.Value())
+		const message = "metamethod-resource.lua:3: stack overflow"
+		assertStringLuaError(
+			t,
+			callErr,
+			ResourceError,
+			message,
+			TraceFrame{
+				Source: "@metamethod-resource.lua",
+				Line:   3,
+			},
+		)
+		assertRootThreadReady(t, state.MainThread())
+	})
+
+	t.Run("native result called by Lua", func(t *testing.T) {
+		const limit = 16
+		state, err := New(Options{MaxValues: limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		values := make([]Value, limit+1)
+		for index := range values {
+			values[index] = Number(float64(index + 1))
+		}
+		native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			return frame.ReturnValues(values...)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		callableMetatable, err := state.NewTable(0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = callableMetatable.RawSetString(
+			"__call",
+			native.Value(),
+		); err != nil {
+			t.Fatal(err)
+		}
+		callable, err := state.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = state.SetMetatable(
+			callable.Value(),
+			callableMetatable,
+		); err != nil {
+			t.Fatal(err)
+		}
+		tests := []struct {
+			name       string
+			sourceName string
+			source     string
+			argument   Value
+			trace      []TraceFrame
+		}{
+			{
+				name:       "ordinary call",
+				sourceName: "@native-resource.lua",
+				source: `
+local callback = ...
+local results = {callback()}
+return results
+`,
+				trace: []TraceFrame{
+					{Source: "=[Go]"},
+					{Source: "@native-resource.lua", Line: 3},
+				},
+			},
+			{
+				name:       "tail call",
+				sourceName: "@tail-native-resource.lua",
+				source: `
+local function forward(callback)
+	return callback()
+end
+local results = {forward(...)}
+return results
+`,
+				trace: []TraceFrame{
+					{Source: "=[Go]"},
+					{Source: "@tail-native-resource.lua", Line: 3},
+					{Source: "@tail-native-resource.lua", Line: 5},
+				},
+			},
+			{
+				name:       "tail call through __call",
+				sourceName: "@tail-callable-resource.lua",
+				source: `
+local function forward(callback)
+	return callback()
+end
+local results = {forward(...)}
+return results
+`,
+				argument: callable.Value(),
+				trace: []TraceFrame{
+					{Source: "=[Go]"},
+					{Source: "@tail-callable-resource.lua", Line: 3},
+					{Source: "@tail-callable-resource.lua", Line: 5},
+				},
+			},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				function := mustLoadString(
+					t,
+					state,
+					test.sourceName,
+					test.source,
+				)
+				argument := test.argument
+				if !argument.Valid() {
+					argument = native.Value()
+				}
+				_, callErr := state.Call(
+					function.Value(),
+					argument,
+				)
+				message := strings.TrimPrefix(test.sourceName, "@") +
+					":3: value stack limit of 16 exceeded"
+				assertStringLuaError(
+					t,
+					callErr,
+					ResourceError,
+					message,
+					test.trace...,
+				)
+			})
+		}
+	})
+
+	t.Run("root native call has no Lua source", func(t *testing.T) {
+		state, err := New(Options{MaxValues: 3})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			return frame.ReturnValues(
+				Number(1),
+				Number(2),
+				Number(3),
+				Number(4),
+			)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ingressErr := state.Call(
+			native.Value(),
+			Number(1),
+			Number(2),
+			Number(3),
+		)
+		const message = "value stack limit of 3 exceeded"
+		assertStringLuaError(
+			t,
+			ingressErr,
+			ResourceError,
+			message,
+		)
+		_, callErr := state.Call(native.Value())
+		assertStringLuaError(
+			t,
+			callErr,
+			ResourceError,
+			message,
+			TraceFrame{Source: "=[Go]"},
+		)
+	})
+}
+
 func TestStateCallRejectsClosedState(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

@@ -70,10 +70,7 @@ func startMetamethodCall(
 		}
 	}
 	if len(thread.frames) >= thread.state.options.MaxFrames {
-		return newResourceError(
-			"lua: call frame limit of %d exceeded",
-			thread.state.options.MaxFrames,
-		)
+		return newResourceError("stack overflow")
 	}
 
 	savedTop := thread.top
@@ -91,7 +88,7 @@ func startMetamethodCall(
 		stagedValues > limit-scratchBase ||
 		uint64(scratchBase+stagedValues) > uint64(^uint32(0)) {
 		return newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			limit,
 		)
 	}
@@ -171,10 +168,7 @@ func startIteratorCall(
 		}
 	}
 	if len(thread.frames) >= thread.state.options.MaxFrames {
-		return newResourceError(
-			"lua: call frame limit of %d exceeded",
-			thread.state.options.MaxFrames,
-		)
+		return newResourceError("stack overflow")
 	}
 
 	callBase := base + 3

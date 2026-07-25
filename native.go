@@ -479,7 +479,7 @@ func (frame Frame) prepareResults(
 		outputCount > limit-resultBase ||
 		uint64(resultBase)+uint64(outputCount) > uint64(^uint32(0)) {
 		return 0, newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			limit,
 		)
 	}

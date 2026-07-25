@@ -204,11 +204,22 @@ driver:
 					}
 					continue
 				}
-				if failure := thread.replaceFunctionCall(
-					callee,
-					callBase,
-					argumentCount,
-				); failure != nil {
+				var failure *Error
+				if callee.prototype == nil {
+					failure = thread.pushFunctionCall(
+						callee,
+						callBase,
+						argumentCount,
+						allResults,
+					)
+				} else {
+					failure = thread.replaceFunctionCall(
+						callee,
+						callBase,
+						argumentCount,
+					)
+				}
+				if failure != nil {
 					return failExecution(thread, stopDepth, failure)
 				}
 			case opReturn:
@@ -682,14 +693,14 @@ func prepareOpenVararg(
 		destination > limit ||
 		resultCount > limit-destination {
 		return newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			limit,
 		)
 	}
 	required := destination + resultCount
 	if uint64(required) > uint64(^uint32(0)) {
 		return newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			limit,
 		)
 	}
@@ -771,6 +782,14 @@ func enterCallMetamethod(
 		)
 	}
 	if tail {
+		if function.prototype == nil {
+			return thread.pushFunctionMetamethodCall(
+				function,
+				callBase,
+				argumentCount,
+				allResults,
+			)
+		}
 		return thread.replaceFunctionMetamethodCall(
 			function,
 			callBase,
@@ -794,13 +813,7 @@ func newExecutionRuntimeError(
 ) *Error {
 	message := fmt.Sprintf(format, arguments...)
 	prototype := thread.frames[frameIndex].function.prototype
-	source := sourceID(prototype.SourceName())
-	line := prototype.LineAt(pc)
-	if line != 0 {
-		message = fmt.Sprintf("%s:%d: %s", source, line, message)
-	} else {
-		message = fmt.Sprintf("%s: %s", source, message)
-	}
+	message = executionErrorDescription(prototype, pc, message)
 	return &Error{
 		value:       thread.state.String(message),
 		description: message,
@@ -855,6 +868,7 @@ func failExecution(
 	if failure == nil {
 		panic("lua: executor failed without an error")
 	}
+	positionExecutionResourceFailure(thread, failure)
 	if len(failure.traceback) == 0 {
 		failure.traceback = executionTraceback(thread, stopDepth)
 	}
@@ -862,6 +876,30 @@ func failExecution(
 	return executionResult{
 		kind: executionFailed,
 		err:  failure,
+	}
+}
+
+func positionExecutionResourceFailure(
+	thread *Thread,
+	failure *Error,
+) {
+	if failure.category != ResourceError ||
+		failure.resourcePositioned ||
+		len(failure.traceback) != 0 {
+		return
+	}
+	for index := len(thread.frames) - 1; index >= 0; index-- {
+		frame := &thread.frames[index]
+		if frame.function == nil ||
+			frame.function.prototype == nil {
+			continue
+		}
+		failure.positionResourceFailure(
+			thread.state,
+			frame.function.prototype,
+			int(frame.pc)-1,
+		)
+		return
 	}
 }
 

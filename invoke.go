@@ -166,7 +166,7 @@ func (state *State) prepareMainCall(
 	if len(arguments) >= state.options.MaxValues ||
 		uint64(len(arguments))+1 > uint64(^uint32(0)) {
 		return nil, newResourceError(
-			"lua: value stack limit of %d exceeded",
+			"value stack limit of %d exceeded",
 			state.options.MaxValues,
 		)
 	}

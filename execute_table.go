@@ -486,7 +486,7 @@ func executeSetList(
 		last := uint64(first) + uint64(count) - 1
 		if last > maxSetListIndex {
 			return newResourceError(
-				"lua: SETLIST index %d exceeds Lua's supported range",
+				"SETLIST index %d exceeds Lua's supported range",
 				last,
 			)
 		}

@@ -37,17 +37,20 @@ var ErrCapacity = errors.New("lua: capacity hint is too large")
 // Options is copied by New. Mutating the caller's value after construction
 // does not affect a live State.
 type Options struct {
-	// MaxValues limits values held by the execution stack. Zero selects the
-	// implementation default.
+	// MaxValues limits values held by the execution stack. Zero selects 65,536
+	// values. Exceeding the limit during Lua execution raises an ordinary Lua
+	// error classified as ResourceError.
 	MaxValues int
-	// MaxFrames limits nested Lua and native calls. Zero selects the
-	// implementation default.
+	// MaxFrames limits nested Lua and native activations together. Zero selects
+	// 20,000 activations. Exceeding the limit raises Lua 5.1's ordinary "stack
+	// overflow" error, classified as ResourceError.
 	MaxFrames int
 }
 
 const (
 	defaultMaxValues = 64 << 10
-	defaultMaxFrames = 1024
+	// Use Lua 5.1's configured LUAI_MAXCALLS as the compatibility default.
+	defaultMaxFrames = 20_000
 	maxTableHint     = 1 << 20
 )
 

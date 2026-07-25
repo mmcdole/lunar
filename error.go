@@ -14,7 +14,9 @@ const (
 	RuntimeError ErrorCategory = iota
 	// SyntaxError identifies source or bytecode rejected before execution.
 	SyntaxError
-	// ResourceError identifies an execution resource-limit failure.
+	// ResourceError identifies a deterministic call or execution
+	// resource-limit failure. It remains an ordinary Lua error; the category
+	// is additional information for Go callers.
 	ResourceError
 	// ContextError identifies cancellation or deadline expiry.
 	ContextError
@@ -39,11 +41,12 @@ type TraceFrame struct {
 // never invokes Lua, tostring, or a metamethod, so Error remains safe after the
 // owning State closes.
 type Error struct {
-	value       Value
-	description string
-	traceback   []TraceFrame
-	category    ErrorCategory
-	cause       error
+	value              Value
+	description        string
+	traceback          []TraceFrame
+	category           ErrorCategory
+	resourcePositioned bool
+	cause              error
 }
 
 // Error returns a stable non-executing description.
@@ -115,6 +118,35 @@ func newResourceError(format string, arguments ...any) *Error {
 		description: message,
 		category:    ResourceError,
 	}
+}
+
+func executionErrorDescription(
+	prototype *Prototype,
+	pc int,
+	message string,
+) string {
+	source := sourceID(prototype.SourceName())
+	if line := prototype.LineAt(pc); line != 0 {
+		return fmt.Sprintf("%s:%d: %s", source, line, message)
+	}
+	return fmt.Sprintf("%s: %s", source, message)
+}
+
+func (err *Error) positionResourceFailure(
+	state *State,
+	prototype *Prototype,
+	pc int,
+) {
+	if err == nil ||
+		err.category != ResourceError ||
+		err.resourcePositioned ||
+		prototype == nil {
+		return
+	}
+	message := executionErrorDescription(prototype, pc, err.description)
+	err.value = state.String(message)
+	err.description = message
+	err.resourcePositioned = true
 }
 
 func errorStringValue(message string) Value {

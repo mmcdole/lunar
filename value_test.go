@@ -333,6 +333,10 @@ func TestInvalidOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
+	if state.options.MaxValues != 65_536 ||
+		state.options.MaxFrames != 20_000 {
+		t.Fatalf("default options = %+v", state.options)
+	}
 	if _, err := state.NewTable(maxTableHint+1, 0); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("large array hint error = %v, want ErrCapacity", err)
 	}

@@ -483,14 +483,20 @@ their allocation and error machinery does not enlarge the always-hot switch
 frame.
 
 Native Go functions use the same activation, argument window, result
-destination, `__call` insertion, tail replacement, continuation, and result
-adjustment machinery. A callback receives one borrowed `Frame` over the
-compact stack and returns a token-bound terminal `Outcome`; it does not
-receive a public interface-value stack. Exact typed reads and scalar returns
-therefore avoid materializing `Value`. General owning Values remain available
-when a callback needs to retain a reference or return a heterogeneous result.
-Captured Values live in fixed private compact storage, corresponding to Lua
-5.1 C-closure upvalues.
+destination, `__call` insertion, continuation, and result-adjustment
+machinery. Lua-to-Lua tail calls replace the current activation immediately.
+A tail-called native function is instead pushed transiently, preserving the
+Lua call site while the callback can still fail; after a successful native
+return, execution resumes at the compiler-emitted open `RETURN`, which
+completes the caller. This matches Lua 5.1's C-call lifetime without burdening
+every activation with extra source metadata.
+
+A callback receives one borrowed `Frame` over the compact stack and returns a
+token-bound terminal `Outcome`; it does not receive a public interface-value
+stack. Exact typed reads and scalar returns therefore avoid materializing
+`Value`. General owning Values remain available when a callback needs to
+retain a reference or return a heterogeneous result. Captured Values live in
+fixed private compact storage, corresponding to Lua 5.1 C-closure upvalues.
 
 Compact function slots retain Lua's single public `function` kind while one
 private high tag bit distinguishes a Go callback from a Lua closure. Direct
@@ -659,12 +665,31 @@ Runtime failure snapshots the active Lua trace before one centralized unwind
 closes upvalues, drops activations, and clears dead stack roots. Engine-created
 syntax and resource failures carry an owned string error Value, matching Lua
 5.1's protected load/call boundary; a native callback may still raise any Lua
-Value. Type errors recover PUC-style local, upvalue, global, field, and method
-names by tracing verified bytecode only after failure; no provenance is stored
-in Values, activations, or the hot loop. Ordinary Lua control flow does not use
-Go panic or interface-valued per-opcode results. The executor returns one small
-outcome only when it reaches its requested call depth or fails; coroutine
-support will add a yield outcome when it exists.
+Value. A deterministic frame or value limit reached by a Lua instruction is an
+ordinary Lua error positioned at that instruction, including when the youngest
+activation is native and its Lua caller must be found below it. A failure at a
+Go ingress boundary with no active Lua frame remains source-less. ResourceError
+is only additional classification for Go callers, not a separate uncatchable
+control-flow class. Actual Go allocation failure is not treated as a recoverable
+Lua quota failure.
+
+Lua `pcall` and `xpcall` will install protected checkpoints inside this same
+executor rather than recursively invoking the public `State.Call` boundary.
+The checkpoint must intercept an error before root unwind, allow an `xpcall`
+handler to inspect the still-live failing frames, then close upvalues and
+restore frames, continuations, and value extents only to the protected depth.
+It preserves arbitrary Lua error values; a handler failure becomes Lua 5.1's
+fixed `error in error handling` value. Deterministic ResourceError values are
+catchable there. A future controlled allocator failure would instead need
+Lua's distinct source-less, handler-skipping memory-error path; an unrecoverable
+Go runtime allocation failure is not converted.
+
+Type errors recover PUC-style local, upvalue, global, field, and method names by
+tracing verified bytecode only after failure; no provenance is stored in Values,
+activations, or the hot loop. Ordinary Lua control flow does not use Go panic or
+interface-valued per-opcode results. The executor returns one small outcome only
+when it reaches its requested call depth or fails; coroutine support will add a
+yield outcome when it exists.
 
 ## Build order
 

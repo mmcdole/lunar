@@ -1009,8 +1009,9 @@ return result
 			remainingCalls:  1,
 		},
 		{
-			name:   "root tail call",
-			source: `return host()`,
+			name:           "root tail call",
+			source:         `return host()`,
+			remainingCalls: 1,
 		},
 	}
 
