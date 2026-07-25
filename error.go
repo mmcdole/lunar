@@ -1,5 +1,7 @@
 package lua
 
+import "strings"
+
 // ErrorCategory classifies an Error without replacing its arbitrary Lua error
 // Value.
 type ErrorCategory uint8
@@ -79,4 +81,49 @@ func (err *Error) Traceback() []TraceFrame {
 		return nil
 	}
 	return append([]TraceFrame(nil), err.traceback...)
+}
+
+const maxSourceID = 59
+
+func sourceID(source string) string {
+	if source == "" {
+		return "?"
+	}
+	switch source[0] {
+	case '=':
+		return truncateSource(source[1:], maxSourceID, false)
+	case '@':
+		const pathTail = 52
+		path := source[1:]
+		if len(path) <= pathTail {
+			return path
+		}
+		return "..." + path[len(path)-pathTail:]
+	default:
+		line := source
+		endedAtNewline := false
+		if end := strings.IndexAny(line, "\r\n"); end >= 0 {
+			line = line[:end]
+			endedAtNewline = true
+		}
+		const prefix = `[string "`
+		const suffix = `"]`
+		available := maxSourceID - len(prefix) - len(suffix)
+		if endedAtNewline && len(line)+3 <= available {
+			line += "..."
+		} else if endedAtNewline || len(line) > available {
+			line = truncateSource(line, available, true)
+		}
+		return prefix + line + suffix
+	}
+}
+
+func truncateSource(source string, limit int, ellipsis bool) string {
+	if len(source) <= limit {
+		return source
+	}
+	if !ellipsis || limit < 3 {
+		return source[:limit]
+	}
+	return source[:limit-3] + "..."
 }
