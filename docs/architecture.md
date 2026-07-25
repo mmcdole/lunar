@@ -81,8 +81,9 @@ Files are organized by substantial runtime concepts:
 - `function.go`: canonical functions and compact upvalues;
 - `call.go`: compact activations, shared-stack call layout, varargs, tail
   replacement, and result adjustment;
+- `execute.go`: the dense instruction switch, execution outcomes, runtime
+  faults, and traceback capture;
 - later `load.go`: source and bytecode loading;
-- later `execute.go`: dispatch and activations;
 - later native-frame additions to `call.go`: Go calls, outcomes, and
   continuations; and
 - later `library_*.go`: standard libraries using native frames.
@@ -179,27 +180,68 @@ use the current vararg expression.
 
 Every Thread owns one contiguous compact-slot stack shared by all active Lua
 calls. An activation stores only a canonical Function, register base, result
-destination, published program counter, argument count, the caller's saved
-frame high-water mark, and requested result count. On 64-bit systems it is 32
-bytes. Register windows are ranges in the shared stack; they are not slices
-retained by the activation, so stack growth cannot invalidate a frame or open
-upvalue. The saved high-water mark makes dead-suffix cleanup constant-time
-even when nested frame ends are not monotonic.
+destination, published program counter, compressed eliminated-tail-call
+count, the caller's saved frame high-water mark, and requested result count.
+On 64-bit systems it is 32 bytes. Register windows are ranges in the shared
+stack; they are not slices retained by the activation, so stack growth cannot
+invalidate a frame or open upvalue. The saved high-water mark makes
+dead-suffix cleanup constant-time even when nested frame ends are not
+monotonic.
 
 Fixed-argument functions reuse the call's argument area as register zero.
 Vararg functions leave their original arguments below the activation and copy
 only fixed parameters to a fresh register window above them, matching Lua
 5.1's call layout. The activation's result destination and parameter count
-therefore locate the hidden varargs without another pointer or slice. Thread
-top is the fixed frame end during ordinary execution and becomes the exact
-boundary only while arguments or results are open.
+therefore locate and count the hidden varargs without another field, pointer,
+or slice. Thread top is the fixed frame end during ordinary execution and
+becomes the exact boundary only while arguments or results are open.
 
 Tail calls move their callable and arguments to the current activation's
 original result destination, close its open upvalues, and replace the
-activation in place. Normal Lua calls and returns will therefore remain
-iterative inside one executor rather than recursing through Go. Inactive stack
-slots and popped activations are cleared promptly so a warm reusable stack
-does not retain dead Lua graphs.
+activation in place. A saturating count records eliminated activations without
+growing the hot frame or expanding a long tail-recursive traceback. Normal Lua
+calls and returns therefore remain iterative inside one executor rather than
+recursing through Go. Inactive stack slots and popped activations are cleared
+promptly so a warm reusable stack does not retain dead Lua graphs.
+
+## Execution
+
+The executor is one iterative dense switch over verified Lua instructions.
+The current Function, Prototype, register base, program counter, code,
+constants, upvalues, and value stack are local variables in its hot loop.
+Ordinary instructions neither publish frame state nor reread the activation.
+Calls, returns, stack growth, errors, and future yield points are explicit
+seams: they publish the program counter, perform the operation, and reload
+locals before execution resumes.
+
+Direct Lua functions take the inline call path. Other values use a cold raw
+`__call` lookup, insert the original value as argument one, and then enter the
+same activation machinery. Resolution is not recursive: a non-function
+`__call` value is a call error, as in Lua 5.1. Limit checks complete before the
+call window is changed, so a failed metamethod call is atomic.
+
+Lua-to-Lua calls append or replace compact activations and continue in the
+same Go invocation. They never recurse through Go. Returns copy compact slots
+directly into the caller's result window, and open calls and returns use
+Thread top as their exact dynamic boundary. Closure creation captures
+absolute stack indexes, reads every binding word before publishing the new
+closure, and adopts its engine-owned upvalue slice without another copy.
+Closure instantiation and open-vararg stack growth stay behind cold helpers so
+their allocation and error machinery does not enlarge the always-hot switch
+frame.
+
+The executor assumes only immutable, sealed Prototypes. Prototype
+verification is therefore responsible for instruction bounds, register and
+constant operands, closure binding words, test/jump pairs, and open-result
+adjacency. Unsupported instructions currently fail at the private execution
+boundary; source execution remains private until every verified opcode family
+has a complete implementation.
+
+Runtime failure snapshots the active Lua trace before one centralized unwind
+closes upvalues, drops activations, and clears dead stack roots. Ordinary Lua
+control flow does not use Go panic or interface-valued per-opcode results. The
+executor returns one small outcome only when it reaches its requested call
+depth or fails; coroutine support will add a yield outcome when it exists.
 
 ## Build order
 

@@ -12,9 +12,16 @@ type activation struct {
 	base          uint32
 	resultBase    uint32
 	pc            uint32
-	argumentCount uint32
+	tailCalls     uint32
 	callerExtent  uint32
 	wantedResults int32
+}
+
+func (frame activation) varargCount() int {
+	return int(frame.base) -
+		int(frame.resultBase) -
+		1 -
+		int(frame.function.prototype.parameters)
 }
 
 type luaCallLayout struct {
@@ -52,13 +59,60 @@ func (thread *Thread) pushLuaCall(
 	thread.reserveValues(layout.required)
 	thread.reserveFrames(len(thread.frames) + 1)
 	oldExtent := thread.liveValueExtent()
+	thread.commitLuaCall(function, layout, oldExtent)
+	return nil
+}
+
+func (thread *Thread) pushLuaMetamethodCall(
+	function *Function,
+	callBase int,
+	argumentCount int,
+	wantedResults int,
+) *Error {
+	if len(thread.frames) >= thread.state.options.MaxFrames {
+		return newResourceError(
+			"lua: call frame limit of %d exceeded",
+			thread.state.options.MaxFrames,
+		)
+	}
+	thread.checkLuaCallWindow(
+		function,
+		callBase,
+		argumentCount,
+		wantedResults,
+	)
+	if argumentCount == int(^uint(0)>>1) {
+		return newResourceError("lua: value stack index overflow")
+	}
+	layout, resourceError := thread.planLuaCallLayout(
+		function,
+		callBase,
+		argumentCount+1,
+		wantedResults,
+	)
+	if resourceError != nil {
+		return resourceError
+	}
+
+	thread.reserveValues(layout.required)
+	thread.reserveFrames(len(thread.frames) + 1)
+	oldExtent := thread.liveValueExtent()
+	thread.insertCallMetamethod(function, callBase, argumentCount)
+	thread.commitLuaCall(function, layout, oldExtent)
+	return nil
+}
+
+func (thread *Thread) commitLuaCall(
+	function *Function,
+	layout luaCallLayout,
+	oldExtent int,
+) {
 	callerExtent := thread.frameExtent
 	thread.setupLuaCall(function, layout)
 	thread.frames = append(thread.frames, activation{
 		function:      function,
 		base:          uint32(layout.base),
 		resultBase:    uint32(layout.resultBase),
-		argumentCount: uint32(layout.argumentCount),
 		callerExtent:  uint32(callerExtent),
 		wantedResults: int32(layout.wantedResults),
 	})
@@ -67,7 +121,6 @@ func (thread *Thread) pushLuaCall(
 		thread.frameExtent = layout.frameEnd
 	}
 	thread.clearDeadSuffix(oldExtent)
-	return nil
 }
 
 func (thread *Thread) replaceLuaCall(
@@ -93,6 +146,66 @@ func (thread *Thread) replaceLuaCall(
 
 	thread.reserveValues(layout.required)
 	oldExtent := thread.liveValueExtent()
+	thread.commitLuaTailCall(
+		function,
+		callBase,
+		argumentCount,
+		layout,
+		oldExtent,
+	)
+	return nil
+}
+
+func (thread *Thread) replaceLuaMetamethodCall(
+	function *Function,
+	callBase int,
+	argumentCount int,
+) *Error {
+	if len(thread.frames) == 0 {
+		panic("lua: tail call without an activation")
+	}
+	current := thread.frames[len(thread.frames)-1]
+	thread.checkLuaCallWindow(
+		function,
+		callBase,
+		argumentCount,
+		int(current.wantedResults),
+	)
+	if argumentCount == int(^uint(0)>>1) {
+		return newResourceError("lua: value stack index overflow")
+	}
+	layout, resourceError := thread.planLuaCallLayout(
+		function,
+		int(current.resultBase),
+		argumentCount+1,
+		int(current.wantedResults),
+	)
+	if resourceError != nil {
+		return resourceError
+	}
+
+	thread.reserveValues(layout.required)
+	oldExtent := thread.liveValueExtent()
+	thread.insertCallMetamethod(function, callBase, argumentCount)
+	thread.commitLuaTailCall(
+		function,
+		callBase,
+		argumentCount+1,
+		layout,
+		oldExtent,
+	)
+	return nil
+}
+
+func (thread *Thread) commitLuaTailCall(
+	function *Function,
+	callBase int,
+	argumentCount int,
+	layout luaCallLayout,
+	oldExtent int,
+) {
+	index := len(thread.frames) - 1
+	current := thread.frames[index]
 	thread.closeUpvalues(int(current.base))
 
 	valueCount := argumentCount + 1
@@ -106,7 +219,7 @@ func (thread *Thread) replaceLuaCall(
 		function:      function,
 		base:          uint32(layout.base),
 		resultBase:    current.resultBase,
-		argumentCount: uint32(layout.argumentCount),
+		tailCalls:     saturatedIncrement(current.tailCalls),
 		callerExtent:  current.callerExtent,
 		wantedResults: current.wantedResults,
 	}
@@ -116,7 +229,6 @@ func (thread *Thread) replaceLuaCall(
 		thread.frameExtent = layout.frameEnd
 	}
 	thread.clearDeadSuffix(oldExtent)
-	return nil
 }
 
 func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
@@ -198,6 +310,20 @@ func (thread *Thread) planLuaCall(
 	wantedResults int,
 ) (luaCallLayout, *Error) {
 	thread.checkLuaCall(function, callBase, argumentCount, wantedResults)
+	return thread.planLuaCallLayout(
+		function,
+		resultBase,
+		argumentCount,
+		wantedResults,
+	)
+}
+
+func (thread *Thread) planLuaCallLayout(
+	function *Function,
+	resultBase int,
+	argumentCount int,
+	wantedResults int,
+) (luaCallLayout, *Error) {
 	if resultBase < 0 {
 		panic("lua: negative result base")
 	}
@@ -256,6 +382,25 @@ func (thread *Thread) checkLuaCall(
 	argumentCount int,
 	wantedResults int,
 ) {
+	thread.checkLuaCallWindow(
+		function,
+		callBase,
+		argumentCount,
+		wantedResults,
+	)
+	stackFunction := thread.values[callBase]
+	if stackFunction.kind() != FunctionKind ||
+		(*Function)(stackFunction.ref) != function {
+		panic("lua: call slot does not contain the requested function")
+	}
+}
+
+func (thread *Thread) checkLuaCallWindow(
+	function *Function,
+	callBase int,
+	argumentCount int,
+	wantedResults int,
+) {
 	if thread == nil || thread.state == nil || thread.state.runtime == nil {
 		panic("lua: call on an invalid thread")
 	}
@@ -275,10 +420,21 @@ func (thread *Thread) checkLuaCall(
 		int64(wantedResults) > int64(^uint32(0)>>1) {
 		panic("lua: invalid requested result count")
 	}
-	stackFunction, ok := thread.values[callBase].owningValue().Function()
-	if !ok || stackFunction != function {
-		panic("lua: call slot does not contain the requested function")
-	}
+}
+
+func (thread *Thread) insertCallMetamethod(
+	function *Function,
+	callBase int,
+	argumentCount int,
+) {
+	copy(
+		thread.values[callBase+1:callBase+argumentCount+2],
+		thread.values[callBase:callBase+argumentCount+1],
+	)
+	writeSlot(
+		&thread.values[callBase],
+		slotFromValue(function.Value()),
+	)
 }
 
 func (thread *Thread) setupLuaCall(
@@ -447,4 +603,11 @@ func (thread *Thread) clearDeadSuffix(previousExtent int) {
 	if liveExtent < previousExtent {
 		thread.clearInactive(liveExtent, previousExtent)
 	}
+}
+
+func saturatedIncrement(value uint32) uint32 {
+	if value != ^uint32(0) {
+		value++
+	}
+	return value
 }

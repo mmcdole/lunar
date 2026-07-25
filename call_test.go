@@ -24,7 +24,7 @@ func TestLuaCallPlacesFixedArguments(t *testing.T) {
 	if frame.function != function ||
 		frame.base != 1 ||
 		frame.resultBase != 0 ||
-		frame.argumentCount != 1 ||
+		frame.tailCalls != 0 ||
 		frame.wantedResults != 1 ||
 		thread.top != 6 {
 		t.Fatalf("fixed activation = %+v, top %d", frame, thread.top)
@@ -85,7 +85,7 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 	}
 	frame := thread.frames[0]
 	if frame.base != 5 ||
-		frame.argumentCount != 4 ||
+		frame.varargCount() != 2 ||
 		frame.wantedResults != allResults ||
 		thread.top != 10 {
 		t.Fatalf("vararg activation = %+v, top %d", frame, thread.top)
@@ -106,13 +106,23 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 		t.Fatal(callErr)
 	}
 	frame = thread.frames[0]
-	if frame.base != 3 || frame.argumentCount != 0 || thread.top != 8 {
+	if frame.base != 3 || frame.varargCount() != 0 || thread.top != 8 {
 		t.Fatalf("padded empty vararg activation = %+v, top %d", frame, thread.top)
 	}
 	for index := 1; index < 8; index++ {
 		assertTestSlot(t, thread.values[index], Nil())
 	}
 	thread.finishLuaCall(3, 0)
+
+	setTestCall(thread, 0, function, Number(50), Number(60))
+	if callErr := thread.pushLuaCall(function, 0, 2, 0); callErr != nil {
+		t.Fatal(callErr)
+	}
+	frame = thread.frames[0]
+	if frame.varargCount() != 0 {
+		t.Fatalf("equal-arity vararg count = %d; want 0", frame.varargCount())
+	}
+	thread.finishLuaCall(int(frame.base), 0)
 }
 
 func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
@@ -362,7 +372,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 		frame.function != second ||
 		frame.resultBase != 0 ||
 		frame.base != 1 ||
-		frame.argumentCount != 2 ||
+		frame.tailCalls != 1 ||
 		frame.wantedResults != 2 ||
 		thread.top != 5 {
 		t.Fatalf("first tail replacement = %+v, frames %d, top %d", frame, len(thread.frames), thread.top)
@@ -384,7 +394,8 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	frame = thread.frames[0]
 	if frame.function != third ||
 		frame.base != 3 ||
-		frame.argumentCount != 1 ||
+		frame.varargCount() != 0 ||
+		frame.tailCalls != 2 ||
 		frame.wantedResults != 2 ||
 		thread.top != 7 {
 		t.Fatalf("second tail replacement = %+v, top %d", frame, thread.top)
@@ -603,6 +614,37 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			!slices.Equal(thread.values, beforeValues) ||
 			!slices.Equal(thread.frames, beforeFrames) {
 			t.Fatal("tail-call limit failure partially replaced the activation")
+		}
+	})
+
+	t.Run("call metamethod insertion", func(t *testing.T) {
+		state, err := New(Options{MaxValues: 3})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		thread := state.MainThread()
+		handler := newTestLuaFunction(t, state, 0, 1, 0, 0)
+		target, err := state.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thread.reserveValues(3)
+		thread.values[0] = slotFromValue(target.Value())
+		thread.values[1] = slotFromValue(Number(10))
+		thread.values[2] = nilSlot
+		thread.top = 3
+		beforeValues := slices.Clone(thread.values)
+		beforeTop := thread.top
+
+		callErr := thread.pushLuaMetamethodCall(handler, 0, 2, 0)
+		if callErr == nil || callErr.Category() != ResourceError {
+			t.Fatalf("metamethod value limit error = %v", callErr)
+		}
+		if len(thread.frames) != 0 ||
+			thread.top != beforeTop ||
+			!slices.Equal(thread.values, beforeValues) {
+			t.Fatal("metamethod limit failure inserted a partial call")
 		}
 	})
 }

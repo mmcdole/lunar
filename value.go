@@ -95,6 +95,8 @@ var (
 	falseValue = Value{ref: falseMarkerPointer, bits: uint64(BoolKind)}
 	trueValue  = Value{ref: trueMarkerPointer, bits: uint64(BoolKind)}
 	nilSlot    = slot{ref: nilMarkerPointer, bits: uint64(NilKind)}
+	falseSlot  = slot{ref: falseMarkerPointer, bits: uint64(BoolKind)}
+	trueSlot   = slot{ref: trueMarkerPointer, bits: uint64(BoolKind)}
 )
 
 // Nil returns the Lua nil value.

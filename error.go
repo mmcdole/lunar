@@ -28,6 +28,9 @@ type TraceFrame struct {
 	Function string
 	// Line is the one-based source line, or zero when unavailable.
 	Line int
+	// TailCalls is the number of frames eliminated immediately below this
+	// surviving frame by proper tail calls.
+	TailCalls uint32
 }
 
 // Error is a protected Lua failure.

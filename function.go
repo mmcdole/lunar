@@ -21,6 +21,20 @@ func newLuaFunction(
 	environment *Table,
 	upvalues []*upvalue,
 ) *Function {
+	return newLuaFunctionOwned(
+		owner,
+		prototype,
+		environment,
+		exactSlice(upvalues),
+	)
+}
+
+func newLuaFunctionOwned(
+	owner *runtimeState,
+	prototype *Prototype,
+	environment *Table,
+	upvalues []*upvalue,
+) *Function {
 	if owner == nil || prototype == nil || !prototype.sealed {
 		panic("lua: invalid Lua function")
 	}
@@ -30,8 +44,7 @@ func newLuaFunction(
 	if len(upvalues) != int(prototype.upvalues) {
 		panic("lua: Lua function upvalue count does not match its prototype")
 	}
-	ownedUpvalues := exactSlice(upvalues)
-	for _, value := range ownedUpvalues {
+	for _, value := range upvalues {
 		if value == nil {
 			panic("lua: Lua function has a nil upvalue")
 		}
@@ -40,7 +53,7 @@ func newLuaFunction(
 		objectHeader: objectHeader{owner: owner},
 		prototype:    prototype,
 		environment:  environment,
-		upvalues:     ownedUpvalues,
+		upvalues:     upvalues,
 	}
 }
 
