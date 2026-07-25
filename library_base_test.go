@@ -525,7 +525,7 @@ func newStateWithBase(t testing.TB, options Options) *State {
 // shared spelling formatLua51Value defines.
 //
 // Recorded expectations are verified against a real interpreter by
-// TestLibraryCasesMatchTheLua51Oracle. Regenerate or re-verify with:
+// TestLua51OracleMatchesLibraryCases. Regenerate or re-verify with:
 //
 //	BADGER_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
 //
@@ -581,14 +581,19 @@ func runLua51Case(t *testing.T, source string) string {
 }
 
 // formatLua51Value spells one result the way the Lua driver does. Numbers use
-// Lua 5.1's own %.14g primitive, with NaN normalized because C's sign-of-NaN
-// spelling is platform-dependent.
+// Lua 5.1's own %.14g primitive, with non-finite values normalized because
+// their C-library spelling is platform-dependent.
 func formatLua51Value(value Value) string {
 	switch value.Kind() {
 	case NumberKind:
 		number, _ := value.AsNumber()
-		if math.IsNaN(number) {
+		switch {
+		case math.IsNaN(number):
 			return "nan"
+		case math.IsInf(number, 1):
+			return "inf"
+		case math.IsInf(number, -1):
+			return "-inf"
 		}
 		return value.String()
 	case StringKind:
@@ -621,10 +626,10 @@ func runLua51Cases(t *testing.T, cases []lua51Case) {
 	}
 }
 
-// TestLibraryCasesMatchTheLua51Oracle re-derives every recorded expectation
+// TestLua51OracleMatchesLibraryCases re-derives every recorded expectation
 // from a real Lua 5.1 interpreter. It is skipped unless BADGER_LUA51 names one,
 // because the reference binary is deliberately not carried in this repository.
-func TestLibraryCasesMatchTheLua51Oracle(t *testing.T) {
+func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	binary := os.Getenv("BADGER_LUA51")
 	if binary == "" {
 		t.Skip("set BADGER_LUA51 to a Lua 5.1 interpreter to verify")
@@ -674,10 +679,15 @@ func TestLibraryCasesMatchTheLua51Oracle(t *testing.T) {
 
 // lua51OracleDriver formats results exactly as formatLua51Value does.
 const lua51OracleDriver = `
+local positiveInfinity = math.huge
+local negativeInfinity = -positiveInfinity
+
 local function fmt(v)
   local t = type(v)
   if t == "number" then
     if v ~= v then return "nan" end
+    if v == positiveInfinity then return "inf" end
+    if v == negativeInfinity then return "-inf" end
     return string.format("%.14g", v)
   elseif t == "string" then
     return "'" .. v .. "'"

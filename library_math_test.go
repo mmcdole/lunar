@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -130,6 +131,13 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 		); !applicable || same {
 			t.Fatalf("reopened math.%s is not a fresh Function", name)
 		}
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.OpenMath(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("OpenMath after Close = %v; want ErrClosed", err)
 	}
 }
 
@@ -286,6 +294,35 @@ return a == b, c == d, a == c
 		Bool(true),
 		Bool(false),
 	)
+}
+
+// TestMathLibraryRandomGeneratorSequenceIsStable pins the generator named in
+// OpenMath's contract. Changing either the SplitMix64 seeding or xoshiro256**
+// transition is an observable compatibility change, even though PUC's C rand
+// sequence is deliberately not part of Lua 5.1.
+func TestMathLibraryRandomGeneratorSequenceIsStable(t *testing.T) {
+	source := &randomSource{}
+	source.seed(1234)
+	want := [...]uint64{
+		0x0bab45d9a0e3ae53,
+		0xd7c640660c19433e,
+		0xb0dedaa0d09a6691,
+		0xdec9f41b58ec86eb,
+		0x19e4a6b7acda0ae0,
+		0xe4bc1c79fd36e5cb,
+		0x737261121dbf96e7,
+		0x33dc37ab08116070,
+	}
+	for index, expected := range want {
+		if got := source.nextBits(); got != expected {
+			t.Fatalf(
+				"seed 1234 draw %d = %#016x; want %#016x",
+				index+1,
+				got,
+				expected,
+			)
+		}
+	}
 }
 
 // TestWarmMathLibraryScalarCallsDoNotAllocate holds the scalar fast path to

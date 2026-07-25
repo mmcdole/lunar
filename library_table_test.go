@@ -112,6 +112,13 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 			)
 		}
 	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.OpenTable(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("OpenTable after Close = %v; want ErrClosed", err)
+	}
 }
 
 func TestTableLibraryMatchesLua51(t *testing.T) {

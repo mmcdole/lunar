@@ -873,11 +873,11 @@ multiplies by the same constant, preserving PUC's rounding.
 Transcendental results come from Go's `math` package, not from a C library.
 Lua 5.1 specifies no accuracy for them and PUC forwards to whatever `libm` the
 platform supplies, so bit equality with any particular C library is neither
-achievable nor meaningful. Against macOS/arm64 `libm`, 1,980 sampled points
-put `sqrt` and `log` exact, every other function within 3 ULP, and `pow` within
-10 ULP. `math.pow` uses the same primitive as the `^` operator, so the two
-always agree with each other, which is the invariant that matters inside one
-runtime.
+achievable nor meaningful. Numerical deltas therefore vary with the operating
+system, architecture, and C library chosen as the comparator; the runtime does
+not promise a cross-libm ULP bound. `math.pow` uses the same primitive as the
+`^` operator, so the two always agree with each other, which is the invariant
+that matters inside one runtime.
 
 `math.random` is the one entry that cannot be reproduced. Lua 5.1 delegates it
 to C `rand()`, whose sequence, resolution, and process-global seed are
