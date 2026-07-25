@@ -10,9 +10,10 @@ embed Lua:
 Both interfaces operate on the same values, tables, functions, and threads.
 Executable state has one authoritative representation.
 
-The implementation is under active construction. The current code establishes
-the canonical value and object model before the parser, compiler, executor, and
-standard libraries are added.
+The implementation is under active construction. The compact object model,
+Lua 5.1 bytecode, immutable verified prototypes, and direct source lexer are
+in place. The parser/compiler, executor, and standard libraries follow in that
+order.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order.

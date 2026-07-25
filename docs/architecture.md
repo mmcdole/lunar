@@ -6,7 +6,8 @@ embedding stack made from Go interface values.
 
 ## Invariants
 
-1. A Lua object has exactly one canonical Go object.
+1. Each reference object has exactly one canonical Go object. Immutable
+   strings have value semantics; pointer identity is an internal optimization.
 2. `Value` is an owning, opaque, compact value. It never hides a Go pointer in
    an integer.
 3. Registers, table slots, closed upvalues, call arguments, and call results
@@ -22,7 +23,8 @@ embedding stack made from Go interface values.
    State or Frame.
 8. Borrowed views have distinct types and checked lifetimes. An owning Value is
    never secretly borrowed.
-9. Reference values cannot cross State runtimes implicitly.
+9. Reference values cannot cross State runtimes implicitly. Immutable strings
+   are scalar values and may be shared by States and Prototypes.
 10. Closing a State prevents execution and mutation but retained owning handles
     remain safe to inspect.
 
@@ -52,9 +54,14 @@ Files are organized by substantial runtime concepts:
 
 - `value.go`: compact values, kinds, scalar semantics, and object identity;
 - `state.go`: runtime ownership, lifecycle, globals, userdata, and errors;
-- `string.go`: immutable strings, hashing, and bounded short-string reuse;
+- `string.go`: State-neutral immutable strings, stable hashing, and bounded
+  runtime-local short-string reuse;
 - `table.go`: dense and hash storage plus raw table semantics;
-- `function.go`: immutable prototypes, functions, and upvalues;
+- `opcode.go`: canonical Lua 5.1 instruction encoding;
+- `lexer.go`: direct source scanning with one-token lookahead;
+- `prototype.go` and `verify.go`: exact-size immutable executable metadata
+  and its publication-time verifier;
+- `function.go`: canonical functions and compact upvalues;
 - later `load.go`: source and bytecode loading;
 - later `execute.go`: dispatch and activations;
 - later `call.go`: Lua/native calls, frames, outcomes, and continuations; and
@@ -66,16 +73,17 @@ interfaces or invariants. Tiny helper and test files are avoided.
 ## Build order
 
 1. Canonical Value and object ownership.
-2. Compact strings and tables.
-3. Parser/compiler producing verified immutable Prototypes.
+2. State-neutral immutable strings and compact tables.
+3. A direct recursive-descent compiler producing verified immutable
+   Prototypes without retaining an AST.
 4. Executor, calls, upvalues, errors, and coroutines.
 5. Native-frame standard libraries and embedding operations.
 6. Debug facilities and optional extensions.
 7. Profile-driven quickening, inline caches, and executor specialization.
 
-The parser/compiler is written as a private frontend module only when its
-interface is stable enough to justify the package seam. Pattern matching is
-likewise isolated only when the string library needs it.
+The compiler remains in the root package so it can build private compact
+constants without introducing an exported intermediate representation.
+Pattern matching is isolated only when the string library needs that seam.
 
 ## Qualification
 
