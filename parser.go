@@ -183,6 +183,9 @@ func (parser *sourceParser) parseBlock() (bool, *Error) {
 		if syntaxError := parser.parseStatement(); syntaxError != nil {
 			return false, syntaxError
 		}
+		if _, syntaxError := parser.accept(';'); syntaxError != nil {
+			return false, syntaxError
+		}
 		parser.function.releaseRegisters(
 			parser.function.registerFloor,
 		)
@@ -192,8 +195,6 @@ func (parser *sourceParser) parseBlock() (bool, *Error) {
 
 func (parser *sourceParser) parseStatement() *Error {
 	switch parser.current.kind {
-	case ';':
-		return parser.advance()
 	case tokenDo:
 		return parser.parseDo()
 	case tokenFunction:

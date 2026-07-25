@@ -703,6 +703,8 @@ func TestCompileSourceErrors(t *testing.T) {
 		{"return is last", "return 1; value = 2", "return must be the last"},
 		{"missing end", "do local x = 1", "expected end"},
 		{"break outside loop", "break", "no loop to break"},
+		{"leading empty statement", "; value = 1", "unsupported statement"},
+		{"repeated semicolon", "value = 1;; value = 2", "unsupported statement"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -813,6 +815,8 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		"for index = first(), last(), step() do consume(index) end",
 		"for key, value in iterator, state, control do consume(key, value) end",
 		"repeat local value = 1; sink = function() return value end until done",
+		"; value = 1",
+		"value = 1;; value = 2",
 		"if true return else",
 		"return (((((((((nil)))))))))",
 		"local =",
