@@ -38,7 +38,7 @@ func TestCompileSourceDirectExpressionSlice(t *testing.T) {
 		opGetGlobal,
 		opAdd,
 		opLessThan,
-		opTest,
+		opTestSet,
 		opJump,
 		opReturn,
 	} {
@@ -49,11 +49,14 @@ func TestCompileSourceDirectExpressionSlice(t *testing.T) {
 	if seen[opMul] {
 		t.Fatal("pure numeric multiplication was not folded")
 	}
+	if seen[opLoadBool] {
+		t.Fatal("short-circuit comparison was eagerly materialized")
+	}
 	for index, code := range prototype.code {
-		if code.opcode() == opTest {
+		if code.opcode() == opLessThan {
 			if index+1 >= len(prototype.code) ||
 				prototype.code[index+1].opcode() != opJump {
-				t.Fatal("logical test is not followed by its branch")
+				t.Fatal("comparison is not followed by its branch")
 			}
 		}
 	}
@@ -114,6 +117,7 @@ func TestCompileSourcePrecedenceAndSignedZero(t *testing.T) {
 
 	numbers := make(map[uint64]bool)
 	concatCount := 0
+	concatWidth := 0
 	for _, constant := range prototype.constants {
 		if constant.kind() == NumberKind {
 			numbers[constant.bits] = true
@@ -125,6 +129,7 @@ func TestCompileSourcePrecedenceAndSignedZero(t *testing.T) {
 			if code.b() >= code.c() {
 				t.Fatal("compiler emitted a reversed CONCAT range")
 			}
+			concatWidth = code.c() - code.b()
 		}
 	}
 	for _, number := range []float64{-4, 0.25, 7} {
@@ -136,8 +141,50 @@ func TestCompileSourcePrecedenceAndSignedZero(t *testing.T) {
 		!numbers[math.Float64bits(math.Copysign(0, -1))] {
 		t.Fatal("compiler merged positive and negative zero")
 	}
+	if concatCount != 1 || concatWidth != 2 {
+		t.Fatalf(
+			"CONCAT shape = %d instruction(s), width %d; want 1 and 2",
+			concatCount,
+			concatWidth,
+		)
+	}
+}
+
+func TestCompileSourcePreservesExplicitConcatGrouping(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@concat.lua",
+		"return (first .. second) .. third",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	concatCount := 0
+	for _, code := range prototype.code {
+		if code.opcode() == opConcat {
+			concatCount++
+		}
+	}
 	if concatCount != 2 {
-		t.Fatalf("CONCAT count = %d, want 2", concatCount)
+		t.Fatalf("grouped CONCAT count = %d, want 2", concatCount)
+	}
+}
+
+func TestCompileSourceDoesNotCoalesceConditionalConcatOperand(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@concat.lua",
+		`return "a" .. (flag and ("b" .. "c"))`,
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	concatCount := 0
+	for _, code := range prototype.code {
+		if code.opcode() == opConcat {
+			concatCount++
+		}
+	}
+	if concatCount != 2 {
+		t.Fatalf("conditional CONCAT count = %d, want 2", concatCount)
 	}
 }
 
@@ -256,6 +303,235 @@ func TestCompileSourceUsesInitializerRegistersAsLocalSlots(t *testing.T) {
 	}
 }
 
+func TestCompileSourceBindsExpressionResultToAssignmentTarget(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@assignment.lua",
+		"local value = 0\nvalue = value + increment\nreturn value",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	adds := 0
+	for _, code := range prototype.code {
+		switch code.opcode() {
+		case opAdd:
+			adds++
+			if code.a() != 0 {
+				t.Fatalf(
+					"ADD destination = R%d, want local R0",
+					code.a(),
+				)
+			}
+		case opMove:
+			t.Fatal("local arithmetic assignment emitted an avoidable MOVE")
+		}
+	}
+	if adds != 1 {
+		t.Fatalf("ADD count = %d, want 1", adds)
+	}
+}
+
+func TestCompileSourceBindsGlobalExpressionBeforeStore(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@assignment.lua",
+		"output = input + 1\nreturn output",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	addPC := -1
+	storePC := -1
+	for pc, code := range prototype.code {
+		switch code.opcode() {
+		case opAdd:
+			addPC = pc
+		case opSetGlobal:
+			storePC = pc
+		case opMove:
+			t.Fatal("global arithmetic assignment emitted an avoidable MOVE")
+		}
+	}
+	if addPC < 0 || storePC != addPC+1 {
+		t.Fatalf(
+			"ADD/SETGLOBAL positions = %d/%d, want adjacent",
+			addPC,
+			storePC,
+		)
+	}
+	if prototype.code[addPC].a() != prototype.code[storePC].a() {
+		t.Fatal("SETGLOBAL does not consume the arithmetic result directly")
+	}
+}
+
+func TestCompileSourceKeepsShortCircuitComparisonAsBranches(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"local left, right, yes, no = ...\n"+
+			"return left < right and yes or no",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	comparisonPC := -1
+	testSetCount := 0
+	for pc, code := range prototype.code {
+		switch code.opcode() {
+		case opLessThan:
+			comparisonPC = pc
+		case opTestSet:
+			testSetCount++
+		case opLoadBool:
+			t.Fatal("short-circuit comparison materialized a boolean")
+		}
+	}
+	if comparisonPC < 0 ||
+		comparisonPC+1 >= len(prototype.code) ||
+		prototype.code[comparisonPC+1].opcode() != opJump {
+		t.Fatal("comparison is not represented by a conditional branch")
+	}
+	if testSetCount == 0 {
+		t.Fatal("logical expression does not preserve operand values")
+	}
+}
+
+func TestCompileSourceMaterializesComparisonOnlyInValueContext(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"local left, right = ...\n"+
+			"local result = left < right\n"+
+			"return result",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	comparisonPC := -1
+	var booleans []instruction
+	for pc, code := range prototype.code {
+		switch code.opcode() {
+		case opLessThan:
+			comparisonPC = pc
+		case opLoadBool:
+			booleans = append(booleans, code)
+		}
+	}
+	if comparisonPC < 0 ||
+		prototype.code[comparisonPC+1].opcode() != opJump {
+		t.Fatal("value comparison is not represented by a branch")
+	}
+	if len(booleans) != 2 ||
+		booleans[0].a() != 2 ||
+		booleans[0].b() != 0 ||
+		booleans[0].c() != 1 ||
+		booleans[1].a() != 2 ||
+		booleans[1].b() != 1 ||
+		booleans[1].c() != 0 {
+		t.Fatalf(
+			"comparison materialization = %#v, want false/true in R2",
+			booleans,
+		)
+	}
+}
+
+func TestCompileSourceInvertsComparisonForNot(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"local left, right = ...\n"+
+			"local result = not (left < right)\n"+
+			"return result",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	comparison := instruction(0)
+	loadBoolCount := 0
+	for _, code := range prototype.code {
+		switch code.opcode() {
+		case opLessThan:
+			comparison = code
+		case opNot:
+			t.Fatal("not-comparison emitted a redundant NOT")
+		case opLoadBool:
+			loadBoolCount++
+		}
+	}
+	if comparison.opcode() != opLessThan || comparison.a() != 0 {
+		t.Fatalf(
+			"inverted comparison = %s A:%d, want LT A:0",
+			comparison.opcode(),
+			comparison.a(),
+		)
+	}
+	if loadBoolCount != 2 {
+		t.Fatalf("LOADBOOL count = %d, want 2", loadBoolCount)
+	}
+}
+
+func TestCompileSourceResolvesLogicalLeftBeforeRightOperand(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"local left, right = ...\n"+
+			"return (left < right and 1) + external",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	lastBoolean := -1
+	global := -1
+	for pc, code := range prototype.code {
+		switch code.opcode() {
+		case opLoadBool:
+			lastBoolean = pc
+		case opGetGlobal:
+			global = pc
+		}
+	}
+	if lastBoolean < 0 || global <= lastBoolean {
+		t.Fatalf(
+			"logical materialization/global positions = %d/%d",
+			lastBoolean,
+			global,
+		)
+	}
+}
+
+func TestCompileSourceDoesNotFoldConditionalNumericOperand(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"return 2 + (flag and 1)",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	for _, code := range prototype.code {
+		if code.opcode() == opAdd {
+			return
+		}
+	}
+	t.Fatal("conditional numeric operand was incorrectly constant-folded")
+}
+
+func TestCompileSourceDoesNotFoldUnaryConditionalOperand(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@condition.lua",
+		"return -(flag and 1)",
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	for _, code := range prototype.code {
+		if code.opcode() == opUnaryMinus {
+			return
+		}
+	}
+	t.Fatal("conditional unary operand was incorrectly constant-folded")
+}
+
 func TestCompileSourceSpillsLargeRKConstants(t *testing.T) {
 	var source strings.Builder
 	source.WriteString("local x = 0\n")
@@ -285,6 +561,71 @@ func TestCompileSourceSpillsLargeRKConstants(t *testing.T) {
 	}
 }
 
+func TestCompileSourceKeepsHighRKSpillAboveActiveLocals(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("local sink = 0\n")
+	for number := 1; number <= 256; number++ {
+		source.WriteString("sink = ")
+		source.WriteString(strconv.Itoa(number))
+		source.WriteByte('\n')
+	}
+	source.WriteString(
+		"local left, right = ...\n" +
+			"left = right + 256\n" +
+			"return left",
+	)
+
+	prototype, syntaxError := compileSource("@spill.lua", source.String())
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	constantIndex := -1
+	for index, constant := range prototype.constants {
+		if constant.kind() == NumberKind &&
+			constant.bits == math.Float64bits(256) {
+			constantIndex = index
+			break
+		}
+	}
+	if constantIndex <= maxRegisterConstant {
+		t.Fatalf(
+			"constant index = %d, want above RK limit %d",
+			constantIndex,
+			maxRegisterConstant,
+		)
+	}
+
+	spill := -1
+	var add instruction
+	for _, code := range prototype.code {
+		if code.opcode() == opLoadK && code.bx() == constantIndex {
+			spill = code.a()
+		}
+		if code.opcode() == opAdd {
+			add = code
+		}
+	}
+	if spill < 3 || spill >= prototype.RegisterCount() {
+		t.Fatalf(
+			"spill register = R%d outside temporary suffix [R3,R%d)",
+			spill,
+			prototype.RegisterCount(),
+		)
+	}
+	if add.opcode() != opAdd ||
+		add.a() != 1 ||
+		add.b() != 2 ||
+		add.c() != spill {
+		t.Fatalf(
+			"ADD = A:%d B:%d C:%d, want A:1 B:2 C:%d",
+			add.a(),
+			add.b(),
+			add.c(),
+			spill,
+		)
+	}
+}
+
 func TestCompileSourceKeepsConcatOperandsContiguousAfterRKSpill(t *testing.T) {
 	var source strings.Builder
 	source.WriteString("local sink = 0\n")
@@ -293,7 +634,10 @@ func TestCompileSourceKeepsConcatOperandsContiguousAfterRKSpill(t *testing.T) {
 		source.WriteString(strconv.Itoa(number))
 		source.WriteByte('\n')
 	}
-	source.WriteString(`return "prefix" .. (256 + (left + right))`)
+	source.WriteString(
+		"local left, right = ...\n" +
+			`return "prefix" .. 256 .. (left + right)`,
+	)
 
 	prototype, syntaxError := compileSource(
 		"@concat.lua",
@@ -302,20 +646,50 @@ func TestCompileSourceKeepsConcatOperandsContiguousAfterRKSpill(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	for _, code := range prototype.code {
-		if code.opcode() != opConcat {
-			continue
+	constantIndex := -1
+	for index, constant := range prototype.constants {
+		if constant.kind() == NumberKind &&
+			constant.bits == math.Float64bits(256) {
+			constantIndex = index
+			break
 		}
-		if code.c() != code.b()+1 {
-			t.Fatalf(
-				"CONCAT range = [%d,%d], want adjacent operands",
-				code.b(),
-				code.c(),
-			)
-		}
-		return
 	}
-	t.Fatal("large-constant expression did not emit CONCAT")
+	if constantIndex <= maxRegisterConstant {
+		t.Fatal("test constant did not exceed the RK range")
+	}
+
+	spill := -1
+	var concat instruction
+	concatCount := 0
+	for _, code := range prototype.code {
+		if code.opcode() == opLoadK && code.bx() == constantIndex {
+			spill = code.a()
+		}
+		if code.opcode() == opConcat {
+			concat = code
+			concatCount++
+		}
+	}
+	if concatCount != 1 ||
+		concat.b() < 3 ||
+		concat.c()-concat.b() != 2 ||
+		concat.c() >= prototype.RegisterCount() {
+		t.Fatalf(
+			"CONCAT = count:%d B:%d C:%d registers:%d",
+			concatCount,
+			concat.b(),
+			concat.c(),
+			prototype.RegisterCount(),
+		)
+	}
+	if spill < concat.b() || spill > concat.c() {
+		t.Fatalf(
+			"high constant spill R%d is outside CONCAT range [R%d,R%d]",
+			spill,
+			concat.b(),
+			concat.c(),
+		)
+	}
 }
 
 func TestCompileSourceErrors(t *testing.T) {
@@ -343,6 +717,52 @@ func TestCompileSourceErrors(t *testing.T) {
 				t.Fatalf("syntax error = %v", syntaxError)
 			}
 		})
+	}
+}
+
+func TestCompileSourceExpressionMatrix(t *testing.T) {
+	atoms := []string{
+		"nil",
+		"false",
+		"true",
+		"0",
+		"1",
+		`"text"`,
+		"left",
+		"right",
+		"(...)",
+		"(left < right and 1)",
+	}
+	operators := []string{
+		"and",
+		"or",
+		"==",
+		"~=",
+		"<",
+		"<=",
+		">",
+		">=",
+		"..",
+		"+",
+		"-",
+		"*",
+		"/",
+		"%",
+		"^",
+	}
+	for _, left := range atoms {
+		for _, operation := range operators {
+			for _, right := range atoms {
+				source := "local left, right = ...\nreturn (" +
+					left + ") " + operation + " (" + right + ")"
+				if _, syntaxError := compileSource(
+					"@matrix.lua",
+					source,
+				); syntaxError != nil {
+					t.Fatalf("%s: %v", source, syntaxError)
+				}
+			}
+		}
 	}
 }
 

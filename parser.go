@@ -290,18 +290,23 @@ func (parser *sourceParser) parseAssignment() *Error {
 		return syntaxError
 	}
 	defer parser.releaseExpressionList(values)
+	if target.kind == expressionLocal && values.valueCount == 1 {
+		value := &parser.values[values.valueBase]
+		return parser.writeExpression(value, target.info, nameToken.line)
+	}
 	base, syntaxError := parser.adjustExpressionList(values, 1, nameToken.line)
 	if syntaxError != nil {
 		return syntaxError
 	}
 	switch target.kind {
 	case expressionLocal:
+		value := compiledExpression{
+			kind: expressionTemporary,
+			info: base,
+			line: nameToken.line,
+		}
 		return parser.writeExpression(
-			compiledExpression{
-				kind: expressionTemporary,
-				info: base,
-				line: nameToken.line,
-			},
+			&value,
 			target.info,
 			nameToken.line,
 		)
@@ -338,11 +343,11 @@ func (parser *sourceParser) parseReturn() *Error {
 	defer parser.releaseExpressionList(values)
 	expressions := parser.values[values.valueBase : values.valueBase+values.valueCount]
 	lastIndex := len(expressions) - 1
-	last := expressions[lastIndex]
+	last := &expressions[lastIndex]
 
 	if len(expressions) == 1 && last.kind != expressionVararg {
 		register, registerError := parser.expressionToRegister(
-			&last,
+			last,
 			last.line,
 		)
 		if registerError != nil {
@@ -365,7 +370,7 @@ func (parser *sourceParser) parseReturn() *Error {
 		return nil
 	}
 
-	register, registerError := parser.expressionToTemporary(&last, last.line)
+	register, registerError := parser.expressionToTemporary(last, last.line)
 	if registerError != nil {
 		return registerError
 	}

@@ -62,8 +62,10 @@ Files are organized by substantial runtime concepts:
 - `compiler.go`: per-compilation ownership plus mutable function emission
   state;
 - `parser.go`: recursive-descent chunk, statement, scope, and name parsing;
-- `expression.go`: transient expressions, precedence, register placement, and
-  constant folding;
+- `expression.go`: transient expression descriptors, precedence, and source
+  grammar;
+- `codegen.go`: expression lowering, register placement, conditional exits,
+  and constant folding;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
 - `function.go`: canonical functions and compact upvalues;
@@ -74,6 +76,20 @@ Files are organized by substantial runtime concepts:
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
+
+## Compiler lowering
+
+The compiler delays scalar result placement until an expression reaches its
+consumer. Arithmetic, lookup, unary, and concatenation instructions are
+emitted with an unresolved destination and bound directly to the final local,
+return slot, or enclosing operand. Sealing rejects any unresolved result.
+
+Comparisons and logical operators remain control-flow expressions until a
+value is required. Separate true and false exit lists preserve Lua's
+operand-valued `and` and `or` semantics without eagerly constructing
+booleans. Flat, right-associated concatenation chains are emitted as one
+instruction over a contiguous register span. The executor must reduce that
+span from right to left so `__concat` calls observe Lua 5.1 ordering.
 
 ## Build order
 

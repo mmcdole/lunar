@@ -256,7 +256,7 @@ func TestCompilerPatchesAllocationFreeJumpLists(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	for _, pc := range []int{int(first), int(second)} {
+	for _, pc := range []int{first.pc(), second.pc()} {
 		if got := pc + 1 + prototype.code[pc].sbx(); got != target {
 			t.Fatalf("jump at %d targets %d, want %d", pc, got, target)
 		}
@@ -280,6 +280,21 @@ func TestCompilerRejectsUnresolvedControlFlow(t *testing.T) {
 	if _, syntaxError = function.finish(2); syntaxError == nil ||
 		syntaxError.Category() != SyntaxError ||
 		!strings.Contains(syntaxError.Error(), "unresolved control flow") {
+		t.Fatalf("finish error = %v", syntaxError)
+	}
+}
+
+func TestCompilerRejectsUnboundExpressionResult(t *testing.T) {
+	unit := newCompileUnit("@result.lua")
+	function, syntaxError := unit.newFunction(1, 0, 0)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	function.emitDeferredABC(opAdd, 0, 0, 1)
+	function.emitABC(opReturn, 0, 1, 0, 1)
+	if _, syntaxError = function.finish(1); syntaxError == nil ||
+		syntaxError.Category() != SyntaxError ||
+		!strings.Contains(syntaxError.Error(), "unresolved expression") {
 		t.Fatalf("finish error = %v", syntaxError)
 	}
 }

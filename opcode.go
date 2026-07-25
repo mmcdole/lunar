@@ -70,6 +70,7 @@ const (
 	registerConstantBit = 1 << (operandBBits - 1)
 	maxRegisterConstant = registerConstantBit - 1
 	fieldsPerFlush      = 50
+	noRegister          = maxOperandA
 )
 
 var operationNames = [...]string{
@@ -195,6 +196,14 @@ func (code instruction) withA(a int) instruction {
 	}
 	mask := instruction(maxOperandA) << operandAShift
 	return code&^mask | instruction(a)<<operandAShift
+}
+
+func (code instruction) withB(b int) instruction {
+	if b < 0 || b > maxOperandB {
+		panic("lua: instruction B operand is out of range")
+	}
+	mask := instruction(maxOperandB) << operandBShift
+	return code&^mask | instruction(b)<<operandBShift
 }
 
 func (code instruction) withBx(bx int) instruction {

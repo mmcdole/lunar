@@ -74,6 +74,7 @@ type functionState struct {
 	registerHigh    int
 	registerFloor   int
 	unresolvedJumps int
+	pendingResults  int
 }
 
 func (unit *compileUnit) newFunction(
@@ -203,6 +204,16 @@ func (function *functionState) emitABC(
 	return function.emit(makeABC(operation, a, b, c), line)
 }
 
+func (function *functionState) emitDeferredABC(
+	operation opcode,
+	b, c int,
+	line uint32,
+) int {
+	pc := function.emitABC(operation, noRegister, b, c, line)
+	function.pendingResults++
+	return pc
+}
+
 func (function *functionState) emitABx(
 	operation opcode,
 	a, bx int,
@@ -221,6 +232,28 @@ func (function *functionState) emitAsBx(
 
 func (function *functionState) currentPC() int {
 	return len(function.builder.code)
+}
+
+func (function *functionState) bindResult(pc, register int) {
+	if pc < 0 || pc >= len(function.builder.code) {
+		panic("lua: invalid deferred expression result")
+	}
+	code := function.builder.code[pc]
+	switch code.opcode() {
+	case opGetUpvalue, opGetGlobal, opGetTable, opNewTable,
+		opAdd, opSub, opMul, opDiv, opMod, opPow,
+		opUnaryMinus, opNot, opLength, opConcat, opClosure:
+	default:
+		panic("lua: instruction does not have a bindable scalar result")
+	}
+	if code.a() != noRegister {
+		panic("lua: expression result is already bound")
+	}
+	if function.pendingResults == 0 {
+		panic("lua: compiler bound too many expression results")
+	}
+	function.builder.code[pc] = code.withA(register)
+	function.pendingResults--
 }
 
 func (function *functionState) enterBlock() {
@@ -319,17 +352,29 @@ func (function *functionState) releaseRegisters(mark int) {
 	function.registerTop = mark
 }
 
-// jumpList is an allocation-free chain of pending JMP instructions. Each
-// unresolved instruction's sBx field points to the next pc; -1 terminates the
-// chain. Patching overwrites those links with their final destinations.
+// jumpList is an allocation-free chain of pending JMP instructions. Zero is
+// empty, so expression descriptors need no sentinel initialization. Non-empty
+// values encode the head pc plus one. Each unresolved instruction's sBx field
+// points to the next pc; -1 terminates the chain.
 type jumpList int
 
-const emptyJumpList jumpList = -1
+const emptyJumpList jumpList = 0
+
+func jumpAt(pc int) jumpList {
+	return jumpList(pc + 1)
+}
+
+func (list jumpList) pc() int {
+	if list == emptyJumpList {
+		panic("lua: empty jump list has no program counter")
+	}
+	return int(list) - 1
+}
 
 func (function *functionState) emitJump(line uint32) jumpList {
 	pc := function.emitAsBx(opJump, 0, -1, line)
 	function.unresolvedJumps++
-	return jumpList(pc)
+	return jumpAt(pc)
 }
 
 func (function *functionState) joinJumps(
@@ -351,7 +396,7 @@ func (function *functionState) joinJumps(
 		}
 		tail = next
 	}
-	if syntaxError := function.setJump(tail, int(second)); syntaxError != nil {
+	if syntaxError := function.setJump(tail, second.pc()); syntaxError != nil {
 		return emptyJumpList, syntaxError
 	}
 	return first, nil
@@ -379,8 +424,100 @@ func (function *functionState) patchJumpsToHere(list jumpList) *Error {
 	return function.patchJumps(list, function.currentPC())
 }
 
+func (function *functionState) invertComparison(jump jumpList) {
+	pc := jump.pc()
+	if pc == 0 {
+		panic("lua: comparison jump has no controlling instruction")
+	}
+	control := function.builder.code[pc-1]
+	switch control.opcode() {
+	case opEqual, opLessThan, opLessEqual:
+	default:
+		panic("lua: jump is not controlled by a comparison")
+	}
+	function.builder.code[pc-1] = control.withA(1 - control.a())
+}
+
+func (function *functionState) patchTestDestination(
+	jump jumpList,
+	register int,
+) bool {
+	pc := jump.pc()
+	if pc == 0 {
+		return false
+	}
+	controlPC := pc - 1
+	control := function.builder.code[controlPC]
+	if control.opcode() != opTestSet {
+		return false
+	}
+	if register != noRegister && register != control.b() {
+		function.builder.code[controlPC] = control.withA(register)
+	} else {
+		function.builder.code[controlPC] = makeABC(
+			opTest,
+			control.b(),
+			0,
+			control.c(),
+		)
+	}
+	return true
+}
+
+func (function *functionState) jumpListNeedsValue(list jumpList) bool {
+	for list != emptyJumpList {
+		pc := list.pc()
+		if pc == 0 ||
+			function.builder.code[pc-1].opcode() != opTestSet {
+			return true
+		}
+		list = function.nextJump(list)
+	}
+	return false
+}
+
+func (function *functionState) patchConditionalJumps(
+	list jumpList,
+	valueTarget int,
+	register int,
+	defaultTarget int,
+) *Error {
+	for list != emptyJumpList {
+		next := function.nextJump(list)
+		target := defaultTarget
+		if function.patchTestDestination(list, register) {
+			target = valueTarget
+		}
+		if syntaxError := function.setJump(list, target); syntaxError != nil {
+			return syntaxError
+		}
+		function.unresolvedJumps--
+		list = next
+	}
+	return nil
+}
+
+func (function *functionState) patchConditionToHere(
+	list jumpList,
+) *Error {
+	target := function.currentPC()
+	return function.patchConditionalJumps(
+		list,
+		target,
+		noRegister,
+		target,
+	)
+}
+
+func (function *functionState) discardJumpValues(list jumpList) {
+	for list != emptyJumpList {
+		function.patchTestDestination(list, noRegister)
+		list = function.nextJump(list)
+	}
+}
+
 func (function *functionState) nextJump(list jumpList) jumpList {
-	pc := int(list)
+	pc := list.pc()
 	if pc < 0 ||
 		pc >= len(function.builder.code) ||
 		function.builder.code[pc].opcode() != opJump {
@@ -396,14 +533,14 @@ func (function *functionState) nextJump(list jumpList) jumpList {
 		function.builder.code[next].opcode() != opJump {
 		panic("lua: malformed pending jump link")
 	}
-	return jumpList(next)
+	return jumpAt(next)
 }
 
 func (function *functionState) setJump(
 	list jumpList,
 	target int,
 ) *Error {
-	pc := int(list)
+	pc := list.pc()
 	offset := target - (pc + 1)
 	if offset < -maxOperandsBx || offset > maxOperandsBx {
 		line := uint32(function.builder.debug.lines[pc])
@@ -425,6 +562,13 @@ func (function *functionState) finish(
 			function.unit.sourceName.text,
 			lastLine,
 			"function has unresolved control flow",
+		)
+	}
+	if function.pendingResults != 0 {
+		return nil, newSourceSyntaxError(
+			function.unit.sourceName.text,
+			lastLine,
+			"function has unresolved expression results",
 		)
 	}
 	function.builder.lastLine = int(lastLine)
