@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"syscall"
 )
 
@@ -27,6 +28,7 @@ var ioLibraryFunctions = [...]struct {
 	{name: "lines", entry: ioLines},
 	{name: "open", entry: ioOpen},
 	{name: "output", entry: ioOutput},
+	{name: "popen", entry: ioPopen},
 	{name: "read", entry: ioRead},
 	{name: "tmpfile", entry: ioTempFile},
 	{name: "type", entry: ioType},
@@ -49,9 +51,9 @@ var fileLibraryFunctions = [...]struct {
 }
 
 // fileHandle is the one native object behind a Lua file userdata. Standard
-// files borrow the State's shared endpoints; regular files own their endpoints
-// and closer. Read, write, seek, and buffering operations extend this same
-// object rather than introducing another representation.
+// files borrow the State's shared endpoints; regular and process files own
+// their endpoints and closer. Read, write, seek, and buffering operations
+// extend this same object rather than introducing another representation.
 type fileHandle struct {
 	input       *inputEndpoint
 	output      *outputEndpoint
@@ -59,10 +61,10 @@ type fileHandle struct {
 	closer      io.Closer
 	ownedInput  inputEndpoint
 	ownedOutput outputEndpoint
+	process     *childProcess
 }
 
-// OpenIO installs the Lua 5.1 IO library. Process-backed io.popen is omitted
-// until the runtime has one shared process-lifetime layer for IO and os.
+// OpenIO installs the Lua 5.1 IO library.
 //
 // Files are opaque runtime userdata. Standard files borrow the State streams;
 // files returned by open own their operating-system handle. Opening again
@@ -330,11 +332,18 @@ func (temporary *temporaryFileCloser) Close() error {
 	return errors.Join(closeErr, removeErr)
 }
 
-func closeFileHandle(value any, _ nativeRelease) error {
+func closeFileHandle(value any, release nativeRelease) error {
 	handle, ok := value.(*fileHandle)
 	if !ok || handle == nil {
 		return nil
 	}
+	if handle.process != nil {
+		return closeProcessFileHandle(handle, release)
+	}
+	return closeRegularFileHandle(handle)
+}
+
+func closeRegularFileHandle(handle *fileHandle) error {
 	var outputErr error
 	if handle.output != nil {
 		outputErr = handle.output.detach()
@@ -391,7 +400,7 @@ func ioOpen(frame Frame) Outcome {
 
 	flags, valid := fileOpenFlags(mode)
 	if !valid {
-		return ioFailureResult(
+		return ioNamedFailureResult(
 			frame,
 			filename,
 			syscall.EINVAL,
@@ -399,7 +408,7 @@ func ioOpen(frame Frame) Outcome {
 	}
 	file, err := os.OpenFile(filename, flags, 0o666)
 	if err != nil {
-		return ioFailureResult(frame, filename, err)
+		return ioNamedFailureResult(frame, filename, err)
 	}
 	metatable, err := frame.State().ensureFileMetatable()
 	if err != nil {
@@ -423,7 +432,7 @@ func ioTempFile(frame Frame) Outcome {
 	}
 	file, err := os.CreateTemp("", "badger-lua-")
 	if err != nil {
-		return ioFailureResult(frame, "", err)
+		return ioFailureResult(frame, err)
 	}
 	closer := &temporaryFileCloser{
 		file: file,
@@ -557,9 +566,21 @@ func closeFileUserData(frame Frame, data *UserData) Outcome {
 		)
 	}
 	lease.release()
-	_, err := closeManagedResource(data)
+	_, err := closeManagedResourceContext(
+		data,
+		frame.Context(),
+	)
 	if err != nil {
-		return ioFailureResult(frame, "", err)
+		var failure *Error
+		if errors.As(err, &failure) {
+			if failure.Category() == ContextError {
+				if current := pollExecutionContext(frame.thread); current != nil {
+					failure = current
+				}
+			}
+			return frame.sealError(failure)
+		}
+		return ioFailureResult(frame, err)
 	}
 	return frame.ReturnBool(true)
 }
@@ -639,7 +660,7 @@ func ioDefaultFile(
 				return baseArgumentError(
 					frame,
 					0,
-					ioFailureMessage(filename, err),
+					ioNamedFailureMessage(filename, err),
 				)
 			}
 			metatable, metaErr :=
@@ -701,10 +722,32 @@ func isFileUserData(state *State, data *UserData) bool {
 
 func ioFailureResult(
 	frame Frame,
-	filename string,
 	failure error,
 ) Outcome {
-	message := ioFailureMessage(filename, failure)
+	return ioFailureResultWithMessage(
+		frame,
+		ioFailureMessage(failure),
+		failure,
+	)
+}
+
+func ioNamedFailureResult(
+	frame Frame,
+	name string,
+	failure error,
+) Outcome {
+	return ioFailureResultWithMessage(
+		frame,
+		ioNamedFailureMessage(name, failure),
+		failure,
+	)
+}
+
+func ioFailureResultWithMessage(
+	frame Frame,
+	message string,
+	failure error,
+) Outcome {
 	code := ioFailureCode(failure)
 	return frame.returnCompactValues(
 		[2]slot{
@@ -716,12 +759,12 @@ func ioFailureResult(
 	)
 }
 
-func ioFailureMessage(filename string, failure error) string {
-	cause := ioFailureCause(failure)
-	if filename == "" {
-		return cause.Error()
-	}
-	return filename + ": " + cause.Error()
+func ioFailureMessage(failure error) string {
+	return ioFailureCause(failure).Error()
+}
+
+func ioNamedFailureMessage(name string, failure error) string {
+	return name + ": " + ioFailureCause(failure).Error()
 }
 
 func ioFailureCode(failure error) int {
@@ -741,6 +784,10 @@ func ioFailureCause(failure error) error {
 	var linkError *os.LinkError
 	if errors.As(failure, &linkError) && linkError.Err != nil {
 		return linkError.Err
+	}
+	var execError *exec.Error
+	if errors.As(failure, &execError) && execError.Err != nil {
+		return execError.Err
 	}
 	return failure
 }

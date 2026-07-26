@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"io"
 	"math"
 	"syscall"
@@ -27,13 +28,13 @@ func (handle *fileHandle) prepareRead() error {
 	if handle == nil {
 		return ErrClosed
 	}
+	if handle.input == nil {
+		return syscall.EBADF
+	}
 	if handle.output != nil {
 		if err := handle.output.Flush(); err != nil {
 			return err
 		}
-	}
-	if handle.input == nil {
-		return syscall.EBADF
 	}
 	return nil
 }
@@ -109,8 +110,23 @@ func ioWrite(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
-	outcome := writeFileArguments(frame, handle, 0)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = writeProcessFileArguments(
+			frame,
+			handle,
+			0,
+			ctx,
+		)
+	} else {
+		outcome = writeFileArguments(frame, handle, 0)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -120,8 +136,23 @@ func fileWrite(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
-	outcome := writeFileArguments(frame, handle, 1)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = writeProcessFileArguments(
+			frame,
+			handle,
+			1,
+			ctx,
+		)
+	} else {
+		outcome = writeFileArguments(frame, handle, 1)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -135,7 +166,7 @@ func writeFileArguments(
 		return frame.ReturnBool(true)
 	}
 	if err := handle.prepareWrite(); err != nil {
-		return ioFailureResult(frame, "", err)
+		return ioFailureResult(frame, err)
 	}
 
 	for index := first; index < argumentCount; index++ {
@@ -146,18 +177,31 @@ func writeFileArguments(
 				handle.output,
 				math.Float64frombits(value.bits),
 			); err != nil {
-				return ioFailureResult(frame, "", err)
+				return ioFailureResult(frame, err)
 			}
 		case StringKind:
 			text := (*luaString)(value.ref).text
 			if err := writeFileString(handle.output, text); err != nil {
-				return ioFailureResult(frame, "", err)
+				return ioFailureResult(frame, err)
 			}
 		default:
 			return baseArgumentTypeError(frame, index, "string")
 		}
 	}
 	return frame.ReturnBool(true)
+}
+
+func writeProcessFileArguments(
+	frame Frame,
+	handle *fileHandle,
+	first int,
+	ctx context.Context,
+) Outcome {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return writeFileArguments(frame, handle, first)
 }
 
 // writeFileNumber uses storage owned by the endpoint in both buffering modes.
@@ -217,13 +261,24 @@ func ioFlush(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
+	ctx := processFileOperationContext(frame, handle)
+	var err error
+	if ctx != nil {
+		err = flushProcessFile(handle, ctx)
+	} else {
+		err = flushFile(handle)
+	}
 	var outcome Outcome
-	if err := flushFile(handle); err != nil {
-		outcome = ioFailureResult(frame, "", err)
+	if err != nil {
+		outcome = ioFailureResult(frame, err)
 	} else {
 		outcome = frame.ReturnBool(true)
 	}
-	lease.release()
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -233,13 +288,24 @@ func fileFlush(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
+	ctx := processFileOperationContext(frame, handle)
+	var err error
+	if ctx != nil {
+		err = flushProcessFile(handle, ctx)
+	} else {
+		err = flushFile(handle)
+	}
 	var outcome Outcome
-	if err := flushFile(handle); err != nil {
-		outcome = ioFailureResult(frame, "", err)
+	if err != nil {
+		outcome = ioFailureResult(frame, err)
 	} else {
 		outcome = frame.ReturnBool(true)
 	}
-	lease.release()
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -253,18 +319,42 @@ func flushFile(handle *fileHandle) error {
 	return handle.output.Flush()
 }
 
+func flushProcessFile(
+	handle *fileHandle,
+	ctx context.Context,
+) error {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return flushFile(handle)
+}
+
 func fileSeek(frame Frame) Outcome {
 	lease, handle, failure, failed :=
 		acquireFileArgument(frame)
 	if failed {
 		return failure
 	}
-	outcome := seekFile(frame, handle)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = seekProcessFile(frame, handle, ctx)
+	} else {
+		outcome = seekFile(frame, handle)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
-func seekFile(frame Frame, handle *fileHandle) Outcome {
+func seekFile(
+	frame Frame,
+	handle *fileHandle,
+) Outcome {
 	mode := "cur"
 	if value, present := frame.argument(1); present &&
 		value.kind() != NilKind {
@@ -294,9 +384,21 @@ func seekFile(frame Frame, handle *fileHandle) Outcome {
 	}
 	position, err := handle.seek(offset, origin)
 	if err != nil {
-		return ioFailureResult(frame, "", err)
+		return ioFailureResult(frame, err)
 	}
 	return frame.ReturnNumber(float64(position))
+}
+
+func seekProcessFile(
+	frame Frame,
+	handle *fileHandle,
+	ctx context.Context,
+) Outcome {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return seekFile(frame, handle)
 }
 
 func fileSeekOrigin(mode string) (int, bool) {
@@ -318,12 +420,29 @@ func fileSetBuffering(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
-	outcome := setFileBuffering(frame, handle)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = setProcessFileBuffering(
+			frame,
+			handle,
+			ctx,
+		)
+	} else {
+		outcome = setFileBuffering(frame, handle)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
-func setFileBuffering(frame Frame, handle *fileHandle) Outcome {
+func setFileBuffering(
+	frame Frame,
+	handle *fileHandle,
+) Outcome {
 	modeText, ok := frame.textArgument(1)
 	if !ok {
 		return baseArgumentTypeError(frame, 1, "string")
@@ -351,21 +470,32 @@ func setFileBuffering(frame Frame, handle *fileHandle) Outcome {
 		size > maximumStreamBufferBytes {
 		return ioFailureResult(
 			frame,
-			"",
 			syscall.EINVAL,
 		)
 	}
 	if handle.output != nil {
 		if err := handle.output.setBuffering(mode, int(size)); err != nil {
-			return ioFailureResult(frame, "", err)
+			return ioFailureResult(frame, err)
 		}
 	}
 	if handle.input != nil {
 		if err := handle.input.setBuffering(mode, int(size)); err != nil {
-			return ioFailureResult(frame, "", err)
+			return ioFailureResult(frame, err)
 		}
 	}
 	return frame.ReturnBool(true)
+}
+
+func setProcessFileBuffering(
+	frame Frame,
+	handle *fileHandle,
+	ctx context.Context,
+) Outcome {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return setFileBuffering(frame, handle)
 }
 
 func fileBufferMode(mode string) (streamBufferMode, bool) {

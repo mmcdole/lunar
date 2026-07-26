@@ -123,18 +123,19 @@ func TestOSExecuteDoesNotSpawnAfterContextCancellation(t *testing.T) {
 }
 
 func TestChildProcessPublishesOneReusableWaitResult(t *testing.T) {
-	command, available := newHostShellCommand("exit 9")
-	if !available {
-		t.Fatal("host shell is unavailable")
+	command, err := newHostShellCommand("exit 9")
+	if err != nil {
+		t.Fatalf("host shell is unavailable: %v", err)
 	}
-	process, err := startChildProcess(command, true)
+	process, err := startChildProcess(command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	first, cancelled := process.wait(context.Background())
 	if cancelled ||
 		hostProcessStatus(first.state) != 9<<8 ||
-		first.waitErr == nil {
+		first.waitErr == nil ||
+		processWaitError(first) != nil {
 		t.Fatalf(
 			"first wait = (status=%d, err=%v, cancelled=%v)",
 			hostProcessStatus(first.state),
@@ -157,7 +158,7 @@ func TestChildProcessPublishesOneReusableWaitResult(t *testing.T) {
 	process.abandon()
 }
 
-func TestOSExecuteCancellationTerminatesAndReapsProcessGroup(
+func TestOSExecuteCancellationTerminatesAndReapsRoot(
 	t *testing.T,
 ) {
 	directory := t.TempDir()
@@ -195,9 +196,8 @@ func TestOSExecuteCancellationTerminatesAndReapsProcessGroup(
 	if len(pids) != 2 {
 		t.Fatalf("recorded process IDs = %v; want shell and child", pids)
 	}
-	for _, pid := range pids {
-		waitForProcessGone(t, pid)
-	}
+	defer terminateDetachedTestProcess(t, pids[1])
+	waitForProcessGone(t, pids[0])
 	continued, err := state.Global("execute_continued")
 	if err != nil {
 		t.Fatal(err)
@@ -264,4 +264,13 @@ func waitForProcessGone(t *testing.T, pid int) {
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+func terminateDetachedTestProcess(t *testing.T, pid int) {
+	t.Helper()
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil &&
+		!errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("terminate detached process %d: %v", pid, err)
+	}
+	waitForProcessGone(t, pid)
 }

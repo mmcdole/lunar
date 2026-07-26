@@ -3,46 +3,37 @@
 package lua
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"runtime"
 	"syscall"
 )
 
-type hostProcessControl struct {
-	pgid int
-}
-
-func findHostShell() (string, bool) {
+func findHostShell() (string, error) {
 	path := "/bin/sh"
 	if runtime.GOOS == "android" {
 		path = "/system/bin/sh"
 	}
 	if _, err := exec.LookPath(path); err != nil {
-		return "", false
+		return "", err
 	}
-	return path, true
+	return path, nil
 }
 
 func hostShellAvailable() bool {
-	_, available := findHostShell()
-	return available
+	_, err := findHostShell()
+	return err == nil
 }
 
-func newHostShellCommand(command string) (*exec.Cmd, bool) {
-	path, available := findHostShell()
-	if !available {
-		return nil, false
+func newHostShellCommand(command string) (*exec.Cmd, error) {
+	path, err := findHostShell()
+	if err != nil {
+		return nil, err
 	}
-	return exec.Command(path, "-c", command), true
+	return exec.Command(path, "-c", command), nil
 }
 
-func configureHostProcess(cmd *exec.Cmd, ownTree bool) {
-	if ownTree {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
-}
+func hostPopenSupported() bool { return true }
 
 func hostProcessStatus(state *os.ProcessState) int {
 	if state == nil {
@@ -53,36 +44,4 @@ func hostProcessStatus(state *os.ProcessState) int {
 		return -1
 	}
 	return int(status)
-}
-
-func newHostProcessControl(
-	process *os.Process,
-	ownTree bool,
-) hostProcessControl {
-	if ownTree && process != nil {
-		return hostProcessControl{pgid: process.Pid}
-	}
-	return hostProcessControl{}
-}
-
-func (control *hostProcessControl) terminate(process *os.Process) {
-	if process == nil {
-		return
-	}
-	if control.pgid != 0 {
-		if err := syscall.Kill(
-			-control.pgid,
-			syscall.SIGKILL,
-		); err == nil {
-			return
-		} else if !errors.Is(err, syscall.ESRCH) {
-			_ = process.Kill()
-			return
-		}
-	}
-	_ = process.Kill()
-}
-
-func (control *hostProcessControl) close() {
-	control.pgid = 0
 }

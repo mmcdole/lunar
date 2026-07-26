@@ -128,6 +128,11 @@ Files are organized by substantial runtime concepts:
   budgets, cancellation failures, and terminal exit requests;
 - `resource.go`: exactly-once native resource cleanup, finalizer tokens, and
   the State-close registry used by resource-owning libraries;
+- `process.go` and the build-constrained `process_*.go` files: shell
+  discovery, raw process status, manual pipes, asynchronous wait ownership,
+  and command-processor-root lifecycle shared by IO and OS;
+- `io_process.go`: the canonical file adapter, release policy, context
+  interruption, and Lua `io.popen` surface for process pipes;
 - `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
   and cooperative context polling;
 - `library_base.go`, `library_load.go`, `library_coroutine.go`,
@@ -1046,8 +1051,10 @@ streams and default to `os.Stdin`, `os.Stdout`, and `os.Stderr`. The State
 borrows these interfaces: libraries serialize access under the ordinary
 single-executor contract, and `Close` never closes a caller-owned stream.
 They govern Lua's stream operations, not child processes: `os.execute`
-inherits the embedding process's actual standard descriptors and neither
-redirects through nor flushes the State endpoints.
+inherits the embedding process's actual standard descriptors, while
+`io.popen` replaces exactly one child descriptor with its pipe and inherits
+the actual process descriptors for the rest. Neither operation redirects
+through nor flushes the State endpoints.
 `loadfile` and `dofile` use the process filesystem and use the State's input
 stream when called without a filename. They apply the same leading-`#` file
 rule as `State.LoadFile`. Every loaded closure binds to the executing Thread's
@@ -1113,9 +1120,43 @@ The implemented Lua 5.1 surface includes default-file control, open, close,
 temporary files, type inspection, reads, writes, lines, flushing, seeking, and
 buffer selection. Temporary files are removed when their owned resource
 closes. `io.lines(filename)` owns and closes its file at EOF, while
-`file:lines()` and default-input iteration leave their file open. Process-backed
-`io.popen` remains absent until the IO and OS libraries can share one process
-ownership and wait-status design; no nonfunctional stub is published.
+`file:lines()` and default-input iteration leave their file open.
+
+`io.popen` returns the same canonical `FILE*` userdata and uses the same
+endpoint, buffering, read, write, and diagnostic paths as every other file.
+Its portable mode surface is exactly `r` or `w`; Badger intentionally does not
+inherit host-specific `popen` extensions such as Darwin's bidirectional `r+`.
+The command uses Lua string coercion and the C-NUL boundary, then runs through
+the same raw platform shell as `os.execute`. A manual `os.Pipe` joins the
+requested child descriptor directly, so the one permanent process waiter
+never races `os/exec` copying goroutines.
+
+An explicit process-file close flushes buffered output, closes the parent pipe
+end, waits, and reaps. Lua 5.1's `pclose(file) != -1` contract deliberately
+does not expose the child status: normal exit, nonzero exit, and signal death
+all return true. Unlike PUC's boolean `pclose` result, Badger still reports a
+buffered flush, descriptor-close, or wait-infrastructure failure as an IO
+tuple; successful waiting does not hide an earlier failed write or close.
+`State.Close` discards buffered pipe output, closes the descriptor, terminates
+the still-owned command-processor root, and synchronously observes its
+already-running waiter. Collection closes and requests termination of any
+still-owned root without blocking the Go finalizer; the permanent waiter
+reaps later without retaining a State, Lua object, or call context. It
+necessarily retains the `exec.Cmd`, including its command metadata, until the
+root exits because `Cmd.Wait` owns `os/exec`'s bookkeeping. This bounded
+retention is an embedding-safe divergence from PUC, whose `__gc` may block in
+`pclose`.
+
+Context cancellation closes the pipe to wake a blocked read, write, or flush,
+marks the Lua file closed, and remains an uncatchable host `ContextError`.
+Cancellation, `State.Close`, and collection own only the command-processor
+root on every platform. Shell-created descendants and background jobs are
+outside Badger's ownership and may survive root termination or exit. Closing
+the parent pipe still unblocks Lua promptly; embedders that need descendant
+lifecycle control should launch and manage those processes through a host
+facility instead of `io.popen`. No operation context is stored in a returned
+file.
+
 Unlike an argument-stack bug in PUC Lua 5.1.5, explicit
 `io.lines(nil)` follows the documented optional-filename behavior and selects
 the default input just like an omitted argument.
@@ -1186,19 +1227,15 @@ Commands inherit the embedding process's current environment, working
 directory, and actual `os.Stdin`, `os.Stdout`, and `os.Stderr`. They do not
 inherit State-local `Options` streams or Lua's mutable default IO files. A
 context-aware call terminates and reaps the root process before returning a
-`ContextError`. POSIX places a cancellable command in a new process group
-atomically at creation and terminates its descendants with the group; other
-platforms terminate only the root process. That separate POSIX process group
-also means an interactive cancellable command does not become the terminal's
-foreground group; embedders should use an uncancelled call when the command
-must interact with the controlling terminal.
+`ContextError`. Shell-created descendants and background jobs are outside
+Badger's ownership on every platform and may survive root termination; hosts
+that require descendant lifecycle control should launch and manage those
+processes directly.
 
 Two host differences are deliberate. Badger does not reproduce C
 `system`'s temporary changes to the embedding process's signal masks and
 dispositions. Windows commands use Go's Unicode process interface rather
-than the C runtime's locale-dependent narrow-character conversion. Future
-`io.popen` cleanup must still distinguish an explicit wait from
-abandoned-resource termination.
+than the C runtime's locale-dependent narrow-character conversion.
 
 The remaining base entries are intentionally absent rather than partial
 stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate

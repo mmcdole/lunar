@@ -312,6 +312,25 @@ func closeManagedResourceContext(
 	return first, err
 }
 
+func closeManagedLeaseContext(
+	lease nativeResourceLease,
+	ctx context.Context,
+) (first bool, err error) {
+	if lease.token == nil {
+		return false, nil
+	}
+	if !lease.owned {
+		return false, errBorrowedNativeResource
+	}
+	runtime.SetFinalizer(lease.token, nil)
+	first, err = lease.token.resource.release(nativeRelease{
+		reason:  nativeReleaseExplicit,
+		context: ctx,
+	})
+	runtime.KeepAlive(lease.token)
+	return first, err
+}
+
 func collectManagedResource(
 	data *UserData,
 ) (first bool, err error) {

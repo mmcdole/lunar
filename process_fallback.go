@@ -7,33 +7,16 @@ import (
 	"os/exec"
 )
 
-type hostProcessControl struct{}
-
 func hostShellAvailable() bool {
 	return false
 }
 
-func newHostShellCommand(string) (*exec.Cmd, bool) {
-	return nil, false
+func newHostShellCommand(string) (*exec.Cmd, error) {
+	return nil, exec.ErrNotFound
 }
 
-func configureHostProcess(*exec.Cmd, bool) {}
+func hostPopenSupported() bool { return false }
 
 func hostProcessStatus(*os.ProcessState) int {
 	return -1
 }
-
-func newHostProcessControl(
-	*os.Process,
-	bool,
-) hostProcessControl {
-	return hostProcessControl{}
-}
-
-func (*hostProcessControl) terminate(process *os.Process) {
-	if process != nil {
-		_ = process.Kill()
-	}
-}
-
-func (*hostProcessControl) close() {}

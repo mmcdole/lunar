@@ -110,7 +110,7 @@ func osRemove(frame Frame) Outcome {
 	}
 	name = luaCString(name)
 	if err := os.Remove(name); err != nil {
-		return ioFailureResult(frame, name, err)
+		return ioNamedFailureResult(frame, name, err)
 	}
 	return frame.ReturnBool(true)
 }
@@ -127,7 +127,7 @@ func osRename(frame Frame) Outcome {
 	from = luaCString(from)
 	to = luaCString(to)
 	if err := os.Rename(from, to); err != nil {
-		return ioFailureResult(frame, from, err)
+		return ioNamedFailureResult(frame, from, err)
 	}
 	return frame.ReturnBool(true)
 }

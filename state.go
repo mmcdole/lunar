@@ -48,18 +48,20 @@ var ErrReadOnlyUserData = errors.New(
 type Options struct {
 	// Stdin is the State's standard input stream. A nil interface selects
 	// os.Stdin. Standard-input consumers share one logical cursor. Lua
-	// libraries borrow the stream and never close it. os.execute instead
-	// inherits the embedding process's actual os.Stdin.
+	// libraries borrow the stream and never close it. Child processes
+	// instead inherit the embedding process's actual os.Stdin unless
+	// io.popen connects that descriptor to its returned pipe.
 	Stdin io.Reader
 	// Stdout is the State's standard output stream. A nil interface selects
 	// os.Stdout. Standard-output consumers share one buffering endpoint. Lua
-	// libraries borrow the stream and never close it. os.execute instead
-	// inherits the embedding process's actual os.Stdout.
+	// libraries borrow the stream and never close it. Child processes
+	// instead inherit the embedding process's actual os.Stdout unless
+	// io.popen connects that descriptor to its returned pipe.
 	Stdout io.Writer
 	// Stderr is the State's standard error stream. A nil interface selects
 	// os.Stderr. Diagnostic consumers share one buffering endpoint. Lua
-	// libraries borrow the stream and never close it. os.execute instead
-	// inherits the embedding process's actual os.Stderr.
+	// libraries borrow the stream and never close it. Child processes
+	// instead inherit the embedding process's actual os.Stderr.
 	Stderr io.Writer
 	// Location is the State's local timezone for operating-system library
 	// calendar operations. Nil snapshots time.Local when New is called.

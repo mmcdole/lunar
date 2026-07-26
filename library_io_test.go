@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -20,6 +21,23 @@ func (writer *ioCloseTrackingWriter) Close() error {
 	return nil
 }
 
+type processFileCloseProbe struct {
+	writeErr error
+	closeErr error
+	writes   int
+	closes   int
+}
+
+func (probe *processFileCloseProbe) Write([]byte) (int, error) {
+	probe.writes++
+	return 0, probe.writeErr
+}
+
+func (probe *processFileCloseProbe) Close() error {
+	probe.closes++
+	return probe.closeErr
+}
+
 func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 	state := newStateWithIO(t, Options{})
 	defer state.Close()
@@ -34,9 +52,6 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 		if table != metatable {
 			t.Fatal("FILE* __index is not the metatable itself")
 		}
-	}
-	if library.RawGetString("popen").Kind() != NilKind {
-		t.Fatal("OpenIO published an unimplemented popen stub")
 	}
 	wantLibrary := map[string]Kind{
 		"stdin":  UserDataKind,
@@ -167,6 +182,226 @@ return ok,message,io.type(io.stdout)
 	if !strings.Contains(message, "bad argument #1") ||
 		!strings.Contains(message, "FILE* expected, got nil") {
 		t.Fatalf("receiverless file close error = %q", message)
+	}
+}
+
+func TestProcessFileCloseReportsEveryInfrastructureFailure(t *testing.T) {
+	probe := &processFileCloseProbe{
+		writeErr: syscall.ENOSPC,
+		closeErr: syscall.EIO,
+	}
+	output := newOutputEndpoint(probe)
+	output.mode = streamBufferFull
+	if err := writeFileString(&output, "pending"); err != nil {
+		t.Fatal(err)
+	}
+	process := &childProcess{
+		done: make(chan struct{}),
+		result: processResult{
+			waitErr: syscall.ECHILD,
+		},
+	}
+	close(process.done)
+	handle := &fileHandle{
+		output:  &output,
+		closer:  probe,
+		process: process,
+	}
+
+	err := closeFileHandle(handle, nativeRelease{
+		reason: nativeReleaseExplicit,
+	})
+	for _, failure := range []error{
+		syscall.ENOSPC,
+		syscall.EIO,
+		syscall.ECHILD,
+	} {
+		if !errors.Is(err, failure) {
+			t.Fatalf("process close error %v does not contain %v", err, failure)
+		}
+	}
+	if probe.writes != 1 || probe.closes != 1 {
+		t.Fatalf(
+			"process close calls = (write %d, close %d)",
+			probe.writes,
+			probe.closes,
+		)
+	}
+	if handle.output != nil ||
+		handle.closer != nil ||
+		handle.process != nil {
+		t.Fatalf("process file remained live after close: %#v", handle)
+	}
+}
+
+func TestProcessFileNonExplicitReleaseDiscardsBufferedOutput(
+	t *testing.T,
+) {
+	for _, test := range []struct {
+		name   string
+		reason nativeReleaseReason
+	}{
+		{name: "state close", reason: nativeReleaseStateClose},
+		{name: "collection", reason: nativeReleaseCollected},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			probe := &processFileCloseProbe{}
+			output := newOutputEndpoint(probe)
+			output.mode = streamBufferFull
+			if err := writeFileString(&output, "pending"); err != nil {
+				t.Fatal(err)
+			}
+			if probe.writes != 0 {
+				t.Fatalf(
+					"buffered output wrote before release: %d",
+					probe.writes,
+				)
+			}
+			process := &childProcess{
+				done: make(chan struct{}),
+				result: processResult{
+					state: &os.ProcessState{},
+				},
+			}
+			close(process.done)
+			handle := &fileHandle{
+				output:  &output,
+				closer:  probe,
+				process: process,
+			}
+
+			if err := closeFileHandle(handle, nativeRelease{
+				reason: test.reason,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if probe.writes != 0 || probe.closes != 1 {
+				t.Fatalf(
+					"non-explicit release calls = (write %d, close %d)",
+					probe.writes,
+					probe.closes,
+				)
+			}
+			if handle.output != nil ||
+				handle.closer != nil ||
+				handle.process != nil {
+				t.Fatalf(
+					"process file remained live after release: %#v",
+					handle,
+				)
+			}
+		})
+	}
+}
+
+func TestIOPopenArgumentContract(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	results := runIOChunk(t, state, `
+local absentOK,absentMessage=pcall(function() return io.popen() end)
+local commandOK,commandMessage=pcall(function() return io.popen({}) end)
+local modeOK,modeMessage=pcall(function()
+  return io.popen("not executed",{})
+end)
+local invalidOK,invalid,invalidMessage,invalidCode=pcall(function()
+  return io.popen("not executed","invalid")
+end)
+local emptyOK,empty,emptyMessage,emptyCode=pcall(function()
+  return io.popen("","invalid")
+end)
+return absentOK,absentMessage,commandOK,commandMessage,
+  modeOK,modeMessage,invalidOK,invalid,invalidMessage,invalidCode,
+  emptyOK,empty,emptyMessage,emptyCode
+`)
+	assertTestValues(
+		t,
+		[]Value{
+			results[0],
+			results[2],
+			results[4],
+		},
+		Bool(false),
+		Bool(false),
+		Bool(false),
+	)
+	for index, fragment := range map[int]string{
+		1: "bad argument #1 to 'popen' (string expected, got no value)",
+		3: "bad argument #1 to 'popen' (string expected, got table)",
+		5: "bad argument #2 to 'popen' (string expected, got table)",
+	} {
+		message, ok := results[index].AsString()
+		if !ok || !strings.Contains(
+			strings.ToLower(message),
+			strings.ToLower(fragment),
+		) {
+			t.Fatalf("popen argument result %d = %v", index, results[index])
+		}
+	}
+	if hostPopenSupported() {
+		assertTestValues(
+			t,
+			[]Value{
+				results[6],
+				results[7],
+				results[9],
+				results[10],
+				results[11],
+				results[13],
+			},
+			Bool(true),
+			Nil(),
+			Number(float64(syscall.EINVAL)),
+			Bool(true),
+			Nil(),
+			Number(float64(syscall.EINVAL)),
+		)
+		message, ok := results[8].AsString()
+		if !ok || !strings.Contains(
+			strings.ToLower(message),
+			"invalid",
+		) {
+			t.Fatalf("invalid popen mode = %v", results[8])
+		}
+		emptyMessage, ok := results[12].AsString()
+		if !ok || !strings.HasPrefix(emptyMessage, ": ") {
+			t.Fatalf(
+				"empty-command popen message = %v",
+				results[12],
+			)
+		}
+	} else {
+		assertTestValues(
+			t,
+			[]Value{results[6], results[10]},
+			Bool(false),
+			Bool(false),
+		)
+		for _, index := range []int{7, 11} {
+			message, ok := results[index].AsString()
+			if !ok ||
+				!strings.Contains(message, "'popen' not supported") {
+				t.Fatalf("unsupported popen %d = %v", index, results[index])
+			}
+		}
+	}
+}
+
+func TestIOFailureNamesAndExecErrors(t *testing.T) {
+	failure := &exec.Error{
+		Name: "missing-command-processor",
+		Err:  syscall.ENOENT,
+	}
+	if got, want := ioFailureMessage(failure),
+		syscall.ENOENT.Error(); got != want {
+		t.Fatalf("unnamed exec failure = %q; want %q", got, want)
+	}
+	if got, want := ioNamedFailureMessage("", failure),
+		": "+syscall.ENOENT.Error(); got != want {
+		t.Fatalf("empty named exec failure = %q; want %q", got, want)
+	}
+	if got, want := ioFailureCode(failure),
+		int(syscall.ENOENT); got != want {
+		t.Fatalf("exec failure code = %d; want %d", got, want)
 	}
 }
 
@@ -482,6 +717,16 @@ return io.open(`+luaTestQuote(missingPath)+`)
 	}
 	if code, ok := missing[2].AsNumber(); !ok || code == 0 {
 		t.Fatalf("missing-file errno = %v", missing[2])
+	}
+
+	empty := runIOChunk(t, state, `return io.open("")`)
+	assertTestValues(t, empty[:1], Nil())
+	emptyMessage, ok := empty[1].AsString()
+	if !ok || !strings.HasPrefix(emptyMessage, ": ") {
+		t.Fatalf("empty-path message = %q; want present empty name", emptyMessage)
+	}
+	if code, ok := empty[2].AsNumber(); !ok || code == 0 {
+		t.Fatalf("empty-path errno = %v", empty[2])
 	}
 }
 

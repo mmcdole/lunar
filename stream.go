@@ -463,6 +463,14 @@ func (endpoint *outputEndpoint) detach() error {
 	return err
 }
 
+func (endpoint *outputEndpoint) discard() {
+	if endpoint == nil {
+		return
+	}
+	endpoint.buffered = nil
+	endpoint.writer = nil
+}
+
 func joinStreamErrors(first, second error) error {
 	switch {
 	case first == nil:

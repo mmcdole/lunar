@@ -222,10 +222,8 @@ return queryCount, query, nilQuery, ok, message
 	missing := exec.Command(
 		filepath.Join(t.TempDir(), "missing-command-processor"),
 	)
-	if process, startErr := startChildProcess(
-		missing,
-		false,
-	); startErr == nil || process != nil {
+	if process, startErr := startChildProcess(missing); startErr == nil ||
+		process != nil {
 		t.Fatalf("unstartable process = (%v, %v)", process, startErr)
 	}
 }

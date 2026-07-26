@@ -9,9 +9,7 @@ import (
 	"syscall"
 )
 
-type hostProcessControl struct{}
-
-func findHostShell() (string, bool) {
+func findHostShell() (string, error) {
 	path := strings.TrimSpace(os.Getenv("COMSPEC"))
 	if path != "" {
 		path = strings.Trim(path, `"`)
@@ -24,20 +22,20 @@ func findHostShell() (string, bool) {
 		path, err = exec.LookPath("cmd.exe")
 	}
 	if err != nil {
-		return "", false
+		return "", err
 	}
-	return path, true
+	return path, nil
 }
 
 func hostShellAvailable() bool {
-	_, available := findHostShell()
-	return available
+	_, err := findHostShell()
+	return err == nil
 }
 
-func newHostShellCommand(command string) (*exec.Cmd, bool) {
-	path, available := findHostShell()
-	if !available {
-		return nil, false
+func newHostShellCommand(command string) (*exec.Cmd, error) {
+	path, err := findHostShell()
+	if err != nil {
+		return nil, err
 	}
 	cmd := exec.Command(path)
 	cmd.Args = nil
@@ -48,10 +46,10 @@ func newHostShellCommand(command string) (*exec.Cmd, bool) {
 		line += command
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: line}
-	return cmd, true
+	return cmd, nil
 }
 
-func configureHostProcess(*exec.Cmd, bool) {}
+func hostPopenSupported() bool { return true }
 
 func hostProcessStatus(state *os.ProcessState) int {
 	if state == nil {
@@ -63,18 +61,3 @@ func hostProcessStatus(state *os.ProcessState) int {
 	}
 	return int(int32(status.ExitCode))
 }
-
-func newHostProcessControl(
-	*os.Process,
-	bool,
-) hostProcessControl {
-	return hostProcessControl{}
-}
-
-func (control *hostProcessControl) terminate(process *os.Process) {
-	if process != nil {
-		_ = process.Kill()
-	}
-}
-
-func (*hostProcessControl) close() {}

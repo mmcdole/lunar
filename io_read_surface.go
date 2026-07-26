@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"errors"
 	"math"
 	"os"
@@ -26,8 +27,23 @@ func ioRead(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
-	outcome := readFileArguments(frame, handle, 0)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = readProcessFileArguments(
+			frame,
+			handle,
+			0,
+			ctx,
+		)
+	} else {
+		outcome = readFileArguments(frame, handle, 0)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -37,8 +53,23 @@ func fileRead(frame Frame) Outcome {
 	if failed {
 		return failure
 	}
-	outcome := readFileArguments(frame, handle, 1)
-	lease.release()
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = readProcessFileArguments(
+			frame,
+			handle,
+			1,
+			ctx,
+		)
+	} else {
+		outcome = readFileArguments(frame, handle, 1)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
+		lease.release()
+	}
 	return outcome
 }
 
@@ -57,7 +88,7 @@ func readFileArguments(
 	argumentCount := frame.ArgumentCount()
 	if argumentCount <= first {
 		if err := handle.prepareRead(); err != nil {
-			return ioFailureResult(frame, "", err)
+			return ioFailureResult(frame, err)
 		}
 		value, present, err := engine.readLine()
 		if err != nil {
@@ -85,7 +116,7 @@ func readFileArguments(
 		}
 		if !prepared {
 			if err := handle.prepareRead(); err != nil {
-				return ioFailureResult(frame, "", err)
+				return ioFailureResult(frame, err)
 			}
 			prepared = true
 		}
@@ -110,6 +141,19 @@ func readFileArguments(
 		0,
 		frame.thread.values[base:base+resultCount],
 	)
+}
+
+func readProcessFileArguments(
+	frame Frame,
+	handle *fileHandle,
+	first int,
+	ctx context.Context,
+) Outcome {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return readFileArguments(frame, handle, first)
 }
 
 func parseIOReadFormat(
@@ -221,7 +265,7 @@ func ioReadFailure(frame Frame, failure error) Outcome {
 			),
 		)
 	}
-	return ioFailureResult(frame, "", failure)
+	return ioFailureResult(frame, failure)
 }
 
 func ioLines(frame Frame) Outcome {
@@ -259,7 +303,7 @@ func ioLines(frame Frame) Outcome {
 		return baseArgumentError(
 			frame,
 			0,
-			ioFailureMessage(filename, err),
+			ioNamedFailureMessage(filename, err),
 		)
 	}
 	metatable, err := frame.State().ensureFileMetatable()
@@ -339,9 +383,33 @@ func fileLineIterator(frame Frame) Outcome {
 		lease.release()
 		return libraryError(frame, "file is already closed")
 	}
-	if err := handle.prepareRead(); err != nil {
+	ctx := processFileOperationContext(frame, handle)
+	var outcome Outcome
+	if ctx != nil {
+		outcome = readProcessFileLine(
+			frame,
+			handle,
+			data,
+			ctx,
+		)
+	} else {
+		outcome = readFileLine(frame, handle, data)
+	}
+	if ctx != nil {
+		finishFileOperation(ctx, lease, handle)
+	} else {
 		lease.release()
-		return libraryError(frame, "%s", ioFailureMessage("", err))
+	}
+	return outcome
+}
+
+func readFileLine(
+	frame Frame,
+	handle *fileHandle,
+	data *UserData,
+) Outcome {
+	if err := handle.prepareRead(); err != nil {
+		return libraryError(frame, "%s", ioFailureMessage(err))
 	}
 	engine := newIOReadEngine(
 		handle.input,
@@ -352,7 +420,6 @@ func fileLineIterator(frame Frame) Outcome {
 	}
 	value, present, err := engine.readLine()
 	if err != nil {
-		lease.release()
 		if errors.Is(err, errIOReadTooLarge) {
 			return frame.sealError(
 				newResourceError("resulting string too large"),
@@ -362,9 +429,8 @@ func fileLineIterator(frame Frame) Outcome {
 		if errors.As(err, &luaFailure) {
 			return frame.sealError(luaFailure)
 		}
-		return libraryError(frame, "%s", ioFailureMessage("", err))
+		return libraryError(frame, "%s", ioFailureMessage(err))
 	}
-	lease.release()
 	if present {
 		return frame.returnOne(frame.activation(), value)
 	}
@@ -374,6 +440,19 @@ func fileLineIterator(frame Frame) Outcome {
 		_, _ = closeManagedResource(data)
 	}
 	return frame.Return()
+}
+
+func readProcessFileLine(
+	frame Frame,
+	handle *fileHandle,
+	data *UserData,
+	ctx context.Context,
+) Outcome {
+	stopCancellation := handle.interruptProcessIO(ctx)
+	if stopCancellation != nil {
+		defer stopCancellation()
+	}
+	return readFileLine(frame, handle, data)
 }
 
 func acquireDefaultInputFile(

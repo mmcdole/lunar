@@ -55,15 +55,16 @@ standard unavailable-platform result because the compact Go runtime does not
 pretend to implement the C `lua_State` ABI. Warmed scalar and sequence library
 calls and cached `require` calls allocate nothing. The explicit `io` library
 adds opaque managed files, State-local defaults, compact binary-safe reads,
-buffered writes, seeking, line iteration, and deterministic owned-resource
-cleanup. The explicit `os` library provides process CPU time, per-State
-calendar conversion and C-locale formatting, environment and filesystem
-operations, secure temporary names, deterministic locale selection, and an
-embedding-safe `os.exit` request returned to Go without terminating the host.
+buffered writes, seeking, line iteration, process pipes, and deterministic
+owned-resource cleanup. The explicit `os` library provides process CPU time,
+per-State calendar conversion and C-locale formatting, environment and
+filesystem operations, secure temporary names, deterministic locale selection,
+and an embedding-safe `os.exit` request returned to Go without terminating the
+host.
 Its `os.execute` invokes the platform shell and returns Lua 5.1's single
 numeric status while inheriting the embedding process's environment, working
-directory, and actual standard descriptors. Process-backed `io.popen` and the
-debug library remain under construction.
+directory, and actual standard descriptors. The debug library remains under
+construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order. Adapted reference algorithms retain their original permissive license
