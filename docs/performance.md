@@ -495,13 +495,59 @@ Tests cover the latest signed-zero representation through public array,
 record, and string setters as well as both executor table lanes. Full, race,
 checkptr, and vet gates pass.
 
-### 9. Re-profile execution
+### 9. Constant-string table instructions — complete
 
-Only after storage churn falls do CPU profiles decide the next executor work.
-Likely candidates are direct constant-string and integer table access, native
-library call state, and remaining call/return bookkeeping. Builtins, inline
-caches, or opcode specialization require a generic profile and shared semantic
-kernel. They are not used to conceal an allocation design problem.
+Profiles of allocation-free field loops put about 36% of read time in the
+record-store walk, 27% in generic slot equality, and 7% in key normalization.
+Writes showed the same distribution. This is ordinary field, global, and
+method work; no codec was involved.
+
+The compiler now emits private `GETFIELD`, `SETFIELD`, and `SELFFIELD`
+instructions only when an RK operand is provably a string constant. Globals
+use the same prehashed string-slot kernel. Register-held strings, numeric and
+reference keys, and constants spilled beyond RK range retain the canonical
+generic instructions. Equal strings with different backing still compare by
+content after the cached-hash check.
+
+The opcode split was measured against a simpler design before being retained.
+That alternative kept canonical Lua 5.1 table instructions and selected the
+same typed kernel at runtime. Its best control-neutral form improved the five
+field read, write, combined, missing, and polymorphic cells by a 14% geometric
+mean. Dedicated instructions improved the same group by about 23%, including
+roughly twice the write gain, while dynamic-key controls remained neutral.
+The simpler design also enlarged the generic read helper from a 96-byte arm64
+frame to 128 bytes. The dedicated split leaves it at 96 bytes, reduces the
+generic write helper from 176 to 160 bytes, and leaves the 160-byte
+`runInstructions` frame unchanged.
+
+Five-sample medians against the preceding exact-assignment revision were:
+
+| Executor workload | Movement | Allocations |
+| --- | ---: | ---: |
+| Constant field read | 25% faster | unchanged at zero |
+| Constant field write | 22% faster | unchanged at zero |
+| Combined field read/write | 15% faster | unchanged at zero |
+| Missing constant field | 35% faster | unchanged at zero |
+| Two-table polymorphic field | 15% faster | unchanged at zero |
+| Global read/write | 13% faster | unchanged at zero |
+| Method call | 7% faster | unchanged at zero |
+| `__index` function | 6% faster | unchanged at zero |
+| Dynamic string key | within 1% | unchanged at zero |
+| Dense and sparse numeric keys | within 2% | unchanged at zero |
+
+Lua 5.1 chunk compatibility is an explicit boundary rather than an assumption.
+The dumper lowers private field instructions to `GETTABLE`, `SETTABLE`, and
+`SELF`; the decoder rejects nonstandard executable opcodes, validates
+canonical chunks, then specializes eligible instructions internally.
+`SETLIST` extended block words are never interpreted or rewritten as opcodes.
+Round-trip and real PUC Lua 5.1 execution tests cover that contract.
+
+### 10. Re-profile execution
+
+The next profile decides between integer table access, native-library call
+state, and remaining call/return bookkeeping. Builtins, inline caches, or
+further opcode specialization still require a generic profile and shared
+semantic kernel. They are not used to conceal an allocation design problem.
 
 ## Gates
 

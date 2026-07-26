@@ -73,7 +73,8 @@ Files are organized by substantial runtime concepts:
 - `number.go`: deterministic numeric-string syntax and compact numeric
   coercion;
 - `metamethod.go`: raw event lookup and shared-handler selection;
-- `opcode.go`: canonical Lua 5.1 instruction encoding;
+- `opcode.go`: Lua 5.1 instruction encoding and private field
+  specializations;
 - `lexer.go`: refillable byte-window scanning, core tokenization, names,
   numbers, and one-token lookahead;
 - `lexer_string.go`: token-text capture, quoted and long strings, comments,
@@ -179,20 +180,22 @@ ordering.
 An indexed expression retains its table register and RK key until it is read
 or assigned. Its descriptor records the lowest temporary owning those
 operands, allowing a chained read to overwrite that slot only after both
-operands have been captured by `GETTABLE`. This preserves left-to-right
-evaluation without allocating an intermediate node or extending temporary
-lifetimes across the enclosing expression.
+operands have been captured by its table instruction. Constant string keys
+within RK range become private `GETFIELD` or `SETFIELD` instructions; dynamic,
+numeric, and spilled keys remain `GETTABLE` or `SETTABLE`. This preserves
+left-to-right evaluation without allocating an intermediate node or extending
+temporary lifetimes across the enclosing expression.
 
 A function call owns one contiguous register window: callable, implicit
 receiver when present, explicit arguments, then results. Only the final
 unparenthesized call or vararg expression in a list may remain open. Open
 producers are emitted directly beside their consuming call, return, or
-`SETLIST`; prototype verification rejects any broken adjacency. `SELF` may
-legally overlap its output base with its receiver register. The executor
-therefore retains the receiver, publishes it to `R(A+1)`, then reads the key
-and performs lookup in the same order as Lua 5.1. This preserves even the
-observable behavior of verified bytecode whose key register overlaps
-`R(A+1)`.
+`SETLIST`; prototype verification rejects any broken adjacency. `SELF`, and
+its constant-string `SELFFIELD` specialization, may legally overlap their
+output base with the receiver register. The executor therefore retains the
+receiver, publishes it to `R(A+1)`, then reads the key and performs lookup in
+the same order as Lua 5.1. This preserves even the observable behavior of
+verified bytecode whose key register overlaps `R(A+1)`.
 
 A table constructor pins its table at the bottom of its temporary register
 suffix. Record fields are evaluated and stored immediately; list fields are
@@ -756,6 +759,13 @@ returns a private outcome opcode; the cold helper therefore continues at
 metamethod lookup without repeating the raw table probe. These outcome opcodes
 are never legal in a Prototype.
 
+Globals and compiler-proven constant string fields use a separate prehashed
+string-slot helper. Prototype strings already carry their stable hash, so this
+path skips dynamic key normalization and generic value-kind equality while
+still comparing bytes when two equal strings have different backing. The
+generic helper remains unchanged for register, numeric, reference, and spilled
+keys. No table shape, cached location, or object-schema assumption is involved.
+
 Raw non-nil hits bypass metamethods. Missing reads and writes follow at most
 100 `__index` or `__newindex` targets; only a Function-valued event is called,
 while every other event value is the next target. Getter continuations retain
@@ -815,7 +825,9 @@ representative dense, sparse, string-field, global, method, missing-field,
 polymorphic, and constructor workloads improve while allocation counts remain
 unchanged. Full metamethod cases retain the cold path. Further in-switch
 specialization remains subject to both assembly inspection and
-whole-workload gates.
+whole-workload gates. Constant-string field instructions do not enlarge that
+frame; their noinline helpers also leave the generic read frame at 96 bytes
+and reduce the generic write frame from 176 to 160 bytes on arm64.
 
 Numeric `for` converts its hidden initial value, limit, and step exactly once
 at `FORPREP`, stores numbers back into the canonical four-register window,
@@ -825,9 +837,10 @@ and keeps the visible loop variable separate. Zero and NaN steps follow Lua
 The executor assumes only immutable, sealed Prototypes. Prototype
 verification is therefore responsible for instruction bounds, register and
 constant operands, closure binding words, test/jump pairs, and open-result
-adjacency. Every verified Lua 5.1 opcode has a private-core execution route.
-The executor's default failure remains a fail-closed invariant guard for an
-invalid internal instruction, rather than a fallback to another interpreter.
+adjacency. Every verified Lua 5.1 opcode and published internal specialization
+has a private-core execution route. The executor's default failure remains a
+fail-closed invariant guard for an invalid internal instruction, rather than
+a fallback to another interpreter.
 
 Runtime failure appends each active traceback segment immediately before the
 corresponding frames unwind. The unwind then closes upvalues, drops
@@ -951,11 +964,15 @@ verified `Prototype`; loading that Prototype creates a new Function in the
 executing Thread's global environment without executing it.
 
 Binary chunks use Lua 5.1's native format. The decoder requires the current
-endianness, `size_t`, instruction, and double layout, then validates the entire
-prototype tree before publication. Invalid counts, strings, constants, debug
-metadata, instructions, and excessive prototype nesting fail as syntax errors.
-Like PUC Lua, decoding ends after the root function and does not require or
-consume end-of-input.
+endianness, `size_t`, instruction, and double layout, rejects nonstandard
+executable opcodes, and reads the remaining canonical chunk data. Once the
+instruction stream and constants are known, constant-string `GETTABLE`,
+`SETTABLE`, and `SELF` instructions are specialized; the complete prototype
+tree is then verified before publication. Extended `SETLIST` block words
+remain raw data throughout this boundary. Invalid counts, strings, constants,
+debug metadata, instructions, and excessive prototype nesting fail as syntax
+errors. Like PUC Lua, decoding ends after the root function and does not
+require or consume end-of-input.
 
 One compilation-local string table interns source names, constants, local
 names, and upvalue names across the complete prototype tree. Exact-size code,
@@ -1401,7 +1418,9 @@ Badger result instead of inheriting architecture-specific undefined behavior.
 including nested functions and debug metadata. Like PUC's own format, a chunk
 records native endianness, `size_t` width, instruction width, and number
 layout; it is intended for a compatible Lua 5.1 ABI, not as a portable
-cross-architecture format. Native Go functions are not serializable.
+cross-architecture format. Private field instructions are lowered to
+`GETTABLE`, `SETTABLE`, and `SELF` while extended `SETLIST` words are preserved
+byte-for-byte. Native Go functions are not serializable.
 
 Lua 5.1 relies on its allocator to reject an impossible `string.rep`. Until
 the runtime has one output-size policy covering concatenation and every
