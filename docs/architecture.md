@@ -1378,8 +1378,12 @@ one.
 7. Reentrant native calls.
 8. Context polling and context-aware calls.
 9. Standard libraries and embedding operations.
-10. Debug facilities and optional extensions.
-11. Profile-driven quickening, inline caches, and executor specialization.
+10. Close the measured table, string, and allocation gap described in
+    [performance.md](performance.md).
+11. State-local Lua collection, weak tables, finalization, and the Lua 5.1
+    collection controls.
+12. Debug facilities and optional extensions.
+13. Profile-driven quickening, inline caches, and executor specialization.
 
 The compiler remains in the root package so it can build private compact
 constants without introducing an exported intermediate representation.

@@ -67,5 +67,8 @@ directory, and actual standard descriptors. The debug library remains under
 construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
-order. Adapted reference algorithms retain their original permissive license
-in [the third-party notices](THIRD_PARTY_NOTICES.md).
+order, and [the performance work](docs/performance.md) for current evidence
+and qualification gates.
+
+Adapted reference algorithms retain their original permissive license in
+[the third-party notices](THIRD_PARTY_NOTICES.md).
