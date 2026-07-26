@@ -1,5 +1,116 @@
 package lua
 
+// callCompactOne invokes callable with compact arguments and keeps exactly one
+// compact result. It is the shared internal seam for library callbacks and
+// comparisons; neither arguments nor the result materialize owning Values.
+func (frame Frame) callCompactOne(
+	callable slot,
+	arguments []slot,
+) (slot, *Error) {
+	thread := frame.thread
+	checkpoint := captureExecutionCheckpoint(frame)
+	restored := false
+	defer func() {
+		if !restored {
+			checkpoint.restore(thread, true)
+		}
+	}()
+
+	resultBase, failure := startNestedCall(
+		thread,
+		callable,
+		callArguments{compact: arguments},
+		1,
+	)
+	if failure == nil {
+		result := driveExecution(thread, checkpoint.frameDepth)
+		switch result.kind {
+		case executionReturned:
+			if len(thread.frames) != checkpoint.frameDepth ||
+				len(thread.continuations) != checkpoint.continuationDepth {
+				panic("lua: compact call returned invalid execution state")
+			}
+			value := thread.values[resultBase]
+			checkpoint.restore(thread, true)
+			restored = true
+			return value, nil
+		case executionFailed:
+			if result.err == nil {
+				panic("lua: compact call failed without an error")
+			}
+			failure = result.err
+			snapshotExecutionFailure(
+				thread,
+				checkpoint.frameDepth,
+				failure,
+			)
+		default:
+			panic("lua: compact call produced an invalid execution result")
+		}
+	}
+	checkpoint.restore(thread, true)
+	restored = true
+	return nilSlot, failure
+}
+
+// Index applies ordinary Lua indexing from a native callback.
+//
+// A raw table hit returns directly. Otherwise Index follows the bounded
+// __index chain and may synchronously invoke Lua. Invalid or foreign Values
+// are rejected before Lua executes. Lua failures are returned as *Error; a
+// yield across this native-call boundary becomes Lua 5.1's illegal-yield
+// failure. The borrowed Frame remains valid after Index returns.
+func (frame Frame) Index(target, key Value) (Value, error) {
+	frame.activation()
+	if err := frame.thread.owner.accept(target); err != nil {
+		return Value{}, err
+	}
+	if err := frame.thread.owner.accept(key); err != nil {
+		return Value{}, err
+	}
+	result, failure := frame.indexCompact(
+		slotFromValue(target),
+		slotFromValue(key),
+	)
+	if failure != nil {
+		return Value{}, failure
+	}
+	return result.owningValue(), nil
+}
+
+func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
+	for step := 0; step < maxTableMetamethodChain; step++ {
+		var handler slot
+		var found bool
+		if target.kind() == TableKind {
+			table := (*Table)(target.ref)
+			if result, hit := table.rawSlot(key); hit &&
+				result.kind() != NilKind {
+				return result, nil
+			}
+			handler, found = metamethodSlot(frame.thread, target, metaIndex)
+			if !found {
+				return nilSlot, nil
+			}
+		} else {
+			handler, found = metamethodSlot(frame.thread, target, metaIndex)
+			if !found {
+				return nilSlot, libraryFailure(
+					frame,
+					"attempt to index a %s value",
+					target.kind(),
+				)
+			}
+		}
+		if _, callable := functionSlot(handler); callable {
+			arguments := [2]slot{target, key}
+			return frame.callCompactOne(handler, arguments[:])
+		}
+		target = handler
+	}
+	return nilSlot, libraryFailure(frame, "loop in gettable")
+}
+
 // Call invokes callable synchronously and in protected mode on the Thread
 // executing frame.
 //

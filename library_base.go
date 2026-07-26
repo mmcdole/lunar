@@ -302,51 +302,8 @@ func (frame Frame) callBinary(
 	first slot,
 	second slot,
 ) (slot, *Error) {
-	thread := frame.thread
-	checkpoint := captureExecutionCheckpoint(frame)
-	restored := false
-	defer func() {
-		if !restored {
-			checkpoint.restore(thread, true)
-		}
-	}()
-
 	arguments := [2]slot{first, second}
-	resultBase, failure := startNestedCall(
-		thread,
-		callable,
-		callArguments{compact: arguments[:]},
-		1,
-	)
-	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth {
-				panic("lua: library call returned invalid execution state")
-			}
-			value := thread.values[resultBase]
-			checkpoint.restore(thread, true)
-			restored = true
-			return value, nil
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: library call failed without an error")
-			}
-			failure = result.err
-			snapshotExecutionFailure(
-				thread,
-				checkpoint.frameDepth,
-				failure,
-			)
-		default:
-			panic("lua: library call produced an invalid execution result")
-		}
-	}
-	checkpoint.restore(thread, true)
-	restored = true
-	return nilSlot, failure
+	return frame.callCompactOne(callable, arguments[:])
 }
 
 // lessThan applies Lua 5.1's ordinary less-than to two compact values, as

@@ -144,6 +144,142 @@ return first, middle, last, nil
 	}
 }
 
+func TestFrameIndexAppliesLuaTableSemantics(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	direct, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := direct.RawSetString("key", Number(41)); err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fallback.RawSetString("key", Number(42)); err != nil {
+		t.Fatal(err)
+	}
+	chained, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainedMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chainedMetatable.RawSetString(
+		"__index",
+		fallback.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(chained.Value(), chainedMetatable); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := mustLoadString(t, state, "@frame-index.lua", `
+local target, key = ...
+return "handled:" .. key
+`)
+	computed, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	computedMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := computedMetatable.RawSetString(
+		"__index",
+		handler.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(computed.Value(), computedMetatable); err != nil {
+		t.Fatal(err)
+	}
+
+	var nestedError error
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		target, _ := frame.Argument(0)
+		key, _ := frame.Argument(1)
+		result, indexErr := frame.Index(target, key)
+		nestedError = indexErr
+		if indexErr != nil {
+			var failure *Error
+			if errors.As(indexErr, &failure) {
+				return frame.RaiseError(failure)
+			}
+			return frame.RaiseString(indexErr.Error())
+		}
+		if frame.ArgumentCount() != 2 {
+			return frame.RaiseString("Index invalidated its Frame")
+		}
+		return frame.ReturnValue(result)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		target Value
+		key    Value
+		want   Value
+	}{
+		{name: "raw hit", target: direct.Value(), key: state.String("key"), want: Number(41)},
+		{name: "table chain", target: chained.Value(), key: state.String("key"), want: Number(42)},
+		{name: "function handler", target: computed.Value(), key: state.String("key"), want: state.String("handled:key")},
+		{name: "absent", target: direct.Value(), key: state.String("absent"), want: Nil()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			results, callErr := state.Call(
+				host.Value(),
+				test.target,
+				test.key,
+			)
+			if callErr != nil {
+				t.Fatal(callErr)
+			}
+			if nestedError != nil {
+				t.Fatalf("Index error = %v", nestedError)
+			}
+			assertTestValues(t, results, test.want)
+		})
+	}
+
+	var destination [1]Value
+	for range 16 {
+		if _, err := state.CallInto(
+			host.Value(),
+			[]Value{direct.Value(), state.String("key")},
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allocations := testing.AllocsPerRun(256, func() {
+		if _, err := state.CallInto(
+			host.Value(),
+			[]Value{direct.Value(), state.String("key")},
+			destination[:],
+		); err != nil {
+			panic(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm raw Index allocated %v times", allocations)
+	}
+	assertTestValues(t, destination[:], Number(41))
+}
+
 func TestFrameCallRejectsInputsAtomically(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
