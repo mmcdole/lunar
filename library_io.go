@@ -738,5 +738,9 @@ func ioFailureCause(failure error) error {
 	if errors.As(failure, &pathError) && pathError.Err != nil {
 		return pathError.Err
 	}
+	var linkError *os.LinkError
+	if errors.As(failure, &linkError) && linkError.Err != nil {
+		return linkError.Err
+	}
 	return failure
 }

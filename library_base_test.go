@@ -1228,6 +1228,9 @@ func runLua51Case(t *testing.T, source string) string {
 	if err := state.OpenIO(); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.OpenOS(); err != nil {
+		t.Fatal(err)
+	}
 	chunk, err := state.LoadString("=case", source)
 	if err != nil {
 		return "syntax " + formatLua51Text(err.Error())
@@ -1311,7 +1314,8 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 			len(mathLibraryLua51Cases)+
 			len(tableLibraryLua51Cases)+
 			len(stringLibraryLua51Cases)+
-			len(ioLibraryLua51Cases),
+			len(ioLibraryLua51Cases)+
+			len(osLibraryLua51Cases),
 	)
 	cases = append(cases, baseLibraryLua51Cases...)
 	cases = append(cases, loadLibraryLua51Cases...)
@@ -1320,6 +1324,7 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	cases = append(cases, tableLibraryLua51Cases...)
 	cases = append(cases, stringLibraryLua51Cases...)
 	cases = append(cases, ioLibraryLua51Cases...)
+	cases = append(cases, osLibraryLua51Cases...)
 
 	driver := &strings.Builder{}
 	driver.WriteString(lua51OracleDriver)
