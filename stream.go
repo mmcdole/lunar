@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -68,10 +69,11 @@ func (streams *standardStreams) release() error {
 // context cancellation, the ContextError is reported first and a simultaneous
 // source failure remains deferred for the next logical operation.
 type inputEndpoint struct {
-	source     readFailureRecorder
-	buffered   *bufio.Reader
-	mode       streamBufferMode
-	bufferSize int
+	source               readFailureRecorder
+	buffered             *bufio.Reader
+	bufferSize           int
+	mode                 streamBufferMode
+	allowRegularSizeHint bool
 }
 
 func newInputEndpoint(reader io.Reader) inputEndpoint {
@@ -80,6 +82,15 @@ func newInputEndpoint(reader io.Reader) inputEndpoint {
 		mode:       streamBufferFull,
 		bufferSize: defaultStreamBufferBytes,
 	}
+}
+
+func newFileInputEndpoint(file *os.File, flags int) inputEndpoint {
+	endpoint := newInputEndpoint(file)
+	// Go leaves Seek behavior unspecified for files opened with O_APPEND.
+	// Exact sizing queries the physical cursor, so append streams retain the
+	// generic read path.
+	endpoint.allowRegularSizeHint = flags&os.O_APPEND == 0
+	return endpoint
 }
 
 func (endpoint *inputEndpoint) reader() (*bufio.Reader, error) {
@@ -210,6 +221,42 @@ func (endpoint *inputEndpoint) unreadBytes() int {
 		unread += endpoint.buffered.Buffered()
 	}
 	return unread
+}
+
+// remainingRegularBytes returns the logical bytes remaining in an ordinary
+// file. The operating-system cursor may be ahead of Lua's cursor because
+// bufio has read ahead, so buffered and replay bytes are added back.
+//
+// This is an allocation hint only. A file may grow or shrink after the query;
+// the read loop still detects EOF, excess input, and appended bytes.
+func (endpoint *inputEndpoint) remainingRegularBytes() (int64, bool) {
+	if endpoint == nil || !endpoint.allowRegularSizeHint {
+		return 0, false
+	}
+	file, ok := endpoint.source.reader.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return 0, false
+	}
+	position, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, false
+	}
+	unread := int64(endpoint.unreadBytes())
+	if unread < 0 || position < unread {
+		return 0, false
+	}
+	logicalPosition := position - unread
+	remaining := info.Size() - logicalPosition
+	if remaining < unread {
+		// Bytes already fetched by bufio remain observable even if another
+		// process truncates the file after they were read.
+		remaining = unread
+	}
+	return remaining, true
 }
 
 // takeFailure transfers ownership of one deferred Reader error to one logical

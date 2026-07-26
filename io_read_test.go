@@ -121,6 +121,177 @@ func TestIOReadAllAlwaysReturnsAString(t *testing.T) {
 	}
 }
 
+func TestIOReadAllRegularFileUsesLogicalCursor(t *testing.T) {
+	text := strings.Repeat("0123456789abcdef", 4<<10)
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	engine, endpoint := newTestFileIOReadEngine(
+		file,
+		os.O_RDONLY,
+		defaultIOReadLimit,
+	)
+	prefix, present, err := engine.readBytes(123)
+	assertIOReadText(t, prefix, present, err, text[:123])
+
+	remaining, known := endpoint.remainingRegularBytes()
+	if !known || remaining != int64(len(text)-123) {
+		t.Fatalf(
+			"remaining bytes = (%d, %t); want (%d, true)",
+			remaining,
+			known,
+			len(text)-123,
+		)
+	}
+
+	value, present, err := engine.readAll()
+	assertIOReadText(t, value, present, err, text[123:])
+}
+
+func TestIOReadAllRegularFileHonorsStartingOffsetAndLimit(t *testing.T) {
+	text := strings.Repeat("abcdefgh", 4<<10)
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("offset", func(t *testing.T) {
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		const offset = 917
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			t.Fatal(err)
+		}
+		engine, _ := newTestFileIOReadEngine(
+			file,
+			os.O_RDONLY,
+			defaultIOReadLimit,
+		)
+		value, present, err := engine.readAll()
+		assertIOReadText(t, value, present, err, text[offset:])
+	})
+
+	t.Run("limit", func(t *testing.T) {
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		engine, _ := newTestFileIOReadEngine(
+			file,
+			os.O_RDONLY,
+			len(text)-1,
+		)
+		if _, _, err := engine.readAll(); !errors.Is(
+			err,
+			errIOReadTooLarge,
+		) {
+			t.Fatalf("oversized regular read error = %v", err)
+		}
+		engine.limit = defaultIOReadLimit
+		value, present, err := engine.readBytes(1)
+		assertIOReadText(
+			t,
+			value,
+			present,
+			err,
+			text[len(text)-1:],
+		)
+	})
+}
+
+func TestIOReadAllRegularFileContextKeepsBoundedAdmission(t *testing.T) {
+	text := strings.Repeat("x", 1<<20)
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	engine, _ := newTestFileIOReadEngine(
+		file,
+		os.O_RDONLY,
+		defaultIOReadLimit,
+	)
+	reader, err := engine.input.reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capacity := engine.readAllInitialCapacity(
+		reader.Size(),
+		defaultIOReadLimit,
+	); capacity != len(text) {
+		t.Fatalf(
+			"raw initial capacity = %d; want %d",
+			capacity,
+			len(text),
+		)
+	}
+
+	engine.contextThread = new(Thread)
+	engine.contextBytes = ioReadContextPollBytes
+	if capacity := engine.readAllInitialCapacity(
+		reader.Size(),
+		defaultIOReadLimit,
+	); capacity != reader.Size() {
+		t.Fatalf(
+			"context initial capacity = %d; want %d",
+			capacity,
+			reader.Size(),
+		)
+	}
+}
+
+func TestIOReadAllAppendFileUsesGenericAdmission(t *testing.T) {
+	text := strings.Repeat("x", 1<<20)
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flags := os.O_RDWR | os.O_APPEND
+	file, err := os.OpenFile(path, flags, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	engine, _ := newTestFileIOReadEngine(
+		file,
+		flags,
+		defaultIOReadLimit,
+	)
+	reader, err := engine.input.reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capacity := engine.readAllInitialCapacity(
+		reader.Size(),
+		defaultIOReadLimit,
+	); capacity != reader.Size() {
+		t.Fatalf(
+			"append initial capacity = %d; want %d",
+			capacity,
+			reader.Size(),
+		)
+	}
+	value, present, err := engine.readAll()
+	assertIOReadText(t, value, present, err, text)
+}
+
 func TestIOReadNumberGrammarAndPrefixPreservation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1179,11 +1350,64 @@ func BenchmarkIOReadFixed(b *testing.B) {
 	}
 }
 
+func BenchmarkIOReadAllRegularFile(b *testing.B) {
+	const size = 1 << 20
+	path := filepath.Join(b.TempDir(), "input")
+	if err := os.WriteFile(
+		path,
+		[]byte(strings.Repeat("x", size)),
+		0o600,
+	); err != nil {
+		b.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer file.Close()
+	engine, endpoint := newTestFileIOReadEngine(
+		file,
+		os.O_RDONLY,
+		defaultIOReadLimit,
+	)
+
+	b.ReportAllocs()
+	b.SetBytes(size)
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			b.Fatal(err)
+		}
+		endpoint.resetReadAhead()
+		value, present, err := engine.readAll()
+		if err != nil || !present ||
+			len(ioReadSlotText(b, value)) != size {
+			b.Fatalf(
+				"read all = (%d bytes, present %t, %v)",
+				len(ioReadSlotText(b, value)),
+				present,
+				err,
+			)
+		}
+	}
+}
+
 func newTestIOReadEngine(
 	reader io.Reader,
 	limit int,
 ) (*ioReadEngine, *inputEndpoint) {
 	endpoint := newInputEndpoint(reader)
+	engine := newIOReadEngine(&endpoint, new(stringPool))
+	engine.limit = limit
+	return &engine, &endpoint
+}
+
+func newTestFileIOReadEngine(
+	file *os.File,
+	flags int,
+	limit int,
+) (*ioReadEngine, *inputEndpoint) {
+	endpoint := newFileInputEndpoint(file, flags)
 	engine := newIOReadEngine(&endpoint, new(stringPool))
 	engine.limit = limit
 	return &engine, &endpoint
@@ -1208,7 +1432,7 @@ func assertIOReadText(
 	}
 }
 
-func ioReadSlotText(t *testing.T, value slot) string {
+func ioReadSlotText(t testing.TB, value slot) string {
 	t.Helper()
 	if value.kind() != StringKind {
 		t.Fatalf("slot kind = %s; want string", value.kind())

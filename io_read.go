@@ -365,14 +365,7 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 	if err != nil {
 		return nilSlot, false, engine.finish(err)
 	}
-	initial := reader.Size()
-	if initial > limit {
-		initial = limit
-	}
-	initial = engine.readRequestSize(initial)
-	if initial < 1 {
-		initial = 1
-	}
+	initial := engine.readAllInitialCapacity(reader.Size(), limit)
 	buffer := make([]byte, 0, initial)
 	emptyReads := 0
 
@@ -453,6 +446,31 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 	}
 
 	return engine.ownedStringSlot(buffer), true, nil
+}
+
+func (engine *ioReadEngine) readAllInitialCapacity(
+	fallback int,
+	limit int,
+) int {
+	initial := fallback
+	// Context-aware input retains bounded admission: reserving a complete
+	// large file before the first poll would make cancellation responsive in
+	// bytes read but not in memory committed.
+	if engine.contextThread == nil {
+		if remaining, known :=
+			engine.input.remainingRegularBytes(); known &&
+			remaining <= int64(limit) {
+			initial = int(remaining)
+		}
+	}
+	if initial > limit {
+		initial = limit
+	}
+	initial = engine.readRequestSize(initial)
+	if initial < 1 {
+		initial = 1
+	}
+	return initial
 }
 
 // readBorrowedAll handles inputs that reach EOF within the reusable reader

@@ -288,7 +288,7 @@ func (state *State) newOwnedFile(
 	}
 	readable, writable := fileOpenCapabilities(flags)
 	if readable {
-		handle.ownedInput = newInputEndpoint(file)
+		handle.ownedInput = newFileInputEndpoint(file, flags)
 		handle.input = &handle.ownedInput
 	}
 	if writable {
