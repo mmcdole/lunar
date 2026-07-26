@@ -66,7 +66,10 @@ Files are organized by substantial runtime concepts:
 - `state.go`: runtime ownership, lifecycle, globals, userdata, and errors;
 - `string.go`: State-neutral immutable strings, stable hashing, and bounded
   runtime-local short-string reuse;
-- `table.go`: dense and hash storage plus raw table semantics;
+- `table.go`: dense-array storage, raw table semantics, mutation accounting,
+  borders, and traversal;
+- `table_store.go`: chained-scatter record storage, cached hashes, collision
+  relocation, deletion continuations, tombstone recycling, and rehashing;
 - `number.go`: deterministic numeric-string syntax and compact numeric
   coercion;
 - `metamethod.go`: raw event lookup and shared-handler selection;
