@@ -642,7 +642,6 @@ func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
 		working.store.integerKeys = baseline.store.integerKeys
 		working.store.lastFree = baseline.store.lastFree
 		working.metatable = baseline.metatable
-		working.structuralVersion = baseline.structuralVersion
 		working.absentMetamethods = baseline.absentMetamethods
 	}
 	restore()
@@ -814,13 +813,6 @@ func assertEquivalentTableInsertResult(
 			"RawLen = %d; want %d",
 			sparse.RawLen(),
 			reference.RawLen(),
-		)
-	}
-	if reference.structuralVersion != sparse.structuralVersion {
-		t.Fatalf(
-			"structural version = %d; want %d",
-			sparse.structuralVersion,
-			reference.structuralVersion,
 		)
 	}
 	assertTableStorageAccounting(t, reference)

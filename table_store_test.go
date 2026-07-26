@@ -1001,26 +1001,22 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 	entries := &table.store.entries[0]
 	live, dead := table.store.live, table.store.dead
 	lastFree := table.store.lastFree
-	version := table.structuralVersion
 	if err := table.RawSetString(byLocation[7], Number(100)); err != nil {
 		t.Fatal(err)
 	}
 	if &table.store.entries[0] != entries ||
 		table.store.live != live ||
 		table.store.dead != dead ||
-		table.store.lastFree != lastFree ||
-		table.structuralVersion != version {
+		table.store.lastFree != lastFree {
 		t.Fatalf(
 			"value update changed layout: live:%d/%d dead:%d/%d "+
-				"lastFree:%d/%d version:%d/%d",
+				"lastFree:%d/%d",
 			table.store.live,
 			live,
 			table.store.dead,
 			dead,
 			table.store.lastFree,
 			lastFree,
-			table.structuralVersion,
-			version,
 		)
 	}
 	if after, found := table.store.findContinuation(

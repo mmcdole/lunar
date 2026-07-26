@@ -185,7 +185,7 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 	})
 }
 
-func TestTableMutationBookkeepingAndMetamethodCache(t *testing.T) {
+func TestTableMetamethodAbsenceCache(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -199,14 +199,11 @@ func TestTableMutationBookkeepingAndMetamethodCache(t *testing.T) {
 	if err := table.RawSetString("ordinary", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if table.structuralVersion != 1 {
-		t.Fatalf("initial structural version = %d", table.structuralVersion)
-	}
 	if err := table.RawSetString("ordinary", Number(2)); err != nil {
 		t.Fatal(err)
 	}
-	if table.structuralVersion != 1 {
-		t.Fatalf("value update changed structural version to %d", table.structuralVersion)
+	if got, ok := table.RawGetString("ordinary").AsNumber(); !ok || got != 2 {
+		t.Fatalf("updated ordinary field = (%v, %v), want (2, true)", got, ok)
 	}
 	target, err := state.NewTable(0, 0)
 	if err != nil {
@@ -319,14 +316,22 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 				t.Fatalf("resolved lane = %d, want %d", location.lane, test.lane)
 			}
 
-			version := table.structuralVersion
+			arrayUsed := table.arrayUsed
+			storeLive, storeDead := table.store.live, table.store.dead
 			table.absentMetamethods = metaIndex.bit()
 			table.replaceResolvedSlot(location, numberSlot(2))
-			if table.structuralVersion != version {
+			if table.arrayUsed != arrayUsed ||
+				table.store.live != storeLive ||
+				table.store.dead != storeDead {
 				t.Fatalf(
-					"value update changed structural version from %d to %d",
-					version,
-					table.structuralVersion,
+					"value update changed storage accounting: "+
+						"array %d/%d live %d/%d dead %d/%d",
+					table.arrayUsed,
+					arrayUsed,
+					table.store.live,
+					storeLive,
+					table.store.dead,
+					storeDead,
 				)
 			}
 			if table.absentMetamethods != 0 {
@@ -339,16 +344,23 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 			if number, ok := got.AsNumber(); !ok || number != 2 {
 				t.Fatalf("updated value = %v, want 2", got)
 			}
+			_, updatedLocation, found := table.resolveNormalizedSlot(
+				normalized,
+				index,
+				arrayKey,
+				hash,
+			)
+			if !found || updatedLocation != location {
+				t.Fatalf(
+					"updated location = (%v, %v), want (%v, true)",
+					updatedLocation,
+					found,
+					location,
+				)
+			}
 
 			table.absentMetamethods = metaIndex.bit()
 			table.replaceResolvedSlot(location, nilSlot)
-			if table.structuralVersion != version+1 {
-				t.Fatalf(
-					"deletion structural version = %d, want %d",
-					table.structuralVersion,
-					version+1,
-				)
-			}
 			if table.absentMetamethods != 0 {
 				t.Fatal("deletion retained the absent-metamethod cache")
 			}

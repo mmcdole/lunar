@@ -41,7 +41,7 @@ type integerTableValue struct {
 
 // Table is the canonical representation of a Lua table.
 //
-// Its storage, metatable, traversal state, and cache generations are private.
+// Its storage, metatable, traversal state, and metamethod cache are private.
 // Table methods are raw: they never invoke Lua or consult metamethods.
 // Metamethod-aware operations belong to State and Frame.
 //
@@ -52,7 +52,6 @@ type Table struct {
 	arrayUsed         int
 	store             tableStore
 	metatable         *Table
-	structuralVersion uint64
 	absentMetamethods uint32
 	// recordIntegerFloor is one plus the smallest power-of-two exponent
 	// containing a positive integer record key. The value above every array
@@ -173,13 +172,13 @@ func (table *Table) RawSetString(key string, value Value) error {
 	hash := uint32(table.owner.strings.hash(key))
 	valueSlot := slotFromValue(value)
 	index, stored := table.store.findStoredString(key, hash)
-	var structural, changed bool
+	changed := false
 	switch {
 	case stored &&
 		table.store.entries[index].value.kind() != NilKind &&
 		valueSlot.kind() == NilKind:
 		table.store.deleteAt(index)
-		structural, changed = true, true
+		changed = true
 	case stored &&
 		table.store.entries[index].value.kind() != NilKind:
 		current := table.store.entries[index].value
@@ -195,7 +194,7 @@ func (table *Table) RawSetString(key string, value Value) error {
 		} else {
 			table.store.reviveAt(index, valueSlot)
 		}
-		structural, changed = true, true
+		changed = true
 	case valueSlot.kind() != NilKind:
 		keySlot := stringSlot(
 			table.owner.strings.makeKnownHash(
@@ -204,10 +203,7 @@ func (table *Table) RawSetString(key string, value Value) error {
 			),
 		)
 		table.insertNewField(keySlot, valueSlot, hash, 0)
-		structural, changed = true, true
-	}
-	if structural {
-		table.structuralVersion++
+		changed = true
 	}
 	if changed {
 		table.absentMetamethods = 0
@@ -453,7 +449,7 @@ func (table *Table) replaceResolvedSlot(
 			table.store.deleteAt(location.index)
 			table.recordIntegerDeleted()
 		}
-		table.recordMutation(true, true)
+		table.absentMetamethods = 0
 		return
 	}
 	if rawSlotEqual(current, value) {
@@ -465,7 +461,7 @@ func (table *Table) replaceResolvedSlot(
 	case tableHashLane:
 		writeSlot(&table.store.entries[location.index].value, value)
 	}
-	table.recordMutation(false, true)
+	table.absentMetamethods = 0
 }
 
 func (table *Table) rawSetSlot(key, value slot) tableKeyStatus {
@@ -491,23 +487,21 @@ func (table *Table) rawSetNormalizedSlot(
 	hash uint32,
 	value slot,
 ) {
-	structural, changed := table.set(
+	if table.set(
 		key,
 		index,
 		arrayKey,
 		hash,
 		value,
-	)
-	table.recordMutation(structural, changed)
+	) {
+		table.absentMetamethods = 0
+	}
 }
 
 // Integer keys cannot name string-keyed metamethods, so rawSetIntegerSlot
 // preserves the absence cache.
 func (table *Table) rawSetIntegerSlot(key int, value slot) {
-	structural, _ := table.setInteger(key, value)
-	if structural {
-		table.structuralVersion++
-	}
+	table.setInteger(key, value)
 }
 
 // shiftSparseIntegerRangeUp moves every raw integer field in [first, last] to
@@ -576,7 +570,7 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 	})
 
 	// The descending raw loop writes last+1 first. Preserve that mutation
-	// order so array promotion and the structural generation behave the same.
+	// order so array promotion behaves the same.
 	if _, occupied := table.rawIntSlot(last + 1); occupied &&
 		(len(values) == 0 || values[len(values)-1].key != last) {
 		table.rawSetIntegerSlot(last+1, nilSlot)
@@ -623,7 +617,6 @@ func (table *Table) rawSetList(first int, values []slot) {
 			// SETLIST writes only positive integer keys, so the string-keyed
 			// metamethod absence cache remains valid.
 			table.arrayUsed += inserted
-			table.structuralVersion += uint64(inserted)
 			return
 		}
 	}
@@ -633,25 +626,13 @@ func (table *Table) rawSetList(first int, values []slot) {
 	}
 }
 
-func (table *Table) recordMutation(
-	structural bool,
-	changed bool,
-) {
-	if structural {
-		table.structuralVersion++
-	}
-	if changed {
-		table.absentMetamethods = 0
-	}
-}
-
 func (table *Table) set(
 	key slot,
 	index int,
 	arrayKey bool,
 	hash uint32,
 	value slot,
-) (structural, changed bool) {
+) bool {
 	if arrayKey {
 		return table.setInteger(index, value)
 	}
@@ -660,24 +641,24 @@ func (table *Table) set(
 		return table.setStoredRecord(storeIndex, value)
 	}
 	if value.kind() == NilKind {
-		return false, false
+		return false
 	}
 	table.insertNewField(key, value, hash, 0)
-	return true, true
+	return true
 }
 
 func (table *Table) setStoredRecord(
 	index int,
 	value slot,
-) (structural, changed bool) {
+) bool {
 	entry := &table.store.entries[index]
 	current := entry.value
 	if current.kind() != NilKind && value.kind() != NilKind {
 		if rawSlotEqual(current, value) {
-			return false, false
+			return false
 		}
 		writeSlot(&entry.value, value)
-		return false, true
+		return true
 	}
 	return table.setStoredRecordSlow(index, value)
 }
@@ -685,12 +666,12 @@ func (table *Table) setStoredRecord(
 func (table *Table) setStoredRecordSlow(
 	index int,
 	value slot,
-) (structural, changed bool) {
+) bool {
 	entry := &table.store.entries[index]
 	current := entry.value
 	if current.kind() == NilKind {
 		if value.kind() == NilKind {
-			return false, false
+			return false
 		}
 		if table.store.shouldCompact() {
 			key, hash := entry.key, entry.hash
@@ -705,12 +686,12 @@ func (table *Table) setStoredRecordSlow(
 			table.store.reviveAt(index, value)
 			table.recordIntegerInserted(entry.key)
 		}
-		return true, true
+		return true
 	}
 	if value.kind() == NilKind {
 		table.store.deleteAt(index)
 		table.recordIntegerDeleted()
-		return true, true
+		return true
 	}
 	panic("lua: invalid slow table record update")
 }
@@ -824,7 +805,7 @@ func integerRecordClass(integer int) uint8 {
 	return uint8(bits.Len(uint(integer-1)) + 1)
 }
 
-func (table *Table) setInteger(index int, value slot) (structural, changed bool) {
+func (table *Table) setInteger(index int, value slot) bool {
 	if index > 0 &&
 		index <= len(table.array) &&
 		(value.kind() == NilKind ||
@@ -848,13 +829,13 @@ func (table *Table) setInteger(index int, value slot) (structural, changed bool)
 			if value.kind() == NilKind {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
-				return true, true
+				return true
 			}
 			if rawSlotEqual(entry.value, value) {
-				return false, false
+				return false
 			}
 			writeSlot(&entry.value, value)
-			return false, true
+			return true
 		}
 	}
 	return table.setIntegerUnresolved(index, value)
@@ -863,7 +844,7 @@ func (table *Table) setInteger(index int, value slot) (structural, changed bool)
 func (table *Table) setIntegerUnresolved(
 	index int,
 	value slot,
-) (structural, changed bool) {
+) bool {
 	if value.kind() != NilKind &&
 		index > 0 &&
 		(index <= len(table.array) ||
@@ -877,7 +858,7 @@ func (table *Table) setIntegerUnresolved(
 			table.growArrayExact(target)
 			writeSlot(&table.array[index-1], value)
 			table.arrayUsed++
-			return true, true
+			return true
 		}
 		if table.admitsArrayInsert(index) {
 			return table.setArray(index, value)
@@ -897,18 +878,18 @@ func (table *Table) setIntegerUnresolved(
 			if value.kind() == NilKind {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
-				return true, true
+				return true
 			}
 			if rawSlotEqual(entry.value, value) {
-				return false, false
+				return false
 			}
 			writeSlot(&entry.value, value)
-			return false, true
+			return true
 		}
 	}
 
 	if value.kind() == NilKind {
-		return false, false
+		return false
 	}
 	if (index <= 0 || index > len(table.array)) &&
 		len(table.store.entries) != 0 {
@@ -936,7 +917,7 @@ func (table *Table) setIntegerUnresolved(
 		hash,
 		integerRecordClass(index),
 	)
-	return true, true
+	return true
 }
 
 func (table *Table) admitsArrayInsert(index int) bool {
@@ -1220,11 +1201,11 @@ func mustInsertTableRecord(
 	}
 }
 
-func (table *Table) setArray(index int, value slot) (structural, changed bool) {
+func (table *Table) setArray(index int, value slot) bool {
 	if index > len(table.array) {
 		table.growArrayWith(index, value)
 		table.arrayUsed++
-		return true, true
+		return true
 	}
 	current := table.array[index-1]
 	currentNil := current.kind() == NilKind
@@ -1232,21 +1213,21 @@ func (table *Table) setArray(index int, value slot) (structural, changed bool) {
 
 	switch {
 	case currentNil && valueNil:
-		return false, false
+		return false
 	case currentNil:
 		writeSlot(&table.array[index-1], value)
 		table.arrayUsed++
-		return true, true
+		return true
 	case valueNil:
 		table.array[index-1] = nilSlot
 		table.arrayUsed--
-		return true, true
+		return true
 	default:
 		if rawSlotEqual(current, value) {
-			return false, false
+			return false
 		}
 		writeSlot(&table.array[index-1], value)
-		return false, true
+		return true
 	}
 }
 

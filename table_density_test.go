@@ -483,7 +483,6 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	if !found {
 		t.Fatal("sparse key 5 was not in the record store")
 	}
-	version := table.structuralVersion
 	if err := table.RawSetInt(5, Number(2)); err != nil {
 		t.Fatal(err)
 	}
@@ -499,13 +498,6 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	}
 	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
 		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
-	}
-	if table.structuralVersion != version {
-		t.Fatalf(
-			"value update changed structural version from %d to %d",
-			version,
-			table.structuralVersion,
-		)
 	}
 	updatedIndex, found := table.store.find(
 		numberSlot(number),
@@ -749,7 +741,6 @@ func TestTableRedistribution(t *testing.T) {
 			)
 		}
 
-		version := table.structuralVersion
 		table.rawSetIntegerSlot(18, numberSlot(180))
 		if len(table.array) != 16 ||
 			table.arrayUsed != 11 ||
@@ -767,13 +758,6 @@ func TestTableRedistribution(t *testing.T) {
 				"record key 18 = (%v, %v); want (180, true)",
 				value.owningValue(),
 				found,
-			)
-		}
-		if table.structuralVersion != version+1 {
-			t.Fatalf(
-				"structural version = %d; want %d",
-				table.structuralVersion,
-				version+1,
 			)
 		}
 		assertTableStoreInvariant(t, &table.store)
@@ -821,7 +805,6 @@ func TestTableRedistribution(t *testing.T) {
 			)
 		}
 
-		version := table.structuralVersion
 		table.rawSetIntegerSlot(18, numberSlot(180))
 		if len(table.array) != 16 {
 			t.Fatalf("array length = %d; want 16", len(table.array))
@@ -864,15 +847,6 @@ func TestTableRedistribution(t *testing.T) {
 				)
 			}
 		}
-		// Inserting key 18 is the only logical structural change. Moving key 14
-		// between private storage lanes must not create another generation.
-		if table.structuralVersion != version+1 {
-			t.Fatalf(
-				"structural version = %d; want %d",
-				table.structuralVersion,
-				version+1,
-			)
-		}
 		assertTableStoreInvariant(t, &table.store)
 	})
 
@@ -901,7 +875,6 @@ func TestTableRedistribution(t *testing.T) {
 		}
 
 		table.absentMetamethods = ^uint32(0)
-		version := table.structuralVersion
 		const sparse = 50_000_000
 		table.rawSetIntegerSlot(sparse, numberSlot(500))
 		if len(table.array) != 1 ||
@@ -918,13 +891,6 @@ func TestTableRedistribution(t *testing.T) {
 				table.store.live,
 				len(table.store.entries),
 				table.store.dead,
-			)
-		}
-		if table.structuralVersion != version+1 {
-			t.Fatalf(
-				"structural version = %d; want %d",
-				table.structuralVersion,
-				version+1,
 			)
 		}
 		if table.absentMetamethods != ^uint32(0) {
@@ -959,7 +925,6 @@ func TestTableRedistribution(t *testing.T) {
 		for key := 2; key < 8; key++ {
 			table.rawSetIntegerSlot(key, nilSlot)
 		}
-		version := table.structuralVersion
 		if err := table.RawSetString("field", Number(9)); err != nil {
 			t.Fatal(err)
 		}
@@ -975,13 +940,6 @@ func TestTableRedistribution(t *testing.T) {
 				table.arrayUsed,
 				table.store.live,
 				len(table.store.entries),
-			)
-		}
-		if table.structuralVersion != version+1 {
-			t.Fatalf(
-				"structural version = %d; want %d",
-				table.structuralVersion,
-				version+1,
 			)
 		}
 		value, found := table.rawStringSlot("field")
