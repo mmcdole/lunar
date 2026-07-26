@@ -132,8 +132,12 @@ Files are organized by substantial runtime concepts:
   and cooperative context polling;
 - `library_base.go`, `library_load.go`, `library_coroutine.go`,
   `library_math.go`, `library_table.go`, `library_string.go`,
-  `library_string_format.go`, and `library_package.go`: the implemented Lua
-  5.1 runtime library surface using native frames. `library_base.go` also owns
+  `library_string_format.go`, `library_package.go`, `library_io.go`, and
+  `library_os.go`: the implemented Lua 5.1 runtime library surface using
+  native frames. `library_os_time.go` owns calendar conversion,
+  `os_date_format.go` owns deterministic C-locale date formatting, and the
+  build-constrained `os_clock_*.go` files read process CPU time.
+  `library_base.go` also owns
   the auxiliary layer shared by every library file, corresponding to PUC's
   `lauxlib` plus the runtime operations libraries need: argument coercion,
   positioned argument and general diagnostics, compact result publication,
@@ -1094,6 +1098,49 @@ ownership and wait-status design; no nonfunctional stub is published.
 Unlike an argument-stack bug in PUC Lua 5.1.5, explicit
 `io.lines(nil)` follows the documented optional-filename behavior and selects
 the default input just like an omitted argument.
+
+The operating-system library currently provides process CPU time, calendar
+formatting and conversion, time differences, environment lookup, filesystem
+removal and rename, deterministic locale selection, and secure temporary
+names. Environment names and paths preserve Lua 5.1's C-string boundary.
+Filesystem failures use the same `(nil, message, errno)` convention as IO;
+rename diagnostics identify the source path. `os.tmpname` securely creates
+and closes a unique file and leaves it present, matching the POSIX Lua 5.1
+implementation without using its race-prone name-only fallback.
+
+`Options.Location` gives each State its local timezone. Nil snapshots
+`time.Local` during `New`, so a later process-global change cannot silently
+change a live State. `Options.Now` optionally supplies wall time for
+deterministic or virtual-time embeddings; nil selects `time.Now`. Both
+`os.date` and `os.time` stay in compact values. A date table is populated
+directly in compact table storage, and `os.time` reads its seven inputs through
+ordinary indexing in Lua 5.1 order so `__index` remains observable.
+
+Calendar normalization uses a transition-aware local-time resolver. An
+explicit `isdst` selects the nearest matching zone offset, including
+non-hour transitions. With no hint, a repeated wall time selects its daylight
+occurrence and a missing wall time is interpreted with the nearest standard
+offset, matching the reference `mktime` behavior used for qualification.
+The State's local-zone choice is deterministic even though libc leaves these
+transition decisions platform-dependent.
+
+Date names and composite forms use a deterministic English C locale rather
+than process-global locale state. The formatter implements the ISO C and
+common POSIX/BSD conversion set, emits an unknown conversion byte literally,
+and checks the shared 1 GiB construction ceiling before extending its output.
+`os.setlocale` validates Lua 5.1's six category names but never mutates the
+host locale: queries and the `C`, `POSIX`, and empty requests resolve to `C`;
+unavailable locales return nil. This keeps number parsing and byte-string
+ordering consistent across States.
+
+`os.clock` reads user plus system process CPU through native Go system calls
+on Unix and Windows. It therefore measures the whole embedding process, as C
+`clock` does, rather than wall time or one State. Unsupported Go targets fall
+back to the runtime's estimated user, GC, and scavenging CPU metrics.
+`os.execute` and `os.exit` remain absent pending their separate process and
+host-exit contracts. In particular, an embedding library must not make
+`os.exit` unconditionally terminate its host, and future `io.popen` cleanup
+must distinguish an explicit wait from abandoned-resource termination.
 
 The remaining base entries are intentionally absent rather than partial
 stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate

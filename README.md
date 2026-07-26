@@ -56,8 +56,11 @@ pretend to implement the C `lua_State` ABI. Warmed scalar and sequence library
 calls and cached `require` calls allocate nothing. The explicit `io` library
 adds opaque managed files, State-local defaults, compact binary-safe reads,
 buffered writes, seeking, line iteration, and deterministic owned-resource
-cleanup. Process-backed `io.popen` and the remaining standard libraries are
-still under construction.
+cleanup. The explicit `os` library provides process CPU time, per-State
+calendar conversion and C-locale formatting, environment and filesystem
+operations, secure temporary names, and deterministic locale selection.
+`os.execute`, embedding-safe `os.exit`, process-backed `io.popen`, and the
+debug library remain under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order. Adapted reference algorithms retain their original permissive license
