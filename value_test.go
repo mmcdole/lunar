@@ -117,19 +117,99 @@ func TestFlatStringRepresentation(t *testing.T) {
 	if !rawSlotEqual(short, equal) {
 		t.Fatal("equal strings with different backing storage compared unequal")
 	}
-
-	hugeText := strings.Repeat("x", stringLengthSentinel)
-	huge := newStringRef(hugeText)
-	if encoded := int(
-		huge.bits >> stringLengthShift & stringLengthSentinel,
-	); encoded != stringLengthSentinel {
-		t.Fatalf("long string length tag = %d; want sentinel", encoded)
-	}
-	if huge.len() != len(hugeText) || huge.text() != hugeText {
-		t.Fatal("long string fallback did not preserve its contents")
-	}
 	runtime.KeepAlive(backing)
-	runtime.KeepAlive(hugeText)
+}
+
+func TestStringHashMatchesTextAndByteInputs(t *testing.T) {
+	for _, text := range []string{
+		"",
+		"destination",
+		string([]byte{0, 1, 0x7f, 0x80, 0xff}),
+		strings.Repeat("bounded-hash-", 128),
+	} {
+		fromText := hashString(text)
+		fromBytes := hashBytes([]byte(text))
+		if fromText == 0 || fromBytes == 0 {
+			t.Fatalf("zero hash for %d-byte string", len(text))
+		}
+		if fromText != fromBytes {
+			t.Fatalf(
+				"hash mismatch for %d-byte string: %08x != %08x",
+				len(text),
+				fromText,
+				fromBytes,
+			)
+		}
+	}
+	if hash := finalizeStringHash(0); hash == 0 {
+		t.Fatal("zero sampled hash was not normalized")
+	}
+}
+
+func TestFlatStringLengthBoundarySurvivesGC(t *testing.T) {
+	const testHash stringHash = 17
+
+	tests := []struct {
+		name        string
+		length      int
+		wantEncoded int
+		wantFlat    bool
+	}{
+		{
+			name:        "largest flat string",
+			length:      stringLengthSentinel - 1,
+			wantEncoded: stringLengthSentinel - 1,
+			wantFlat:    true,
+		},
+		{
+			name:        "sentinel",
+			length:      stringLengthSentinel,
+			wantEncoded: stringLengthSentinel,
+		},
+		{
+			name:        "above sentinel",
+			length:      stringLengthSentinel + 1,
+			wantEncoded: stringLengthSentinel,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			text := strings.Repeat("x", test.length)
+			reference := newHashedStringRef(text, testHash)
+			encoded := int(
+				reference.bits >> stringLengthShift &
+					stringLengthSentinel,
+			)
+			if encoded != test.wantEncoded {
+				t.Fatalf(
+					"encoded length = %d, want %d",
+					encoded,
+					test.wantEncoded,
+				)
+			}
+			if flat := reference.ref ==
+				unsafe.Pointer(unsafe.StringData(text)); flat != test.wantFlat {
+				t.Fatalf("flat storage = %v, want %v", flat, test.wantFlat)
+			}
+			if reference.len() != len(text) || reference.text() != text {
+				t.Fatal("string boundary representation changed its contents")
+			}
+
+			// The reference is the only surviving owner of the bytes. Both
+			// the interior-pointer and long-string forms must keep them live.
+			text = ""
+			for range 3 {
+				runtime.GC()
+			}
+			retained := reference.text()
+			if len(retained) != test.length ||
+				retained[0] != 'x' ||
+				retained[len(retained)-1] != 'x' {
+				t.Fatal("string boundary representation lost its backing")
+			}
+			runtime.KeepAlive(reference)
+		})
+	}
 }
 
 func TestFlatStringSurvivesGCStateCloseAndCrossState(t *testing.T) {

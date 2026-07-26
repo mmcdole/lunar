@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"unsafe"
@@ -181,6 +182,73 @@ return first(), second(), -0.0
 		state.String("shared\000value"),
 		Number(math.Copysign(0, -1)),
 	)
+}
+
+func TestCompiledAndDecodedStringsSurviveInputCollection(t *testing.T) {
+	want := strings.Repeat("input-owned-", 256)
+	compiled := func() *Prototype {
+		source := `return "` + want + `"`
+		prototype, err := Compile("@collected-source.lua", source)
+		if err != nil {
+			t.Fatalf("compile prototype: %v", err)
+		}
+		return prototype
+	}()
+
+	for range 3 {
+		runtime.GC()
+	}
+	if _, err := dumpPrototype(compiled); err != nil {
+		t.Fatalf("dump compiled prototype after GC: %v", err)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	execute := func(label string, prototype *Prototype) {
+		t.Helper()
+		function, err := state.LoadPrototype(prototype)
+		if err != nil {
+			t.Fatalf("%s load: %v", label, err)
+		}
+		results, err := state.Call(function.Value())
+		if err != nil {
+			t.Fatalf("%s call: %v", label, err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("%s result count = %d, want 1", label, len(results))
+		}
+		if got, ok := results[0].AsString(); !ok || got != want {
+			t.Fatalf("%s result = (%q, %v)", label, got, ok)
+		}
+	}
+	execute("compiled", compiled)
+
+	decoded := func(prototype *Prototype) *Prototype {
+		encoded, err := dumpPrototype(prototype)
+		if err != nil {
+			t.Fatalf("encode chunk fixture: %v", err)
+		}
+		decoded, err := decodeChunkForTest(
+			"@collected-input.luac",
+			encoded,
+		)
+		if err != nil {
+			t.Fatalf("decode chunk fixture: %v", err)
+		}
+		return decoded
+	}(compiled)
+	compiled = nil
+
+	for range 3 {
+		runtime.GC()
+	}
+	if _, err := dumpPrototype(decoded); err != nil {
+		t.Fatalf("dump decoded prototype after GC: %v", err)
+	}
+	execute("decoded", decoded)
 }
 
 func TestDecodeBinaryChunkAcceptsPUC51Output(t *testing.T) {

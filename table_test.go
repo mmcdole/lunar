@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -280,6 +282,104 @@ func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 	if text, ok := got.AsString(); !ok || text != "identity" {
 		t.Fatalf("reference-key lookup = %v", got)
 	}
+}
+
+func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("dynamic flat key", func(t *testing.T) {
+		keyText := strings.Repeat("dynamic-key-", 16)
+		key := state.String(keyText)
+		if stringSlotLen(slotFromValue(key)) <= shortStringLimit {
+			t.Fatal("test key unexpectedly entered the short-string cache")
+		}
+		if err := table.RawSet(key, state.String("dynamic")); err != nil {
+			t.Fatal(err)
+		}
+
+		key = Value{}
+		keyText = ""
+		for range 3 {
+			runtime.GC()
+		}
+
+		lookup := state.String(strings.Repeat("dynamic-key-", 16))
+		got, err := table.RawGet(lookup)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if text, ok := got.AsString(); !ok || text != "dynamic" {
+			t.Fatalf("dynamic-key lookup = %v", got)
+		}
+	})
+
+	t.Run("long key with hash collision", func(t *testing.T) {
+		const collisionHash stringHash = 29
+
+		longText := strings.Repeat("l", stringLengthSentinel)
+		longKey := stringValue(newHashedStringRef(
+			longText,
+			collisionHash,
+		))
+		shortKey := stringValue(newHashedStringRef(
+			"short collision",
+			collisionHash,
+		))
+		if rawEqual(longKey, shortKey) {
+			t.Fatal("unequal strings with the same hash compared equal")
+		}
+		equalLong := stringValue(newHashedStringRef(
+			strings.Clone(longText),
+			collisionHash,
+		))
+		if !rawEqual(longKey, equalLong) {
+			t.Fatal("equal long strings with different backing compared unequal")
+		}
+		if err := table.RawSet(longKey, Number(1)); err != nil {
+			t.Fatal(err)
+		}
+		if err := table.RawSet(shortKey, Number(2)); err != nil {
+			t.Fatal(err)
+		}
+
+		equalLong = Value{}
+		longKey = Value{}
+		shortKey = Value{}
+		longText = ""
+		for range 3 {
+			runtime.GC()
+		}
+
+		equalLong = stringValue(newHashedStringRef(
+			strings.Repeat("l", stringLengthSentinel),
+			collisionHash,
+		))
+		got, err := table.RawGet(equalLong)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if number, ok := got.AsNumber(); !ok || number != 1 {
+			t.Fatalf("long-key lookup = %v, want 1", got)
+		}
+		got, err = table.RawGet(stringValue(newHashedStringRef(
+			"short collision",
+			collisionHash,
+		)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if number, ok := got.AsNumber(); !ok || number != 2 {
+			t.Fatalf("colliding short-key lookup = %v, want 2", got)
+		}
+	})
 }
 
 func TestTableMutationBookkeepingAndMetamethodCache(t *testing.T) {
@@ -685,4 +785,116 @@ func BenchmarkTableRawString(b *testing.B) {
 		}
 		runtime.KeepAlive(table.RawGetString("field"))
 	}
+}
+
+func BenchmarkTableStringMap(b *testing.B) {
+	families := []struct {
+		name   string
+		prefix string
+	}{
+		{name: "decimal"},
+		{name: "field", prefix: "record_field_"},
+	}
+	for _, family := range families {
+		for _, count := range []int{4, 16, 64, 256, 1_024, 5_000} {
+			keys := make([]string, count)
+			missing := make([]string, count)
+			for index := range keys {
+				suffix := strconv.Itoa(index)
+				keys[index] = family.prefix + suffix
+				missing[index] = family.prefix + "missing_" + suffix
+			}
+			name := family.name + "/" + strconv.Itoa(count)
+			b.Run(name+"/hit", func(b *testing.B) {
+				state, table := benchmarkStringTable(b, keys)
+				defer state.Close()
+				b.ReportAllocs()
+				b.ResetTimer()
+				for index := range b.N {
+					runtime.KeepAlive(
+						table.RawGetString(keys[index%count]),
+					)
+				}
+			})
+			b.Run(name+"/miss", func(b *testing.B) {
+				state, table := benchmarkStringTable(b, keys)
+				defer state.Close()
+				b.ReportAllocs()
+				b.ResetTimer()
+				for index := range b.N {
+					runtime.KeepAlive(
+						table.RawGetString(missing[index%count]),
+					)
+				}
+			})
+			b.Run(name+"/churn", func(b *testing.B) {
+				state, table := benchmarkStringTable(b, keys)
+				defer state.Close()
+				b.ReportAllocs()
+				b.ResetTimer()
+				for index := range b.N {
+					key := keys[index%count]
+					if err := table.RawSetString(key, Nil()); err != nil {
+						b.Fatal(err)
+					}
+					if err := table.RawSetString(
+						key,
+						Number(float64(index)),
+					); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+			b.Run(name+"/build", func(b *testing.B) {
+				state, err := New(Options{})
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer state.Close()
+				b.ReportAllocs()
+				b.ReportMetric(float64(count), "keys/op")
+				for range b.N {
+					table, err := state.NewTable(0, count)
+					if err != nil {
+						b.Fatal(err)
+					}
+					for index, key := range keys {
+						if err := table.RawSetString(
+							key,
+							Number(float64(index)),
+						); err != nil {
+							b.Fatal(err)
+						}
+					}
+					runtime.KeepAlive(table)
+				}
+			})
+		}
+	}
+}
+
+func benchmarkStringTable(
+	b *testing.B,
+	keys []string,
+) (*State, *Table) {
+	b.Helper()
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	table, err := state.NewTable(0, len(keys))
+	if err != nil {
+		state.Close()
+		b.Fatal(err)
+	}
+	for index, key := range keys {
+		if err := table.RawSetString(
+			key,
+			Number(float64(index)),
+		); err != nil {
+			state.Close()
+			b.Fatal(err)
+		}
+	}
+	return state, table
 }
