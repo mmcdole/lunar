@@ -185,7 +185,7 @@ func (value Value) AsString() (string, bool) {
 	if value.Kind() != StringKind {
 		return "", false
 	}
-	return (*luaString)(value.ref).text, true
+	return stringSlotText(slotFromValue(value)), true
 }
 
 // Table returns the canonical table and whether value is a table.
@@ -362,10 +362,11 @@ func rawEqual(left, right Value) bool {
 		rightNumber, _ := right.AsNumber()
 		return leftNumber == rightNumber
 	case StringKind:
-		leftString := (*luaString)(left.ref)
-		rightString := (*luaString)(right.ref)
-		return leftString == rightString ||
-			leftString.hash == rightString.hash && leftString.text == rightString.text
+		leftSlot := slotFromValue(left)
+		rightSlot := slotFromValue(right)
+		return left.ref == right.ref && left.bits == right.bits ||
+			stringSlotHash(leftSlot) == stringSlotHash(rightSlot) &&
+				stringSlotText(leftSlot) == stringSlotText(rightSlot)
 	default:
 		return left.ref == right.ref
 	}
@@ -386,9 +387,8 @@ func rawSlotEqual(left, right slot) bool {
 	}
 	switch kind {
 	case StringKind:
-		leftString := (*luaString)(left.ref)
-		rightString := (*luaString)(right.ref)
-		return leftString.hash == rightString.hash && leftString.text == rightString.text
+		return stringSlotHash(left) == stringSlotHash(right) &&
+			stringSlotText(left) == stringSlotText(right)
 	case NilKind, BoolKind, FunctionKind, UserDataKind, ThreadKind, TableKind:
 		return left.ref == right.ref
 	default:

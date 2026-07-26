@@ -135,7 +135,7 @@ func (writer *chunkWriter) writeConstant(value slot) {
 		writer.writeUint64(value.bits)
 	case StringKind:
 		writer.writeByte(4)
-		writer.writeString((*luaString)(value.ref))
+		writer.writeStringText(stringSlotText(value))
 	default:
 		writer.fail(fmt.Errorf(
 			"lua: cannot dump %s prototype constant",
@@ -175,8 +175,12 @@ func (writer *chunkWriter) writeString(value *luaString) {
 		writer.writeSize(0)
 		return
 	}
-	writer.writeSize(uint64(len(value.text)) + 1)
-	writer.writeText(value.text)
+	writer.writeStringText(value.text)
+}
+
+func (writer *chunkWriter) writeStringText(text string) {
+	writer.writeSize(uint64(len(text)) + 1)
+	writer.writeText(text)
 	writer.writeByte(0)
 }
 

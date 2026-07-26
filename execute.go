@@ -501,9 +501,7 @@ dispatch:
 			case StringKind:
 				writeSlot(
 					&values[base+current.a()],
-					numberSlot(float64(
-						len((*luaString)(source.ref).text),
-					)),
+					numberSlot(float64(len(stringSlotText(source)))),
 				)
 			case TableKind:
 				writeTableLength(

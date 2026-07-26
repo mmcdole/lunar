@@ -180,7 +180,7 @@ func writeFileArguments(
 				return ioFailureResult(frame, err)
 			}
 		case StringKind:
-			text := (*luaString)(value.ref).text
+			text := stringSlotText(value)
 			if err := writeFileString(handle.output, text); err != nil {
 				return ioFailureResult(frame, err)
 			}

@@ -460,8 +460,8 @@ func stringGMatch(frame Frame) Outcome {
 // Lua 5.1's gmatch never strips an anchor.
 func gmatchStep(frame Frame) Outcome {
 	captures := frame.activation().function.nativeBodyUnchecked().captures
-	subject := (*luaString)(captures[gmatchSubject].ref).text
-	pattern := (*luaString)(captures[gmatchPattern].ref).text
+	subject := stringSlotText(captures[gmatchSubject])
+	pattern := stringSlotText(captures[gmatchPattern])
 	offset := int(math.Float64frombits(captures[gmatchOffset].bits))
 	if offset > len(subject) {
 		return frame.Return()
@@ -672,7 +672,7 @@ func (frame Frame) appendResolved(
 	}
 	switch result.kind() {
 	case StringKind:
-		built.WriteString((*luaString)(result.ref).text)
+		built.WriteString(stringSlotText(result))
 		return nil
 	case NumberKind:
 		var scratch [32]byte

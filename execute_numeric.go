@@ -220,8 +220,8 @@ func slowOrder(
 		)
 	}
 	if leftKind == StringKind {
-		leftText := (*luaString)(left.ref).text
-		rightText := (*luaString)(right.ref).text
+		leftText := stringSlotText(left)
+		rightText := stringSlotText(right)
 		result := leftText < rightText
 		if code.opcode() == opLessEqual {
 			result = leftText <= rightText

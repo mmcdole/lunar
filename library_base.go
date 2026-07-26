@@ -487,7 +487,7 @@ func baseSelect(frame Frame) Outcome {
 	count := frame.ArgumentCount()
 	selector, present := frame.argument(0)
 	if selector.kind() == StringKind {
-		text := (*luaString)(selector.ref).text
+		text := stringSlotText(selector)
 		if len(text) != 0 && text[0] == '#' {
 			return frame.ReturnNumber(float64(count - 1))
 		}
@@ -788,7 +788,7 @@ func (frame Frame) textArgument(index int) (string, bool) {
 func compactText(value slot) (string, bool) {
 	switch value.kind() {
 	case StringKind:
-		return (*luaString)(value.ref).text, true
+		return stringSlotText(value), true
 	case NumberKind:
 		var buffer [32]byte
 		return string(appendLuaNumber(
@@ -1075,8 +1075,7 @@ func (frame Frame) lessThan(left, right slot) (bool, *Error) {
 		return math.Float64frombits(left.bits) <
 			math.Float64frombits(right.bits), nil
 	case StringKind:
-		return (*luaString)(left.ref).text <
-			(*luaString)(right.ref).text, nil
+		return stringSlotText(left) < stringSlotText(right), nil
 	}
 
 	method, found := matchingMetamethod(

@@ -29,7 +29,7 @@ func slowLength(
 	case StringKind:
 		writeSlot(
 			&thread.values[base+code.a()],
-			numberSlot(float64(len((*luaString)(source.ref).text))),
+			numberSlot(float64(len(stringSlotText(source)))),
 		)
 		return nil
 	case TableKind:
@@ -180,7 +180,7 @@ func concatDirectValues(
 			allStrings = false
 			break
 		}
-		if len((*luaString)(value.ref).text) != 0 {
+		if len(stringSlotText(value)) != 0 {
 			if onlyText >= 0 {
 				allStrings = false
 				break
@@ -206,7 +206,7 @@ func concatDirectValues(
 			)
 			length = len(formatted)
 		} else {
-			length = len((*luaString)(value.ref).text)
+			length = len(stringSlotText(value))
 		}
 		if length > int(^uint(0)>>1)-total {
 			return nilSlot, true
@@ -224,7 +224,7 @@ func concatDirectValues(
 			)
 			_, _ = builder.Write(formatted)
 		} else {
-			builder.WriteString((*luaString)(value.ref).text)
+			builder.WriteString(stringSlotText(value))
 		}
 	}
 	return stringSlot(thread.owner.strings.make(builder.String())), false

@@ -87,7 +87,7 @@ func tableConcat(frame Frame) Outcome {
 		value.kind() != NilKind {
 		switch value.kind() {
 		case StringKind:
-			separatorString = (*luaString)(value.ref).text
+			separatorString = stringSlotText(value)
 		case NumberKind:
 			separatorBytes = appendLuaNumber(
 				separatorNumber[:0],
@@ -131,7 +131,7 @@ func tableConcat(frame Frame) Outcome {
 		length := 0
 		switch element.kind() {
 		case StringKind:
-			length = len((*luaString)(element.ref).text)
+			length = len(stringSlotText(element))
 		case NumberKind:
 			length = len(appendLuaNumber(
 				numberBuffer[:0],
@@ -170,7 +170,7 @@ func tableConcat(frame Frame) Outcome {
 	for index := first; ; index++ {
 		element, _ := target.rawIntSlot(index)
 		if element.kind() == StringKind {
-			builder.WriteString((*luaString)(element.ref).text)
+			builder.WriteString(stringSlotText(element))
 		} else {
 			formatted := appendLuaNumber(
 				numberBuffer[:0],

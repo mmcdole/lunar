@@ -348,7 +348,7 @@ func normalizeTableKey(
 			hash = hashNumber(number)
 		}
 	case StringKind:
-		hash = (*luaString)(normalized.ref).hash
+		hash = stringSlotHash(normalized)
 	default:
 		hash = hashReference(normalized)
 	}
@@ -877,7 +877,7 @@ func (store *tableStore) findString(text string, hash uint64) (int, bool) {
 			if entry.hash != hash || entry.key.kind() != StringKind {
 				continue
 			}
-			if (*luaString)(entry.key.ref).text == text {
+			if stringSlotText(entry.key) == text {
 				return index, true
 			}
 		}
@@ -1071,7 +1071,7 @@ func hashTableKey(key slot) (uint64, error) {
 		}
 		return hashNumber(number), nil
 	case StringKind:
-		return (*luaString)(key.ref).hash, nil
+		return stringSlotHash(key), nil
 	default:
 		return hashReference(key), nil
 	}
@@ -1101,7 +1101,7 @@ func hashReference(value slot) uint64 {
 		}
 		return 0x8a5cd789635d2dff
 	case StringKind:
-		return (*luaString)(value.ref).hash
+		return stringSlotHash(value)
 	default:
 		return mixHash(uint64(uintptr(value.ref)))
 	}

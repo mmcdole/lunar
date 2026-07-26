@@ -164,7 +164,7 @@ func (frame Frame) String(index int) (string, bool) {
 	if !present || value.kind() != StringKind {
 		return "", false
 	}
-	return (*luaString)(value.ref).text, true
+	return stringSlotText(value), true
 }
 
 // Table returns argument index and whether it is exactly a Lua table.

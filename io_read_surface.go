@@ -181,7 +181,7 @@ func parseIOReadFormat(
 			count: uint64(count),
 		}, Outcome{}, false
 	case StringKind:
-		text := (*luaString)(format.ref).text
+		text := stringSlotText(format)
 		if len(text) == 0 || text[0] != '*' {
 			return ioReadFormat{},
 				baseArgumentError(

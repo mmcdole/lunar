@@ -134,7 +134,7 @@ func (prototype *Prototype) describeOperand(
 	case opGetGlobal:
 		value := prototype.constants[producer.bx()]
 		return "global",
-			diagnosticName((*luaString)(value.ref).text),
+			diagnosticName(stringSlotText(value)),
 			true
 	case opGetUpvalue:
 		index := producer.b()
@@ -185,7 +185,7 @@ func (prototype *Prototype) constantOperandName(operand int) string {
 	if value.kind() != StringKind {
 		return "?"
 	}
-	return diagnosticName((*luaString)(value.ref).text)
+	return diagnosticName(stringSlotText(value))
 }
 
 func diagnosticName(name string) string {

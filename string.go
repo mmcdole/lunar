@@ -133,6 +133,20 @@ func newHashedString(text string, hash uint64) *luaString {
 	}
 }
 
+func stringSlotText(value slot) string {
+	if value.kind() != StringKind {
+		panic("lua: compact value is not a string")
+	}
+	return (*luaString)(value.ref).text
+}
+
+func stringSlotHash(value slot) uint64 {
+	if value.kind() != StringKind {
+		panic("lua: compact value is not a string")
+	}
+	return (*luaString)(value.ref).hash
+}
+
 // stringFromOwnedBytes transfers an exact byte buffer into immutable string
 // storage without copying it. The caller must not retain or mutate bytes after
 // this call.

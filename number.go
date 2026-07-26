@@ -50,7 +50,7 @@ func slotToNumber(value slot) (float64, bool) {
 	if value.kind() != StringKind {
 		return 0, false
 	}
-	return parseLuaNumber((*luaString)(value.ref).text)
+	return parseLuaNumber(stringSlotText(value))
 }
 
 func appendLuaNumber(destination []byte, number float64) []byte {

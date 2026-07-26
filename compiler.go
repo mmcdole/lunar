@@ -180,7 +180,7 @@ func (function *functionState) constant(
 		)
 	}
 	if value.kind() == StringKind {
-		text := (*luaString)(value.ref).text
+		text := stringSlotText(value)
 		value = prototypeStringSlot(function.unit.internBorrowed(text))
 	}
 	if index, exists := function.constantIndexes[value]; exists {
