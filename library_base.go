@@ -11,9 +11,13 @@ var baseLibraryFunctions = [...]struct {
 	entry NativeFunc
 }{
 	{name: "assert", entry: baseAssert},
+	{name: "dofile", entry: baseDoFile},
 	{name: "error", entry: baseError},
 	{name: "getfenv", entry: baseGetEnvironment},
 	{name: "getmetatable", entry: baseGetMetatable},
+	{name: "load", entry: baseLoad},
+	{name: "loadfile", entry: baseLoadFile},
+	{name: "loadstring", entry: baseLoadString},
 	{name: "next", entry: baseNext},
 	{name: "pcall", entry: basePCall},
 	{name: "rawequal", entry: baseRawEqual},
@@ -31,7 +35,7 @@ var baseLibraryFunctions = [...]struct {
 
 // OpenBase installs the implemented Lua 5.1 base-library globals.
 //
-// The file, garbage-collection, output, and newproxy entries are still under
+// The garbage-collection, output, and newproxy entries are still under
 // construction. Opening is explicit: New returns an empty State. Calling
 // OpenBase again replaces every installed function and the coroutine table
 // with fresh canonical objects and restores _G and _VERSION.

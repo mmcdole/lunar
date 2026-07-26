@@ -113,8 +113,12 @@ Files are organized by substantial runtime concepts:
   a borrowed Frame;
 - `protected.go`: metadata-only protected checkpoints, live-stack error
   handlers, emergency quota headroom, and compact result publication;
-- `load.go`: bounded sequential input, public source or binary loading, and
-  State-bound Function construction;
+- `load.go`: bounded sequential input, immutable refill windows, source or
+  binary selection, the fixed-string fast path, and State-bound Function
+  construction;
+- `load_reader.go`: streaming Reader and file adapters, reader-error
+  preservation, interpreter-line handling, and the public `Load`,
+  `LoadContext`, `LoadFile`, and `LoadFileContext` boundaries;
 - `invoke.go`: protected main-Thread calls and owning or caller-supplied result
   egress;
 - `coroutine.go`: canonical Thread construction, compact resume transfer,
@@ -123,15 +127,16 @@ Files are organized by substantial runtime concepts:
   cancellation failures;
 - `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
   and cooperative context polling;
-- `library_base.go`, `library_coroutine.go`, `library_math.go`,
-  `library_table.go`, `library_string.go`, and
+- `library_base.go`, `library_load.go`, `library_coroutine.go`,
+  `library_math.go`, `library_table.go`, `library_string.go`, and
   `library_string_format.go`: the implemented Lua 5.1 runtime library surface
   using native frames. `library_base.go` also owns the auxiliary layer shared
   by every library file, corresponding to PUC's `lauxlib` plus the runtime
   operations libraries need: argument coercion, positioned argument and
   general diagnostics, compact result publication, reentrant compact calls,
-  ordinary indexing, and less-than. Later `library_*.go` files add the
-  remaining standard libraries.
+  ordinary indexing, and less-than. `library_load.go` owns the Lua-visible
+  source readers and file-loading boundaries. Later `library_*.go` files add
+  the remaining standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -854,10 +859,11 @@ when it reaches its requested call depth, yields, or fails.
 
 ## Loading and binary chunks
 
-`LoadString` recognizes Lua's binary signature and otherwise compiles source.
-`Compile` deliberately remains the State-neutral source-only operation. Both
-loading paths publish the same immutable, verified `Prototype`; loading that
-Prototype creates a new Function in the active Thread's global environment.
+`LoadString`, `Load`, and `LoadFile` recognize Lua's binary signature and
+otherwise compile source. `Compile` deliberately remains the State-neutral
+source-only operation. Every loading path publishes the same immutable,
+verified `Prototype`; loading that Prototype creates a new Function in the
+executing Thread's global environment without executing it.
 
 Binary chunks use Lua 5.1's native format. The decoder requires the current
 endianness, `size_t`, instruction, and double layout, then validates the entire
@@ -890,6 +896,29 @@ in one input piece borrows that piece, while decoded text or text spanning
 pieces receives owned storage. Before an early compiler return, the lexer
 commits its consumed prefix so load limits and pending input failures observe
 the actual read position.
+
+The Reader adapter reuses one read buffer and copies each nonempty result into
+an immutable string piece. A span contained in one piece can borrow that
+storage; a span crossing pieces receives exact owned storage. `Load` never
+closes its caller-owned Reader. Bytes returned together with an error are
+consumed first, exact `io.EOF` ends the input, and every other error—including
+a wrapped `io.EOF`—is returned with its original identity. Repeated empty
+reads eventually produce `io.ErrNoProgress`.
+
+`LoadFile` opens and closes the named file and records its source as `@path`.
+As in Lua 5.1, a first line beginning with `#` is ignored. Text receives a
+synthetic newline so diagnostics retain their physical line numbers; a binary
+signature immediately after that line is exposed without the newline. The
+skipped bytes still count toward `MaxLoadBytes`. Open and read errors identify
+the file and retain their underlying cause through `errors.Is` and
+`errors.As`.
+
+`LoadStringContext`, `LoadContext`, and `LoadFileContext` apply a context to
+compilation or binary decoding only. They reject a nil context, poll before
+input and at bounded byte intervals, and never retain the context in the
+resulting Function. An ordinary non-binary `LoadString` instead charges the
+already-materialized source once and scans it through the direct fixed-string
+path.
 
 ## Standard libraries
 
@@ -928,16 +957,16 @@ distinct bad-self message. The name and category come from the same verified
 bytecode tracing the executor uses for runtime type errors; no provenance is
 stored in the hot representation.
 
-The host-independent base surface currently includes `assert`, `error`,
-`getfenv`, `setfenv`, `getmetatable`, `setmetatable`, `rawequal`, `rawget`,
-`rawset`, `type`, `next`, `pairs`, `ipairs`, `select`, `unpack`, `tonumber`,
-`tostring`, `pcall`, and `xpcall`. Raw operations and iterators stay in
-compact slots and do not consult metamethods. `pairs` and `ipairs` capture
-private canonical iterators, so replacing global `next` cannot change an
-existing iterator and the private `pairs` generator remains distinct from
-that global Function. `error`, `getfenv`, and `setfenv` resolve physical
-activations and elided tail-call levels through one cold stack walker; no
-debugging data is added to activation records. `error` preserves arbitrary
+The base surface currently includes `assert`, `dofile`, `error`, `getfenv`,
+`setfenv`, `getmetatable`, `setmetatable`, `load`, `loadfile`, `loadstring`,
+`rawequal`, `rawget`, `rawset`, `type`, `next`, `pairs`, `ipairs`, `select`,
+`unpack`, `tonumber`, `tostring`, `pcall`, and `xpcall`. Raw operations and
+iterators stay in compact slots and do not consult metamethods. `pairs` and
+`ipairs` capture private canonical iterators, so replacing global `next`
+cannot change an existing iterator and the private `pairs` generator remains
+distinct from that global Function. `error`, `getfenv`, and `setfenv` resolve
+physical activations and elided tail-call levels through one cold stack walker;
+no debugging data is added to activation records. `error` preserves arbitrary
 Lua values, including nil.
 
 Base-10 `tonumber` uses the runtime's deterministic numeric grammar. Explicit
@@ -948,11 +977,24 @@ Primitive numeric `tostring` formats into a stack buffer and probes the
 runtime string pool by bytes; a recurring warm result does not allocate a
 temporary Go string.
 
+The four Lua-visible loaders share the same bounded source/binary pipeline as
+the Go API. `load` calls its reader through the compact nested-call seam and
+preserves arbitrary Lua error values; `loadstring` scans its fixed source
+directly when no active context requires bounded polling. `loadfile` returns a
+Function or nil plus a diagnostic, while `dofile` raises load failures,
+executes the Function, and transfers all of its results directly from the
+compact scratch call into the caller's requested result window. None of these
+paths constructs an intermediate slice of owning `Value` objects. A
+context-aware outer call is inherited from `Frame.Context`; cancellation is a
+host `ContextError`, not a `(nil, message)` load result.
+
+`loadfile` and `dofile` use the process filesystem and use `os.Stdin` when
+called without a filename. They apply the same leading-`#` file rule as
+`State.LoadFile`. Every loaded closure binds to the executing Thread's global
+environment, not to a caller Function's private environment.
+
 The remaining base entries are intentionally absent rather than partial
-stubs. Binary loading is the verified inverse of `string.dump`; refillable
-source compilation and the Lua-visible `load`, `loadstring`, and `dofile`
-boundaries remain. New closures bind to the executing Thread environment.
-File and output functions require an explicit per-State host-I/O policy.
+stubs. Output functions require an explicit per-State host-I/O policy.
 `collectgarbage`, `gcinfo`, and `newproxy` require deliberate State-local GC,
 weak-reference, and finalizer semantics rather than process-wide Go GC shims.
 

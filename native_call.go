@@ -53,6 +53,105 @@ func (frame Frame) callCompactOne(
 	return nilSlot, failure
 }
 
+// callCompactAllAndReturn invokes callable with compact arguments and returns
+// every result directly from the current native activation. It is the
+// allocation-free lua_call(..., LUA_MULTRET) seam used by library functions
+// such as dofile.
+func (frame Frame) callCompactAllAndReturn(
+	callable slot,
+	arguments []slot,
+) Outcome {
+	thread := frame.thread
+	checkpoint := captureExecutionCheckpoint(frame)
+	restored := false
+	defer func() {
+		if !restored {
+			checkpoint.restore(thread, true)
+		}
+	}()
+
+	resultBase, failure := startNestedCall(
+		thread,
+		callable,
+		callArguments{compact: arguments},
+		allResults,
+	)
+	if failure == nil {
+		result := driveExecution(thread, checkpoint.frameDepth)
+		switch result.kind {
+		case executionReturned:
+			if len(thread.frames) != checkpoint.frameDepth ||
+				len(thread.continuations) != checkpoint.continuationDepth ||
+				thread.top < resultBase {
+				panic("lua: compact call returned invalid execution state")
+			}
+			resultCount := thread.top - resultBase
+			previousExtent := checkpoint.restore(thread, false)
+			restored = true
+			return frame.returnScratchValues(
+				resultBase,
+				resultCount,
+				checkpoint.liveExtent,
+				previousExtent,
+			)
+		case executionFailed:
+			if result.err == nil {
+				panic("lua: compact call failed without an error")
+			}
+			failure = result.err
+			snapshotExecutionFailure(
+				thread,
+				checkpoint.frameDepth,
+				failure,
+			)
+		default:
+			panic("lua: compact call produced an invalid execution result")
+		}
+	}
+	checkpoint.restore(thread, true)
+	restored = true
+	return frame.sealError(failure)
+}
+
+func (frame Frame) returnScratchValues(
+	firstResult int,
+	resultCount int,
+	scratchBase int,
+	previousExtent int,
+) Outcome {
+	call := frame.activation()
+	if resultCount < 0 {
+		frame.thread.clearInactive(scratchBase, previousExtent)
+		return frame.sealError(newResourceError("value stack index overflow"))
+	}
+	outputCount, failure := frame.prepareResults(call, resultCount)
+	if failure != nil {
+		frame.thread.clearInactive(scratchBase, previousExtent)
+		return frame.sealError(failure)
+	}
+
+	resultBase := int(call.resultBase)
+	copied := resultCount
+	if copied > outputCount {
+		copied = outputCount
+	}
+	copy(
+		frame.thread.values[resultBase:resultBase+copied],
+		frame.thread.values[firstResult:firstResult+copied],
+	)
+	frame.thread.fillNil(
+		resultBase+copied,
+		resultBase+outputCount,
+	)
+
+	clearFrom := scratchBase
+	if resultEnd := resultBase + outputCount; resultEnd > clearFrom {
+		clearFrom = resultEnd
+	}
+	frame.thread.clearInactive(clearFrom, previousExtent)
+	return frame.sealReturn(outputCount)
+}
+
 // Index applies ordinary Lua indexing from a native callback.
 //
 // A raw table hit returns directly. Otherwise Index follows the bounded

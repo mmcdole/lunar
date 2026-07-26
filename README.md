@@ -39,9 +39,15 @@ context across suspension. The explicitly opened `math`, `table`, and
 `string` libraries provide the Lua 5.1 surfaces over compact scalar arguments
 and raw storage. This includes PUC-compatible table sorting, byte-oriented
 patterns and formatting, reentrant replacement callbacks, and native Lua 5.1
-binary chunks loaded by `LoadString` or produced by `string.dump`; warmed
-scalar and sequence calls allocate nothing. The remaining standard libraries
-are still under construction.
+binary chunks produced by `string.dump`. Source or binary chunks can be loaded
+from fixed strings, `io.Reader` streams, or files through `LoadString`, `Load`,
+and `LoadFile`, with context-aware variants. Fixed source strings scan
+directly; streamed input is consumed as immutable pieces and preserves reader
+error identity. The base library exposes Lua 5.1's `load`, `loadstring`,
+`loadfile`, and `dofile`; file loading honors a leading interpreter line, and
+`dofile` returns all chunk results through the compact stack. Warmed scalar and
+sequence library calls allocate nothing. The remaining standard libraries are
+still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order. Adapted reference algorithms retain their original permissive license

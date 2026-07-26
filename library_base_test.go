@@ -36,10 +36,14 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 
 	baseFunctions := []string{
 		"assert",
+		"dofile",
 		"error",
 		"getfenv",
 		"getmetatable",
 		"ipairs",
+		"load",
+		"loadfile",
+		"loadstring",
 		"next",
 		"pairs",
 		"pcall",
@@ -1177,11 +1181,13 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 		[]lua51Case,
 		0,
 		len(baseLibraryLua51Cases)+
+			len(loadLibraryLua51Cases)+
 			len(mathLibraryLua51Cases)+
 			len(tableLibraryLua51Cases)+
 			len(stringLibraryLua51Cases),
 	)
 	cases = append(cases, baseLibraryLua51Cases...)
+	cases = append(cases, loadLibraryLua51Cases...)
 	cases = append(cases, mathLibraryLua51Cases...)
 	cases = append(cases, tableLibraryLua51Cases...)
 	cases = append(cases, stringLibraryLua51Cases...)
