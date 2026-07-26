@@ -39,7 +39,9 @@ methods, and protected calls returning owned result slices.
 The low-level interface currently includes:
 
 - `Frame` for direct typed callback arguments and results;
-- `CallInto` for caller-owned result storage.
+- `CallInto` for caller-owned result storage; and
+- `Frame.Index` for ordinary Lua indexing, including a bounded `__index`
+  chain and synchronous Lua handlers, without a second value representation.
 
 It will later add:
 
@@ -87,6 +89,7 @@ Files are organized by substantial runtime concepts:
   and allocation hints;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
+- `chunk.go`: native-ABI Lua 5.1 binary chunk serialization;
 - `function.go`: canonical functions and compact upvalues;
 - `call.go`: compact activations, shared-stack call layout, varargs, tail
   replacement, and result adjustment;
@@ -102,6 +105,8 @@ Files are organized by substantial runtime concepts:
   list installation, and indexed metamethod resolution;
 - `native.go`: borrowed native call frames, typed argument and result access,
   captured values, terminal outcomes, and the Go callback seam;
+- `native_call.go`: protected reentrant calls and ordinary Lua indexing from
+  a borrowed Frame;
 - `protected.go`: metadata-only protected checkpoints, live-stack error
   handlers, emergency quota headroom, and compact result publication;
 - `load.go`: public source compilation and State-bound Function loading;
@@ -111,14 +116,17 @@ Files are organized by substantial runtime concepts:
   suspension lifecycle, and State-wide execution ownership;
 - `context.go`: operation-scoped context ownership, polling budgets, and
   cancellation failures;
-- `library_base.go`, `library_coroutine.go`, `library_math.go`, and
-  `library_table.go`: the implemented Lua 5.1 runtime library surface using
-  native frames. `library_base.go` also owns the auxiliary layer shared by
-  every library file, corresponding to PUC's `lauxlib` plus the two runtime
-  operations a library needs: argument coercion, positioned argument and
-  general diagnostics, compact result publication, an unprotected binary call,
-  and ordinary less-than. Later `library_*.go` files add the remaining
-  standard libraries.
+- `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
+  and cooperative context polling;
+- `library_base.go`, `library_coroutine.go`, `library_math.go`,
+  `library_table.go`, `library_string.go`, and
+  `library_string_format.go`: the implemented Lua 5.1 runtime library surface
+  using native frames. `library_base.go` also owns the auxiliary layer shared
+  by every library file, corresponding to PUC's `lauxlib` plus the runtime
+  operations libraries need: argument coercion, positioned argument and
+  general diagnostics, compact result publication, reentrant compact calls,
+  ordinary indexing, and less-than. Later `library_*.go` files add the
+  remaining standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -572,6 +580,12 @@ This is cooperative cancellation, not a per-instruction deadline. A
 long-running Go work; the runtime checks again after the callback returns but
 cannot preempt Go code.
 
+The pattern matcher follows the same rule while it owns control in Go. Raw
+calls take an unpolled path; context-aware calls sample recursive
+backtracking, repeated search attempts, balanced scans, and greedy expansion.
+This makes pathological patterns interruptible without putting a channel
+operation in every byte comparison.
+
 The executor has one source and one dispatch loop. A single cold backedge block
 preserves its 160-byte frame and the direct ordinary dispatch branch. On the
 standing Apple M3 Pro benchmark, active polling adds about 4.1% to a numeric
@@ -903,6 +917,39 @@ Lua's `invalid order function for sorting` failure rather than a Go panic or a
 silently wrong result. Recursion always takes the smaller partition, so depth
 stays logarithmic even under a hostile comparator.
 
+The string library is byte-oriented, including character classes, positions,
+captures, case conversion, and length; it does not interpret UTF-8. Pattern
+matching follows PUC Lua 5.1's backtracking and capture order. Genuine
+recursive pattern constructs are limited to 8,192 levels so a machine-made
+pattern produces the catchable `pattern too complex` error instead of a fatal
+Go stack overflow. Character classes use the deterministic C locale rather
+than process-global locale state.
+
+Published substrings and captures own their backing storage on a cache miss.
+They therefore cannot keep a much larger subject buffer alive merely because
+one small result escaped into a table or Go. `gsub` defers copying untouched
+subject runs until the first substitution; a no-match result reuses the
+original compact string, while function and table replacements reenter Lua
+through the shared compact call and indexing seams.
+
+`string.format` implements Lua 5.1's restricted C `printf` grammar rather
+than delegating to Go formatting. Platform-defined finite cases follow C's
+width, precision, alternate-form, and NUL behavior. Conversions that require
+an out-of-range double-to-integer C cast have one documented deterministic
+Badger result instead of inheriting architecture-specific undefined behavior.
+
+`string.dump` serializes immutable Prototypes as Lua 5.1 binary chunks,
+including nested functions and debug metadata. Like PUC's own format, a chunk
+records native endianness, `size_t` width, instruction width, and number
+layout; it is intended for a compatible Lua 5.1 ABI, not as a portable
+cross-architecture format. Native Go functions are not serializable.
+
+Lua 5.1 relies on its allocator to reject an impossible `string.rep`. Until
+the runtime has one output-size policy covering concatenation and every
+library builder, `string.rep` alone refuses results above 1 GiB rather than
+submitting an obviously hostile allocation to the host. This is explicitly a
+local guard, not a general State string quota.
+
 Library callbacks are unprotected, matching `lua_call`. A failure is returned
 to the library, which restores its own call machinery and then propagates the
 original error; the nested traceback segment is captured before restoration,
@@ -943,6 +990,8 @@ Correctness is measured against the Lua 5.1 language behavior, not another Go
 implementation's internal quirks. Official Lua 5.1 test scripts may be
 included with their own provenance and license. Focused Go tests cover the
 public interface, ownership, lifetime, race, and invalid-use contracts.
+Algorithms adapted from the Lua reference sources are identified in
+`THIRD_PARTY_NOTICES.md`.
 
 Performance comparisons use:
 

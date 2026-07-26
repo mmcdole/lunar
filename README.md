@@ -35,12 +35,13 @@ through protected `Frame.Call` or caller-buffer `Frame.CallInto` without a
 second executor or object representation; warmed `CallInto` paths allocate
 nothing. Context-aware calls and coroutine resumes provide bounded cooperative
 cancellation without changing the raw execution path or retaining a caller's
-context across suspension. The explicitly opened `math` and `table` libraries
-provide the exact Lua 5.1 surface over compact scalar arguments and raw
-sequence storage, including a faithful `table.sort` whose comparators and
-`__lt` handlers reenter Lua through that same boundary; warmed scalar and
-sequence calls allocate nothing. The remaining standard libraries are still
-under construction.
+context across suspension. The explicitly opened `math`, `table`, and
+`string` libraries provide the Lua 5.1 surfaces over compact scalar arguments
+and raw storage. This includes PUC-compatible table sorting, byte-oriented
+patterns and formatting, reentrant replacement callbacks, and native Lua 5.1
+binary chunks from `string.dump`; warmed scalar and sequence calls allocate
+nothing. The remaining standard libraries are still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
-order.
+order. Adapted reference algorithms retain their original permissive license
+in [the third-party notices](THIRD_PARTY_NOTICES.md).
