@@ -100,13 +100,14 @@ func TestOSLibraryEnvironmentAndFilesystemOperations(t *testing.T) {
 	chunk := mustLoadString(t, state, "@environment.lua", `
 local empty = os.getenv("BADGER_LUA_OS_TEST_VALUE")
 local missing = os.getenv("BADGER_LUA_OS_TEST_MISSING")
-return empty, missing
+local truncated = os.getenv("BADGER_LUA_OS_TEST_VALUE\000ignored")
+return empty, missing, truncated
 `)
 	results, err := state.Call(chunk.Value())
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertTestValues(t, results, state.String(""), Nil())
+	assertTestValues(t, results, state.String(""), Nil(), state.String(""))
 
 	directory := t.TempDir()
 	from := filepath.Join(directory, "from")
@@ -201,6 +202,66 @@ func newStateWithOS(t *testing.T) *State {
 }
 
 var osLibraryLua51Cases = []lua51Case{
+	{
+		name: "date formats the ISO C locale surface",
+		source: `return os.date(` +
+			`"!%a|%A|%b|%B|%c|%d|%H|%I|%j|%m|%M|%p|` +
+			`%S|%U|%w|%W|%x|%X|%y|%Y|%%", 0)`,
+		want: "ok 'Thu|Thursday|Jan|January|" +
+			"Thu Jan  1 00:00:00 1970|01|00|12|001|01|00|" +
+			"AM|00|00|4|00|01/01/70|00:00:00|70|1970|%'",
+	},
+	{
+		name: "date returns the UTC calendar table",
+		source: `
+local t = os.date("!*t", 0)
+return t.sec, t.min, t.hour, t.day, t.month, t.year,
+  t.wday, t.yday, t.isdst
+`,
+		want: "ok 0 0 0 1 1 1970 5 1 false",
+	},
+	{
+		name:   "date strips only one UTC prefix",
+		source: `return os.date("!!%Y", 0)`,
+		want:   "ok '!1970'",
+	},
+	{
+		name:   "date requires an exact table format",
+		source: `return os.date("!*tX", 0)`,
+		want:   "ok '*tX'",
+	},
+	{
+		name:   "date retains a trailing percent",
+		source: `return os.date("!abc%", 0)`,
+		want:   "ok 'abc%'",
+	},
+	{
+		name:   "date format stops at an embedded NUL",
+		source: `return os.date("!abc\000%Y", 0)`,
+		want:   "ok 'abc'",
+	},
+	{
+		name:   "time requires a table",
+		source: `return os.time("table")`,
+		want: "error 'case:1: bad argument #1 to 'time' " +
+			"(table expected, got string)'",
+	},
+	{
+		name:   "time reports a missing required field",
+		source: `return os.time({})`,
+		want:   "error 'case:1: field 'day' missing in date table'",
+	},
+	{
+		name:   "setlocale rejects an unknown category",
+		source: `return os.setlocale(nil, "badger")`,
+		want: "error 'case:1: bad argument #2 to 'setlocale' " +
+			"(invalid option 'badger')'",
+	},
+	{
+		name:   "setlocale exposes the C locale",
+		source: `return os.setlocale("C", "numeric")`,
+		want:   "ok 'C'",
+	},
 	{
 		name:   "difftime truncates both operands to time_t",
 		source: `return os.difftime(12.9, 2.9)`,

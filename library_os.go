@@ -1,17 +1,19 @@
 package lua
 
-import (
-	"os"
-)
+import "os"
 
 var osLibraryFunctions = [...]struct {
 	name  string
 	entry NativeFunc
 }{
+	{name: "clock", entry: osClock},
+	{name: "date", entry: osDate},
 	{name: "difftime", entry: osDifferenceTime},
 	{name: "getenv", entry: osGetEnvironment},
 	{name: "remove", entry: osRemove},
 	{name: "rename", entry: osRename},
+	{name: "setlocale", entry: osSetLocale},
+	{name: "time", entry: osTime},
 	{name: "tmpname", entry: osTemporaryName},
 }
 
@@ -54,28 +56,6 @@ func (state *State) OpenOS() error {
 	return nil
 }
 
-func osDifferenceTime(frame Frame) Outcome {
-	later, ok := frame.numberArgument(0)
-	if !ok {
-		return numberArgumentError(frame, 0)
-	}
-	earlier := float64(0)
-	if argument, present := frame.argument(1); present &&
-		argument.kind() != NilKind {
-		earlier, ok = frame.numberArgument(1)
-		if !ok {
-			return numberArgumentError(frame, 1)
-		}
-	}
-	// PUC converts both Lua numbers to time_t before calling difftime. A
-	// portable Go implementation defines the C conversion's out-of-range
-	// cases by using the runtime's saturating signed-64-bit conversion.
-	return frame.ReturnNumber(
-		float64(saturatingInt64(later)) -
-			float64(saturatingInt64(earlier)),
-	)
-}
-
 func osGetEnvironment(frame Frame) Outcome {
 	name, ok := frame.textArgument(0)
 	if !ok {
@@ -115,6 +95,50 @@ func osRename(frame Frame) Outcome {
 		return ioFailureResult(frame, from, err)
 	}
 	return frame.ReturnBool(true)
+}
+
+func osSetLocale(frame Frame) Outcome {
+	locale := ""
+	query := true
+	if argument, present := frame.argument(0); present &&
+		argument.kind() != NilKind {
+		var ok bool
+		locale, ok = frame.textArgument(0)
+		if !ok {
+			return baseArgumentTypeError(frame, 0, "string")
+		}
+		locale = luaCString(locale)
+		query = false
+	}
+
+	category := "all"
+	if argument, present := frame.argument(1); present &&
+		argument.kind() != NilKind {
+		var ok bool
+		category, ok = frame.textArgument(1)
+		if !ok {
+			return baseArgumentTypeError(frame, 1, "string")
+		}
+		category = luaCString(category)
+	}
+	switch category {
+	case "all", "collate", "ctype", "monetary", "numeric", "time":
+	default:
+		return baseArgumentError(
+			frame,
+			1,
+			"invalid option '"+category+"'",
+		)
+	}
+
+	// Locale is process-global in C, while Badger States may execute
+	// independently. Numeric parsing, byte-string ordering, and date names
+	// therefore use one deterministic C locale. Querying it and selecting C,
+	// POSIX, or the host-default request all resolve to that same locale.
+	if query || locale == "" || locale == "C" || locale == "POSIX" {
+		return frame.ReturnString("C")
+	}
+	return frame.ReturnNil()
 }
 
 func osTemporaryName(frame Frame) Outcome {
