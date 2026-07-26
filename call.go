@@ -705,10 +705,12 @@ func (thread *Thread) makeLegacyArgTable(
 		table.setInteger(index+1, thread.values[first+index])
 	}
 	name := thread.owner.strings.make("n")
-	table.store.set(
-		slotFromValue(stringValue(name)),
-		slot{bits: math.Float64bits(float64(extraCount))},
+	table.rawSetNormalizedSlot(
+		stringSlot(name),
+		0,
+		false,
 		uint32(name.hash()),
+		slot{bits: math.Float64bits(float64(extraCount))},
 	)
 	return slotFromTable(table)
 }

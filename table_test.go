@@ -87,155 +87,6 @@ func TestTableRawScalarAccess(t *testing.T) {
 	}
 }
 
-func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-	table, err := state.NewTable(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	const denseCount = 10_000
-	for index := 1; index <= denseCount; index++ {
-		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := table.RawLen(); got != denseCount {
-		t.Fatalf("dense RawLen = %d, want %d", got, denseCount)
-	}
-	if len(table.array) != denseCount || table.arrayUsed != denseCount {
-		t.Fatalf("dense storage = len %d, used %d", len(table.array), table.arrayUsed)
-	}
-
-	sparse, err := state.NewTable(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const sparseIndex = 50_000_000
-	if err := sparse.RawSetInt(sparseIndex, Bool(true)); err != nil {
-		t.Fatal(err)
-	}
-	if len(sparse.array) != 0 {
-		t.Fatalf("sparse assignment materialized %d array slots", len(sparse.array))
-	}
-	if got, ok := sparse.RawGetInt(sparseIndex).AsBool(); !ok || !got {
-		t.Fatalf("sparse lookup = (%v, %v), want (true, true)", got, ok)
-	}
-	if sparse.store.live != 1 {
-		t.Fatalf("sparse hash count = %d, want 1", sparse.store.live)
-	}
-	assertTableStoreInvariant(t, &table.store)
-	assertTableStoreInvariant(t, &sparse.store)
-}
-
-func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-	table, err := state.NewTable(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := table.RawSetInt(5, Number(1)); err != nil {
-		t.Fatal(err)
-	}
-	if table.store.live != 1 || len(table.array) != 0 {
-		t.Fatalf("initial sparse storage = hash %d, array %d", table.store.live, len(table.array))
-	}
-	if err := table.RawSetInt(1, Bool(true)); err != nil {
-		t.Fatal(err)
-	}
-	if err := table.RawSetInt(2, Bool(true)); err != nil {
-		t.Fatal(err)
-	}
-	version := table.structuralVersion
-	if err := table.RawSetInt(5, Number(2)); err != nil {
-		t.Fatal(err)
-	}
-	if table.store.live != 1 || table.store.integerKeys != 1 {
-		t.Fatalf(
-			"updated key moved out of hash: count=%d integerKeys=%d",
-			table.store.live,
-			table.store.integerKeys,
-		)
-	}
-	if len(table.array) != 2 {
-		t.Fatalf("updated array length = %d, want 2", len(table.array))
-	}
-	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
-		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
-	}
-	if table.structuralVersion != version {
-		t.Fatalf(
-			"value update changed structural version from %d to %d",
-			version,
-			table.structuralVersion,
-		)
-	}
-	assertTableStoreInvariant(t, &table.store)
-}
-
-func TestTableArrayGrowthMigratesCoveredHashKeys(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-	table := newTable(state.runtime, 0, 0)
-
-	table.rawSetIntegerSlot(14, numberSlot(140))
-	for key := 1; key <= 10; key++ {
-		table.rawSetIntegerSlot(key, numberSlot(float64(key)))
-	}
-	if len(table.array) != 10 || table.store.integerKeys != 1 {
-		t.Fatalf(
-			"setup storage = array:%d hash integers:%d",
-			len(table.array),
-			table.store.integerKeys,
-		)
-	}
-
-	version := table.structuralVersion
-	table.rawSetIntegerSlot(18, numberSlot(180))
-	if len(table.array) != 18 {
-		t.Fatalf("array length = %d; want 18", len(table.array))
-	}
-	if value, found := table.rawIntSlot(14); !found ||
-		!rawSlotEqual(value, numberSlot(140)) {
-		t.Fatalf(
-			"covered key 14 = (%v, %v); want (140, true)",
-			value.owningValue(),
-			found,
-		)
-	}
-	if table.store.integerKeys != 0 {
-		t.Fatalf(
-			"covered integer remained in hash: %d",
-			table.store.integerKeys,
-		)
-	}
-	if table.arrayUsed != 12 {
-		t.Fatalf("arrayUsed = %d; want 12", table.arrayUsed)
-	}
-	// Inserting key 18 is the only logical structural change. Moving key 14
-	// between private storage lanes must not create another generation.
-	if table.structuralVersion != version+1 {
-		t.Fatalf(
-			"structural version = %d; want %d",
-			table.structuralVersion,
-			version+1,
-		)
-	}
-	assertTableStoreInvariant(t, &table.store)
-}
-
 func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -843,12 +694,20 @@ func TestTableRawLenSequence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := hashTail.RawSetInt(4, Bool(true)); err != nil {
-		t.Fatal(err)
+	number := float64(4)
+	hashTail.store.init(1)
+	if !hashTail.store.insertAbsent(
+		numberSlot(number),
+		slotFromValue(Bool(true)),
+		hashNumber(number),
+	) {
+		t.Fatal("failed to seed record tail")
 	}
+	hashTail.recordIntegerInserted(numberSlot(number))
 	if got := hashTail.RawLen(); got != 4 {
 		t.Fatalf("RawLen across storage = %d, want 4", got)
 	}
+	assertTableLaneInvariant(t, hashTail)
 }
 
 func TestTableSteadyStateRawAccessDoesNotAllocate(t *testing.T) {

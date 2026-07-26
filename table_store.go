@@ -126,29 +126,6 @@ func (store *tableStore) findStoredString(
 	}
 }
 
-func (store *tableStore) set(key, value slot, hash uint32) (inserted, changed bool) {
-	if index, stored := store.findStored(key, hash); stored {
-		entry := &store.entries[index]
-		if entry.value.kind() == NilKind {
-			if store.shouldCompact() {
-				store.rehash(len(store.entries))
-				store.insertNew(key, value, hash)
-			} else {
-				store.reviveAt(index, value)
-			}
-			return true, true
-		}
-		if rawSlotEqual(entry.value, value) {
-			return false, false
-		}
-		writeSlot(&entry.value, value)
-		return false, true
-	}
-
-	store.insertNew(key, value, hash)
-	return true, true
-}
-
 func (store *tableStore) reviveAt(index int, value slot) {
 	entry := &store.entries[index]
 	if entry.value.kind() != NilKind || value.kind() == NilKind {
@@ -160,22 +137,6 @@ func (store *tableStore) reviveAt(index int, value slot) {
 	store.consumeDeadCandidate(index)
 }
 
-func (store *tableStore) insertNew(key, value slot, hash uint32) {
-	if len(store.entries) == 0 {
-		store.rehash(minimumStoreCapacity)
-	}
-	if store.shouldCompact() {
-		store.rehash(len(store.entries))
-	}
-	for !store.insertAbsent(key, value, hash) {
-		capacity := len(store.entries)
-		if store.dead == 0 {
-			capacity = growTableStoreCapacity(capacity)
-		}
-		store.rehash(capacity)
-	}
-}
-
 func growTableStoreCapacity(capacity int) int {
 	maxInt := int(^uint(0) >> 1)
 	if capacity <= 0 ||
@@ -184,18 +145,6 @@ func growTableStoreCapacity(capacity int) int {
 		panic("lua: table capacity overflow")
 	}
 	return capacity * 2
-}
-
-func (store *tableStore) delete(key slot, hash uint32) bool {
-	if len(store.entries) == 0 {
-		return false
-	}
-	index, found := store.find(key, hash)
-	if !found {
-		return false
-	}
-	store.deleteAt(index)
-	return true
 }
 
 func (store *tableStore) deleteAt(index int) {
