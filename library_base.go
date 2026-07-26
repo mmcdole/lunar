@@ -732,6 +732,30 @@ func (frame Frame) integerArgument(index int) (int, bool) {
 	return libraryInteger(number), true
 }
 
+// positionArgument reads the wider integer form used for string positions,
+// file offsets, and byte counts. PUC represents these with ptrdiff_t or long
+// rather than the narrower int used by luaL_checkint.
+func (frame Frame) positionArgument(index int) (int64, bool) {
+	number, ok := frame.numberArgument(index)
+	if !ok {
+		return 0, false
+	}
+	return saturatingInt64(number), true
+}
+
+func saturatingInt64(number float64) int64 {
+	switch {
+	case math.IsNaN(number):
+		return 0
+	case number >= math.MaxInt64:
+		return math.MaxInt64
+	case number <= math.MinInt64:
+		return math.MinInt64
+	default:
+		return int64(math.Trunc(number))
+	}
+}
+
 func optionalLibraryInteger(
 	frame Frame,
 	index int,
@@ -746,6 +770,17 @@ func optionalLibraryInteger(
 		return 0, numberArgumentError(frame, index), true
 	}
 	return libraryInteger(number), Outcome{}, false
+}
+
+// textArgument reads an argument with luaL_checklstring's coercion: a string
+// passes through by reference and a number is spelled with the runtime's own
+// primitive.
+func (frame Frame) textArgument(index int) (string, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return "", false
+	}
+	return compactText(value)
 }
 
 // compactText applies lua_tolstring's string-or-number conversion without

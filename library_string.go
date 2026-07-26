@@ -781,19 +781,6 @@ func relativePosition(position int64, length int) int64 {
 	return position
 }
 
-// positionArgument reads a luaL_checkinteger position argument.
-//
-// PUC uses ptrdiff_t for string positions rather than int, so this saturates
-// at the 64-bit bounds instead of the 32-bit bounds libraryInteger uses. Both
-// truncate toward zero and both define the inputs C leaves undefined.
-func (frame Frame) positionArgument(index int) (int64, bool) {
-	number, ok := frame.numberArgument(index)
-	if !ok {
-		return 0, false
-	}
-	return saturatingInt64(number), true
-}
-
 // unsignedConversion is the conversion C performs for %o, %u, %x, and %X.
 //
 // C converts the double to an unsigned integer of the same width, which is
@@ -821,28 +808,4 @@ func unsignedConversion(number float64) uint64 {
 	default:
 		return uint64(int64(math.Trunc(number)))
 	}
-}
-
-func saturatingInt64(number float64) int64 {
-	switch {
-	case math.IsNaN(number):
-		return 0
-	case number >= math.MaxInt64:
-		return math.MaxInt64
-	case number <= math.MinInt64:
-		return math.MinInt64
-	default:
-		return int64(math.Trunc(number))
-	}
-}
-
-// textArgument reads an argument with luaL_checklstring's coercion: a string
-// passes through by reference and a number is spelled with the runtime's own
-// primitive.
-func (frame Frame) textArgument(index int) (string, bool) {
-	value, present := frame.argument(index)
-	if !present {
-		return "", false
-	}
-	return compactText(value)
 }
