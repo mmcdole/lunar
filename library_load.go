@@ -77,10 +77,10 @@ func baseLoadFile(frame Frame) Outcome {
 	var prototype *Prototype
 	var err error
 	if standardInput {
-		prototype, err = loadFileReaderPrototype(
+		prototype, err = loadFileEndpointPrototype(
 			"=stdin",
 			"stdin",
-			frame.thread.state.options.Stdin,
+			&frame.thread.state.streams.stdin,
 			&control,
 		)
 	} else {
@@ -102,10 +102,10 @@ func baseDoFile(frame Frame) Outcome {
 	var prototype *Prototype
 	var err error
 	if standardInput {
-		prototype, err = loadFileReaderPrototype(
+		prototype, err = loadFileEndpointPrototype(
 			"=stdin",
 			"stdin",
-			frame.thread.state.options.Stdin,
+			&frame.thread.state.streams.stdin,
 			&control,
 		)
 	} else {

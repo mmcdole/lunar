@@ -46,13 +46,16 @@ var ErrReadOnlyUserData = errors.New(
 // does not affect a live State.
 type Options struct {
 	// Stdin is the State's standard input stream. A nil interface selects
-	// os.Stdin. Lua libraries borrow the stream and never close it.
+	// os.Stdin. Standard-input consumers share one logical cursor. Lua
+	// libraries borrow the stream and never close it.
 	Stdin io.Reader
 	// Stdout is the State's standard output stream. A nil interface selects
-	// os.Stdout. Lua libraries borrow the stream and never close it.
+	// os.Stdout. Standard-output consumers share one buffering endpoint. Lua
+	// libraries borrow the stream and never close it.
 	Stdout io.Writer
 	// Stderr is the State's standard error stream. A nil interface selects
-	// os.Stderr. Lua libraries borrow the stream and never close it.
+	// os.Stderr. Diagnostic consumers share one buffering endpoint. Lua
+	// libraries borrow the stream and never close it.
 	Stderr io.Writer
 	// MaxValues limits values held by ordinary execution. Zero selects 65,536
 	// values. Exceeding the limit raises an ordinary Lua error classified as
@@ -124,6 +127,7 @@ type State struct {
 	runtime         *runtimeState
 	options         Options
 	limits          resourceLimits
+	streams         *standardStreams
 	active          *Thread
 	main            *Thread
 	registry        *Table
@@ -163,6 +167,11 @@ func New(options Options) (*State, error) {
 	state := &State{
 		runtime: rt,
 		options: options,
+		streams: newStandardStreams(
+			options.Stdin,
+			options.Stdout,
+			options.Stderr,
+		),
 		limits: resourceLimits{
 			values: options.MaxValues,
 			frames: options.MaxFrames,
@@ -187,9 +196,10 @@ func New(options Options) (*State, error) {
 // Every still-open runtime-owned native resource is closed exactly once.
 // Borrowed native handles are detached without closing their underlying
 // resources. Close continues through all records and returns owned-resource
-// cleanup failures joined together; the State is closed even when that error
-// is non-nil. Standard streams supplied through Options are borrowed and are
-// never closed.
+// cleanup failures joined together. Buffered standard output is flushed and
+// any flush failures are included in the returned error. The State is closed
+// even when that error is non-nil. Standard streams supplied through Options
+// are borrowed and are never closed.
 //
 // Previously returned owning Values and canonical object handles remain safe
 // to inspect after Close.
@@ -202,6 +212,11 @@ func (state *State) Close() error {
 	}
 	if state.runtime.closed.Swap(true) {
 		return nil
+	}
+	var streamErr error
+	if state.streams != nil {
+		streamErr = state.streams.release()
+		state.streams = nil
 	}
 	var resourceErr error
 	if state.resources != nil {
@@ -224,7 +239,7 @@ func (state *State) Close() error {
 	state.options.Stdout = nil
 	state.options.Stderr = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
-	return resourceErr
+	return errors.Join(streamErr, resourceErr)
 }
 
 // MainThread returns the canonical main Thread.

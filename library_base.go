@@ -2,7 +2,6 @@ package lua
 
 import (
 	"fmt"
-	"io"
 	"math"
 	"strings"
 )
@@ -168,7 +167,7 @@ func basePrint(frame Frame) Outcome {
 		return frame.sealError(failure)
 	}
 
-	writer := frame.thread.state.options.Stdout
+	writer := &frame.thread.state.streams.stdout
 	for index := 0; index < frame.ArgumentCount(); index++ {
 		value, _ := frame.argument(index)
 		arguments := [1]slot{value}
@@ -187,11 +186,11 @@ func basePrint(frame Frame) Outcome {
 			)
 		}
 		if index != 0 {
-			_, _ = io.WriteString(writer, "\t")
+			_, _ = writer.WriteString("\t")
 		}
-		_, _ = io.WriteString(writer, luaCString(text))
+		_, _ = writer.WriteString(luaCString(text))
 	}
-	_, _ = io.WriteString(writer, "\n")
+	_, _ = writer.WriteString("\n")
 	return frame.Return()
 }
 

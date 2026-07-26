@@ -197,22 +197,9 @@ func (source *readerChunkSource) failure() error {
 		return source.readFailure
 	}
 	if source.upstream != nil {
-		return source.upstream.failure
+		return source.upstream.pendingFailure()
 	}
 	return nil
-}
-
-type readFailureRecorder struct {
-	reader  io.Reader
-	failure error
-}
-
-func (recorder *readFailureRecorder) Read(buffer []byte) (int, error) {
-	count, err := recorder.reader.Read(buffer)
-	if err != nil && err != io.EOF {
-		recorder.failure = err
-	}
-	return count, err
 }
 
 type fileLoadError struct {
@@ -265,7 +252,22 @@ func loadFileReaderPrototype(
 	reader io.Reader,
 	control *loadControl,
 ) (*Prototype, error) {
-	input, source, err := newLuaFileInput(reader, control)
+	endpoint := newInputEndpoint(reader)
+	return loadFileEndpointPrototype(
+		sourceName,
+		displayName,
+		&endpoint,
+		control,
+	)
+}
+
+func loadFileEndpointPrototype(
+	sourceName string,
+	displayName string,
+	endpoint *inputEndpoint,
+	control *loadControl,
+) (*Prototype, error) {
+	input, source, err := newLuaFileInput(endpoint, control)
 	if err != nil {
 		if _, luaFailure := err.(*Error); luaFailure {
 			return nil, err
@@ -295,26 +297,24 @@ func loadFileReaderPrototype(
 // Text receives one synthetic newline so diagnostics retain their original
 // line numbers; a binary chunk begins directly at its signature.
 func newLuaFileInput(
-	reader io.Reader,
+	endpoint *inputEndpoint,
 	control *loadControl,
 ) (*chunkInput, *readerChunkSource, error) {
-	recorded := &readFailureRecorder{reader: reader}
-	buffered := bufio.NewReaderSize(recorded, readerChunkBytes)
-	first, err := buffered.ReadByte()
+	first, err := endpoint.ReadByte()
 	if err == io.EOF {
-		input, source := newReaderChunkInput(buffered, control, "")
-		source.upstream = recorded
+		input, source := newReaderChunkInput(endpoint, control, "")
+		source.upstream = &endpoint.source
 		return input, source, nil
 	}
 	if err != nil {
 		return nil, nil, err
 	}
 	if first != '#' {
-		if err := buffered.UnreadByte(); err != nil {
+		if err := endpoint.UnreadByte(); err != nil {
 			panic("lua: failed to restore file lookahead")
 		}
-		input, source := newReaderChunkInput(buffered, control, "")
-		source.upstream = recorded
+		input, source := newReaderChunkInput(endpoint, control, "")
+		source.upstream = &endpoint.source
 		return input, source, nil
 	}
 
@@ -333,7 +333,7 @@ func newLuaFileInput(
 		return nil
 	}
 	for {
-		line, readErr := buffered.ReadSlice('\n')
+		line, readErr := endpoint.ReadSlice('\n')
 		total += uint64(len(line))
 		if err := chargeThrough(total - 1); err != nil {
 			return nil, nil, err
@@ -351,7 +351,7 @@ func newLuaFileInput(
 	}
 
 lineComplete:
-	next, peekErr := buffered.Peek(1)
+	next, peekErr := endpoint.Peek(1)
 	if peekErr != nil && peekErr != io.EOF {
 		return nil, nil, peekErr
 	}
@@ -362,7 +362,7 @@ lineComplete:
 		}
 		prefix = ""
 	}
-	input, source := newReaderChunkInput(buffered, control, prefix)
-	source.upstream = recorded
+	input, source := newReaderChunkInput(endpoint, control, prefix)
+	source.upstream = &endpoint.source
 	return input, source, nil
 }
