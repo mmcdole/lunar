@@ -28,6 +28,8 @@ import "strings"
 // "pattern too complex". Recursion depth follows the number of pattern items
 // rather than the subject length, so the bound is about pathological patterns
 // and never about large inputs.
+//
+// See THIRD_PARTY_NOTICES.md for the Lua reference implementation's license.
 const (
 	// maxPatternCaptures is LUA_MAXCAPTURES.
 	maxPatternCaptures = 32
@@ -45,6 +47,9 @@ const (
 	patternEscape = '%'
 	// patternSpecials is SPECIALS, the set that disqualifies a plain search.
 	patternSpecials = "^$*+?.([%-"
+	// patternContextFailed is distinct from both the disabled zero budget and
+	// every live countdown value.
+	patternContextFailed = ^uint16(0)
 )
 
 // Capture lengths reuse PUC's two negative markers.
@@ -68,12 +73,15 @@ type patternCapture struct {
 // matchState is one pattern match over one subject. It holds no Lua state, so
 // the caller decides how a failure becomes a Lua error.
 type matchState struct {
-	source   string
-	pattern  string
-	level    int
-	depth    int
-	failure  string
-	captures [maxPatternCaptures]patternCapture
+	source         string
+	pattern        string
+	level          int
+	depth          int
+	failure        string
+	thread         *Thread
+	contextBudget  uint16
+	contextFailure *Error
+	captures       [maxPatternCaptures]patternCapture
 }
 
 // reset prepares state for a fresh search. The capture array is bounded by
@@ -84,12 +92,50 @@ func (state *matchState) reset(source, pattern string) {
 	state.level = 0
 	state.depth = 0
 	state.failure = ""
+	state.thread = nil
+	state.contextBudget = 0
+	state.contextFailure = nil
+}
+
+// bindContext makes matcher work cooperative with a context-aware call. Raw
+// calls leave thread nil, so their hot path pays only one predictable branch.
+func (state *matchState) bindContext(thread *Thread) {
+	if thread == nil || thread.state.execution.done == nil {
+		return
+	}
+	state.thread = thread
+	state.contextBudget = contextPollInterval
 }
 
 // restart prepares the next start position within the same search.
 func (state *matchState) restart() {
 	state.level = 0
 	state.depth = 0
+}
+
+// consumeContextWork samples cancellation while the matcher owns control
+// instead of the bytecode executor.
+func (state *matchState) consumeContextWork() bool {
+	budget := state.contextBudget
+	if budget == patternContextFailed {
+		return false
+	}
+	budget--
+	state.contextBudget = budget
+	if budget != 0 {
+		return true
+	}
+	return state.pollContext()
+}
+
+func (state *matchState) pollContext() bool {
+	state.contextBudget = contextPollInterval
+	if failure := pollExecutionContext(state.thread); failure != nil {
+		state.contextFailure = failure
+		state.contextBudget = patternContextFailed
+		return false
+	}
+	return true
 }
 
 func (state *matchState) fail(message string) int {
@@ -119,6 +165,9 @@ func (state *matchState) sourceAt(index int) byte {
 // returns the subject offset just past the match, matchNoMatch, or
 // matchFailed with state.failure set.
 func (state *matchState) match(s, p int) int {
+	if state.contextBudget != 0 && !state.consumeContextWork() {
+		return matchFailed
+	}
 	state.depth++
 	if state.depth > maxPatternDepth {
 		state.depth--
@@ -237,9 +286,23 @@ func (state *matchState) matchFrom(s, p int) int {
 // back one at a time. Lua's greedy quantifiers are defined by this order.
 func (state *matchState) maxExpand(s, p, classEnd int) int {
 	count := 0
-	for s+count < len(state.source) &&
-		state.singleMatch(state.source[s+count], p, classEnd) {
-		count++
+	if state.contextBudget == 0 {
+		for s+count < len(state.source) {
+			if !state.singleMatch(state.source[s+count], p, classEnd) {
+				break
+			}
+			count++
+		}
+	} else {
+		for s+count < len(state.source) {
+			if !state.singleMatch(state.source[s+count], p, classEnd) {
+				break
+			}
+			count++
+			if !state.consumeContextWork() {
+				return matchFailed
+			}
+		}
 	}
 	for count >= 0 {
 		result := state.match(s+count, classEnd+1)
@@ -346,6 +409,22 @@ func (state *matchState) matchBalance(s, p int) int {
 		return matchNoMatch
 	}
 	depth := 1
+	if state.contextBudget != 0 {
+		for s++; s < len(state.source); s++ {
+			if state.source[s] == closing {
+				depth--
+				if depth == 0 {
+					return s + 1
+				}
+			} else if state.source[s] == open {
+				depth++
+			}
+			if !state.consumeContextWork() {
+				return matchFailed
+			}
+		}
+		return matchNoMatch
+	}
 	for s++; s < len(state.source); s++ {
 		if state.source[s] == closing {
 			depth--
@@ -506,7 +585,9 @@ func isPatternHexDigit(c byte) bool {
 
 // failed reports whether the pattern itself was rejected, which the caller
 // must distinguish from an ordinary failure to match.
-func (state *matchState) failed() bool { return state.failure != "" }
+func (state *matchState) failed() bool {
+	return state.failure != "" || state.contextFailure != nil
+}
 
 // searchFrom finds the first match at or after subject offset init, returning
 // the span source[start:end]. An anchored search only tries init. The subject

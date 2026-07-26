@@ -1,5 +1,10 @@
 package lua
 
+import (
+	"strings"
+	"unsafe"
+)
+
 const (
 	shortStringLimit          = 64
 	stringCacheWays           = 4
@@ -33,6 +38,17 @@ type stringPool struct {
 }
 
 func (pool *stringPool) make(text string) *luaString {
+	return pool.makeText(text, false)
+}
+
+// makeBorrowed publishes text whose backing storage belongs to a larger
+// value. Cache hits remain allocation-free; a miss clones before retaining the
+// string so a small Lua value cannot pin an unrelated backing buffer.
+func (pool *stringPool) makeBorrowed(text string) *luaString {
+	return pool.makeText(text, true)
+}
+
+func (pool *stringPool) makeText(text string, borrowed bool) *luaString {
 	hash := pool.hash(text)
 	if text == "" && !pool.closed {
 		if pool.empty == nil {
@@ -41,6 +57,9 @@ func (pool *stringPool) make(text string) *luaString {
 		return pool.empty
 	}
 	if pool.closed || len(text) > shortStringLimit {
+		if borrowed {
+			text = strings.Clone(text)
+		}
 		return pool.newString(text, hash)
 	}
 
@@ -54,6 +73,9 @@ func (pool *stringPool) make(text string) *luaString {
 		return found
 	}
 
+	if borrowed {
+		text = strings.Clone(text)
+	}
 	created := pool.newString(text, hash)
 	pool.storeProbation(created)
 	return created
@@ -76,6 +98,16 @@ func newHashedString(text string, hash uint64) *luaString {
 		text: text,
 		hash: hash,
 	}
+}
+
+// stringFromOwnedBytes transfers an exact byte buffer into immutable string
+// storage without copying it. The caller must not retain or mutate bytes after
+// this call.
+func stringFromOwnedBytes(bytes []byte) string {
+	if len(bytes) == 0 {
+		return ""
+	}
+	return unsafe.String(unsafe.SliceData(bytes), len(bytes))
 }
 
 func (pool *stringPool) lookupProtected(text string, hash uint64) *luaString {

@@ -449,6 +449,47 @@ func TestPatternEngineSearchDoesNotAllocate(t *testing.T) {
 	}
 }
 
+func BenchmarkPatternEngine(b *testing.B) {
+	for _, benchmark := range []struct {
+		name    string
+		subject string
+		pattern string
+	}{
+		{
+			name:    "plain items",
+			subject: "the quick brown fox jumps over the lazy dog",
+			pattern: "brown fox",
+		},
+		{
+			name:    "greedy",
+			subject: "the quick brown fox jumps over the lazy dog",
+			pattern: "t.*g",
+		},
+		{
+			name:    "captures",
+			subject: "key=value",
+			pattern: "(%w+)=(%w+)",
+		},
+		{
+			name:    "miss",
+			subject: "the quick brown fox jumps over the lazy dog",
+			pattern: "(%d+)%.(%d+)",
+		},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			var state matchState
+			b.ReportAllocs()
+			for range b.N {
+				state.find(
+					benchmark.subject,
+					benchmark.pattern,
+					0,
+				)
+			}
+		})
+	}
+}
+
 var patternEngineLua51Cases = []patternEngineCase{
 	{
 		name:    "literal",

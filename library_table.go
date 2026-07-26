@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// The sorting algorithm follows Lua 5.1's ltablib.c. See
+// THIRD_PARTY_NOTICES.md for the reference implementation's license.
+
 const (
 	// The sparse mover scans compact storage once and sorts only the integer
 	// fields it finds. Keep the ordinary descending loop until the numeric
