@@ -11,10 +11,11 @@ and ownership rules remain in [architecture.md](architecture.md).
 
 ## Current position
 
-The first end-to-end large-CBOR diagnostic used the same 9,208,046-byte input,
-Lua codec, workload, and structural digest in fresh processes. The graph has
-183,513 tables and 938,452 entries. Five samples are enough to identify the
-large gaps below, but are not release qualification evidence.
+The first end-to-end large-CBOR diagnostic, before the active storage
+tranches, used the same 9,208,046-byte input, Lua codec, workload, and
+structural digest in fresh processes. The graph has 183,513 tables and
+938,452 entries. Five samples are enough to identify the large gaps below,
+but are not release qualification evidence.
 
 | Mode and runtime | Median elapsed | Allocated bytes | Mallocs |
 | --- | ---: | ---: | ---: |
@@ -74,9 +75,9 @@ PUC's sources explain which differences matter:
   and move the same logical table several times.
 - PUC stores a string header, bytes, and terminator in one allocation and
   interns every string. Its collector sweeps that interning table; the table
-  is not a permanent root. Badger currently allocates a separate
-  `luaString` header on every bounded-cache miss, and byte or borrowed-string
-  misses may also allocate backing.
+  is not a permanent root. Before the flat-string tranche, Badger allocated a
+  separate runtime string header on every bounded-cache miss, and byte or
+  borrowed-string misses could also allocate backing.
 
 The frozen predecessor is useful evidence, not source to transplant. Its flat
 short-string storage substantially reduced malloc count, and its recurring
@@ -86,13 +87,35 @@ authentication, and cache machinery that this implementation does not need.
 No predecessor mechanism is adopted unless it fits Badger's canonical object
 model and improves general workloads.
 
+## Completed causal results
+
+The regular-file read tranche reduced large-CBOR load time by about 4% and
+allocated bytes by 19.2%, while leaving malloc count essentially unchanged.
+It removed geometric buffer growth and one full-size publication copy.
+
+The flat-string tranche was then measured against that exact-read revision in
+five paired, alternating fresh-process samples:
+
+| Mode | Elapsed | Allocated bytes | Mallocs |
+| --- | ---: | ---: | ---: |
+| Large-CBOR load | 1.77% faster | 4.33% lower | 24.96% lower |
+| Large-CBOR save | 1.43% faster | 6.17% lower | 12.08% lower |
+
+The allocation reductions are the primary causal evidence: load removed about
+261,000 allocations and save removed about 654,000. General string-field,
+global, concatenation, and builder benchmarks improved by roughly 1–12%.
+Common builders also dropped one allocation per result. Varied-size decimal
+and common-prefix string maps cover hits, misses, construction, and churn;
+the accepted hash has no sequential-key cliff and no confirmed representative
+regression.
+
 ## Work order
 
-### 1. Sequential input and constructed output
+### 1. Sequential input and constructed output — complete
 
-Known-size regular files should reserve their exact remaining size, and an
-owned input buffer should become an immutable Lua string without a second full
-copy. Unknown readers retain bounded geometric growth and the existing error,
+Known-size regular files reserve their exact remaining size, and the owned
+input buffer becomes an immutable Lua string without a second full copy.
+Unknown readers retain bounded geometric growth and the existing error,
 append, and context-polling semantics. The same ownership rules apply to
 string and IO builders so a completed buffer is transferred once.
 
@@ -102,19 +125,20 @@ It is measured with fixed files, nonzero file offsets, short and adversarial
 readers, growing files, concatenation, formatting, `table.concat`, and codec
 load/save. It is not a special path for the benchmark fixture.
 
-### 2. String storage and identity
+### 2. String storage and identity — flat representation complete
 
-Remove the mandatory per-string Go wrapper allocation. Short strings can live
-directly in the two-word compact value as a GC-visible byte pointer plus
-packed length and hash metadata. Owned byte results use bounded pages or
-single owned allocations according to size; borrowed source slices are copied
-only when retaining them would pin an unrelated input.
+Runtime strings live directly in the two-word compact value as a GC-visible
+byte pointer plus packed length and hash metadata. There is no mandatory
+per-string Go wrapper. Borrowed source slices are copied when retaining them
+would pin unrelated input, and completed owned buffers transfer their backing
+without another copy.
 
-The existing bounded reuse policy remains the initial ownership bound. A full
-PUC-style interner must be integrated with semantic collection so unreachable
-entries can be removed; an unbounded Go map that roots every historical string
-is not an acceptable shortcut. String equality always retains a
-hash/length/byte fallback, so pointer identity is an optimization rather than
+The bounded reuse policy remains the ownership bound. A full PUC-style
+interner must be integrated with semantic collection so unreachable entries
+can be removed; an unbounded Go map that roots every historical string is not
+an acceptable shortcut. Page packing is also deferred until retained-memory
+measurements justify its page-pinning tradeoff. String equality always retains
+a hash and byte fallback, so pointer identity is an optimization rather than
 a semantic requirement.
 
 The gate covers unique-string churn, repeated keys, substrings,

@@ -669,6 +669,16 @@ input and output slices may overlap. A short result destination is detected
 after execution but before any destination write, leaving Lua side effects
 intact while keeping the caller's buffer unchanged.
 
+Runtime strings use the same 16-byte representation in Values, registers,
+tables, constants, and closed upvalues. One GC-visible pointer addresses
+immutable bytes, while the other word packs the kind, a 24-bit length, and a
+32-bit hash. Strings beyond the packed-length range use one uncommon owning
+fallback object. Compiler-only names use a separate pointer-sized interned
+descriptor because they are metadata rather than runtime values. Tables and
+the executor access strings through one text, hash, and equality kernel; they
+do not branch on the ordinary and long encodings. Pointer equality is only a
+fast path, and content equality remains authoritative.
+
 Runtime number coercion accepts numbers and complete numeric strings. The
 shared parser recognizes signed decimal fractions and exponents, signed
 hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
@@ -913,7 +923,7 @@ count-controlled vectors or strings. This separates hostile-input protection
 from the executor's value and frame limits. The sequential input caches the
 first refill failure, preserves arbitrary reader errors, and can return an
 in-piece span without copying; a span crossing pieces receives exact owned
-storage that the string interner can adopt.
+storage that runtime string publication can adopt.
 
 Source lexing is byte-oriented, not line-oriented. A fixed string is scanned
 directly; a Reader is exposed through bounded contiguous windows and consulted
