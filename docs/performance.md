@@ -206,11 +206,11 @@ head promotes its successor. A larger dead majority compacts on an insertion
 seam to release the other retained Go pointer keys until semantic collection
 can own that work.
 
-The store header is 40 bytes, down from 48, and the canonical Table header is
-96 bytes, down from 112. Each record node remains 40 bytes, the same size as
-PUC's `Node` and the previous Badger entry; its former 64-bit hash word now
-contains a 32-bit cached hash and a 32-bit successor index. The named capacity
-bound preserves index-plus-one encoding on 32- and 64-bit builds.
+The store header is now 32 bytes, down from 48, and the canonical Table header
+is now 80 bytes, down from 112. Each record node remains 40 bytes, the same
+size as PUC's `Node` and the previous Badger entry; its former 64-bit hash word
+now contains a 32-bit cached hash and a 32-bit successor index. The named
+capacity bound preserves index-plus-one encoding on 32- and 64-bit builds.
 
 `Table` now owns both-lane allocation policy. When an absent insertion needs
 new backing, it counts every live positive integer in power-of-two ranges,
@@ -226,8 +226,8 @@ growth with no integer records can likewise allocate the exact selected
 power-of-two array directly instead of performing a preliminary full scan.
 Neither mechanism is an identity cache or a second storage policy; stale
 summary information can only request an unnecessary full calculation. It
-shares the final compact suffix with the metamethod absence cache, so the
-canonical Table header remains 96 bytes.
+shares the final compact suffix with the metamethod absence cache, so it adds
+no allocation class to the canonical Table header.
 
 Between allocation seams, existing array and record fields update or delete
 in place, absent nil writes do nothing, and reserved array backing accepts a
@@ -357,14 +357,65 @@ retained-heap reduction. Longer generic table reruns kept every selected
 median within 1.6%, retained zero-allocation steady-state access, and reduced
 the standing constructor from 448 to 432 bytes per operation.
 
-The remaining two Go slice headers consume 48 bytes of every Table even when
-their backing is empty. Replacing those headers is a separate, timeboxed
-experiment: it lands only if a typed compact descriptor remains visible to
-Go's collector and preserves bounds-check elimination, inlining, checkptr,
-32-bit builds, and table hot-path timing. Shared recurring record layouts are
-considered only after that simpler object-layout result is known.
+That result left two 24-byte Go slice headers consuming half of every Table,
+even when their backing was empty. The following tranche replaces them
+without changing either storage policy.
 
-### 6. Re-profile execution
+### 6. Compact table descriptors — 80-byte header complete
+
+Lua's table bounds fit in 32 bits; a native Go slice nevertheless spends two
+machine words on length and capacity. Both private table vectors now use one
+typed backing pointer plus 32-bit length and capacity fields. The descriptor
+is 16 bytes on 64-bit Go instead of 24, reducing the record-store header from
+40 to 32 bytes and the canonical Table from 96 to 80 bytes. On 32-bit Go the
+descriptor remains 12 bytes, the same size as a slice.
+
+The backing pointer remains `*T`, so the collector retains the allocation's
+typed pointer bitmap. Random access uses one inlined checked pointer
+calculation; sequential scans and copies reconstruct one fixed-capacity slice
+view outside the loop. Growth can occur only through the descriptor
+constructor or a checked logical-length change. No pointer or view survives a
+growth, redistribution, or rehash seam, and ordinary typed writes retain Go's
+write barriers. A forced-GC regression test covers references in array
+values, record keys, and record values.
+
+Against the 96-byte-header revision:
+
+| Mode | Allocated bytes | Mallocs | Forced-GC graph |
+| --- | ---: | ---: | ---: |
+| Large-CBOR load | 95.26 to 92.32 MB | unchanged | 64.53 to 61.73 MiB |
+| Large-CBOR save | 226.82 to 220.95 MB | unchanged | unchanged loaded graph |
+
+The load graph retains 183,513 tables, so the measured 2.80 MiB live reduction
+is exactly 16 bytes per table. Save constructs roughly another 183,000
+temporary tables and therefore removes about 5.87 MB of cumulative allocation
+without changing the number of allocations.
+
+Five alternating fresh-process pairs put load time 1.51% slower and save time
+1.05% slower, inside the directional tranche ceiling. A second causal pairing
+showed that the final point-versus-sequential accessor placement was neutral
+(+0.02% load and -0.12% save); the remaining movement is the compact
+descriptor itself plus process noise.
+
+The general screen did not conceal that tradeoff. Sixteen representative
+string-map hit, miss, churn, and construction cells had a median movement of
+0.73% faster and no slowdown above 1.73%. Dense Lua table execution was 0.98%
+faster, sparse execution 0.18% slower, and construction 0.83% faster while
+allocating 16 fewer bytes. Traversal ranged from 2.28% slower at 16 keys to
+1.77% faster at 5,000 keys. The narrowest public integer set-plus-get
+microcell was 2.78% slower, or about 0.25 ns; it remains checked rather than
+adding an unchecked access path for one microbenchmark. Every steady-state
+cell remains allocation-free.
+
+Packing length and capacity into one 64-bit field was also measured. It saved
+no object bytes and did not improve point access or combined length/capacity
+reads, so the clearer two-field descriptor remains canonical. The loaded
+graph is now about 3.8 MiB above the measured PUC Lua 5.1 graph, while the
+frozen mature predecessor remains leaner at 51.15 MiB. Shared recurring
+record layouts, if justified independently, are the next table-memory
+question; the descriptor does not pre-commit to them.
+
+### 7. Re-profile execution
 
 Only after storage churn falls do CPU profiles decide the next executor work.
 Likely candidates are direct constant-string and integer table access, native

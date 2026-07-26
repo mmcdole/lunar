@@ -774,17 +774,25 @@ fields receive the smallest sufficient record store. A conservative integer
 range summary proves when a record-only growth cannot change that answer,
 while a dense array with no integer records can jump directly to the same
 exact power-of-two span without a preliminary full scan. The initial
-four-slot array class and already-reserved slice capacity are deliberate Go
+four-slot array class and already-reserved array capacity are deliberate Go
 allocation adaptations; neither changes the global density rule at a fresh
 allocation.
 
-On 64-bit Go, the canonical Table header is 96 bytes and occupies the
-96-byte allocator class. It contains only ownership, the two storage
-descriptors and their accounting, the metatable, the metamethod absence
-cache, and the conservative integer-range summary. Traversal correctness does
-not require a mutation generation: array deletions remain valid positions,
-record deletions retain continuation keys, and insertion is already the seam
-where Lua makes traversal order undefined.
+On 64-bit Go, the canonical Table header is 80 bytes and occupies the 80-byte
+allocator class. Its array and record vectors each use a typed backing pointer
+plus 32-bit length and capacity fields, a 16-byte private descriptor rather
+than a 24-byte Go slice header. The typed pointer keeps the backing allocation
+and its pointer bitmap visible to the collector. Checked point access stays
+inlined; bulk walks construct one fixed-capacity slice view. A pointer or view
+cannot survive growth, redistribution, or rehash. The same descriptor is 12
+bytes on 32-bit Go, equal to a native slice header there.
+
+The Table contains only ownership, the two storage descriptors and their
+accounting, the metatable, the metamethod absence cache, and the conservative
+integer-range summary. Traversal correctness does not require a mutation
+generation: array deletions remain valid positions, record deletions retain
+continuation keys, and insertion is already the seam where Lua makes
+traversal order undefined.
 
 Existing fields update and delete in place. A deleted record retains its key
 and collision links so `next` can continue from it; a later absent insertion
