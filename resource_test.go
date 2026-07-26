@@ -10,16 +10,18 @@ import (
 )
 
 type nativeCleanupProbe struct {
-	done  chan struct{}
-	err   error
-	order *[]int
-	id    int
-	count atomic.Int32
+	done    chan struct{}
+	err     error
+	order   *[]int
+	id      int
+	count   atomic.Int32
+	release atomic.Uint32
 }
 
-func cleanNativeProbe(value any) error {
+func cleanNativeProbe(value any, release nativeRelease) error {
 	probe := value.(*nativeCleanupProbe)
 	probe.count.Add(1)
+	probe.release.Store(uint32(release.reason))
 	if probe.order != nil {
 		*probe.order = append(*probe.order, probe.id)
 	}
@@ -65,6 +67,10 @@ func TestManagedNativeResourceExplicitCloseAndSealedPayload(t *testing.T) {
 	if probe.count.Load() != 1 {
 		t.Fatalf("cleanup count = %d; want 1", probe.count.Load())
 	}
+	if reason := nativeReleaseReason(probe.release.Load()); reason !=
+		nativeReleaseExplicit {
+		t.Fatalf("explicit cleanup reason = %d", reason)
+	}
 	if _, open := acquireManagedResource(data); open {
 		t.Fatal("closed resource remained available")
 	}
@@ -101,6 +107,10 @@ func TestManagedNativeResourceFinalizerClosesAndUnregisters(t *testing.T) {
 	waitForNativeCleanup(t, probe.done)
 	if probe.count.Load() != 1 {
 		t.Fatalf("finalizer cleanup count = %d; want 1", probe.count.Load())
+	}
+	if reason := nativeReleaseReason(probe.release.Load()); reason !=
+		nativeReleaseCollected {
+		t.Fatalf("finalizer cleanup reason = %d", reason)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for nativeResourceCount(state.resources) != 0 {
@@ -232,6 +242,10 @@ func TestStateCloseReleasesEveryManagedNativeResource(t *testing.T) {
 				index,
 				probe.count.Load(),
 			)
+		}
+		if reason := nativeReleaseReason(probe.release.Load()); reason !=
+			nativeReleaseStateClose {
+			t.Fatalf("resource %d cleanup reason = %d", index, reason)
 		}
 	}
 	if state.resources != nil {

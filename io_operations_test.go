@@ -210,7 +210,9 @@ func TestIOWriteRestoresTheLogicalReadCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	handle := newIOOperationOSHandle(file)
-	defer closeFileHandle(handle)
+	defer closeFileHandle(handle, nativeRelease{
+		reason: nativeReleaseExplicit,
+	})
 
 	first, err := handle.input.ReadByte()
 	if err != nil || first != 'a' {
@@ -253,7 +255,9 @@ func TestIOSeekUsesTheLogicalCursorAndPreservesReadAheadOnFailure(
 		t.Fatal(err)
 	}
 	handle := newIOOperationOSHandle(file)
-	defer closeFileHandle(handle)
+	defer closeFileHandle(handle, nativeRelease{
+		reason: nativeReleaseExplicit,
+	})
 
 	buffer := make([]byte, 2)
 	if _, err := io.ReadFull(handle.input, buffer); err != nil {
@@ -392,7 +396,9 @@ func TestIOTransitionsFlushOutputAndAppendRemainsAnOSPolicy(
 		t.Fatal(err)
 	}
 	appendHandle := newIOOperationOSHandle(file)
-	defer closeFileHandle(appendHandle)
+	defer closeFileHandle(appendHandle, nativeRelease{
+		reason: nativeReleaseExplicit,
+	})
 	if _, err := appendHandle.seek(0, io.SeekStart); err != nil {
 		t.Fatal(err)
 	}
@@ -713,7 +719,9 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 
 	defaultWrite := ioOperationFunction(t, state, ioWrite)
 	stdout := ioFileField(t, ioLibraryTable(t, state), "stdout")
-	if _, err := stdout.resource.resource.release(); err != nil {
+	if _, err := stdout.resource.resource.release(nativeRelease{
+		reason: nativeReleaseExplicit,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := state.Call(

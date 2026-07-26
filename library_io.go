@@ -330,7 +330,7 @@ func (temporary *temporaryFileCloser) Close() error {
 	return errors.Join(closeErr, removeErr)
 }
 
-func closeFileHandle(value any) error {
+func closeFileHandle(value any, _ nativeRelease) error {
 	handle, ok := value.(*fileHandle)
 	if !ok || handle == nil {
 		return nil
@@ -589,7 +589,7 @@ func fileCollect(frame Frame) Outcome {
 	owned := lease.owned
 	lease.release()
 	if owned {
-		_, _ = closeManagedResource(data)
+		_, _ = collectManagedResource(data)
 	}
 	return frame.Return()
 }

@@ -954,14 +954,18 @@ the finalizer token live for the complete host operation.
 One lazy registry per State retains lifecycle records for live runtime
 resources, but deliberately does not retain their userdata or finalizer tokens.
 Explicit close, Go reclamation, and `State.Close` converge on one `sync.Once`
-cleanup. The finalizer can therefore perform native cleanup when userdata
-becomes unreachable, while `State.Close` still deterministically closes every
-registered resource, continues after failures, and returns those failures
-joined together. Closing clears the record's native value and registry link,
-so resource bookkeeping cannot pin unrelated State roots. A userdata's
-ordinary Lua 5.1 environment remains an independent, observable reference.
-Borrowed standard streams use the same lifecycle record with a no-close
-release policy and are never closed.
+cleanup, but the cleanup receives the release reason and only an explicit
+operation receives its transient context. This lets a process-backed resource
+wait during an ordinary close, terminate during deterministic State shutdown,
+and abandon without blocking a Go finalizer, without retaining a call
+context. The finalizer can therefore perform native cleanup when userdata
+becomes unreachable, while `State.Close` still deterministically releases
+every registered resource, continues after failures, and returns those
+failures joined together. Closing clears the record's native value and
+registry link, so resource bookkeeping cannot pin unrelated State roots. A
+userdata's ordinary Lua 5.1 environment remains an independent, observable
+reference. Borrowed standard streams use the same lifecycle record with a
+no-close release policy and are never closed.
 
 Finalizers in this layer may release only a private native resource; they
 never enter Lua. This is intentionally not an implementation of Lua

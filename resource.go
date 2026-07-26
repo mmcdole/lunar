@@ -1,15 +1,31 @@
 package lua
 
 import (
+	"context"
 	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
 )
 
+type nativeReleaseReason uint8
+
+const (
+	nativeReleaseExplicit nativeReleaseReason = iota
+	nativeReleaseStateClose
+	nativeReleaseCollected
+)
+
+// nativeRelease describes why one native resource is being released. The
+// context is present only during an explicit operation and is never retained.
+type nativeRelease struct {
+	reason  nativeReleaseReason
+	context context.Context
+}
+
 // nativeResourceCleanup releases one runtime-owned native resource. It must
 // not enter Lua or retain the runtime UserData that owns its finalizer token.
-type nativeResourceCleanup func(any) error
+type nativeResourceCleanup func(any, nativeRelease) error
 
 // nativeResourceRegistry lets State.Close release every live native resource
 // without making the State itself part of a retained UserData's object graph.
@@ -129,7 +145,9 @@ func (registry *nativeResourceRegistry) releaseAll() error {
 
 	failures := make([]error, 0, len(resources))
 	for _, resource := range resources {
-		if _, err := resource.release(); err != nil {
+		if _, err := resource.release(nativeRelease{
+			reason: nativeReleaseStateClose,
+		}); err != nil {
 			failures = append(failures, err)
 		}
 	}
@@ -143,7 +161,9 @@ func (resource *nativeResource) current() (any, bool) {
 	return resource.value, true
 }
 
-func (resource *nativeResource) release() (first bool, err error) {
+func (resource *nativeResource) release(
+	release nativeRelease,
+) (first bool, err error) {
 	if resource == nil {
 		return false, nil
 	}
@@ -161,7 +181,7 @@ func (resource *nativeResource) release() (first bool, err error) {
 				registry.remove(resource)
 			}
 		}()
-		resource.err = cleanup(value)
+		resource.err = cleanup(value, release)
 	})
 	return first, resource.err
 }
@@ -173,7 +193,9 @@ func finalizeNativeResource(token *nativeResourceToken) {
 		_ = recover()
 	}()
 	if token != nil {
-		_, _ = token.resource.release()
+		_, _ = token.resource.release(nativeRelease{
+			reason: nativeReleaseCollected,
+		})
 	}
 }
 
@@ -218,7 +240,7 @@ func (state *State) newRuntimeUserData(
 	}, nil
 }
 
-func releaseBorrowedNativeResource(any) error {
+func releaseBorrowedNativeResource(any, nativeRelease) error {
 	return nil
 }
 
@@ -267,6 +289,13 @@ func (lease nativeResourceLease) release() {
 }
 
 func closeManagedResource(data *UserData) (first bool, err error) {
+	return closeManagedResourceContext(data, nil)
+}
+
+func closeManagedResourceContext(
+	data *UserData,
+	ctx context.Context,
+) (first bool, err error) {
 	if data == nil || data.resource == nil {
 		return false, nil
 	}
@@ -275,7 +304,25 @@ func closeManagedResource(data *UserData) (first bool, err error) {
 		return false, errBorrowedNativeResource
 	}
 	runtime.SetFinalizer(token, nil)
-	first, err = token.resource.release()
+	first, err = token.resource.release(nativeRelease{
+		reason:  nativeReleaseExplicit,
+		context: ctx,
+	})
+	runtime.KeepAlive(data)
+	return first, err
+}
+
+func collectManagedResource(
+	data *UserData,
+) (first bool, err error) {
+	if data == nil || data.resource == nil {
+		return false, nil
+	}
+	token := data.resource
+	runtime.SetFinalizer(token, nil)
+	first, err = token.resource.release(nativeRelease{
+		reason: nativeReleaseCollected,
+	})
 	runtime.KeepAlive(data)
 	return first, err
 }
