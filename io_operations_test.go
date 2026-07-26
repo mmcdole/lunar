@@ -62,6 +62,28 @@ func (seeker *ioOperationFailingSeeker) Seek(
 	return 0, seeker.err
 }
 
+type ioOperationFaultingFile struct {
+	file *os.File
+	err  error
+	done bool
+}
+
+func (file *ioOperationFaultingFile) Read(buffer []byte) (int, error) {
+	count, err := file.file.Read(buffer)
+	if !file.done && count != 0 {
+		file.done = true
+		return count, file.err
+	}
+	return count, err
+}
+
+func (file *ioOperationFaultingFile) Seek(
+	offset int64,
+	origin int,
+) (int64, error) {
+	return file.file.Seek(offset, origin)
+}
+
 func TestIOWriteUsesBinaryStringsAndLuaNumberSpelling(t *testing.T) {
 	output := &ioOperationBuffer{}
 	state := newStateWithIO(t, Options{Stdout: output})
@@ -194,7 +216,7 @@ func TestIOWriteRestoresTheLogicalReadCursor(t *testing.T) {
 	if err != nil || first != 'a' {
 		t.Fatalf("first read = (%q, %v)", first, err)
 	}
-	if unread := handle.input.bufferedBytes(); unread != 5 {
+	if unread := handle.input.unreadBytes(); unread != 5 {
 		t.Fatalf("read-ahead = %d; want 5", unread)
 	}
 	if err := handle.prepareWrite(); err != nil {
@@ -214,7 +236,7 @@ func TestIOWriteRestoresTheLogicalReadCursor(t *testing.T) {
 	if got := string(content); got != "aXcdef" {
 		t.Fatalf("mixed read/write content = %q", got)
 	}
-	if unread := handle.input.bufferedBytes(); unread != 0 {
+	if unread := handle.input.unreadBytes(); unread != 0 {
 		t.Fatalf("read-ahead after write transition = %d", unread)
 	}
 }
@@ -252,7 +274,7 @@ func TestIOSeekUsesTheLogicalCursorAndPreservesReadAheadOnFailure(
 	failure := errors.New("seek failed")
 	failing := &ioOperationFailingSeeker{err: failure}
 	handle.seeker = failing
-	unread := handle.input.bufferedBytes()
+	unread := handle.input.unreadBytes()
 	if unread == 0 {
 		t.Fatal("test did not establish input read-ahead")
 	}
@@ -262,7 +284,7 @@ func TestIOSeekUsesTheLogicalCursorAndPreservesReadAheadOnFailure(
 	) {
 		t.Fatalf("failed seek = %v", err)
 	}
-	if got := handle.input.bufferedBytes(); got != unread {
+	if got := handle.input.unreadBytes(); got != unread {
 		t.Fatalf(
 			"failed seek discarded read-ahead: %d -> %d",
 			unread,
@@ -272,6 +294,49 @@ func TestIOSeekUsesTheLogicalCursorAndPreservesReadAheadOnFailure(
 	next, err = handle.input.ReadByte()
 	if err != nil || next != 'e' {
 		t.Fatalf("read after failed seek = (%q, %v); want e", next, err)
+	}
+}
+
+func TestIOSeekCountsReplayAfterADeferredReadFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "replay-cursor")
+	if err := os.WriteFile(path, []byte("abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	sentinel := errors.New("deferred read failure")
+	faulting := &ioOperationFaultingFile{
+		file: file,
+		err:  sentinel,
+	}
+	engine, _ := newTestIOReadEngine(
+		faulting,
+		defaultIOReadLimit,
+	)
+	if _, _, err := engine.readBytes(1); !errors.Is(err, sentinel) {
+		t.Fatalf("faulting read = %v", err)
+	}
+	if unread := engine.input.unreadBytes(); unread != 5 {
+		t.Fatalf("replay unread bytes = %d; want 5", unread)
+	}
+
+	handle := &fileHandle{
+		input:  engine.input,
+		seeker: faulting,
+	}
+	position, err := handle.seek(0, io.SeekCurrent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Fatalf("logical replay position = %d; want 1", position)
+	}
+	next, err := handle.input.ReadByte()
+	if err != nil || next != 'b' {
+		t.Fatalf("read after replay seek = (%q, %v); want b", next, err)
 	}
 }
 
@@ -455,6 +520,108 @@ func TestIOBufferingIsSharedWithPrintAndFlush(t *testing.T) {
 		float64(syscall.EINVAL) {
 		t.Fatalf("negative setvbuf errno = %v", results[2])
 	}
+
+	beforeMode := state.streams.stdout.mode
+	beforeSize := state.streams.stdout.bufferSize
+	results, err = state.Call(
+		setBuffering.Value(),
+		stdout.Value(),
+		state.String("full"),
+		Number(math.Inf(1)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results[:1], Nil())
+	if code, _ := results[2].AsNumber(); code !=
+		float64(syscall.EINVAL) {
+		t.Fatalf("huge setvbuf errno = %v", results[2])
+	}
+	if state.streams.stdout.mode != beforeMode ||
+		state.streams.stdout.bufferSize != beforeSize {
+		t.Fatal("rejected setvbuf changed the previous output policy")
+	}
+}
+
+func TestIOSetBufferingReconfiguresInputWithoutLosingReadAhead(
+	t *testing.T,
+) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	input := newInputEndpoint(strings.NewReader("abcdef"))
+	handle := &fileHandle{input: &input}
+	data := newIOOperationFile(t, state, handle)
+	setBuffering := ioOperationFunction(t, state, fileSetBuffering)
+	read := ioOperationFunction(t, state, fileRead)
+
+	results, err := state.Call(
+		setBuffering.Value(),
+		data.Value(),
+		state.String("full"),
+		Number(32),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true))
+	results, err = state.Call(
+		read.Value(),
+		data.Value(),
+		Number(1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("a"))
+	if input.buffered == nil || input.buffered.Size() != 32 {
+		t.Fatalf("full input buffer = %#v", input.buffered)
+	}
+
+	results, err = state.Call(
+		setBuffering.Value(),
+		data.Value(),
+		state.String("no"),
+		Number(0),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true))
+	if input.mode != streamBufferNone || input.buffered != nil {
+		t.Fatal("input no-buffer mode did not release the old reader")
+	}
+	results, err = state.Call(
+		read.Value(),
+		data.Value(),
+		Number(1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("b"))
+
+	results, err = state.Call(
+		setBuffering.Value(),
+		data.Value(),
+		state.String("line"),
+		Number(64),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true))
+	results, err = state.Call(
+		read.Value(),
+		data.Value(),
+		state.String("*a"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("cdef"))
+	if input.buffered == nil || input.buffered.Size() != 64 {
+		t.Fatalf("line input buffer = %#v", input.buffered)
+	}
 }
 
 func TestIOSeekReportsPendingFlushFailureBeforeSeeking(t *testing.T) {
@@ -499,7 +666,11 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := state.newRegularFile(file, fileMetatable(t, state))
+	data, err := state.newRegularFile(
+		file,
+		os.O_RDWR,
+		fileMetatable(t, state),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +740,11 @@ func TestIOSeekNativeArgumentsAndFailureTuple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := state.newRegularFile(file, fileMetatable(t, state))
+	data, err := state.newRegularFile(
+		file,
+		os.O_RDWR,
+		fileMetatable(t, state),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,6 +818,41 @@ func TestIOWarmWriteOperationDoesNotAllocate(t *testing.T) {
 	if allocations := testing.AllocsPerRun(1_000, run); allocations != 0 {
 		t.Fatalf(
 			"warm compact file.write allocations = %.2f; want 0",
+			allocations,
+		)
+	}
+}
+
+func TestIOWarmUnbufferedNumberWriteDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	output := &ioOperationBuffer{}
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	endpoint := ioOperationOutput(output)
+	data := newIOOperationFile(
+		t,
+		state,
+		&fileHandle{output: endpoint},
+	)
+	write := ioOperationFunction(t, state, fileWrite)
+	arguments := [...]Value{data.Value(), Number(12.5)}
+	var destination [1]Value
+
+	run := func() {
+		output.Reset()
+		count, err := state.CallInto(
+			write.Value(),
+			arguments[:],
+			destination[:],
+		)
+		if err != nil || count != 1 {
+			panic("warm unbuffered file write failed")
+		}
+	}
+	run()
+	if allocations := testing.AllocsPerRun(1_000, run); allocations != 0 {
+		t.Fatalf(
+			"warm unbuffered numeric write allocations = %.2f; want 0",
 			allocations,
 		)
 	}

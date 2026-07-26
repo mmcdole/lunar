@@ -213,8 +213,8 @@ func TestStreamEndpointsPreserveUnderlyingErrorIdentity(t *testing.T) {
 	if text != "partial" || err != sentinel {
 		t.Fatalf("input result = (%q, %v); want exact sentinel", text, err)
 	}
-	if input.failure() != nil {
-		t.Fatalf("delivered input failure remained pending: %v", input.failure())
+	if failure := input.takeFailure(); failure != nil {
+		t.Fatalf("delivered input failure remained pending: %v", failure)
 	}
 
 	control, failure := newLoadControl(nil, 1<<20)
@@ -294,8 +294,8 @@ func TestDeliveredInputFailureDoesNotPoisonLaterConsumer(t *testing.T) {
 	if text != "discarded" || err != sentinel {
 		t.Fatalf("first read = (%q, %v)", text, err)
 	}
-	if endpoint.failure() != nil {
-		t.Fatalf("delivered failure remained pending: %v", endpoint.failure())
+	if failure := endpoint.takeFailure(); failure != nil {
+		t.Fatalf("delivered failure remained pending: %v", failure)
 	}
 
 	control, failure := newLoadControl(nil, 1<<20)
@@ -340,10 +340,10 @@ func TestLoaderConsumesDeferredInputFailureOnce(t *testing.T) {
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("first loader error = %v; want deferred failure", err)
 	}
-	if endpoint.failure() != nil {
+	if failure := endpoint.takeFailure(); failure != nil {
 		t.Fatalf(
 			"loader left its reported failure pending: %v",
-			endpoint.failure(),
+			failure,
 		)
 	}
 
@@ -387,8 +387,8 @@ func TestTakingInputFailurePreservesPrefetchedBytes(t *testing.T) {
 	if err := endpoint.takeFailure(); err != sentinel {
 		t.Fatalf("takeFailure = %v; want exact sentinel", err)
 	}
-	if endpoint.failure() != nil {
-		t.Fatalf("taken failure remained pending: %v", endpoint.failure())
+	if failure := endpoint.takeFailure(); failure != nil {
+		t.Fatalf("taken failure remained pending: %v", failure)
 	}
 	if got := endpoint.unreadBytes(); got != len("prefetched") {
 		t.Fatalf(
@@ -428,8 +428,8 @@ func TestExposingInputFailurePreservesPeekedBytes(t *testing.T) {
 	if string(text) != "peeked" || err != sentinel {
 		t.Fatalf("Peek = (%q, %v); want bytes and exact sentinel", text, err)
 	}
-	if endpoint.failure() != nil {
-		t.Fatalf("exposed failure remained pending: %v", endpoint.failure())
+	if failure := endpoint.takeFailure(); failure != nil {
+		t.Fatalf("exposed failure remained pending: %v", failure)
 	}
 	if got := endpoint.unreadBytes(); got != len("peeked") {
 		t.Fatalf("unread bytes = %d; want %d", got, len("peeked"))

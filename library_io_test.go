@@ -38,6 +38,20 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 	if library.RawGetString("popen").Kind() != NilKind {
 		t.Fatal("OpenIO published an unimplemented popen stub")
 	}
+	wantLibrary := map[string]Kind{
+		"stdin":  UserDataKind,
+		"stdout": UserDataKind,
+		"stderr": UserDataKind,
+	}
+	for _, definition := range ioLibraryFunctions {
+		wantLibrary[definition.name] = FunctionKind
+	}
+	assertTableSurface(t, library, wantLibrary)
+	wantFile := map[string]Kind{"__index": TableKind}
+	for _, definition := range fileLibraryFunctions {
+		wantFile[definition.name] = FunctionKind
+	}
+	assertTableSurface(t, metatable, wantFile)
 
 	stdin := ioFileField(t, library, "stdin")
 	stdout := ioFileField(t, library, "stdout")
@@ -131,6 +145,28 @@ return io.type(io.stdin),io.type(io.stdout),io.type(io.stderr),
 	text, ok := results[5].AsString()
 	if !ok || !strings.HasPrefix(text, "file (0x") {
 		t.Fatalf("standard file tostring = %v", results[5])
+	}
+}
+
+func TestIOFileCloseRequiresItsReceiver(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+
+	results := runIOChunk(t, state, `
+local close=io.stdout.close
+local ok,message=pcall(close)
+return ok,message,io.type(io.stdout)
+`)
+	assertTestValues(
+		t,
+		[]Value{results[0], results[2]},
+		Bool(false),
+		state.String("file"),
+	)
+	message, _ := results[1].AsString()
+	if !strings.Contains(message, "bad argument #1") ||
+		!strings.Contains(message, "FILE* expected, got nil") {
+		t.Fatalf("receiverless file close error = %q", message)
 	}
 }
 
@@ -353,7 +389,7 @@ return absentOK,absentError,beforeFile,beforeOutput,closed,
 		state.String("file"),
 	)
 	message, _ := results[1].AsString()
-	if !strings.Contains(message, "FILE* expected, got no value") {
+	if !strings.Contains(message, "FILE* expected, got nil") {
 		t.Fatalf("argumentless owned __close error = %q", message)
 	}
 }
@@ -446,6 +482,50 @@ return io.open(`+luaTestQuote(missingPath)+`)
 	}
 	if code, ok := missing[2].AsNumber(); !ok || code == 0 {
 		t.Fatalf("missing-file errno = %v", missing[2])
+	}
+}
+
+func TestIOOpenCarriesOnlyTheModeCapabilities(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	path := filepath.Join(t.TempDir(), "capabilities")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	results := runIOChunk(t, state, `
+return assert(io.open(`+luaTestQuote(path)+`,"r")),
+	assert(io.open(`+luaTestQuote(path)+`,"w")),
+	assert(io.open(`+luaTestQuote(path)+`,"r+"))
+`)
+	want := [][2]bool{
+		{true, false},
+		{false, true},
+		{true, true},
+	}
+	for index, result := range results {
+		data, ok := result.UserData()
+		if !ok {
+			t.Fatalf("file %d = %v", index, result)
+		}
+		lease, open := acquireManagedResource(data)
+		if !open {
+			t.Fatalf("file %d is closed", index)
+		}
+		handle := lease.value.(*fileHandle)
+		got := [2]bool{handle.input != nil, handle.output != nil}
+		lease.release()
+		if got != want[index] {
+			t.Fatalf(
+				"file %d capabilities = %v; want %v",
+				index,
+				got,
+				want[index],
+			)
+		}
+		if _, err := closeManagedResource(data); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -662,6 +742,83 @@ return io.open(`+luaTestQuote(path)+`,"w")
 	}
 }
 
+func TestIOLibraryCasesMatchLua51(t *testing.T) {
+	runLua51Cases(t, ioLibraryLua51Cases)
+}
+
+var ioLibraryLua51Cases = []lua51Case{
+	{
+		name:   "file_close_requires_receiver",
+		source: `local close=io.stdout.close; local ok,message=pcall(close); return ok,message,io.type(io.stdout)`,
+		want:   "ok false 'bad argument #1 to '?' (FILE* expected, got nil)' 'file'",
+	},
+	{
+		name:   "file_type_and_standard_close",
+		source: `local result,message=io.stdin:close(); return io.type(io.stdin),io.type(nil),io.type({}),result,message`,
+		want:   "ok 'file' nil nil nil 'cannot close standard file'",
+	},
+	{
+		name:   "temporary_file_write_seek_read_and_close",
+		source: `local f=assert(io.tmpfile()); local written=f:write("ab",3); local position=f:seek("set"); local text=f:read("*a"); local closed=f:close(); return written,position,text,closed,io.type(f),tostring(f)`,
+		want:   "ok true 0 'ab3' true 'closed file' 'file (closed)'",
+	},
+	{
+		name:   "line_number_and_all_formats",
+		source: `local f=assert(io.tmpfile()); f:write("line\n\n12.5Z"); f:seek("set"); return f:read(),f:read("*line"),f:read("*number"),f:read(1),f:read("*all"),f:read("*a")`,
+		want:   "ok 'line' '' 12.5 'Z' '' ''",
+	},
+	{
+		name:   "fixed_reads_and_eof",
+		source: `local f=assert(io.tmpfile()); f:write("ab"); f:seek("set"); return f:read(1),f:read(4),f:read(1),f:read(0),f:read("*a")`,
+		want:   "ok 'a' 'b' nil nil ''",
+	},
+	{
+		name:   "negative_count_is_a_large_fixed_read",
+		source: `local f=assert(io.tmpfile()); f:write("remaining"); f:seek("set"); return f:read(-1),f:read(-1),f:read("*a")`,
+		want:   "ok 'remaining' nil ''",
+	},
+	{
+		name:   "multi_format_stops_after_eof",
+		source: `local f=assert(io.tmpfile()); f:write("a"); f:seek("set"); return f:read(1,1,1)`,
+		want:   "ok 'a' nil",
+	},
+	{
+		name:   "seek_current_uses_the_visible_cursor",
+		source: `local f=assert(io.tmpfile()); f:write("abcdef"); f:seek("set"); local text=f:read(2); return text,f:seek(),f:read(2)`,
+		want:   "ok 'ab' 2 'cd'",
+	},
+	{
+		name:   "file_lines_and_repeated_eof",
+		source: `local f=assert(io.tmpfile()); f:write("a\nb"); f:seek("set"); local lines=f:lines(); return lines(),lines(),select("#",lines()),select("#",lines()),io.type(f)`,
+		want:   "ok 'a' 'b' 0 0 'file'",
+	},
+	{
+		name:   "binary_fixed_read",
+		source: `local f=assert(io.tmpfile()); f:write("a\000b"); f:seek("set"); local text=f:read(3); return #text,string.byte(text,1,3)`,
+		want:   "ok 3 97 0 98",
+	},
+	{
+		name:   "buffer_modes",
+		source: `local f=assert(io.tmpfile()); return f:setvbuf("full",16),f:setvbuf("line",8),f:setvbuf("no",0)`,
+		want:   "ok true true true",
+	},
+	{
+		name:   "closed_file_diagnostics",
+		source: `local f=assert(io.tmpfile()); f:close(); local ok,message=pcall(f.read,f); return ok,message,io.type(f),tostring(f)`,
+		want:   "ok false 'attempt to use a closed file' 'closed file' 'file (closed)'",
+	},
+	{
+		name:   "invalid_read_formats",
+		source: `local f=assert(io.tmpfile()); local function badoption() return f:read("x") end; local function badformat() return f:read("*z") end; local a,b=pcall(badoption); local c,d=pcall(badformat); return a,b,c,d`,
+		want:   "ok false 'case:1: bad argument #1 to 'read' (invalid option)' false 'case:1: bad argument #1 to 'read' (invalid format)'",
+	},
+	{
+		name:   "line_iterator_error_has_caller_position",
+		source: `local f=assert(io.tmpfile()); local lines=f:lines(); f:close(); local function step() return lines() end; local ok,message=pcall(step); return ok,message`,
+		want:   "ok false 'case:1: file is already closed'",
+	},
+}
+
 func newStateWithIO(t testing.TB, options Options) *State {
 	t.Helper()
 	state := newStateWithBase(t, options)
@@ -723,6 +880,40 @@ func ioFunctionField(t testing.TB, library *Table, name string) *Function {
 		t.Fatalf("io.%s = %v", name, value)
 	}
 	return function
+}
+
+func assertTableSurface(
+	t testing.TB,
+	table *Table,
+	want map[string]Kind,
+) {
+	t.Helper()
+	found := 0
+	for key := nilSlot; ; {
+		next, value, present, err := table.next(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !present {
+			break
+		}
+		if next.kind() != StringKind {
+			t.Fatalf("table surface contains non-string key %v", next.owningValue())
+		}
+		name := (*luaString)(next.ref).text
+		kind, expected := want[name]
+		if !expected {
+			t.Fatalf("table surface contains unexpected field %q", name)
+		}
+		if value.kind() != kind {
+			t.Fatalf("table surface %s = %s; want %s", name, value.kind(), kind)
+		}
+		found++
+		key = next
+	}
+	if found != len(want) {
+		t.Fatalf("table surface has %d fields; want %d", found, len(want))
+	}
 }
 
 func luaTestQuote(text string) string {

@@ -22,18 +22,28 @@ var ioLibraryFunctions = [...]struct {
 	entry NativeFunc
 }{
 	{name: "close", entry: ioClose},
+	{name: "flush", entry: ioFlush},
 	{name: "input", entry: ioInput},
+	{name: "lines", entry: ioLines},
 	{name: "open", entry: ioOpen},
 	{name: "output", entry: ioOutput},
+	{name: "read", entry: ioRead},
 	{name: "tmpfile", entry: ioTempFile},
 	{name: "type", entry: ioType},
+	{name: "write", entry: ioWrite},
 }
 
 var fileLibraryFunctions = [...]struct {
 	name  string
 	entry NativeFunc
 }{
-	{name: "close", entry: ioClose},
+	{name: "close", entry: fileClose},
+	{name: "flush", entry: fileFlush},
+	{name: "lines", entry: fileLines},
+	{name: "read", entry: fileRead},
+	{name: "seek", entry: fileSeek},
+	{name: "setvbuf", entry: fileSetBuffering},
+	{name: "write", entry: fileWrite},
 	{name: "__gc", entry: fileCollect},
 	{name: "__tostring", entry: fileToString},
 }
@@ -51,7 +61,8 @@ type fileHandle struct {
 	ownedOutput outputEndpoint
 }
 
-// OpenIO installs the implemented Lua 5.1 IO library surface.
+// OpenIO installs the Lua 5.1 IO library. Process-backed io.popen is omitted
+// until the runtime has one shared process-lifetime layer for IO and os.
 //
 // Files are opaque runtime userdata. Standard files borrow the State streams;
 // files returned by open own their operating-system handle. Opening again
@@ -82,7 +93,7 @@ func (state *State) OpenIO() error {
 
 	closeFunction, err := state.newIOFunction(
 		environment,
-		fileOwnedClose,
+		fileClose,
 	)
 	if err != nil {
 		return err
@@ -257,29 +268,34 @@ func (state *State) newStandardFile(
 
 func (state *State) newRegularFile(
 	file *os.File,
+	flags int,
 	metatable *Table,
 ) (*UserData, error) {
-	return state.newOwnedFile(file, file, metatable)
+	return state.newOwnedFile(file, file, flags, metatable)
 }
 
 func (state *State) newOwnedFile(
 	file *os.File,
 	closer io.Closer,
+	flags int,
 	metatable *Table,
 ) (*UserData, error) {
 	handle := &fileHandle{
 		seeker: file,
 		closer: closer,
 	}
-	handle.ownedInput = newInputEndpoint(file)
-	handle.ownedOutput = newOutputEndpoint(file)
-	// C file streams buffer regular output by default. Standard Go writers
-	// remain unbuffered until setvbuf requests otherwise, which keeps the
-	// embedding boundary deterministic while avoiding a syscall per file
-	// write.
-	handle.ownedOutput.mode = streamBufferFull
-	handle.input = &handle.ownedInput
-	handle.output = &handle.ownedOutput
+	readable, writable := fileOpenCapabilities(flags)
+	if readable {
+		handle.ownedInput = newInputEndpoint(file)
+		handle.input = &handle.ownedInput
+	}
+	if writable {
+		handle.ownedOutput = newOutputEndpoint(file)
+		// C file streams buffer regular output by default. Standard Go
+		// writers remain unbuffered until setvbuf requests otherwise.
+		handle.ownedOutput.mode = streamBufferFull
+		handle.output = &handle.ownedOutput
+	}
 	data, err := state.newManagedUserData(
 		handle,
 		closeFileHandle,
@@ -390,7 +406,7 @@ func ioOpen(frame Frame) Outcome {
 		_ = file.Close()
 		return libraryError(frame, "%s", err)
 	}
-	data, err := frame.State().newRegularFile(file, metatable)
+	data, err := frame.State().newRegularFile(file, flags, metatable)
 	if err != nil {
 		return libraryError(frame, "%s", err)
 	}
@@ -416,6 +432,7 @@ func ioTempFile(frame Frame) Outcome {
 	data, err := frame.State().newOwnedFile(
 		file,
 		closer,
+		os.O_RDWR,
 		metatable,
 	)
 	if err != nil {
@@ -475,6 +492,17 @@ func fileOpenFlags(mode string) (int, bool) {
 	}
 }
 
+func fileOpenCapabilities(flags int) (readable, writable bool) {
+	switch flags & (os.O_WRONLY | os.O_RDWR) {
+	case os.O_WRONLY:
+		return false, true
+	case os.O_RDWR:
+		return true, true
+	default:
+		return true, false
+	}
+}
+
 func ioClose(frame Frame) Outcome {
 	data, present := frame.UserData(0)
 	if !present && frame.Kind(0) == InvalidKind {
@@ -490,9 +518,21 @@ func ioClose(frame Frame) Outcome {
 	return closeFileUserData(frame, data)
 }
 
-func fileOwnedClose(frame Frame) Outcome {
+func fileClose(frame Frame) Outcome {
 	data, present := frame.UserData(0)
-	if !present || !isFileUserData(frame.thread.state, data) {
+	if !present {
+		// Lua 5.1's file:close path reports an absent receiver as nil,
+		// unlike the other file methods, which report "no value".
+		if frame.Kind(0) == InvalidKind {
+			return baseArgumentError(
+				frame,
+				0,
+				luaFileHandleRegistryKey+" expected, got nil",
+			)
+		}
+		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+	}
+	if !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	return closeFileUserData(frame, data)
@@ -608,7 +648,11 @@ func ioDefaultFile(
 				_ = file.Close()
 				return libraryError(frame, "%s", metaErr)
 			}
-			data, err = frame.State().newRegularFile(file, metatable)
+			data, err = frame.State().newRegularFile(
+				file,
+				flags,
+				metatable,
+			)
 			if err != nil {
 				return libraryError(frame, "%s", err)
 			}

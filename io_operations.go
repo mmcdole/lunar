@@ -6,15 +6,6 @@ import (
 	"syscall"
 )
 
-// bufferedBytes reports input already fetched from the underlying stream but
-// not yet consumed through the Lua-visible cursor.
-func (endpoint *inputEndpoint) bufferedBytes() int {
-	if endpoint == nil || endpoint.buffered == nil {
-		return 0
-	}
-	return endpoint.buffered.Buffered()
-}
-
 // resetReadAhead makes the next read start at the underlying stream's current
 // position while retaining the lazily allocated bufio storage for reuse.
 func (endpoint *inputEndpoint) resetReadAhead() {
@@ -25,6 +16,8 @@ func (endpoint *inputEndpoint) resetReadAhead() {
 		endpoint.buffered.Reset(&endpoint.source)
 	}
 	endpoint.source.pending = nil
+	endpoint.source.deferred = nil
+	endpoint.source.replay = nil
 }
 
 // prepareRead completes pending writes before the same file is read. Keeping
@@ -59,7 +52,7 @@ func (handle *fileHandle) prepareWrite() error {
 		return nil
 	}
 
-	unread := handle.input.bufferedBytes()
+	unread := handle.input.unreadBytes()
 	if unread != 0 {
 		if handle.seeker == nil {
 			return syscall.ESPIPE
@@ -94,7 +87,7 @@ func (handle *fileHandle) seek(
 	}
 
 	if origin == io.SeekCurrent && handle.input != nil {
-		unread := int64(handle.input.bufferedBytes())
+		unread := int64(handle.input.unreadBytes())
 		if offset < math.MinInt64+unread {
 			return 0, syscall.EINVAL
 		}
@@ -167,9 +160,9 @@ func writeFileArguments(
 	return frame.ReturnBool(true)
 }
 
-// writeFileNumber appends directly into an existing stream buffer when one is
-// active. Besides avoiding a copy, this keeps ordinary regular-file numeric
-// writes allocation-free after their lazy buffer has been created.
+// writeFileNumber uses storage owned by the endpoint in both buffering modes.
+// Besides avoiding a copy into an active stream buffer, stable endpoint
+// storage prevents an unbuffered io.Writer call from escaping a temporary.
 func writeFileNumber(
 	output *outputEndpoint,
 	number float64,
@@ -190,10 +183,9 @@ func writeFileNumber(
 		return err
 	}
 
-	var storage [32]byte
 	return writeFileBytes(
 		output,
-		appendLuaNumber(storage[:0], number),
+		appendLuaNumber(output.numberScratch[:0], number),
 	)
 }
 
@@ -354,7 +346,9 @@ func setFileBuffering(frame Frame, handle *fileHandle) Outcome {
 			return numberArgumentError(frame, 2)
 		}
 	}
-	if size < 0 || uint64(size) > uint64(maxInt()) {
+	if size < 0 ||
+		uint64(size) > uint64(maxInt()) ||
+		size > maximumStreamBufferBytes {
 		return ioFailureResult(
 			frame,
 			"",
@@ -363,6 +357,11 @@ func setFileBuffering(frame Frame, handle *fileHandle) Outcome {
 	}
 	if handle.output != nil {
 		if err := handle.output.setBuffering(mode, int(size)); err != nil {
+			return ioFailureResult(frame, "", err)
+		}
+	}
+	if handle.input != nil {
+		if err := handle.input.setBuffering(mode, int(size)); err != nil {
 			return ioFailureResult(frame, "", err)
 		}
 	}

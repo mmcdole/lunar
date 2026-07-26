@@ -7,11 +7,16 @@ import (
 )
 
 const (
-	defaultIOReadLimit = maximumConstructedStringBytes
-	smallIOReadBytes   = 512
+	defaultIOReadLimit     = maximumConstructedStringBytes
+	maximumIONumberBytes   = 64 << 10
+	ioReadContextPollBytes = 64 << 10
+	maximumIOReadSlack     = 4 << 10
 )
 
-var errIOReadTooLarge = errors.New("lua: resulting string too large")
+var (
+	errIOReadTooLarge  = errors.New("lua: resulting string too large")
+	errIONumberTooLong = errors.New("lua: numeric input is too long")
+)
 
 // ioReadEngine implements the input formats shared by io.read and file:read.
 // It consumes one inputEndpoint, so every user of a file observes one logical
@@ -20,6 +25,9 @@ type ioReadEngine struct {
 	input   *inputEndpoint
 	strings *stringPool
 	limit   int
+
+	contextThread *Thread
+	contextBytes  uint32
 }
 
 func newIOReadEngine(
@@ -33,6 +41,70 @@ func newIOReadEngine(
 	}
 }
 
+// bindContext makes a potentially long native read cooperative with the
+// active public call. Raw calls leave contextThread nil, so their byte loops
+// pay only one predictable branch.
+func (engine *ioReadEngine) bindContext(thread *Thread) bool {
+	if engine.input == nil ||
+		thread == nil ||
+		thread.state.execution.done == nil {
+		return false
+	}
+	engine.contextThread = thread
+	engine.contextBytes = ioReadContextPollBytes
+	engine.input.source.contextThread = thread
+	return true
+}
+
+func (engine *ioReadEngine) unbindContext() {
+	if engine.contextThread == nil {
+		return
+	}
+	if engine.input != nil &&
+		engine.input.source.contextThread == engine.contextThread {
+		engine.input.source.contextThread = nil
+	}
+	engine.contextThread = nil
+	engine.contextBytes = 0
+}
+
+func (engine *ioReadEngine) consumeContextBytes(count int) *Error {
+	if engine.contextThread == nil || count <= 0 {
+		return nil
+	}
+	consumed := uint64(count)
+	budget := uint64(engine.contextBytes)
+	if consumed < budget {
+		engine.contextBytes -= uint32(consumed)
+		return nil
+	}
+	if failure := pollExecutionContext(engine.contextThread); failure != nil {
+		return failure
+	}
+	remainder := consumed % ioReadContextPollBytes
+	if remainder == 0 {
+		engine.contextBytes = ioReadContextPollBytes
+	} else {
+		engine.contextBytes = ioReadContextPollBytes - uint32(remainder)
+	}
+	return nil
+}
+
+func (engine *ioReadEngine) readRequestSize(available int) int {
+	if engine.contextThread == nil ||
+		available <= int(engine.contextBytes) {
+		return available
+	}
+	return int(engine.contextBytes)
+}
+
+func (engine *ioReadEngine) checkEmptyRead() *Error {
+	if engine.contextThread == nil {
+		return nil
+	}
+	return pollExecutionContext(engine.contextThread)
+}
+
 // readLine reads through the next line feed and returns the bytes before it.
 // A carriage return is ordinary data. The final unterminated line is a value;
 // only an EOF encountered before any byte reports no value.
@@ -40,6 +112,10 @@ func (engine *ioReadEngine) readLine() (slot, bool, error) {
 	var collected []byte
 	for {
 		piece, err := engine.input.ReadSlice('\n')
+		consumed := len(piece)
+		if failure := engine.consumeContextBytes(consumed); failure != nil {
+			return nilSlot, false, failure
+		}
 		terminated := len(piece) != 0 &&
 			piece[len(piece)-1] == '\n'
 		if terminated {
@@ -116,12 +192,48 @@ func (engine *ioReadEngine) readBytes(
 	if count < target {
 		target = count
 	}
-	var small [smallIOReadBytes]byte
-	buffer := small[:0]
-	owned := false
+	if value, present, err, handled :=
+		engine.readBorrowedBytes(target); handled {
+		if err == nil && present && count > uint64(limit) {
+			next, peekErr := engine.input.Peek(1)
+			if failure := engine.finish(peekErr); failure != nil &&
+				failure != io.EOF {
+				return nilSlot, false, failure
+			}
+			if len(next) != 0 {
+				return nilSlot, false, errIOReadTooLarge
+			}
+		}
+		return value, present, err
+	}
+
+	reader, err := engine.input.reader()
+	if err != nil {
+		return nilSlot, false, engine.finish(err)
+	}
+	initial := reader.Size()
+	if uint64(initial) > target {
+		initial = int(target)
+	}
+	initial = engine.readRequestSize(initial)
+	if initial < 1 {
+		initial = 1
+	}
+	buffer := make([]byte, 0, initial)
+	emptyReads := 0
 
 	for uint64(len(buffer)) < target {
 		if len(buffer) == cap(buffer) {
+			if engine.contextThread == nil {
+				next, err := engine.input.Peek(1)
+				if failure := engine.finish(err); failure != nil &&
+					failure != io.EOF {
+					return nilSlot, false, failure
+				}
+				if len(next) == 0 {
+					break
+				}
+			}
 			nextCapacity := cap(buffer) * 2
 			if nextCapacity == 0 {
 				nextCapacity = 1
@@ -132,7 +244,6 @@ func (engine *ioReadEngine) readBytes(
 			grown := make([]byte, len(buffer), nextCapacity)
 			copy(grown, buffer)
 			buffer = grown
-			owned = true
 		}
 
 		end := cap(buffer)
@@ -140,9 +251,25 @@ func (engine *ioReadEngine) readBytes(
 			end = int(target)
 		}
 		start := len(buffer)
+		request := engine.readRequestSize(end - start)
+		end = start + request
 		buffer = buffer[:end]
 		read, err := engine.input.Read(buffer[start:])
 		buffer = buffer[:start+read]
+		if read == 0 && err == nil {
+			emptyReads++
+			if failure := engine.checkEmptyRead(); failure != nil {
+				return nilSlot, false, failure
+			}
+			if emptyReads == maxConsecutiveEmptyRead {
+				return nilSlot, false, io.ErrNoProgress
+			}
+			continue
+		}
+		emptyReads = 0
+		if failure := engine.consumeContextBytes(read); failure != nil {
+			return nilSlot, false, failure
+		}
 		if err == io.EOF {
 			if failure := engine.finish(err); failure != nil &&
 				failure != io.EOF {
@@ -171,19 +298,83 @@ func (engine *ioReadEngine) readBytes(
 	if len(buffer) == 0 {
 		return nilSlot, false, nil
 	}
-	if owned {
-		return engine.ownedStringSlot(buffer), true, nil
+	return engine.ownedStringSlot(buffer), true, nil
+}
+
+// readBorrowedBytes serves fixed reads already small enough for bufio's
+// reusable storage. The result is interned or copied before another reader
+// operation can reuse that storage, eliminating a per-call temporary buffer.
+func (engine *ioReadEngine) readBorrowedBytes(
+	target uint64,
+) (slot, bool, error, bool) {
+	if engine.contextThread != nil {
+		return nilSlot, false, nil, false
 	}
-	return engine.copiedStringSlot(buffer), true, nil
+	reader, err := engine.input.reader()
+	if err != nil {
+		return nilSlot, false, engine.finish(err), true
+	}
+	request := reader.Size()
+	if target < uint64(request) {
+		request = int(target)
+	}
+	request = engine.readRequestSize(request)
+	if request < 1 {
+		return nilSlot, false, nil, false
+	}
+
+	text, peekErr := reader.Peek(request)
+	complete := uint64(len(text)) == target
+	if !complete && peekErr == nil {
+		return nilSlot, false, nil, false
+	}
+
+	var value slot
+	if peekErr == nil || peekErr == io.EOF {
+		value = engine.copiedStringSlot(text)
+	}
+	discarded, discardErr := reader.Discard(len(text))
+	if discarded != len(text) {
+		if discardErr == nil {
+			discardErr = io.ErrNoProgress
+		}
+		return nilSlot, false, engine.finish(discardErr), true
+	}
+	if failure := engine.consumeContextBytes(discarded); failure != nil {
+		return nilSlot, false, failure, true
+	}
+	if failure := engine.finish(peekErr); failure != nil &&
+		failure != io.EOF {
+		return nilSlot, false, failure, true
+	}
+	if len(text) == 0 {
+		return nilSlot, false, nil, true
+	}
+	return value, true, nil, true
 }
 
 // readAll consumes input through EOF. Unlike the other formats, an empty input
 // is a successful empty string.
 func (engine *ioReadEngine) readAll() (slot, bool, error) {
 	limit := engine.readLimit()
-	var small [smallIOReadBytes]byte
-	buffer := small[:0]
-	owned := false
+	if value, err, handled := engine.readBorrowedAll(); handled {
+		return value, true, err
+	}
+
+	reader, err := engine.input.reader()
+	if err != nil {
+		return nilSlot, false, engine.finish(err)
+	}
+	initial := reader.Size()
+	if initial > limit {
+		initial = limit
+	}
+	initial = engine.readRequestSize(initial)
+	if initial < 1 {
+		initial = 1
+	}
+	buffer := make([]byte, 0, initial)
+	emptyReads := 0
 
 	for {
 		if len(buffer) == limit {
@@ -199,6 +390,16 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 		}
 
 		if len(buffer) == cap(buffer) {
+			if engine.contextThread == nil {
+				next, err := engine.input.Peek(1)
+				if failure := engine.finish(err); failure != nil &&
+					failure != io.EOF {
+					return nilSlot, false, failure
+				}
+				if len(next) == 0 {
+					break
+				}
+			}
 			nextCapacity := cap(buffer) * 2
 			if nextCapacity == 0 {
 				nextCapacity = 1
@@ -209,7 +410,6 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 			grown := make([]byte, len(buffer), nextCapacity)
 			copy(grown, buffer)
 			buffer = grown
-			owned = true
 		}
 
 		target := cap(buffer)
@@ -217,9 +417,25 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 			target = limit
 		}
 		start := len(buffer)
+		request := engine.readRequestSize(target - start)
+		target = start + request
 		buffer = buffer[:target]
 		read, err := engine.input.Read(buffer[start:])
 		buffer = buffer[:start+read]
+		if read == 0 && err == nil {
+			emptyReads++
+			if failure := engine.checkEmptyRead(); failure != nil {
+				return nilSlot, false, failure
+			}
+			if emptyReads == maxConsecutiveEmptyRead {
+				return nilSlot, false, io.ErrNoProgress
+			}
+			continue
+		}
+		emptyReads = 0
+		if failure := engine.consumeContextBytes(read); failure != nil {
+			return nilSlot, false, failure
+		}
 
 		if err == io.EOF {
 			if failure := engine.finish(err); failure != nil &&
@@ -236,10 +452,58 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 		}
 	}
 
-	if owned {
-		return engine.ownedStringSlot(buffer), true, nil
+	return engine.ownedStringSlot(buffer), true, nil
+}
+
+// readBorrowedAll handles inputs that reach EOF within the reusable reader
+// buffer. Larger inputs fall through to an owned growable buffer.
+func (engine *ioReadEngine) readBorrowedAll() (
+	slot,
+	error,
+	bool,
+) {
+	if engine.contextThread != nil {
+		return nilSlot, nil, false
 	}
-	return engine.copiedStringSlot(buffer), true, nil
+	reader, err := engine.input.reader()
+	if err != nil {
+		return nilSlot, engine.finish(err), true
+	}
+	request := reader.Size()
+	if limit := engine.readLimit(); request > limit {
+		request = limit
+	}
+	if request < 1 {
+		request = 1
+	}
+	request = engine.readRequestSize(request)
+	if request < 1 {
+		return nilSlot, nil, false
+	}
+	text, peekErr := reader.Peek(request)
+	if peekErr == nil {
+		return nilSlot, nil, false
+	}
+
+	var value slot
+	if peekErr == io.EOF {
+		value = engine.copiedStringSlot(text)
+	}
+	discarded, discardErr := reader.Discard(len(text))
+	if discarded != len(text) {
+		if discardErr == nil {
+			discardErr = io.ErrNoProgress
+		}
+		return nilSlot, engine.finish(discardErr), true
+	}
+	if failure := engine.consumeContextBytes(discarded); failure != nil {
+		return nilSlot, failure, true
+	}
+	if failure := engine.finish(peekErr); failure != nil &&
+		failure != io.EOF {
+		return nilSlot, failure, true
+	}
+	return value, nil, true
 }
 
 // readNumber scans one deterministic Lua number. Leading Lua whitespace is
@@ -249,6 +513,12 @@ func (engine *ioReadEngine) readAll() (slot, bool, error) {
 func (engine *ioReadEngine) readNumber() (slot, bool, error) {
 	var storage [64]byte
 	token := storage[:0]
+	tokenLimit := maximumIONumberBytes
+	tokenLimitError := errIONumberTooLong
+	if limit := engine.readLimit(); limit < tokenLimit {
+		tokenLimit = limit
+		tokenLimitError = errIOReadTooLarge
+	}
 
 	peek := func(offset int) (byte, bool, error) {
 		text, err := engine.input.Peek(offset + 1)
@@ -258,19 +528,28 @@ func (engine *ioReadEngine) readNumber() (slot, bool, error) {
 		return text[offset], true, err
 	}
 	take := func() error {
-		if len(token) == engine.readLimit() {
-			return errIOReadTooLarge
+		if len(token) == tokenLimit {
+			return tokenLimitError
 		}
 		value, err := engine.input.ReadByte()
 		if err != nil {
 			return err
 		}
 		token = append(token, value)
+		if failure := engine.consumeContextBytes(1); failure != nil {
+			return failure
+		}
 		return nil
 	}
 	discard := func() error {
 		_, err := engine.input.ReadByte()
-		return err
+		if err != nil {
+			return err
+		}
+		if failure := engine.consumeContextBytes(1); failure != nil {
+			return failure
+		}
+		return nil
 	}
 
 	for {
@@ -467,49 +746,39 @@ func (engine *ioReadEngine) copiedStringSlot(text []byte) slot {
 }
 
 func (engine *ioReadEngine) ownedStringSlot(text []byte) slot {
+	text = compactIOReadBuffer(text)
 	return stringSlot(
 		engine.strings.make(stringFromOwnedBytes(text)),
 	)
+}
+
+// compactIOReadBuffer bounds capacity retained behind a long immutable
+// string. Small absolute slack avoids a final copy; larger buffers retain at
+// most one eighth of their logical length.
+func compactIOReadBuffer(text []byte) []byte {
+	slack := cap(text) - len(text)
+	if slack <= maximumIOReadSlack || slack <= len(text)/8 {
+		return text
+	}
+	compacted := make([]byte, len(text))
+	copy(compacted, text)
+	return compacted
 }
 
 // finish gives one logical read operation ownership of any non-EOF failure
 // recorded while bufio prefetched its data. Taking the failure here prevents
 // the same Reader error from poisoning a later operation.
 func (engine *ioReadEngine) finish(err error) error {
+	if err != nil {
+		if luaFailure, ok := err.(*Error); ok &&
+			luaFailure.Category() == ContextError {
+			return luaFailure
+		}
+	}
 	if engine != nil && engine.input != nil {
-		pending := engine.input.source.pending
-		if pending != nil {
-			// bufio retains the same error behind any prefetched bytes.
-			// Preserve those bytes but rebuild the reader without its
-			// deferred error, so this operation reports the failure once.
-			buffered := engine.input.buffered
-			if buffered != nil {
-				unread, _ := buffered.Peek(buffered.Buffered())
-				prefix := append([]byte(nil), unread...)
-				buffered.Reset(&inputReplayReader{
-					prefix: prefix,
-					source: &engine.input.source,
-				})
-			}
-			engine.input.source.pending = nil
-			return pending.cause
+		if failure := engine.input.takeFailure(); failure != nil {
+			return failure
 		}
 	}
 	return err
-}
-
-// inputReplayReader restores bytes that bufio had prefetched alongside a
-// non-EOF error. It is installed only on that rare path.
-type inputReplayReader struct {
-	prefix []byte
-	source *readFailureRecorder
-}
-
-func (reader *inputReplayReader) Read(destination []byte) (int, error) {
-	if len(reader.prefix) != 0 {
-		count := copy(destination, reader.prefix)
-		reader.prefix = reader.prefix[count:]
-		return count, nil
-	}
-	return reader.source.Read(destination)
 }
