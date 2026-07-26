@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"unsafe"
@@ -13,10 +14,19 @@ import (
 // the reference implementation's license.
 
 const (
-	lua51ChunkHeaderSize = 12
-	lua51IntegerSize     = 4
-	lua51InstructionSize = 4
-	lua51NumberSize      = 8
+	lua51ChunkHeaderSize  = 12
+	lua51IntegerSize      = 4
+	lua51InstructionSize  = 4
+	lua51NumberSize       = 8
+	maxChunkFunctionDepth = 200
+	chunkFallbackSource   = "=?"
+
+	// These deliberately overstate current 64-bit Go layouts. The base charge
+	// covers the map header and its first allocation group; each string charge
+	// covers luaString plus amortized map key, value, and growth metadata.
+	// String payload bytes are charged separately.
+	chunkStringTableBytes = 512
+	chunkStringIndexBytes = 64
 )
 
 // dumpPrototype serializes prototype in Lua 5.1's native binary chunk format.
@@ -49,17 +59,22 @@ type chunkWriter struct {
 }
 
 func (writer *chunkWriter) writeHeader() {
-	writer.writeBytes([]byte{
+	header := lua51NativeHeader()
+	writer.writeBytes(header[:])
+}
+
+func lua51NativeHeader() [lua51ChunkHeaderSize]byte {
+	return [lua51ChunkHeaderSize]byte{
 		0x1b, 'L', 'u', 'a',
 		0x51,
 		0,
 		nativeEndianMarker(),
 		lua51IntegerSize,
-		byte(writer.wordSize),
+		byte(unsafe.Sizeof(uintptr(0))),
 		lua51InstructionSize,
 		lua51NumberSize,
 		0,
-	})
+	}
 }
 
 func (writer *chunkWriter) writeFunction(
@@ -248,6 +263,542 @@ func (writer *chunkWriter) writeText(value string) {
 func (writer *chunkWriter) fail(err error) {
 	if writer.err == nil {
 		writer.err = err
+	}
+}
+
+// decodeBinaryChunk reads one native-ABI Lua 5.1 binary chunk.
+//
+// input remains positioned immediately after the root function. Lua 5.1 does
+// not require end-of-input after a binary chunk, so trailing bytes are neither
+// read nor rejected.
+func decodeBinaryChunk(
+	sourceName string,
+	input *chunkInput,
+	control *loadControl,
+) (*Prototype, error) {
+	if input == nil || control == nil {
+		panic("lua: binary decoder requires input and load control")
+	}
+	if input.control != control {
+		panic("lua: binary decoder and input use different load controls")
+	}
+	if failure := control.check(); failure != nil {
+		return nil, failure
+	}
+	initialStorage := uint64(unsafe.Sizeof(compileUnit{})) +
+		chunkStringTableBytes +
+		chunkStringIndexBytes +
+		uint64(len(chunkFallbackSource))
+	if failure := control.reserve(initialStorage); failure != nil {
+		return nil, failure
+	}
+	decoder := chunkDecoder{
+		sourceName: sourceName,
+		input:      input,
+		control:    control,
+		unit:       newCompileUnit(chunkFallbackSource),
+		order:      nativeByteOrder(),
+		wordSize:   int(unsafe.Sizeof(uintptr(0))),
+	}
+	if err := decoder.readHeader(); err != nil {
+		return nil, err
+	}
+	return decoder.readFunction(decoder.unit.sourceName, 1)
+}
+
+type chunkDecoder struct {
+	sourceName string
+	input      *chunkInput
+	control    *loadControl
+	unit       *compileUnit
+	order      binary.ByteOrder
+	wordSize   int
+	work       uint16
+}
+
+func (decoder *chunkDecoder) readHeader() error {
+	var actual [lua51ChunkHeaderSize]byte
+	if err := decoder.readFull(actual[:]); err != nil {
+		return err
+	}
+	if actual != lua51NativeHeader() {
+		return decoder.syntaxError("bad header")
+	}
+	return decoder.check()
+}
+
+func (decoder *chunkDecoder) readFunction(
+	parentSource *luaString,
+	depth int,
+) (*Prototype, error) {
+	if depth > maxChunkFunctionDepth {
+		return nil, decoder.syntaxError("code too deep")
+	}
+	if err := decoder.check(); err != nil {
+		return nil, err
+	}
+	if err := decoder.reserve(uint64(unsafe.Sizeof(Prototype{}))); err != nil {
+		return nil, err
+	}
+
+	source, err := decoder.readString()
+	if err != nil {
+		return nil, err
+	}
+	if source == nil {
+		source = parentSource
+	}
+	lineDefined, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	lastLine, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	upvalues, err := decoder.readByte()
+	if err != nil {
+		return nil, err
+	}
+	parameters, err := decoder.readByte()
+	if err != nil {
+		return nil, err
+	}
+	varargFlags, err := decoder.readByte()
+	if err != nil {
+		return nil, err
+	}
+	registers, err := decoder.readByte()
+	if err != nil {
+		return nil, err
+	}
+
+	code, err := decoder.readCode()
+	if err != nil {
+		return nil, err
+	}
+	constants, err := decoder.readConstants()
+	if err != nil {
+		return nil, err
+	}
+	children, err := decoder.readChildren(source, depth)
+	if err != nil {
+		return nil, err
+	}
+	debug, err := decoder.readDebug(len(code), int(upvalues))
+	if err != nil {
+		return nil, err
+	}
+
+	builder := &prototypeBuilder{
+		sourceName:   source,
+		lineDefined:  lineDefined,
+		lastLine:     lastLine,
+		parameters:   int(parameters),
+		registers:    int(registers),
+		upvalues:     int(upvalues),
+		varargFlags:  int(varargFlags),
+		code:         code,
+		constants:    constants,
+		children:     children,
+		debug:        debug,
+		adoptVectors: true,
+	}
+	prototype, syntaxError := builder.seal()
+	if syntaxError != nil {
+		return nil, decoder.syntaxError("bad code")
+	}
+	return prototype, nil
+}
+
+func (decoder *chunkDecoder) readCode() ([]instruction, error) {
+	count, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if err := decoder.reserveVector(
+		count,
+		uint64(unsafe.Sizeof(instruction(0)))+
+			uint64(unsafe.Sizeof(prototypeWordRole(0))),
+	); err != nil {
+		return nil, err
+	}
+	code := make([]instruction, count)
+	for index := range code {
+		value, readErr := decoder.readUint32()
+		if readErr != nil {
+			return nil, readErr
+		}
+		code[index] = instruction(value)
+		if checkErr := decoder.step(); checkErr != nil {
+			return nil, checkErr
+		}
+	}
+	return code, nil
+}
+
+func (decoder *chunkDecoder) readConstants() ([]slot, error) {
+	count, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if count > maxOperandBx+1 {
+		return nil, decoder.syntaxError("bad code")
+	}
+	if err := decoder.reserveVector(
+		count,
+		uint64(unsafe.Sizeof(slot{})),
+	); err != nil {
+		return nil, err
+	}
+	constants := make([]slot, count)
+	for index := range constants {
+		value, readErr := decoder.readConstant()
+		if readErr != nil {
+			return nil, readErr
+		}
+		constants[index] = value
+		if checkErr := decoder.step(); checkErr != nil {
+			return nil, checkErr
+		}
+	}
+	return constants, nil
+}
+
+func (decoder *chunkDecoder) readConstant() (slot, error) {
+	tag, err := decoder.readByte()
+	if err != nil {
+		return slot{}, err
+	}
+	switch tag {
+	case 0:
+		return nilSlot, nil
+	case 1:
+		value, readErr := decoder.readByte()
+		if readErr != nil {
+			return slot{}, readErr
+		}
+		if value == 0 {
+			return falseSlot, nil
+		}
+		return trueSlot, nil
+	case 3:
+		bits, readErr := decoder.readUint64()
+		if readErr != nil {
+			return slot{}, readErr
+		}
+		return slot{bits: bits}, nil
+	case 4:
+		value, readErr := decoder.readString()
+		if readErr != nil {
+			return slot{}, readErr
+		}
+		if value == nil {
+			return slot{}, decoder.syntaxError("bad constant")
+		}
+		return prototypeStringSlot(value), nil
+	default:
+		return slot{}, decoder.syntaxError("bad constant")
+	}
+}
+
+func (decoder *chunkDecoder) readChildren(
+	parentSource *luaString,
+	depth int,
+) ([]*Prototype, error) {
+	count, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if count > maxOperandBx+1 {
+		return nil, decoder.syntaxError("bad code")
+	}
+	if err := decoder.reserveVector(
+		count,
+		uint64(unsafe.Sizeof((*Prototype)(nil))),
+	); err != nil {
+		return nil, err
+	}
+	children := make([]*Prototype, count)
+	for index := range children {
+		child, readErr := decoder.readFunction(parentSource, depth+1)
+		if readErr != nil {
+			return nil, readErr
+		}
+		children[index] = child
+	}
+	return children, nil
+}
+
+func (decoder *chunkDecoder) readDebug(
+	codeCount int,
+	upvalueCount int,
+) (*prototypeDebugBuilder, error) {
+	lineCount, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if lineCount != 0 && lineCount != codeCount {
+		return nil, decoder.syntaxError("bad code")
+	}
+	if err := decoder.reserveVector(
+		lineCount,
+		uint64(unsafe.Sizeof(int(0)))+
+			uint64(unsafe.Sizeof(uint32(0))),
+	); err != nil {
+		return nil, err
+	}
+	lines := make([]int, lineCount)
+	for index := range lines {
+		line, readErr := decoder.readInteger()
+		if readErr != nil {
+			return nil, readErr
+		}
+		lines[index] = line
+		if checkErr := decoder.step(); checkErr != nil {
+			return nil, checkErr
+		}
+	}
+
+	localCount, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if err := decoder.reserveVector(
+		localCount,
+		uint64(unsafe.Sizeof(prototypeLocalBuilder{}))+
+			uint64(unsafe.Sizeof(localInfo{})),
+	); err != nil {
+		return nil, err
+	}
+	locals := make([]prototypeLocalBuilder, localCount)
+	for index := range locals {
+		name, readErr := decoder.readString()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if name == nil {
+			return nil, decoder.syntaxError("bad code")
+		}
+		startPC, readErr := decoder.readInteger()
+		if readErr != nil {
+			return nil, readErr
+		}
+		endPC, readErr := decoder.readInteger()
+		if readErr != nil {
+			return nil, readErr
+		}
+		locals[index] = prototypeLocalBuilder{
+			name:    name,
+			startPC: startPC,
+			endPC:   endPC,
+		}
+		if checkErr := decoder.step(); checkErr != nil {
+			return nil, checkErr
+		}
+	}
+
+	upvalueNameCount, err := decoder.readInteger()
+	if err != nil {
+		return nil, err
+	}
+	if upvalueNameCount > upvalueCount {
+		return nil, decoder.syntaxError("bad code")
+	}
+	if err := decoder.reserveVector(
+		upvalueNameCount,
+		2*uint64(unsafe.Sizeof((*luaString)(nil))),
+	); err != nil {
+		return nil, err
+	}
+	upvalues := make([]*luaString, upvalueNameCount)
+	for index := range upvalues {
+		name, readErr := decoder.readString()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if name == nil {
+			return nil, decoder.syntaxError("bad code")
+		}
+		upvalues[index] = name
+		if checkErr := decoder.step(); checkErr != nil {
+			return nil, checkErr
+		}
+	}
+
+	if len(lines) == 0 && len(locals) == 0 && len(upvalues) == 0 {
+		return nil, nil
+	}
+	if err := decoder.reserve(
+		uint64(unsafe.Sizeof(prototypeDebugBuilder{})) +
+			uint64(unsafe.Sizeof(prototypeDebug{})),
+	); err != nil {
+		return nil, err
+	}
+	return &prototypeDebugBuilder{
+		lines:    lines,
+		locals:   locals,
+		upvalues: upvalues,
+	}, nil
+}
+
+func (decoder *chunkDecoder) readString() (*luaString, error) {
+	size, err := decoder.readSize()
+	if err != nil {
+		return nil, err
+	}
+	if size == 0 {
+		return nil, nil
+	}
+	maxInt := uint64(^uint(0) >> 1)
+	if size > maxInt {
+		return nil, decoder.syntaxError("bad string")
+	}
+	encoded, owned, err := decoder.input.readSpan(int(size))
+	if err != nil {
+		return nil, decoder.inputError(err)
+	}
+	if len(encoded) != int(size) || encoded[len(encoded)-1] != 0 {
+		return nil, decoder.syntaxError("bad string")
+	}
+	text := encoded[:len(encoded)-1]
+	if existing := decoder.unit.strings[text]; existing != nil {
+		if owned {
+			decoder.control.release(size)
+		}
+		return existing, nil
+	}
+	if !owned {
+		if err := decoder.reserve(size); err != nil {
+			return nil, err
+		}
+	}
+	if err := decoder.reserve(chunkStringIndexBytes); err != nil {
+		return nil, err
+	}
+	if owned {
+		return decoder.unit.internOwned(text), nil
+	}
+	return decoder.unit.internBorrowed(text), nil
+}
+
+func (decoder *chunkDecoder) readInteger() (int, error) {
+	value, err := decoder.readUint32()
+	if err != nil {
+		return 0, err
+	}
+	signed := int32(value)
+	if signed < 0 {
+		return 0, decoder.syntaxError("bad integer")
+	}
+	return int(signed), nil
+}
+
+func (decoder *chunkDecoder) readSize() (uint64, error) {
+	switch decoder.wordSize {
+	case 4:
+		value, err := decoder.readUint32()
+		return uint64(value), err
+	case 8:
+		return decoder.readUint64()
+	default:
+		panic("lua: unsupported native chunk word size")
+	}
+}
+
+func (decoder *chunkDecoder) readByte() (byte, error) {
+	value, err := decoder.input.readByte()
+	if err != nil {
+		return 0, decoder.inputError(err)
+	}
+	return value, nil
+}
+
+func (decoder *chunkDecoder) readUint32() (uint32, error) {
+	var encoded [4]byte
+	if err := decoder.readFull(encoded[:]); err != nil {
+		return 0, err
+	}
+	return decoder.order.Uint32(encoded[:]), nil
+}
+
+func (decoder *chunkDecoder) readUint64() (uint64, error) {
+	var encoded [8]byte
+	if err := decoder.readFull(encoded[:]); err != nil {
+		return 0, err
+	}
+	return decoder.order.Uint64(encoded[:]), nil
+}
+
+func (decoder *chunkDecoder) readFull(destination []byte) error {
+	if err := decoder.input.readFull(destination); err != nil {
+		return decoder.inputError(err)
+	}
+	return nil
+}
+
+func (decoder *chunkDecoder) inputError(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return decoder.syntaxError("unexpected end")
+	}
+	return err
+}
+
+func (decoder *chunkDecoder) reserveVector(
+	count int,
+	elementBytes uint64,
+) error {
+	if count < 0 {
+		return decoder.syntaxError("bad integer")
+	}
+	if elementBytes != 0 &&
+		uint64(count) > ^uint64(0)/elementBytes {
+		return decoder.syntaxError("bad integer")
+	}
+	return decoder.reserve(uint64(count) * elementBytes)
+}
+
+func (decoder *chunkDecoder) reserve(size uint64) error {
+	if failure := decoder.control.reserve(size); failure != nil {
+		return failure
+	}
+	return nil
+}
+
+func (decoder *chunkDecoder) step() error {
+	decoder.work++
+	if decoder.work != contextPollInterval {
+		return nil
+	}
+	decoder.work = 0
+	return decoder.check()
+}
+
+func (decoder *chunkDecoder) check() error {
+	if failure := decoder.control.check(); failure != nil {
+		return failure
+	}
+	return nil
+}
+
+func (decoder *chunkDecoder) syntaxError(reason string) *Error {
+	name := decoder.sourceName
+	if name != "" {
+		switch name[0] {
+		case '@', '=':
+			name = name[1:]
+		case 0x1b:
+			name = "binary string"
+		}
+	}
+	if end := strings.IndexByte(name, 0); end >= 0 {
+		name = name[:end]
+	}
+	message := fmt.Sprintf("%s: %s in precompiled chunk", name, reason)
+	return &Error{
+		value:       errorStringValue(message),
+		description: message,
+		category:    SyntaxError,
 	}
 }
 

@@ -285,20 +285,22 @@ func instructionWritesA(operation opcode) bool {
 
 // prototypeBuilder is the only path from mutable compiler or loader state to
 // a Prototype. seal consumes it, verifies the complete instruction graph, and
-// copies every retained slice to its exact length.
+// gives every retained slice exact capacity. Compiler slices are copied;
+// hostile-input loaders may transfer exact, exclusively owned vectors.
 type prototypeBuilder struct {
-	sourceName  *luaString
-	lineDefined int
-	lastLine    int
-	parameters  int
-	registers   int
-	upvalues    int
-	varargFlags int
-	code        []instruction
-	constants   []slot
-	children    []*Prototype
-	debug       *prototypeDebugBuilder
-	consumed    bool
+	sourceName   *luaString
+	lineDefined  int
+	lastLine     int
+	parameters   int
+	registers    int
+	upvalues     int
+	varargFlags  int
+	code         []instruction
+	constants    []slot
+	children     []*Prototype
+	debug        *prototypeDebugBuilder
+	adoptVectors bool
+	consumed     bool
 }
 
 type prototypeDebugBuilder struct {
@@ -328,9 +330,18 @@ func (builder *prototypeBuilder) seal() (*Prototype, *Error) {
 
 	prototype := &Prototype{
 		sourceName: builder.sourceName,
-		code:       exactSlice(builder.code),
-		constants:  exactSlice(builder.constants),
-		children:   exactSlice(builder.children),
+		code: exactBuilderSlice(
+			builder.code,
+			builder.adoptVectors,
+		),
+		constants: exactBuilderSlice(
+			builder.constants,
+			builder.adoptVectors,
+		),
+		children: exactBuilderSlice(
+			builder.children,
+			builder.adoptVectors,
+		),
 	}
 	if syntaxError := verifyPrototypeHeader(prototype, builder); syntaxError != nil {
 		return nil, syntaxError
@@ -340,6 +351,19 @@ func (builder *prototypeBuilder) seal() (*Prototype, *Error) {
 	}
 	prototype.sealed = true
 	return prototype, nil
+}
+
+func exactBuilderSlice[Element any](
+	values []Element,
+	adopt bool,
+) []Element {
+	if len(values) == 0 {
+		return nil
+	}
+	if adopt && len(values) == cap(values) {
+		return values
+	}
+	return exactSlice(values)
 }
 
 func exactSlice[Element any](values []Element) []Element {

@@ -90,7 +90,7 @@ Files are organized by substantial runtime concepts:
   and allocation hints;
 - `prototype.go` and `verify.go`: exact-size immutable executable metadata
   and its publication-time verifier;
-- `chunk.go`: native-ABI Lua 5.1 binary chunk serialization;
+- `chunk.go`: verified native-ABI Lua 5.1 binary chunk encoding and decoding;
 - `function.go`: canonical functions and compact upvalues;
 - `call.go`: compact activations, shared-stack call layout, varargs, tail
   replacement, and result adjustment;
@@ -110,7 +110,8 @@ Files are organized by substantial runtime concepts:
   a borrowed Frame;
 - `protected.go`: metadata-only protected checkpoints, live-stack error
   handlers, emergency quota headroom, and compact result publication;
-- `load.go`: public source compilation and State-bound Function loading;
+- `load.go`: bounded sequential input, public source or binary loading, and
+  State-bound Function construction;
 - `invoke.go`: protected main-Thread calls and owning or caller-supplied result
   egress;
 - `coroutine.go`: canonical Thread construction, compact resume transfer,
@@ -848,6 +849,36 @@ activations, or the hot loop. Ordinary Lua control flow does not use Go panic or
 interface-valued per-opcode results. The executor returns one small outcome only
 when it reaches its requested call depth, yields, or fails.
 
+## Loading and binary chunks
+
+`LoadString` recognizes Lua's binary signature and otherwise compiles source.
+`Compile` deliberately remains the State-neutral source-only operation. Both
+loading paths publish the same immutable, verified `Prototype`; loading that
+Prototype creates a new Function in the active Thread's global environment.
+
+Binary chunks use Lua 5.1's native format. The decoder requires the current
+endianness, `size_t`, instruction, and double layout, then validates the entire
+prototype tree before publication. Invalid counts, strings, constants, debug
+metadata, instructions, and excessive prototype nesting fail as syntax errors.
+Like PUC Lua, decoding ends after the root function and does not require or
+consume end-of-input.
+
+One compilation-local string table interns source names, constants, local
+names, and upvalue names across the complete prototype tree. Exact-size code,
+constant, and child vectors allocated by the checked decoder transfer directly
+into the sealed Prototype. The compiler still copies its growable vectors at
+the publication boundary, preserving the rule that no mutable builder storage
+can alias executable metadata.
+
+`Options.MaxLoadBytes` defaults to 64 MiB. Source and binary loading charge
+bytes as they are consumed. Binary decoding also applies the same independent
+bound to projected decoder and retained Prototype storage before allocating
+count-controlled vectors or strings. This separates hostile-input protection
+from the executor's value and frame limits. The sequential input caches the
+first refill failure, preserves arbitrary reader errors, and can return an
+in-piece span without copying; a span crossing pieces receives exact owned
+storage that the string interner can adopt.
+
 ## Standard libraries
 
 Each library has its own explicit opener and no implicit installation. `New`
@@ -906,10 +937,10 @@ runtime string pool by bytes; a recurring warm result does not allocate a
 temporary Go string.
 
 The remaining base entries are intentionally absent rather than partial
-stubs. Text and binary loading will share one refillable input path and bind
-new closures to the executing Thread environment; the binary reader must be
-the inverse of `string.dump` before `load` and `loadstring` are complete. File
-and output functions require an explicit per-State host-I/O policy.
+stubs. Binary loading is the verified inverse of `string.dump`; refillable
+source compilation and the Lua-visible `load`, `loadstring`, and `dofile`
+boundaries remain. New closures bind to the executing Thread environment.
+File and output functions require an explicit per-State host-I/O policy.
 `collectgarbage`, `gcinfo`, and `newproxy` require deliberate State-local GC,
 weak-reference, and finalizer semantics rather than process-wide Go GC shims.
 

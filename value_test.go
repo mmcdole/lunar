@@ -349,13 +349,19 @@ func TestInvalidOptions(t *testing.T) {
 	if _, err := New(Options{MaxFrames: -1}); !errors.Is(err, ErrNegativeCapacity) {
 		t.Fatalf("negative MaxFrames error = %v", err)
 	}
+	if _, err := New(Options{
+		MaxLoadBytes: -1,
+	}); !errors.Is(err, ErrNegativeCapacity) {
+		t.Fatalf("negative MaxLoadBytes error = %v", err)
+	}
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
 	if state.options.MaxValues != 65_536 ||
-		state.options.MaxFrames != 20_000 {
+		state.options.MaxFrames != 20_000 ||
+		state.options.MaxLoadBytes != 64<<20 {
 		t.Fatalf("default options = %+v", state.options)
 	}
 	if _, err := state.NewTable(maxTableHint+1, 0); !errors.Is(err, ErrCapacity) {

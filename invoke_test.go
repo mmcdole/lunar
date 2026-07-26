@@ -87,6 +87,76 @@ return executions
 	assertTestValues(t, results, Number(1))
 }
 
+func TestLoadStringAcceptsBinaryChunksAndBoundsInput(t *testing.T) {
+	prototype, err := Compile("@binary-source.lua", `return marker`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dumped, err := dumpPrototype(prototype)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := New(Options{
+		MaxLoadBytes: len(dumped) * 32,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.SetGlobal("marker", Number(42)); err != nil {
+		t.Fatal(err)
+	}
+	function, err := state.LoadString("@binary.luac", dumped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(function.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(42))
+
+	const text = "return 10"
+	exact, err := New(Options{MaxLoadBytes: len(text)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exact.Close()
+	if _, err := exact.LoadString("@exact.lua", text); err != nil {
+		t.Fatalf("load at exact input limit: %v", err)
+	}
+
+	limited, err := New(Options{MaxLoadBytes: len(text) - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer limited.Close()
+	_, loadErr := limited.LoadString("@limited.lua", text)
+	var resource *Error
+	if !errors.As(loadErr, &resource) ||
+		resource.Category() != ResourceError {
+		t.Fatalf(
+			"limited source error = %#v; want ResourceError",
+			loadErr,
+		)
+	}
+
+	binaryLimited, err := New(Options{MaxLoadBytes: len(dumped) - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binaryLimited.Close()
+	_, loadErr = binaryLimited.LoadString("@limited.luac", dumped)
+	if !errors.As(loadErr, &resource) ||
+		resource.Category() != ResourceError {
+		t.Fatalf(
+			"limited binary error = %#v; want ResourceError",
+			loadErr,
+		)
+	}
+}
+
 func TestLoadRejectsInvalidPrototypeAndReportsSyntax(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

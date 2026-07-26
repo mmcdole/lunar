@@ -49,6 +49,11 @@ type Options struct {
 	// error handler receives bounded emergency capacity of
 	// max(8, MaxFrames/8) additional activations.
 	MaxFrames int
+	// MaxLoadBytes limits bytes consumed while loading one source or binary
+	// chunk. Binary decoding independently applies the same bound to projected
+	// retained storage. Zero selects 64 MiB. Exceeding either applicable bound
+	// returns a ResourceError before the corresponding allocation.
+	MaxLoadBytes int
 }
 
 type resourceLimits struct {
@@ -59,8 +64,9 @@ type resourceLimits struct {
 const (
 	defaultMaxValues = 64 << 10
 	// Use Lua 5.1's configured LUAI_MAXCALLS as the compatibility default.
-	defaultMaxFrames = 20_000
-	maxTableHint     = 1 << 20
+	defaultMaxFrames    = 20_000
+	defaultMaxLoadBytes = 64 << 20
+	maxTableHint        = 1 << 20
 )
 
 // noCopy lets go vet reject copying canonical runtime objects after first use.
@@ -110,7 +116,9 @@ type State struct {
 
 // New constructs an empty State.
 func New(options Options) (*State, error) {
-	if options.MaxValues < 0 || options.MaxFrames < 0 {
+	if options.MaxValues < 0 ||
+		options.MaxFrames < 0 ||
+		options.MaxLoadBytes < 0 {
 		return nil, ErrNegativeCapacity
 	}
 	if options.MaxValues == 0 {
@@ -118,6 +126,9 @@ func New(options Options) (*State, error) {
 	}
 	if options.MaxFrames == 0 {
 		options.MaxFrames = defaultMaxFrames
+	}
+	if options.MaxLoadBytes == 0 {
+		options.MaxLoadBytes = defaultMaxLoadBytes
 	}
 
 	rt := &runtimeState{}
