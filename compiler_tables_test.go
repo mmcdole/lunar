@@ -18,28 +18,78 @@ func TestCompileSourceIndexesAndUpdatesTables(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 
-	gets := 0
-	sets := 0
+	tableGets := 0
+	fieldGets := 0
+	tableSets := 0
+	fieldSets := 0
 	moves := 0
 	for _, code := range prototype.code {
 		switch code.opcode() {
 		case opGetTable:
-			gets++
+			tableGets++
+		case opGetField:
+			fieldGets++
 		case opSetTable:
-			sets++
+			tableSets++
+		case opSetField:
+			fieldSets++
 		case opMove:
 			moves++
 		}
 	}
-	if gets != 2 || sets != 2 {
+	if tableGets != 1 ||
+		fieldGets != 1 ||
+		tableSets != 1 ||
+		fieldSets != 1 {
 		t.Fatalf(
-			"table operations = %d GETTABLE, %d SETTABLE; want 2 and 2",
-			gets,
-			sets,
+			"table operations = GETTABLE:%d GETFIELD:%d SETTABLE:%d SETFIELD:%d",
+			tableGets,
+			fieldGets,
+			tableSets,
+			fieldSets,
 		)
 	}
 	if moves != 0 {
 		t.Fatalf("indexed operations emitted %d avoidable MOVE instructions", moves)
+	}
+}
+
+func TestCompileSourceSpecializesOnlyConstantStringKeys(t *testing.T) {
+	prototype, syntaxError := compileSource(
+		"@field-keys.lua",
+		`
+local table, key = ...
+local a = table.name
+local b = table["name"]
+local c = table[1]
+local d = table[key]
+table.name = a
+table["name"] = b
+table[1] = c
+table[key] = d
+return a, b, c, d
+`,
+	)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	counts := make(map[opcode]int)
+	for _, code := range prototype.code {
+		switch code.opcode() {
+		case opGetTable, opGetField, opSetTable, opSetField:
+			counts[code.opcode()]++
+		}
+	}
+	for operation, want := range map[opcode]int{
+		opGetTable: 2,
+		opGetField: 2,
+		opSetTable: 2,
+		opSetField: 2,
+	} {
+		if got := counts[operation]; got != want {
+			t.Fatalf("%s count = %d; want %d", operation, got, want)
+		}
 	}
 }
 
@@ -54,12 +104,28 @@ func TestCompileSourceReusesIndexedTemporaryAcrossChain(t *testing.T) {
 
 	var gets []instruction
 	for _, code := range prototype.code {
-		if code.opcode() == opGetTable {
+		if code.opcode() == opGetTable ||
+			code.opcode() == opGetField {
 			gets = append(gets, code)
 		}
 	}
 	if len(gets) != 3 {
-		t.Fatalf("GETTABLE count = %d, want 3", len(gets))
+		t.Fatalf("table read count = %d, want 3", len(gets))
+	}
+	wantOperations := [...]opcode{
+		opGetTable,
+		opGetTable,
+		opGetField,
+	}
+	for index, operation := range wantOperations {
+		if gets[index].opcode() != operation {
+			t.Fatalf(
+				"table read %d = %s; want %s",
+				index,
+				gets[index].opcode(),
+				operation,
+			)
+		}
 	}
 	if prototype.RegisterCount() > 3 {
 		t.Fatalf(
@@ -70,7 +136,7 @@ func TestCompileSourceReusesIndexedTemporaryAcrossChain(t *testing.T) {
 	for index := 1; index < len(gets); index++ {
 		if gets[index].b() != gets[index-1].a() {
 			t.Fatalf(
-				"GETTABLE %d reads R%d, prior result is R%d",
+				"table read %d reads R%d, prior result is R%d",
 				index,
 				gets[index].b(),
 				gets[index-1].a(),
@@ -114,24 +180,35 @@ func TestCompileSourceKeepsFinalIndexAsAssignmentTarget(t *testing.T) {
 }
 
 func TestCompileSourceAssignsThroughParenthesizedPrefix(t *testing.T) {
-	for _, source := range []string{
-		"(root)[key] = value",
-		"(root).field = value",
-		"((root))[key] = value",
-		"(root[key]).field = value",
+	for _, test := range []struct {
+		source    string
+		operation opcode
+	}{
+		{source: "(root)[key] = value", operation: opSetTable},
+		{source: "(root).field = value", operation: opSetField},
+		{source: "((root))[key] = value", operation: opSetTable},
+		{source: "(root[key]).field = value", operation: opSetField},
 	} {
-		prototype, syntaxError := compileSource("@assignment.lua", source)
+		prototype, syntaxError := compileSource(
+			"@assignment.lua",
+			test.source,
+		)
 		if syntaxError != nil {
-			t.Fatalf("%q: %v", source, syntaxError)
+			t.Fatalf("%q: %v", test.source, syntaxError)
 		}
 		sets := 0
 		for _, code := range prototype.code {
-			if code.opcode() == opSetTable {
+			if code.opcode() == test.operation {
 				sets++
 			}
 		}
 		if sets != 1 {
-			t.Fatalf("%q: SETTABLE count = %d, want 1", source, sets)
+			t.Fatalf(
+				"%q: %s count = %d, want 1",
+				test.source,
+				test.operation,
+				sets,
+			)
 		}
 	}
 }
@@ -222,13 +299,16 @@ func TestCompileSourceBuildsMixedTableConstructor(t *testing.T) {
 
 	var allocation instruction
 	var list instruction
-	records := 0
+	tableRecords := 0
+	fieldRecords := 0
 	for _, code := range prototype.code {
 		switch code.opcode() {
 		case opNewTable:
 			allocation = code
 		case opSetTable:
-			records++
+			tableRecords++
+		case opSetField:
+			fieldRecords++
 		case opSetList:
 			list = code
 		}
@@ -242,8 +322,12 @@ func TestCompileSourceBuildsMixedTableConstructor(t *testing.T) {
 			allocation.c(),
 		)
 	}
-	if records != 2 {
-		t.Fatalf("SETTABLE count = %d, want 2", records)
+	if tableRecords != 1 || fieldRecords != 1 {
+		t.Fatalf(
+			"record writes = SETTABLE:%d SETFIELD:%d, want 1 each",
+			tableRecords,
+			fieldRecords,
+		)
 	}
 	if list.opcode() != opSetList ||
 		list.a() != allocation.a() ||
@@ -283,7 +367,7 @@ func TestCompileSourceFlushesConstructorListsInBlocks(t *testing.T) {
 			allocation = code
 		case opSetList:
 			lists = append(lists, code)
-		case opSetTable:
+		case opSetField:
 			records++
 		}
 	}
@@ -293,7 +377,7 @@ func TestCompileSourceFlushesConstructorListsInBlocks(t *testing.T) {
 		t.Fatalf("NEWTABLE array hint = %d", allocation.b())
 	}
 	if records != 1 {
-		t.Fatalf("SETTABLE count = %d, want 1", records)
+		t.Fatalf("SETFIELD count = %d, want 1", records)
 	}
 	if len(lists) != 2 ||
 		lists[0].b() != fieldsPerFlush ||
@@ -433,7 +517,7 @@ func TestCompileSourceDistinguishesNameFieldsFromNameValues(t *testing.T) {
 			allocation = code
 		case opSetList:
 			lists++
-		case opSetTable:
+		case opSetField:
 			records++
 		}
 	}
@@ -442,7 +526,7 @@ func TestCompileSourceDistinguishesNameFieldsFromNameValues(t *testing.T) {
 		floatingByteToInt(allocation.b()) < 1 ||
 		floatingByteToInt(allocation.c()) < 1 {
 		t.Fatalf(
-			"name fields = %d SETLIST, %d SETTABLE, NEWTABLE B:%d C:%d",
+			"name fields = %d SETLIST, %d SETFIELD, NEWTABLE B:%d C:%d",
 			lists,
 			records,
 			allocation.b(),

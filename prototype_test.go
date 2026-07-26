@@ -316,6 +316,34 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 				makeABC(opReturn, 0, 1, 0),
 			},
 		},
+		{
+			sourceName: newInternedText("string-fields"),
+			registers:  2,
+			constants: []slot{
+				prototypeStringSlot(newInternedText("field")),
+			},
+			code: []instruction{
+				makeABC(
+					opGetField,
+					0,
+					1,
+					registerOrConstant(0, true),
+				),
+				makeABC(
+					opSetField,
+					1,
+					registerOrConstant(0, true),
+					0,
+				),
+				makeABC(
+					opSelfField,
+					0,
+					1,
+					registerOrConstant(0, true),
+				),
+				makeABC(opReturn, 0, 1, 0),
+			},
+		},
 	}
 	for _, builder := range valid {
 		if _, syntaxError := builder.seal(); syntaxError != nil {
@@ -379,6 +407,45 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 				)
 				builder.constants = []slot{slotFromValue(Number(1))}
 				return builder
+			},
+		},
+		{
+			name: "field key is a register",
+			builder: func() *prototypeBuilder {
+				return testPrototypeBuilder(
+					makeABC(opGetField, 0, 1, 0),
+					makeABC(opReturn, 0, 1, 0),
+				)
+			},
+		},
+		{
+			name: "field key is not a string",
+			builder: func() *prototypeBuilder {
+				builder := testPrototypeBuilder(
+					makeABC(
+						opSetField,
+						0,
+						registerOrConstant(0, true),
+						1,
+					),
+					makeABC(opReturn, 0, 1, 0),
+				)
+				builder.constants = []slot{numberSlot(1)}
+				return builder
+			},
+		},
+		{
+			name: "method key is out of range",
+			builder: func() *prototypeBuilder {
+				return testPrototypeBuilder(
+					makeABC(
+						opSelfField,
+						0,
+						1,
+						registerOrConstant(0, true),
+					),
+					makeABC(opReturn, 0, 1, 0),
+				)
 			},
 		},
 		{

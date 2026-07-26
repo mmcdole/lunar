@@ -145,9 +145,9 @@ func (prototype *Prototype) describeOperand(
 				true
 		}
 		return "upvalue", "?", true
-	case opGetTable:
+	case opGetTable, opGetField:
 		return "field", prototype.constantOperandName(producer.c()), true
-	case opSelf:
+	case opSelf, opSelfField:
 		return "method", prototype.constantOperandName(producer.c()), true
 	case opMove:
 		if producer.b() < producer.a() {
@@ -236,7 +236,7 @@ func instructionWritesRegister(code instruction, register int) bool {
 	switch code.opcode() {
 	case opLoadNil:
 		return code.a() <= register && register <= code.b()
-	case opSelf:
+	case opSelf, opSelfField:
 		return register == code.a()+1
 	case opCall, opTailCall:
 		return register >= code.a()
@@ -255,8 +255,10 @@ func instructionWritesA(operation opcode) bool {
 		opGetUpvalue,
 		opGetGlobal,
 		opGetTable,
+		opGetField,
 		opNewTable,
 		opSelf,
+		opSelfField,
 		opAdd,
 		opSub,
 		opMul,

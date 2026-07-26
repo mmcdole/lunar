@@ -102,8 +102,23 @@ func (writer *chunkWriter) writeFunction(
 	writer.writeByte(prototype.registers)
 
 	writer.writeCount(len(prototype.code), "instruction")
-	for _, code := range prototype.code {
-		writer.writeUint32(uint32(code))
+	for pc := 0; pc < len(prototype.code); pc++ {
+		code := prototype.code[pc]
+		canonical := lua51ChunkInstruction(code)
+		if canonical.opcode() >= lua51OpcodeCount {
+			writer.fail(ErrInvalidPrototype)
+			return
+		}
+		writer.writeUint32(uint32(canonical))
+		if code.opcode() == opSetList && code.c() == 0 {
+			pc++
+			if pc >= len(prototype.code) {
+				writer.fail(ErrInvalidPrototype)
+				return
+			}
+			// Extended SETLIST blocks are raw words, not instructions.
+			writer.writeUint32(uint32(prototype.code[pc]))
+		}
 	}
 
 	writer.writeCount(len(prototype.constants), "constant")
@@ -388,10 +403,14 @@ func (decoder *chunkDecoder) readFunction(
 	if err != nil {
 		return nil, err
 	}
+	if !isLua51ChunkCode(code) {
+		return nil, decoder.syntaxError("bad code")
+	}
 	constants, err := decoder.readConstants()
 	if err != nil {
 		return nil, err
 	}
+	specializeStringTableInstructions(code, constants)
 	children, err := decoder.readChildren(source, depth)
 	if err != nil {
 		return nil, err
@@ -420,6 +439,73 @@ func (decoder *chunkDecoder) readFunction(
 		return nil, decoder.syntaxError("bad code")
 	}
 	return prototype, nil
+}
+
+func lua51ChunkInstruction(code instruction) instruction {
+	switch code.opcode() {
+	case opGetField:
+		return code.withOpcode(opGetTable)
+	case opSetField:
+		return code.withOpcode(opSetTable)
+	case opSelfField:
+		return code.withOpcode(opSelf)
+	default:
+		return code
+	}
+}
+
+func isLua51ChunkCode(code []instruction) bool {
+	for pc := 0; pc < len(code); pc++ {
+		current := code[pc]
+		if current.opcode() >= lua51OpcodeCount {
+			return false
+		}
+		if current.opcode() == opSetList && current.c() == 0 {
+			pc++
+			if pc >= len(code) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func specializeStringTableInstructions(
+	code []instruction,
+	constants []slot,
+) {
+	for pc := 0; pc < len(code); pc++ {
+		current := code[pc]
+		if current.opcode() == opSetList && current.c() == 0 {
+			pc++
+			continue
+		}
+
+		operand := -1
+		specialized := opcode(0)
+		switch current.opcode() {
+		case opGetTable:
+			operand = current.c()
+			specialized = opGetField
+		case opSetTable:
+			operand = current.b()
+			specialized = opSetField
+		case opSelf:
+			operand = current.c()
+			specialized = opSelfField
+		default:
+			continue
+		}
+		if !isConstantOperand(operand) {
+			continue
+		}
+		index := constantIndex(operand)
+		if index >= len(constants) ||
+			constants[index].kind() != StringKind {
+			continue
+		}
+		code[pc] = current.withOpcode(specialized)
+	}
 }
 
 func (decoder *chunkDecoder) readCode() ([]instruction, error) {

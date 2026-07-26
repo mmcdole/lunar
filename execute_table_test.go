@@ -1132,19 +1132,108 @@ return target:method(7)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, target.Value(), Number(7))
 
+	if err := target.RawSetString("method", Nil()); err != nil {
+		t.Fatal(err)
+	}
+	indexEnvironment, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := indexEnvironment.RawSetString(
+		"method",
+		method.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	indexMethod := compileTestFunction(
+		t,
+		state,
+		"@method-index.lua",
+		`return method`,
+	)
+	if err := state.SetFunctionEnvironment(
+		indexMethod,
+		indexEnvironment,
+	); err != nil {
+		t.Fatal(err)
+	}
+	methodMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := methodMetatable.RawSetString(
+		"__index",
+		indexMethod.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		target.Value(),
+		methodMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+	thread, result = executeTestFunction(
+		t,
+		state,
+		caller,
+		target.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(t, thread, target.Value(), Number(7))
+
+	builder := testPrototypeBuilder(
+		makeABC(
+			opSelfField,
+			0,
+			1,
+			registerOrConstant(0, true),
+		),
+		makeABC(opReturn, 0, 3, 0),
+	)
+	builder.parameters = 2
+	builder.registers = 2
+	builder.constants = []slot{
+		prototypeStringSlot(newInternedText("method")),
+	}
+	prototype, syntaxError := builder.seal()
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	overlapField := newLuaFunction(
+		state.runtime,
+		prototype,
+		state.main.globals,
+		nil,
+	)
+	thread, result = executeTestFunction(
+		t,
+		state,
+		overlapField,
+		Nil(),
+		target.Value(),
+	)
+	assertExecutionReturned(t, result)
+	assertExecutionValues(
+		t,
+		thread,
+		method.Value(),
+		target.Value(),
+	)
+
 	if err := target.RawSet(
 		target.Value(),
 		state.String("overlap"),
 	); err != nil {
 		t.Fatal(err)
 	}
-	builder := testPrototypeBuilder(
+	builder = testPrototypeBuilder(
 		makeABC(opSelf, 0, 0, 1),
 		makeABC(opReturn, 0, 3, 0),
 	)
 	builder.parameters = 2
 	builder.registers = 2
-	prototype, syntaxError := builder.seal()
+	prototype, syntaxError = builder.seal()
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
@@ -1688,6 +1777,37 @@ end
 return sum
 `)
 	benchmarkExecutorFunction(b, state, function, table.Value())
+}
+
+func BenchmarkExecutorDynamicStringKeyLoop(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	key := state.String("value")
+	function := compileTestFunction(b, state, "@dynamic-string-table.lua", `
+local table, key = ...
+local sum = 0
+for index = 1, 100 do
+	table[key] = index
+	sum = sum + table[key]
+end
+return sum
+`)
+	benchmarkExecutorFunction(
+		b,
+		state,
+		function,
+		table.Value(),
+		key,
+	)
 }
 
 func BenchmarkExecutorStringFieldReadLoop(b *testing.B) {

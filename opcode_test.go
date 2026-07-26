@@ -48,8 +48,8 @@ func TestLua51OpcodeOrderAndNames(t *testing.T) {
 		"VARARG",
 	}
 
-	if got, want := int(opCount), len(names); got != want {
-		t.Fatalf("opcode count = %d; want %d", got, want)
+	if got, want := int(lua51OpcodeCount), len(names); got != want {
+		t.Fatalf("Lua 5.1 opcode count = %d; want %d", got, want)
 	}
 	if got := unsafe.Sizeof(instruction(0)); got != 4 {
 		t.Fatalf("instruction size = %d; want 4", got)
@@ -63,11 +63,39 @@ func TestLua51OpcodeOrderAndNames(t *testing.T) {
 			t.Errorf("opcode %d name = %q; want %q", index, got, name)
 		}
 	}
+	internalNames := [...]string{
+		"GETFIELD",
+		"SETFIELD",
+		"SELFFIELD",
+	}
+	if opGetField != lua51OpcodeCount {
+		t.Fatalf(
+			"first internal opcode = %d; want Lua 5.1 boundary %d",
+			opGetField,
+			lua51OpcodeCount,
+		)
+	}
+	if got, want := int(opCount), len(names)+len(internalNames); got != want {
+		t.Fatalf("internal opcode count = %d; want %d", got, want)
+	}
+	for index, name := range internalNames {
+		operation := lua51OpcodeCount + opcode(index)
+		if got := operation.String(); got != name {
+			t.Errorf("opcode %d name = %q; want %q", operation, got, name)
+		}
+	}
 	if got := opCount.String(); got != "INVALID" {
 		t.Fatalf("sentinel name = %q; want INVALID", got)
 	}
 	if got := opcode(0xff).String(); got != "INVALID" {
 		t.Fatalf("out-of-range name = %q; want INVALID", got)
+	}
+	if opContextPoll >= 1<<opcodeBits {
+		t.Fatalf(
+			"private opcode %d exceeds the %d-bit instruction field",
+			opContextPoll,
+			opcodeBits,
+		)
 	}
 }
 

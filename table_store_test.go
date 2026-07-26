@@ -715,6 +715,27 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 				found,
 			)
 		}
+		equalSecond := slotFromValue(stringValue(newHashedStringRef(
+			strings.Clone("second collision"),
+			stringHash(hash),
+		)))
+		if equalSecond.ref == second.ref {
+			t.Fatal("equal string fixture unexpectedly reused its backing")
+		}
+		got, found = store.getStringSlot(equalSecond, hash)
+		if !found || !rawSlotEqual(got, value(2)) {
+			t.Fatalf(
+				"slot string lookup beyond tombstone = (%v, %v), want (20, true)",
+				got.owningValue(),
+				found,
+			)
+		}
+		if index, found := store.findStringSlot(
+			equalSecond,
+			hash,
+		); !found || store.entries.at(index).key.ref != second.ref {
+			t.Fatal("slot string mutation lookup did not find the stored key")
+		}
 		if _, stored := store.findStoredString(
 			"first collision",
 			hash,

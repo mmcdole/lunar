@@ -92,10 +92,23 @@ local function accumulate(...)
 end
 
 local result, label = accumulate(1, 2, 3)(10)
-io.write(result, "|", string.byte(label, 3), "|", #label)
+local sink = {}
+function sink:emit(...)
+	io.write(...)
+end
+sink:emit(result, "|", string.byte(label, 3), "|", #label)
 `)
 	if err != nil {
 		t.Fatalf("compile prototype: %v", err)
+	}
+	for _, operation := range []opcode{
+		opGetField,
+		opSetField,
+		opSelfField,
+	} {
+		if !testPrototypeContainsOpcode(prototype, operation) {
+			t.Fatalf("test prototype omitted internal %s", operation)
+		}
 	}
 	dumped, err := dumpPrototype(prototype)
 	if err != nil {
@@ -127,7 +140,11 @@ end
 local function second()
 	return "shared\0value"
 end
-return first(), second(), -0.0
+local values = {
+	first = first(),
+	second = second(),
+}
+return values.first, values.second, -0.0
 `)
 	if err != nil {
 		t.Fatalf("compile prototype: %v", err)
@@ -182,6 +199,49 @@ return first(), second(), -0.0
 		state.String("shared\000value"),
 		Number(math.Copysign(0, -1)),
 	)
+}
+
+func TestChunkBoundaryPreservesSetListExtraWords(t *testing.T) {
+	for _, operation := range []opcode{
+		opGetField,
+		opSetField,
+		opSelfField,
+	} {
+		t.Run(operation.String(), func(t *testing.T) {
+			extra := instruction(operation)
+			builder := testPrototypeBuilder(
+				makeABC(opNewTable, 0, 0, 0),
+				makeABx(opLoadK, 1, 0),
+				makeABC(opSetList, 0, 1, 0),
+				extra,
+				makeABC(opReturn, 0, 2, 0),
+			)
+			builder.constants = []slot{numberSlot(55)}
+			prototype, syntaxError := builder.seal()
+			if syntaxError != nil {
+				t.Fatal(syntaxError)
+			}
+
+			dumped, err := dumpPrototype(prototype)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := decodeChunkForTest("@setlist.luac", dumped)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := decoded.code[3]; got != extra {
+				t.Fatalf("SETLIST extra word = %d; want %d", got, extra)
+			}
+			redumped, err := dumpPrototype(decoded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if redumped != dumped {
+				t.Fatal("SETLIST extra word changed across chunk round trip")
+			}
+		})
+	}
 }
 
 func TestCompiledAndDecodedStringsSurviveInputCollection(t *testing.T) {
@@ -354,9 +414,9 @@ return value * 2, "puc\0chunk"
 						decodeErr,
 					)
 				}
-				seen := make(map[opcode]bool, opCount)
+				seen := make(map[opcode]bool, lua51OpcodeCount)
 				recordTestPrototypeOpcodes(prototype, seen)
-				for operation := opcode(0); operation < opCount; operation++ {
+				for operation := opcode(0); operation < lua51OpcodeCount; operation++ {
 					if !seen[operation] {
 						t.Errorf(
 							"PUC coverage chunk omitted %s",
@@ -461,15 +521,40 @@ func recordTestPrototypeOpcodes(
 	prototype *Prototype,
 	seen map[opcode]bool,
 ) {
-	for _, code := range prototype.code {
-		operation := code.opcode()
-		if operation < opCount {
+	for pc := 0; pc < len(prototype.code); pc++ {
+		code := prototype.code[pc]
+		operation := lua51ChunkInstruction(code).opcode()
+		if operation < lua51OpcodeCount {
 			seen[operation] = true
+		}
+		if code.opcode() == opSetList && code.c() == 0 {
+			pc++
 		}
 	}
 	for _, child := range prototype.children {
 		recordTestPrototypeOpcodes(child, seen)
 	}
+}
+
+func testPrototypeContainsOpcode(
+	prototype *Prototype,
+	operation opcode,
+) bool {
+	for pc := 0; pc < len(prototype.code); pc++ {
+		code := prototype.code[pc]
+		if code.opcode() == operation {
+			return true
+		}
+		if code.opcode() == opSetList && code.c() == 0 {
+			pc++
+		}
+	}
+	for _, child := range prototype.children {
+		if testPrototypeContainsOpcode(child, operation) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDecodeBinaryChunkRejectsHeadersAndEveryTruncation(t *testing.T) {
@@ -642,6 +727,25 @@ func TestDecodeBinaryChunkBoundsCountsAndValidatesStringsAndTags(
 			decodeErr,
 			SyntaxError,
 			"negative.luac: bad integer in precompiled chunk",
+		)
+	})
+
+	t.Run("internal opcode", func(t *testing.T) {
+		mutated := []byte(dumped)
+		instructionOffset := layout.codeCount + 4
+		word := order.Uint32(mutated[instructionOffset:])
+		word &^= (1 << opcodeBits) - 1
+		word |= uint32(opGetField)
+		order.PutUint32(mutated[instructionOffset:], word)
+		_, decodeErr := decodeChunkForTest(
+			"@internal-opcode.luac",
+			string(mutated),
+		)
+		assertChunkError(
+			t,
+			decodeErr,
+			SyntaxError,
+			"internal-opcode.luac: bad code in precompiled chunk",
 		)
 	})
 

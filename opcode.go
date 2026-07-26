@@ -45,8 +45,16 @@ const (
 	opClose
 	opClosure
 	opVararg
+	opGetField
+	opSetField
+	opSelfField
 	opCount
 )
+
+// lua51OpcodeCount is the serialized Lua 5.1 instruction boundary. Internal
+// specializations are lowered before a prototype enters the native chunk
+// format and are never accepted from that format.
+const lua51OpcodeCount opcode = opVararg + 1
 
 // These outcomes are private executor seams, never valid Prototype opcodes.
 const (
@@ -56,6 +64,9 @@ const (
 	opSetGlobalMiss
 	opSetTableMiss
 	opSelfMiss
+	opGetFieldMiss
+	opSetFieldMiss
+	opSelfFieldMiss
 	opContextPoll
 )
 
@@ -123,6 +134,9 @@ var operationNames = [...]string{
 	opClose:        "CLOSE",
 	opClosure:      "CLOSURE",
 	opVararg:       "VARARG",
+	opGetField:     "GETFIELD",
+	opSetField:     "SETFIELD",
+	opSelfField:    "SELFFIELD",
 }
 
 func (operation opcode) String() string {

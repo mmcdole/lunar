@@ -185,7 +185,11 @@ func (parser *sourceParser) parseConstructorRecord(
 		return syntaxError
 	}
 	parser.function.emitABC(
-		opSetTable,
+		parser.function.tableOpcodeForKey(
+			opSetTable,
+			opSetField,
+			keyOperand,
+		),
 		state.tableRegister,
 		keyOperand,
 		valueOperand,

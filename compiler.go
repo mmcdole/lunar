@@ -202,6 +202,22 @@ func (function *functionState) constant(
 	return index, nil
 }
 
+func (function *functionState) tableOpcodeForKey(
+	generic opcode,
+	field opcode,
+	key int,
+) opcode {
+	if !isConstantOperand(key) {
+		return generic
+	}
+	index := constantIndex(key)
+	if index >= len(function.builder.constants) ||
+		function.builder.constants[index].kind() != StringKind {
+		return generic
+	}
+	return field
+}
+
 func (function *functionState) emit(
 	code instruction,
 	line uint32,
@@ -277,7 +293,7 @@ func (function *functionState) bindResult(pc, register int) {
 	}
 	code := function.builder.code[pc]
 	switch code.opcode() {
-	case opGetUpvalue, opGetGlobal, opGetTable, opNewTable,
+	case opGetUpvalue, opGetGlobal, opGetTable, opGetField, opNewTable,
 		opAdd, opSub, opMul, opDiv, opMod, opPow,
 		opUnaryMinus, opNot, opLength, opConcat, opClosure:
 	default:

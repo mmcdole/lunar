@@ -80,8 +80,10 @@ driver:
 			}
 			current := runInstructions(thread, stopDepth)
 			switch current.opcode() {
-			case opGetGlobal, opGetTable, opSelf,
-				opGetGlobalMiss, opGetTableMiss, opSelfMiss:
+			case opGetGlobal, opGetTable, opGetField,
+				opSelf, opSelfField,
+				opGetGlobalMiss, opGetTableMiss, opGetFieldMiss,
+				opSelfMiss, opSelfFieldMiss:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowTableGet(
 					thread,
@@ -90,8 +92,8 @@ driver:
 				); failure != nil {
 					return stopExecution(thread, failure)
 				}
-			case opSetGlobal, opSetTable,
-				opSetGlobalMiss, opSetTableMiss:
+			case opSetGlobal, opSetTable, opSetField,
+				opSetGlobalMiss, opSetTableMiss, opSetFieldMiss:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowTableSet(
 					thread,
@@ -414,7 +416,7 @@ dispatch:
 				values[base+current.a()],
 			)
 
-		case opGetGlobal, opGetTable, opSelf:
+		case opGetTable, opSelf:
 			result := executeRawTableGet(thread, current)
 			if result == tableInstructionHandled {
 				break
@@ -422,8 +424,24 @@ dispatch:
 			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return result
 
-		case opSetGlobal, opSetTable:
+		case opGetGlobal, opGetField, opSelfField:
+			result := executeRawStringTableGet(thread, current)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return result
+
+		case opSetTable:
 			result := executeRawTableSet(thread, current)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return result
+
+		case opSetGlobal, opSetField:
+			result := executeRawStringTableSet(thread, current)
 			if result == tableInstructionHandled {
 				break
 			}

@@ -480,6 +480,16 @@ func verifyPrototypeInstruction(
 		}
 		return prototype.checkRegisterOrConstant(pc, code.c(), "table key")
 
+	case opGetField:
+		if syntaxError := prototype.checkRegisters(pc, code.a(), code.b()); syntaxError != nil {
+			return syntaxError
+		}
+		return prototype.checkStringConstantOperand(
+			pc,
+			code.c(),
+			"field key",
+		)
+
 	case opSetGlobal:
 		if syntaxError := prototype.checkRegister(pc, code.a(), "source"); syntaxError != nil {
 			return syntaxError
@@ -504,6 +514,19 @@ func verifyPrototypeInstruction(
 		}
 		return prototype.checkRegisterOrConstant(pc, code.c(), "table value")
 
+	case opSetField:
+		if syntaxError := prototype.checkRegister(pc, code.a(), "table"); syntaxError != nil {
+			return syntaxError
+		}
+		if syntaxError := prototype.checkStringConstantOperand(
+			pc,
+			code.b(),
+			"field key",
+		); syntaxError != nil {
+			return syntaxError
+		}
+		return prototype.checkRegisterOrConstant(pc, code.c(), "table value")
+
 	case opNewTable:
 		if syntaxError := prototype.checkRegister(pc, code.a(), "destination"); syntaxError != nil {
 			return syntaxError
@@ -520,6 +543,19 @@ func verifyPrototypeInstruction(
 			return syntaxError
 		}
 		return prototype.checkRegisterOrConstant(pc, code.c(), "method key")
+
+	case opSelfField:
+		if syntaxError := prototype.checkRegisterRange(pc, code.a(), 2, "SELFFIELD result"); syntaxError != nil {
+			return syntaxError
+		}
+		if syntaxError := prototype.checkRegister(pc, code.b(), "receiver"); syntaxError != nil {
+			return syntaxError
+		}
+		return prototype.checkStringConstantOperand(
+			pc,
+			code.c(),
+			"method key",
+		)
 
 	case opAdd, opSub, opMul, opDiv, opMod, opPow:
 		if syntaxError := prototype.checkRegister(pc, code.a(), "destination"); syntaxError != nil {
@@ -899,6 +935,33 @@ func (prototype *Prototype) checkRegisterOrConstant(
 		return prototype.checkConstant(pc, constantIndex(operand), false)
 	}
 	return prototype.checkRegister(pc, operand, purpose)
+}
+
+func (prototype *Prototype) checkStringConstantOperand(
+	pc int,
+	operand int,
+	purpose string,
+) *Error {
+	if !isConstantOperand(operand) {
+		return prototype.syntaxError(
+			pc,
+			"%s is not a constant",
+			purpose,
+		)
+	}
+	index := constantIndex(operand)
+	if syntaxError := prototype.checkConstant(pc, index, false); syntaxError != nil {
+		return syntaxError
+	}
+	if prototype.constants[index].kind() != StringKind {
+		return prototype.syntaxError(
+			pc,
+			"%s constant %d is not a string",
+			purpose,
+			index,
+		)
+	}
+	return nil
 }
 
 func (prototype *Prototype) checkConstant(

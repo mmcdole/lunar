@@ -16,6 +16,12 @@ func rawTableMissOpcode(operation opcode) opcode {
 		return opSetTableMiss
 	case opSelf:
 		return opSelfMiss
+	case opGetField:
+		return opGetFieldMiss
+	case opSetField:
+		return opSetFieldMiss
+	case opSelfField:
+		return opSelfFieldMiss
 	default:
 		panic("lua: invalid raw table opcode")
 	}
@@ -33,6 +39,12 @@ func tableSourceOpcode(operation opcode) (opcode, bool) {
 		return opSetTable, true
 	case opSelfMiss:
 		return opSelf, true
+	case opGetFieldMiss:
+		return opGetField, true
+	case opSetFieldMiss:
+		return opSetField, true
+	case opSelfFieldMiss:
+		return opSelfField, true
 	default:
 		return operation, false
 	}
@@ -52,9 +64,6 @@ func executeRawTableGet(
 	var target, key slot
 
 	switch code.opcode() {
-	case opGetGlobal:
-		target = slotFromTable(frame.function.environment)
-		key = frame.function.prototype.constants[code.bx()]
 	case opGetTable:
 		target = thread.values[base+code.b()]
 		key = operandSlot(
@@ -95,6 +104,54 @@ func executeRawTableGet(
 	return tableInstructionHandled
 }
 
+// executeRawStringTableGet is the compiler-proven constant-string counterpart
+// to executeRawTableGet. The constant already carries its trusted hash, so
+// field, method, and global access never enter dynamic key normalization.
+//
+//go:noinline
+func executeRawStringTableGet(
+	thread *Thread,
+	code instruction,
+) instruction {
+	frame := thread.frames[len(thread.frames)-1]
+	base := int(frame.base)
+	var target, key slot
+
+	switch code.opcode() {
+	case opGetGlobal:
+		target = slotFromTable(frame.function.environment)
+		key = frame.function.prototype.constants[code.bx()]
+	case opGetField:
+		target = thread.values[base+code.b()]
+		key = frame.function.prototype.constants[constantIndex(code.c())]
+	case opSelfField:
+		target = thread.values[base+code.b()]
+		writeSlot(&thread.values[base+code.a()+1], target)
+		key = frame.function.prototype.constants[constantIndex(code.c())]
+	default:
+		panic("lua: invalid constant-string table read opcode")
+	}
+
+	if target.kind() != TableKind {
+		return code
+	}
+	table := (*Table)(target.ref)
+	result, found := table.rawStringKeySlot(
+		key,
+		uint32(stringSlotHash(key)),
+	)
+	if !found {
+		if table.metatable == nil ||
+			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+			writeSlot(&thread.values[base+code.a()], nilSlot)
+			return tableInstructionHandled
+		}
+		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+	}
+	writeSlot(&thread.values[base+code.a()], result)
+	return tableInstructionHandled
+}
+
 // executeRawTableSet completes writes that cannot invoke Lua or construct an
 // error.
 //
@@ -108,10 +165,6 @@ func executeRawTableSet(
 	var target, key, value slot
 
 	switch code.opcode() {
-	case opSetGlobal:
-		target = slotFromTable(frame.function.environment)
-		key = frame.function.prototype.constants[code.bx()]
-		value = thread.values[base+code.a()]
 	case opSetTable:
 		target = thread.values[base+code.a()]
 		key = operandSlot(
@@ -163,6 +216,63 @@ func executeRawTableSet(
 	return tableInstructionHandled
 }
 
+// executeRawStringTableSet is the constant-string mutation path paired with
+// executeRawStringTableGet.
+//
+//go:noinline
+func executeRawStringTableSet(
+	thread *Thread,
+	code instruction,
+) instruction {
+	frame := thread.frames[len(thread.frames)-1]
+	base := int(frame.base)
+	var target, key, value slot
+
+	switch code.opcode() {
+	case opSetGlobal:
+		target = slotFromTable(frame.function.environment)
+		key = frame.function.prototype.constants[code.bx()]
+		value = thread.values[base+code.a()]
+	case opSetField:
+		target = thread.values[base+code.a()]
+		key = frame.function.prototype.constants[constantIndex(code.b())]
+		value = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.c(),
+		)
+	default:
+		panic("lua: invalid constant-string table write opcode")
+	}
+
+	if target.kind() != TableKind {
+		return code
+	}
+	table := (*Table)(target.ref)
+	hash := uint32(stringSlotHash(key))
+	_, location, found := table.resolveStringKeySlot(
+		key,
+		hash,
+	)
+	if !found {
+		if table.metatable == nil ||
+			table.metatable.absentMetamethods&metaNewIndex.bit() != 0 {
+			table.rawSetNormalizedSlot(
+				key,
+				0,
+				false,
+				hash,
+				value,
+			)
+			return tableInstructionHandled
+		}
+		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+	}
+	table.replaceResolvedSlot(location, value)
+	return tableInstructionHandled
+}
+
 //go:noinline
 func slowTableGet(
 	thread *Thread,
@@ -174,12 +284,16 @@ func slowTableGet(
 	instructionPC := nextPC - 1
 	base := int(frame.base)
 	var target, key slot
+	var keyHash uint32
+	stringKey := false
 
 	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
 	switch operation {
 	case opGetGlobal:
 		target = slotFromTable(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
+		keyHash = uint32(stringSlotHash(key))
+		stringKey = true
 	case opGetTable:
 		target = thread.values[base+code.b()]
 		key = operandSlot(
@@ -188,6 +302,11 @@ func slowTableGet(
 			base,
 			code.c(),
 		)
+	case opGetField:
+		target = thread.values[base+code.b()]
+		key = frame.function.prototype.constants[constantIndex(code.c())]
+		keyHash = uint32(stringSlotHash(key))
+		stringKey = true
 	case opSelf:
 		target = thread.values[base+code.b()]
 		// Lua 5.1 publishes the receiver before reading RK(C). Preserve that
@@ -199,6 +318,12 @@ func slowTableGet(
 			base,
 			code.c(),
 		)
+	case opSelfField:
+		target = thread.values[base+code.b()]
+		writeSlot(&thread.values[base+code.a()+1], target)
+		key = frame.function.prototype.constants[constantIndex(code.c())]
+		keyHash = uint32(stringSlotHash(key))
+		stringKey = true
 	default:
 		panic("lua: invalid table read opcode")
 	}
@@ -210,7 +335,16 @@ func slowTableGet(
 		if target.kind() == TableKind {
 			table := (*Table)(target.ref)
 			if !skipInitialRaw || !firstTarget {
-				if result, found := table.rawSlot(key); found {
+				var result slot
+				if stringKey {
+					result, found = table.rawStringKeySlot(
+						key,
+						keyHash,
+					)
+				} else {
+					result, found = table.rawSlot(key)
+				}
+				if found {
 					writeSlot(&thread.values[base+code.a()], result)
 					return nil
 				}
@@ -226,7 +360,8 @@ func slowTableGet(
 				register := -1
 				if firstTarget {
 					switch operation {
-					case opGetTable, opSelf:
+					case opGetTable, opGetField,
+						opSelf, opSelfField:
 						register = code.b()
 					}
 				}
@@ -280,6 +415,8 @@ func slowTableSet(
 	instructionPC := nextPC - 1
 	base := int(frame.base)
 	var target, key, value slot
+	var keyHash uint32
+	stringKey := false
 
 	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
 	switch operation {
@@ -287,6 +424,8 @@ func slowTableSet(
 		target = slotFromTable(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
 		value = thread.values[base+code.a()]
+		keyHash = uint32(stringSlotHash(key))
+		stringKey = true
 	case opSetTable:
 		target = thread.values[base+code.a()]
 		key = operandSlot(
@@ -301,6 +440,17 @@ func slowTableSet(
 			base,
 			code.c(),
 		)
+	case opSetField:
+		target = thread.values[base+code.a()]
+		key = frame.function.prototype.constants[constantIndex(code.b())]
+		value = operandSlot(
+			thread.values,
+			frame.function.prototype.constants,
+			base,
+			code.c(),
+		)
+		keyHash = uint32(stringSlotHash(key))
+		stringKey = true
 	default:
 		panic("lua: invalid table write opcode")
 	}
@@ -311,23 +461,39 @@ func slowTableSet(
 		var found bool
 		if target.kind() == TableKind {
 			table := (*Table)(target.ref)
-			normalized, index, arrayKey, hash, status :=
-				normalizeTableKey(key)
-			if status != tableKeyValid {
-				return invalidTableWriteKey(
-					thread,
-					frameIndex,
-					instructionPC,
-					status,
-				)
+			normalized := key
+			index := 0
+			arrayKey := false
+			hash := keyHash
+			if !stringKey {
+				var status tableKeyStatus
+				normalized, index, arrayKey, hash, status =
+					normalizeTableKey(key)
+				if status != tableKeyValid {
+					return invalidTableWriteKey(
+						thread,
+						frameIndex,
+						instructionPC,
+						status,
+					)
+				}
 			}
 			if !skipInitialRaw || !firstTarget {
-				if _, location, present := table.resolveNormalizedSlot(
-					normalized,
-					index,
-					arrayKey,
-					hash,
-				); present {
+				var location tableLocation
+				var present bool
+				if stringKey {
+					_, location, present =
+						table.resolveStringKeySlot(normalized, hash)
+				} else {
+					_, location, present =
+						table.resolveNormalizedSlot(
+							normalized,
+							index,
+							arrayKey,
+							hash,
+						)
+				}
+				if present {
 					table.replaceResolvedSlot(location, value)
 					return nil
 				}
@@ -355,7 +521,9 @@ func slowTableSet(
 			)
 			if !found {
 				register := -1
-				if firstTarget && operation == opSetTable {
+				if firstTarget &&
+					(operation == opSetTable ||
+						operation == opSetField) {
 					register = code.a()
 				}
 				return newExecutionTypeError(

@@ -350,7 +350,7 @@ func TestCompileSourceSupportsEmptyOpenAndChainedCalls(t *testing.T) {
 		switch code.opcode() {
 		case opCall:
 			calls = append(calls, code)
-		case opSelf:
+		case opSelfField:
 			method = code
 		case opTailCall:
 			tail = code
@@ -363,7 +363,7 @@ func TestCompileSourceSupportsEmptyOpenAndChainedCalls(t *testing.T) {
 		calls[2].c() != 2 ||
 		tail.b() != 1 {
 		t.Fatalf(
-			"empty/chained calls = calls %#v, SELF %#v, TAILCALL %#v",
+			"empty/chained calls = calls %#v, SELFFIELD %#v, TAILCALL %#v",
 			calls,
 			method,
 			tail,
@@ -412,14 +412,14 @@ func TestCompileSourceEmitsMethodAndStatementCalls(t *testing.T) {
 	var calls []instruction
 	for _, code := range prototype.code {
 		switch code.opcode() {
-		case opSelf:
+		case opSelfField:
 			self = code
 		case opCall:
 			calls = append(calls, code)
 		}
 	}
-	if self.opcode() != opSelf {
-		t.Fatal("method call did not emit SELF")
+	if self.opcode() != opSelfField {
+		t.Fatal("method call did not emit SELFFIELD")
 	}
 	if len(calls) != 2 ||
 		calls[0].a() != self.a() ||
@@ -513,7 +513,7 @@ func TestCompileSourceEvaluatesMethodReceiverOnce(t *testing.T) {
 		case opCall:
 			calls++
 			receiverCall = code
-		case opSelf:
+		case opSelfField:
 			selfs++
 			self = code
 		}
@@ -523,7 +523,7 @@ func TestCompileSourceEvaluatesMethodReceiverOnce(t *testing.T) {
 		receiverCall.c() != 2 ||
 		self.b() != receiverCall.a() {
 		t.Fatalf(
-			"receiver lowering = %d CALL, %d SELF; CALL A:%d C:%d, SELF B:%d",
+			"receiver lowering = %d CALL, %d SELFFIELD; CALL A:%d C:%d, SELFFIELD B:%d",
 			calls,
 			selfs,
 			receiverCall.a(),
@@ -548,16 +548,16 @@ func TestCompileSourceIndexesCallResult(t *testing.T) {
 		switch code.opcode() {
 		case opCall:
 			call = code
-		case opGetTable:
+		case opGetField:
 			get = code
 		}
 	}
 	if call.opcode() != opCall ||
 		call.c() != 2 ||
-		get.opcode() != opGetTable ||
+		get.opcode() != opGetField ||
 		get.b() != call.a() {
 		t.Fatalf(
-			"CALL/GETTABLE = call A:%d C:%d, get A:%d B:%d C:%d",
+			"CALL/GETFIELD = call A:%d C:%d, get A:%d B:%d C:%d",
 			call.a(),
 			call.c(),
 			get.a(),

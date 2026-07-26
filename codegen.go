@@ -833,7 +833,17 @@ func (parser *sourceParser) writeExpressionValue(
 	case expressionGlobal:
 		emitter.emitABx(opGetGlobal, target, value.info, line)
 	case expressionIndexed:
-		emitter.emitABC(opGetTable, target, value.info, value.aux, line)
+		emitter.emitABC(
+			emitter.tableOpcodeForKey(
+				opGetTable,
+				opGetField,
+				value.aux,
+			),
+			target,
+			value.info,
+			value.aux,
+			line,
+		)
 		if value.ownedBase != noRegister {
 			switch {
 			case target == value.ownedBase:

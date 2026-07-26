@@ -326,7 +326,11 @@ func (parser *sourceParser) emitAssignmentStore(
 			return syntaxError
 		}
 		emitter.emitABC(
-			opSetTable,
+			emitter.tableOpcodeForKey(
+				opSetTable,
+				opSetField,
+				target.key,
+			),
 			target.destination,
 			target.key,
 			operand,

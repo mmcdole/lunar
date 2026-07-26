@@ -283,7 +283,7 @@ func TestCompileSourceNamedMethodAndUpvalueFunctionStores(t *testing.T) {
 			t.Fatalf("method local %d = %q, want %q", index, got, want)
 		}
 	}
-	if opcodeIndex(prototype.code, opSetTable) < 0 {
+	if opcodeIndex(prototype.code, opSetField) < 0 {
 		t.Fatal("named method did not store through its final table field")
 	}
 

@@ -101,6 +101,33 @@ func (store *tableStore) getString(text string, hash uint32) (slot, bool) {
 	}
 }
 
+// getStringSlot is the prehashed counterpart used when the compiler has
+// already proved that key is a string constant. It avoids repeating generic
+// slot-kind dispatch while retaining content equality for distinct string
+// objects with the same bytes.
+func (store *tableStore) getStringSlot(key slot, hash uint32) (slot, bool) {
+	if store.entries.len() == 0 {
+		return nilSlot, false
+	}
+	index := store.mainIndex(hash)
+	for {
+		entry := store.entries.at(index)
+		if entry.hash == entryHashEmpty {
+			return nilSlot, false
+		}
+		if entry.hash == hash &&
+			entry.key.kind() == StringKind &&
+			stringSlotsEqual(entry.key, key) {
+			value := entry.value
+			return value, value.kind() != NilKind
+		}
+		if entry.next == 0 {
+			return nilSlot, false
+		}
+		index = int(entry.next - 1)
+	}
+}
+
 func (store *tableStore) findStoredString(
 	text string,
 	hash uint32,
@@ -117,6 +144,34 @@ func (store *tableStore) findStoredString(
 		if entry.hash == hash &&
 			entry.key.kind() == StringKind &&
 			stringSlotText(entry.key) == text {
+			return index, true
+		}
+		if entry.next == 0 {
+			return 0, false
+		}
+		index = int(entry.next - 1)
+	}
+}
+
+func (store *tableStore) findStringSlot(
+	key slot,
+	hash uint32,
+) (int, bool) {
+	// Mutation needs a live location. Tombstone revival remains on
+	// findStoredString/findStored so deletion continuations stay intact.
+	if store.entries.len() == 0 {
+		return 0, false
+	}
+	index := store.mainIndex(hash)
+	for {
+		entry := store.entries.at(index)
+		if entry.hash == entryHashEmpty {
+			return 0, false
+		}
+		if entry.hash == hash &&
+			entry.value.kind() != NilKind &&
+			entry.key.kind() == StringKind &&
+			stringSlotsEqual(entry.key, key) {
 			return index, true
 		}
 		if entry.next == 0 {

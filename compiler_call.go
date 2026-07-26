@@ -166,7 +166,11 @@ func (parser *sourceParser) parseMethodCall(
 		return compiledExpression{}, syntaxError
 	}
 	parser.function.emitABC(
-		opSelf,
+		parser.function.tableOpcodeForKey(
+			opSelf,
+			opSelfField,
+			keyOperand,
+		),
 		base,
 		receiverRegister,
 		keyOperand,

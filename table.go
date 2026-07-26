@@ -455,6 +455,13 @@ func (table *Table) rawNormalizedSlot(
 	return table.store.get(key, hash)
 }
 
+func (table *Table) rawStringKeySlot(
+	key slot,
+	hash uint32,
+) (slot, bool) {
+	return table.store.getStringSlot(key, hash)
+}
+
 func (table *Table) resolveNormalizedSlot(
 	key slot,
 	index int,
@@ -476,6 +483,22 @@ func (table *Table) resolveNormalizedSlot(
 		hash = hashNumber(number)
 	}
 	storeIndex, found := table.store.find(key, hash)
+	if !found {
+		return nilSlot, tableLocation{}, false
+	}
+	return table.store.entries.at(storeIndex).value,
+		tableLocation{
+			index: storeIndex,
+			lane:  tableHashLane,
+		},
+		true
+}
+
+func (table *Table) resolveStringKeySlot(
+	key slot,
+	hash uint32,
+) (slot, tableLocation, bool) {
+	storeIndex, found := table.store.findStringSlot(key, hash)
 	if !found {
 		return nilSlot, tableLocation{}, false
 	}
