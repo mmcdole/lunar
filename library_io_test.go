@@ -491,6 +491,50 @@ return io.open(`+luaTestQuote(path)+`,"a+")
 	}
 }
 
+func TestIOTemporaryFileIsOwnedAndRemovedOnClose(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+
+	results := runIOChunk(t, state, `return io.tmpfile()`)
+	data, ok := results[0].UserData()
+	if !ok {
+		t.Fatalf("io.tmpfile result = %v", results)
+	}
+	lease, open := acquireManagedResource(data)
+	if !open || !lease.owned {
+		t.Fatalf("temporary resource = (open %v, owned %v)", open, lease.owned)
+	}
+	handle := lease.value.(*fileHandle)
+	temporary, ok := handle.closer.(*temporaryFileCloser)
+	if !ok {
+		lease.release()
+		t.Fatalf("temporary closer = %T", handle.closer)
+	}
+	path := temporary.path
+	lease.release()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("temporary file before close: %v", err)
+	}
+	if err := state.SetGlobal("temporary_file", data.Value()); err != nil {
+		t.Fatal(err)
+	}
+	results = runIOChunk(t, state, `
+local before=io.type(temporary_file)
+local closed=temporary_file:close()
+return before,closed,io.type(temporary_file)
+`)
+	assertTestValues(
+		t,
+		results,
+		state.String("file"),
+		Bool(true),
+		state.String("closed file"),
+	)
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary path after close = %v; want absent", err)
+	}
+}
+
 func TestIODefaultsAreLuaStateAndSurviveReopening(t *testing.T) {
 	state := newStateWithIO(t, Options{})
 	defer state.Close()

@@ -25,6 +25,7 @@ var ioLibraryFunctions = [...]struct {
 	{name: "input", entry: ioInput},
 	{name: "open", entry: ioOpen},
 	{name: "output", entry: ioOutput},
+	{name: "tmpfile", entry: ioTempFile},
 	{name: "type", entry: ioType},
 }
 
@@ -258,12 +259,25 @@ func (state *State) newRegularFile(
 	file *os.File,
 	metatable *Table,
 ) (*UserData, error) {
+	return state.newOwnedFile(file, file, metatable)
+}
+
+func (state *State) newOwnedFile(
+	file *os.File,
+	closer io.Closer,
+	metatable *Table,
+) (*UserData, error) {
 	handle := &fileHandle{
 		seeker: file,
-		closer: file,
+		closer: closer,
 	}
 	handle.ownedInput = newInputEndpoint(file)
 	handle.ownedOutput = newOutputEndpoint(file)
+	// C file streams buffer regular output by default. Standard Go writers
+	// remain unbuffered until setvbuf requests otherwise, which keeps the
+	// embedding boundary deterministic while avoiding a syscall per file
+	// write.
+	handle.ownedOutput.mode = streamBufferFull
 	handle.input = &handle.ownedInput
 	handle.output = &handle.ownedOutput
 	data, err := state.newManagedUserData(
@@ -271,11 +285,33 @@ func (state *State) newRegularFile(
 		closeFileHandle,
 	)
 	if err != nil {
-		_ = file.Close()
+		_ = closer.Close()
 		return nil, err
 	}
 	classifyManagedUserData(data, &fileResourceClass, metatable)
 	return data, nil
+}
+
+type temporaryFileCloser struct {
+	file *os.File
+	path string
+}
+
+func (temporary *temporaryFileCloser) Close() error {
+	if temporary == nil {
+		return nil
+	}
+	var closeErr error
+	if temporary.file != nil {
+		closeErr = temporary.file.Close()
+		temporary.file = nil
+	}
+	removeErr := os.Remove(temporary.path)
+	if errors.Is(removeErr, os.ErrNotExist) {
+		removeErr = nil
+	}
+	temporary.path = ""
+	return errors.Join(closeErr, removeErr)
 }
 
 func closeFileHandle(value any) error {
@@ -355,6 +391,33 @@ func ioOpen(frame Frame) Outcome {
 		return libraryError(frame, "%s", err)
 	}
 	data, err := frame.State().newRegularFile(file, metatable)
+	if err != nil {
+		return libraryError(frame, "%s", err)
+	}
+	return frame.returnOne(
+		frame.activation(),
+		slotFromValue(data.Value()),
+	)
+}
+
+func ioTempFile(frame Frame) Outcome {
+	metatable, err := frame.State().ensureFileMetatable()
+	if err != nil {
+		return libraryError(frame, "%s", err)
+	}
+	file, err := os.CreateTemp("", "badger-lua-")
+	if err != nil {
+		return ioFailureResult(frame, "", err)
+	}
+	closer := &temporaryFileCloser{
+		file: file,
+		path: file.Name(),
+	}
+	data, err := frame.State().newOwnedFile(
+		file,
+		closer,
+		metatable,
+	)
 	if err != nil {
 		return libraryError(frame, "%s", err)
 	}
