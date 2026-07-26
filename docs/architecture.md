@@ -756,6 +756,26 @@ existing write resolves its array or hash location once and updates that
 exact location; it does not repeat the key lookup after deciding that
 `__newindex` must be bypassed.
 
+Each Table has one positive-integer array and one chained-scatter record
+store. Allocation policy belongs to Table rather than either lane. At a
+genuine insertion that needs new backing, the table counts live positive
+integers by power-of-two range and chooses the largest array span that would
+be more than half occupied, bounded at `2^26` as in PUC Lua 5.1. Remaining
+fields receive the smallest sufficient record store. A conservative integer
+range summary proves when a record-only growth cannot change that answer,
+while a dense array with no integer records can jump directly to the same
+exact power-of-two span without a preliminary full scan. The initial
+four-slot array class and already-reserved slice capacity are deliberate Go
+allocation adaptations; neither changes the global density rule at a fresh
+allocation.
+
+Existing fields update and delete in place. A deleted record retains its key
+and collision links so `next` can continue from it; a later absent insertion
+is the legal seam for compaction or movement between lanes because Lua makes
+traversal order undefined after adding a field. Physical redistribution does
+not create an additional logical mutation or invalidate the string-keyed
+metamethod absence cache.
+
 Globals use the executing Function's environment, never an implicit State
 global. `NEWTABLE` decodes both floating-byte operands and clamps their
 advisory capacities before allocation. `SETLIST` is raw, consumes open

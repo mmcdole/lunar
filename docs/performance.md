@@ -188,10 +188,10 @@ Tables, the compiler, and libraries do not branch on the short and long
 storage encodings. This tranche precedes the table-store replacement so the
 new node design can rely on the final cached-hash representation.
 
-### 3. Table storage and resizing — record store complete
+### 3. Table storage and resizing — complete
 
-The record half now uses one PUC-informed indexed chained-scatter store.
-Cached 32-bit hashes select a power-of-two main position; colliding nodes use
+The record half uses one PUC-informed indexed chained-scatter store. Cached
+32-bit hashes select a power-of-two main position; colliding nodes use
 index-plus-one links, and Brent-style relocation keeps every displaced node
 reachable from its main chain. Source hints reserve the smallest sufficient
 power of two and all nodes are usable. Unhinted tables still begin at four
@@ -202,11 +202,9 @@ Deletion retains the key and collision links so Lua 5.1 `next` can continue
 from a deleted field. Updating an existing field leaves its physical position
 unchanged. An absent-key insertion makes traversal order undefined, so it may
 unlink and recycle one retained tombstone without allocating; a dead chain
-head promotes its successor. This is deliberately stronger than PUC 5.1's
-full-table replacement behavior, which may rehash after every delete-A,
-insert-B pair. A larger dead majority compacts on an insertion seam to release
-the other retained Go pointer keys until semantic collection can own that
-work.
+head promotes its successor. A larger dead majority compacts on an insertion
+seam to release the other retained Go pointer keys until semantic collection
+can own that work.
 
 The store header is 40 bytes, down from 48, and the canonical Table header is
 104 bytes, down from 112. Each record node remains 40 bytes, the same size as
@@ -214,57 +212,82 @@ PUC's `Node` and the previous Badger entry; its former 64-bit hash word now
 contains a 32-bit cached hash and a 32-bit successor index. The named capacity
 bound preserves index-plus-one encoding on 32- and 64-bit builds.
 
-The remaining half of this tranche is global numeric density. `Table`, not
-`tableStore`, will own redistribution: record exhaustion returns to the table
-instead of independently growing one lane. The coordinator counts every live
-positive integer in both lanes into power-of-two ranges, includes the pending
-absent key, and chooses the largest array span that is more than half full.
-It then sizes the array and exact-capacity record store together and reinserts
-each live field once. A named maximum bounds array candidates; PUC 5.1 uses
-2^26.
+`Table` now owns both-lane allocation policy. When an absent insertion needs
+new backing, it counts every live positive integer in power-of-two ranges,
+includes the pending field, and selects the largest array span that is
+strictly more than half occupied. The array candidate is bounded at `2^26`,
+matching PUC Lua 5.1. Remaining live fields receive the smallest sufficient
+record store, and each live field is moved at most once during that
+redistribution.
 
-Between redistributions, existing array and record fields update or delete in
-place, and absent nil writes do nothing. A new positive integer may extend
-within existing array backing only while projected occupancy remains above
-one half. The initial `1..4` array size class remains a deliberate Go
-allocation policy: four compact slots cost less than the unhinted four-node
-record store. A new field that needs backing invokes the global coordinator.
-This replaces `maxDenseArrayGap`, one-key-at-a-time tail promotion, and
-independent array and record growth with one density invariant.
+A conservative summary of the smallest positive integer record class proves
+when growing only the record store cannot change the global answer. Dense
+growth with no integer records can likewise allocate the exact selected
+power-of-two array directly instead of performing a preliminary full scan.
+Neither mechanism is an identity cache or a second storage policy; stale
+summary information can only request an unnecessary full calculation. It
+occupies tail padding, so the canonical Table header remains 104 bytes.
 
-This policy keeps `t[50_000_000] = 1` as one record entry while bounding a
-dense array to roughly two slots per live positive integer. Updates and
-deletions cannot move lanes because Lua permits them during `next`; a
-genuinely absent insertion is the legal reordering and tombstone-release
-seam. Physical movement does not change the logical structural generation or
-metamethod cache state.
+Between allocation seams, existing array and record fields update or delete
+in place, absent nil writes do nothing, and reserved array backing accepts a
+new key only while projected occupancy remains above one half. The initial
+`1..4` array class is a deliberate Go size-class adaptation: four compact
+slots cost less than the first unhinted four-node record store. This replaces
+`maxDenseArrayGap`, one-key-at-a-time tail promotion, and independent
+array/record growth with one density invariant.
 
-Dense growth separately tests the current four-slot start followed by a
-direct jump to 16 slots on spill, avoiding the common 4-to-8-to-16 allocation
-sequence without restoring a large unconditional default. It lands only if
-generic dense-array gains justify retained backing for five-to-eight-element
-tables. Integer record access also receives a specialized lookup/update path
-if profiles confirm that generic key classification is the remaining sparse
-cost.
+The policy keeps `t[50_000_000] = 1` as one record entry and never grows the
+array above `2^26`. Updates and deletions cannot move lanes because Lua
+permits them during `next`; a genuinely absent insertion is the legal
+reordering and tombstone-release seam. Physical movement does not add a
+second logical structural mutation or invalidate the string-keyed metamethod
+absence cache.
 
-The comparison covers:
+Five-sample equal-layout comparisons against the completed record-store
+revision show the intended order independence at 1,024 dense integer fields:
 
-- empty and one-field tables;
-- unique and recurring 2-, 4-, 8-, and 16-field records;
-- ascending, descending, randomized, hinted, and unhinted dense growth;
-- exact-half, just-over-half, holey, and array/record transition cases;
-- huge single indices and strided sparse maps, with no large array allocation;
-- mixed numeric/string keys;
-- lookup hits and misses at each occupancy;
-- deletion, churn, `next`, `pairs`, `ipairs`, and length;
-- `SETLIST`, trailing nils, and open final constructor results; and
-- the generic graph-search, message-replay, and CBOR lanes.
+| Construction order | Elapsed | Allocated bytes | Allocations |
+| --- | ---: | ---: | ---: |
+| Ascending | 11.614 to 9.114 us, 21.5% faster | 61,488 to 37,296 | 14 to 10 |
+| Descending | 76.842 to 27.845 us, 63.8% faster | 186,704 to 61,840 | 24 to 10 |
+| Randomized | 75.741 to 31.503 us, 58.4% faster | 145,745 to 61,904 | 23 to 11 |
 
-The complete table tranche lands only if profiles show less backing growth,
-no correctness regression, and no representative table workload is
-materially slower. A shared record layout remains a later option only if the
-PUC-style store leaves a measured recurring-record gap; the predecessor's
-shape system is not a starting dependency.
+The final dense layout is the same 1,024-slot array regardless of insertion
+order. Exact-half mixed construction at 1,024 fields is 4.6% faster and falls
+from 39,504 to 30,928 bytes. The single insertion that crosses from exact
+half to over half is deliberately expensive: it is about 21% slower while it
+migrates the existing record fields into their globally selected array.
+After that transition, the formerly recorded key is 66.6% faster to read,
+19.4% faster to update, and mixed traversal is 29.2% faster.
+
+Strided sparse construction retains exactly the same backing bytes and
+allocation counts from 16 through 5,000 fields; medians range from 0.6% to
+4.8% slower, while allocation-free lookup and update remain within roughly
+5%. A fourteen-cell executor/raw-table screen has no median regression above
+2.9% and no allocation change.
+
+One seeded eight-key permuted raw-construction case remains slower by roughly
+0.1 microsecond. Its order first makes the cheap initial array sparse, moves
+those fields into records, and later crosses the strict-half threshold back
+into an array. A tested maximum-class shortcut improved that cell but added
+an allocation at 48 keys and slowed sparse construction, so it was rejected
+rather than retained as benchmark-specific policy. Ascending dynamic arrays
+and larger randomized tables do not share that cliff, and the standing
+executor constructor cell is 0.7% faster.
+
+Five alternating fresh-process large-CBOR pairs are intentionally uneventful:
+
+| Mode | Elapsed | Allocated bytes | Mallocs |
+| --- | ---: | ---: | ---: |
+| Load | 0.10% faster | unchanged | unchanged |
+| Save | unchanged | 1.00% lower | unchanged |
+
+The density change therefore earns its place through generic table layout,
+construction, and steady-state access rather than a codec timing claim. The
+frozen mature predecessor remains the next end-to-end memory and speed gate.
+A shared record layout remains a later option only if a fresh profile shows a
+general recurring-record gap; the predecessor's shape system is not a
+starting dependency.
 
 ### 4. Re-profile execution
 
