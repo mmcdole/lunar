@@ -859,8 +859,8 @@ var stringLibraryLua51Cases = []lua51Case{
 	},
 	{
 		name:   "reverse",
-		source: "return ('abc'):reverse(), (''):reverse(), ('a\\0b'):reverse() == 'b\\0a'",
-		want:   "ok 'cba' '' true",
+		source: "return ('abc'):reverse(), (''):reverse(), ('a\\0b'):reverse() == 'b\\0a', string.reverse(string.char(0xc3, 0xa9)) == string.char(0xa9, 0xc3)",
+		want:   "ok 'cba' '' true true",
 	},
 	{
 		name:   "case",

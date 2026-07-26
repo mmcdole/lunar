@@ -142,7 +142,7 @@ func stringReverse(frame Frame) Outcome {
 		return baseArgumentTypeError(frame, 0, "string")
 	}
 	reversed := make([]byte, len(text))
-	for index := range text {
+	for index := 0; index < len(text); index++ {
 		reversed[len(text)-1-index] = text[index]
 	}
 	return frame.ReturnString(stringFromOwnedBytes(reversed))
