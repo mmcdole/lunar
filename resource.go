@@ -37,7 +37,17 @@ type nativeResource struct {
 // registry deliberately retains the resource record, not this token, so Go
 // can reclaim an unreachable UserData and run native cleanup.
 type nativeResourceToken struct {
-	resource *nativeResource
+	resource          *nativeResource
+	class             *nativeResourceClass
+	expectedMetatable *Table
+}
+
+// nativeResourceClass is an unforgeable runtime-library object class. A
+// library checks both this identity and the metatable recorded at construction
+// time, so assigning that metatable to unrelated userdata cannot impersonate a
+// native handle.
+type nativeResourceClass struct {
+	marker byte
 }
 
 // nativeResourceLease keeps the finalizer token reachable for the complete
@@ -228,6 +238,32 @@ func acquireManagedResource(
 		token: data.resource,
 		owned: data.resource.resource.owned,
 	}, true
+}
+
+func classifyManagedUserData(
+	data *UserData,
+	class *nativeResourceClass,
+	metatable *Table,
+) {
+	if data == nil || data.resource == nil ||
+		class == nil || metatable == nil {
+		panic("lua: invalid managed userdata classification")
+	}
+	data.resource.class = class
+	data.resource.expectedMetatable = metatable
+	data.metatable = metatable
+}
+
+func isManagedUserDataClass(
+	data *UserData,
+	class *nativeResourceClass,
+) bool {
+	return data != nil &&
+		data.resource != nil &&
+		class != nil &&
+		data.resource.class == class &&
+		data.resource.expectedMetatable != nil &&
+		data.metatable == data.resource.expectedMetatable
 }
 
 func (lease nativeResourceLease) release() {
