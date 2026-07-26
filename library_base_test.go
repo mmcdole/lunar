@@ -37,6 +37,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	baseFunctions := []string{
 		"assert",
 		"error",
+		"getfenv",
 		"getmetatable",
 		"ipairs",
 		"next",
@@ -46,6 +47,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		"rawget",
 		"rawset",
 		"select",
+		"setfenv",
 		"setmetatable",
 		"tonumber",
 		"tostring",
@@ -66,7 +68,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if same, applicable := global.SameObject(state.globals.Value()); !applicable || !same {
+	if same, applicable := global.SameObject(state.main.globals.Value()); !applicable || !same {
 		t.Fatal("_G does not identify the canonical global environment")
 	}
 	version, err := state.Global("_VERSION")
@@ -109,7 +111,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		}
 	}
 	global, _ = state.Global("_G")
-	if same, applicable := global.SameObject(state.globals.Value()); !applicable || !same {
+	if same, applicable := global.SameObject(state.main.globals.Value()); !applicable || !same {
 		t.Fatal("reopening did not restore _G")
 	}
 
@@ -118,6 +120,74 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	}
 	if err := state.OpenBase(); !errors.Is(err, ErrClosed) {
 		t.Fatalf("OpenBase after Close = %v; want ErrClosed", err)
+	}
+}
+
+func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	original, err := state.ThreadEnvironment(state.MainThread())
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalPCall := original.RawGetString("pcall")
+	originalCoroutine := original.RawGetString("coroutine")
+
+	replacement, err := state.NewTable(0, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetThreadEnvironment(
+		state.MainThread(),
+		replacement,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+
+	global, err := state.Global("_G")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same, applicable := global.SameObject(replacement.Value()); !applicable || !same {
+		t.Fatal("reopened _G does not identify the replacement environment")
+	}
+	reopenedPCall, err := state.Global("pcall")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopenedPCall.Kind() != FunctionKind {
+		t.Fatalf("reopened pcall = %v; want function", reopenedPCall)
+	}
+	if same, applicable := reopenedPCall.SameObject(originalPCall); !applicable || same {
+		t.Fatal("reopening reused the old environment's pcall")
+	}
+	reopenedFunction, _ := reopenedPCall.Function()
+	if environment, environmentErr := state.FunctionEnvironment(
+		reopenedFunction,
+	); environmentErr != nil || environment != replacement {
+		t.Fatalf(
+			"reopened pcall environment = (%p, %v); want %p",
+			environment,
+			environmentErr,
+			replacement,
+		)
+	}
+	if same, applicable := original.RawGetString("pcall").SameObject(
+		originalPCall,
+	); !applicable || !same {
+		t.Fatal("reopening changed the old environment's pcall")
+	}
+	if same, applicable := original.RawGetString("coroutine").SameObject(
+		originalCoroutine,
+	); !applicable || !same {
+		t.Fatal("reopening changed the old environment's coroutine library")
+	}
+	if replacement.RawGetString("coroutine").Kind() != TableKind {
+		t.Fatal("reopening did not install coroutine into the replacement environment")
 	}
 }
 
@@ -748,6 +818,27 @@ return function()
 	return total
 end`,
 		},
+		{
+			name: "function and thread environments",
+			source: `local get,set=getfenv,setfenv
+local functionEnvironment=get(1)
+local threadEnvironment=get(0)
+local target=function() end
+set(target,functionEnvironment)
+return function()
+	local total=0
+	for i=1,100 do
+		set(target,functionEnvironment)
+		set(0,threadEnvironment)
+		if get(target)==functionEnvironment and
+			get(1)==functionEnvironment and
+			get(0)==threadEnvironment then
+			total=total+1
+		end
+	end
+	return total
+end`,
+		},
 	}
 
 	for _, test := range testCases {
@@ -816,6 +907,41 @@ local function outer(level) return pcall(inner,level) end
 local a,b=outer(1); local c,d=outer(2); local e,f=outer(3)
 return a,b,c,d,e,f`,
 		want: "ok false 'case:1: boom' false 'boom' false 'case:2: boom'",
+	},
+	{
+		name:   "function_environments_and_running_function_replacement",
+		source: `local gf,sf=getfenv,setfenv; local first={x=1}; local second={x=2}; local f=function() return x end; local same=sf(f,first); sf(1,second); local current=x; return gf()==second,gf(1)==second,gf(f)==first,same==f,f(),current`,
+		want:   "ok true true true true 1 2",
+	},
+	{
+		name:   "thread_environment_is_distinct_and_setfenv_zero_returns_nothing",
+		source: `local gf,sf=getfenv,setfenv; local original=gf(0); local functionenv=gf(1); local e={}; local n=select("#",sf(0,e)); local threadSame=gf(0)==e; local functionSame=gf(1)==functionenv; sf(0,original); return n,threadSame,functionSame`,
+		want:   "ok 0 true true",
+	},
+	{
+		name:   "environment_numeric_targets_follow_lua51_conversion",
+		source: `local gf,sf,pc=getfenv,setfenv,pcall; local original=gf(0); local functionenv=gf(1); local environment={}; local sameDefault=gf(nil)==functionenv; local count=select("#",sf("0",environment)); local sameThread=gf(0)==environment; local ok,message=pc(sf,0.5,{}); local unchanged=gf(0)==environment; sf(0,original); return sameDefault,count,sameThread,ok,message,unchanged`,
+		want:   "ok true 0 true false ''setfenv' cannot change environment of given object' true",
+	},
+	{
+		name:   "coroutine_environment_inheritance_isolation_and_suspension",
+		source: `local gf,sf=getfenv,setfenv; local create,resume,yield=coroutine.create,coroutine.resume,coroutine.yield; local original=gf(0); local a,b,c={},{},{}; sf(0,a); local first=create(function() local inherited=gf(0)==a; sf(0,c); local nested=create(function() return gf(0)==c end); local ok,nestedInherited=resume(nested); local resumed=yield(inherited,gf(0)==c,ok,nestedInherited); return gf(0)==c,resumed end); sf(0,b); local ok1,i,r,okn,n=resume(first); local main1=gf(0)==b; local ok2,persist,arg=resume(first,77); local second=create(function() return gf(0)==b end); local ok3,sibling=resume(second); local main2=gf(0)==b; sf(0,original); return ok1,i,r,okn,n,main1,ok2,persist,arg,ok3,sibling,main2`,
+		want:   "ok true true true true true true true true 77 true true true",
+	},
+	{
+		name:   "native_getfenv_uses_thread_environment_and_setfenv_rejects_it",
+		source: `local gf,sf,pc=getfenv,setfenv,pcall; local original=gf(0); local native=pc; local environment={}; sf(0,environment); local ok,message=pc(sf,native,{}); local same=gf(native)==environment; sf(0,original); return same,ok,message`,
+		want:   "ok true false ''setfenv' cannot change environment of given object'",
+	},
+	{
+		name:   "environment_levels_distinguish_native_lua_and_tail_frames",
+		source: `local gf,sf,pc=getfenv,setfenv,pcall; local thread=gf(0); local probeEnvironment={}; local function probe(level) local ok,value=pc(gf,level); if not ok then return false,value end; if value==thread then return true,"thread" elseif value==probeEnvironment then return true,"probe" else return true,"other" end end; sf(probe,probeEnvironment); local function target(level) return probe(level) end; local function tail(level) return target(level) end; local a,b=tail(1); local c,d=tail(2); local e,f=tail(3); local g,h=tail(5); return a,b,c,d,e,f,g,h`,
+		want:   "ok true 'thread' true 'probe' false 'no function environment for tail call at level 3' true 'thread'",
+	},
+	{
+		name:   "setfenv_tail_level_and_argument_validation",
+		source: `local gf,sf,pc=getfenv,setfenv,pcall; local environment={}; local function probe(level) return pc(sf,level,environment) end; local function target(level) return probe(level) end; local function tail(level) return target(level) end; local a,b=tail(3); local c,d=pc(gf,-1); local e,f=pc(gf,999); local g,h=pc(sf,-1,nil); return a,b,c,d,e,f,g,h`,
+		want:   "ok false 'no function environment for tail call at level 3' false 'bad argument #1 to '?' (level must be non-negative)' false 'bad argument #1 to '?' (invalid level)' false 'bad argument #2 to '?' (table expected, got nil)'",
 	},
 	{
 		name:   "metatable_install_remove_and_identity",

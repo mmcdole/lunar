@@ -86,7 +86,8 @@ type runtimeState struct {
 	nativeCallDepth uint16
 }
 
-// State owns one Lua runtime, its global environment, and its main Thread.
+// State owns one Lua runtime, its main Thread, and the runtime-wide registry.
+// Each Thread owns its Lua 5.1 global-environment pointer.
 //
 // A State has one active executor. Callers must serialize all operations on a
 // State; no State method, coroutine Resume, or owned-object mutation may
@@ -102,7 +103,6 @@ type State struct {
 	limits         resourceLimits
 	active         *Thread
 	main           *Thread
-	globals        *Table
 	registry       *Table
 	execution      executionContext
 	typeMetatables [TableKind + 1]*Table
@@ -129,13 +129,14 @@ func New(options Options) (*State, error) {
 			frames: options.MaxFrames,
 		},
 	}
+	globals := newTable(rt, 0, 0)
 	state.main = &Thread{
 		objectHeader: objectHeader{owner: rt},
 		state:        state,
+		globals:      globals,
 		status:       ThreadReady,
 		main:         true,
 	}
-	state.globals = newTable(rt, 0, 0)
 	state.registry = newTable(rt, 0, 0)
 	return state, nil
 }
@@ -164,9 +165,9 @@ func (state *State) Close() error {
 		state.main.continuations = nil
 		state.main.top = 0
 		state.main.frameExtent = 0
+		state.main.globals = nil
 		state.main.status = ThreadClosed
 	}
-	state.globals = nil
 	state.registry = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
 	return nil
@@ -207,7 +208,9 @@ func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
 	return newTable(state.runtime, arrayHint, recordHint), nil
 }
 
-// NewUserData constructs canonical userdata holding payload.
+// NewUserData constructs canonical userdata holding payload. Its initial
+// environment is the currently executing Function's environment, or the main
+// Thread's global environment outside a callback.
 func (state *State) NewUserData(payload any) (*UserData, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
@@ -215,6 +218,7 @@ func (state *State) NewUserData(payload any) (*UserData, error) {
 	return &UserData{
 		objectHeader: objectHeader{owner: state.runtime},
 		payload:      payload,
+		environment:  state.constructionEnvironment(),
 	}, nil
 }
 
@@ -229,20 +233,45 @@ func (state *State) Registry() (*Table, error) {
 	return state.registry, nil
 }
 
-// Global returns a raw value from the global environment.
+func (state *State) currentThread() *Thread {
+	if state.active != nil {
+		return state.active
+	}
+	return state.main
+}
+
+func (state *State) globalEnvironment() *Table {
+	return state.currentThread().globals
+}
+
+func (state *State) constructionEnvironment() *Table {
+	thread := state.currentThread()
+	if state.active != nil && len(thread.frames) != 0 {
+		return thread.frames[len(thread.frames)-1].function.environment
+	}
+	return thread.globals
+}
+
+// Global returns a raw value from the current global environment.
+//
+// During a native callback, current means the executing Thread. Otherwise it
+// means the main Thread.
 func (state *State) Global(name string) (Value, error) {
 	if err := state.checkOpen(); err != nil {
 		return Value{}, err
 	}
-	return state.globals.RawGetString(name), nil
+	return state.globalEnvironment().RawGetString(name), nil
 }
 
-// SetGlobal performs a raw assignment in the global environment.
+// SetGlobal performs a raw assignment in the current global environment.
+//
+// During a native callback, current means the executing Thread. Otherwise it
+// means the main Thread.
 func (state *State) SetGlobal(name string, value Value) error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
-	return state.globals.RawSetString(name, value)
+	return state.globalEnvironment().RawSetString(name, value)
 }
 
 // RawEqual applies Lua raw equality without invoking metamethods.
@@ -333,6 +362,32 @@ func (state *State) SetFunctionEnvironment(function *Function, environment *Tabl
 	return nil
 }
 
+// ThreadEnvironment returns thread's Lua 5.1 global environment.
+func (state *State) ThreadEnvironment(thread *Thread) (*Table, error) {
+	if err := state.checkThread(thread); err != nil {
+		return nil, err
+	}
+	return thread.globals, nil
+}
+
+// SetThreadEnvironment replaces thread's Lua 5.1 global environment.
+func (state *State) SetThreadEnvironment(
+	thread *Thread,
+	environment *Table,
+) error {
+	if err := state.checkThread(thread); err != nil {
+		return err
+	}
+	if environment == nil || environment.owner == nil {
+		return ErrInvalidValue
+	}
+	if environment.owner != state.runtime {
+		return ErrForeignValue
+	}
+	thread.globals = environment
+	return nil
+}
+
 // UserDataEnvironment returns data's Lua 5.1 environment. A nil result means
 // no environment is installed.
 func (state *State) UserDataEnvironment(data *UserData) (*Table, error) {
@@ -375,6 +430,19 @@ func (state *State) checkFunction(function *Function) error {
 		return ErrInvalidValue
 	}
 	if function.owner != state.runtime {
+		return ErrForeignValue
+	}
+	return nil
+}
+
+func (state *State) checkThread(thread *Thread) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	if thread == nil || thread.owner == nil {
+		return ErrInvalidValue
+	}
+	if thread.owner != state.runtime {
 		return ErrForeignValue
 	}
 	return nil
@@ -431,6 +499,7 @@ const (
 type Thread struct {
 	objectHeader
 	state             *State
+	globals           *Table
 	values            []slot
 	frames            []activation
 	continuations     []executionContinuation

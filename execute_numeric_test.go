@@ -542,7 +542,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 		function := newLuaFunction(
 			state.runtime,
 			prototype,
-			state.globals,
+			state.main.globals,
 			nil,
 		)
 		thread, result := executeTestFunction(
@@ -593,7 +593,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 		function := newLuaFunction(
 			state.runtime,
 			prototype,
-			state.globals,
+			state.main.globals,
 			nil,
 		)
 

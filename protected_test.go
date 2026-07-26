@@ -878,8 +878,8 @@ return xpcall(
 
 func TestProtectedRuntimeStateRemainsCompact(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) == 8 {
-		if size := unsafe.Sizeof(Thread{}); size != 128 {
-			t.Fatalf("Thread size = %d; want 128", size)
+		if size := unsafe.Sizeof(Thread{}); size != 136 {
+			t.Fatalf("Thread size = %d; want 136", size)
 		}
 	}
 }

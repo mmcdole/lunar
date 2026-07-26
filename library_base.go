@@ -12,6 +12,7 @@ var baseLibraryFunctions = [...]struct {
 }{
 	{name: "assert", entry: baseAssert},
 	{name: "error", entry: baseError},
+	{name: "getfenv", entry: baseGetEnvironment},
 	{name: "getmetatable", entry: baseGetMetatable},
 	{name: "next", entry: baseNext},
 	{name: "pcall", entry: basePCall},
@@ -19,6 +20,7 @@ var baseLibraryFunctions = [...]struct {
 	{name: "rawget", entry: baseRawGet},
 	{name: "rawset", entry: baseRawSet},
 	{name: "select", entry: baseSelect},
+	{name: "setfenv", entry: baseSetEnvironment},
 	{name: "setmetatable", entry: baseSetMetatable},
 	{name: "tonumber", entry: baseToNumber},
 	{name: "tostring", entry: baseToString},
@@ -29,14 +31,15 @@ var baseLibraryFunctions = [...]struct {
 
 // OpenBase installs the implemented Lua 5.1 base-library globals.
 //
-// The file, environment, garbage-collection, output, and newproxy entries are
-// still under construction. Opening is explicit: New returns an empty State.
-// Calling OpenBase again replaces every installed function and the coroutine
-// table with fresh canonical objects and restores _G and _VERSION.
+// The file, garbage-collection, output, and newproxy entries are still under
+// construction. Opening is explicit: New returns an empty State. Calling
+// OpenBase again replaces every installed function and the coroutine table
+// with fresh canonical objects and restores _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	globals := state.globalEnvironment()
 	functions := make([]*Function, len(baseLibraryFunctions))
 	for index, definition := range baseLibraryFunctions {
 		function, err := state.NewNativeFunction(definition.entry)
@@ -68,27 +71,27 @@ func (state *State) OpenBase() error {
 		return err
 	}
 
-	if err := state.globals.RawSetString("_G", state.globals.Value()); err != nil {
+	if err := globals.RawSetString("_G", globals.Value()); err != nil {
 		return err
 	}
-	if err := state.globals.RawSetString(
+	if err := globals.RawSetString(
 		"_VERSION",
 		state.String("Lua 5.1"),
 	); err != nil {
 		return err
 	}
 	for index, definition := range baseLibraryFunctions {
-		if err := state.globals.RawSetString(
+		if err := globals.RawSetString(
 			definition.name,
 			functions[index].Value(),
 		); err != nil {
 			return err
 		}
 	}
-	if err := state.globals.RawSetString("pairs", pairs.Value()); err != nil {
+	if err := globals.RawSetString("pairs", pairs.Value()); err != nil {
 		return err
 	}
-	if err := state.globals.RawSetString("ipairs", ipairs.Value()); err != nil {
+	if err := globals.RawSetString("ipairs", ipairs.Value()); err != nil {
 		return err
 	}
 	return state.OpenCoroutine()
@@ -143,6 +146,112 @@ func baseError(frame Frame) Outcome {
 		return frame.RaiseString(text)
 	}
 	return frame.Raise(value.owningValue())
+}
+
+type baseEnvironmentTarget struct {
+	function       *Function
+	number         float64
+	numberArgument bool
+}
+
+func resolveBaseEnvironmentTarget(
+	frame Frame,
+	optional bool,
+) (baseEnvironmentTarget, Outcome, bool) {
+	value, present := frame.argument(0)
+	if present && value.kind() == FunctionKind {
+		return baseEnvironmentTarget{
+			function: (*Function)(value.ref),
+		}, Outcome{}, false
+	}
+
+	number := float64(1)
+	numberArgument := false
+	if (present && value.kind() != NilKind) || !optional {
+		var ok bool
+		number, ok = slotToNumber(value)
+		if !ok {
+			return baseEnvironmentTarget{},
+				numberArgumentError(frame, 0),
+				true
+		}
+		numberArgument = true
+	}
+	level := libraryInteger(number)
+	if level < 0 {
+		return baseEnvironmentTarget{},
+			baseArgumentError(
+				frame,
+				0,
+				"level must be non-negative",
+			),
+			true
+	}
+
+	activation, status := frame.thread.logicalFrame(level)
+	switch status {
+	case logicalFramePhysical:
+		return baseEnvironmentTarget{
+			function:       activation.function,
+			number:         number,
+			numberArgument: numberArgument,
+		}, Outcome{}, false
+	case logicalFrameTail:
+		return baseEnvironmentTarget{},
+			libraryError(
+				frame,
+				"no function environment for tail call at level %d",
+				level,
+			),
+			true
+	default:
+		return baseEnvironmentTarget{},
+			baseArgumentError(frame, 0, "invalid level"),
+			true
+	}
+}
+
+func baseGetEnvironment(frame Frame) Outcome {
+	target, outcome, failed := resolveBaseEnvironmentTarget(frame, true)
+	if failed {
+		return outcome
+	}
+	environment := target.function.environment
+	if target.function.prototype == nil {
+		environment = frame.thread.globals
+	}
+	return frame.returnOne(
+		frame.activation(),
+		slotFromTable(environment),
+	)
+}
+
+func baseSetEnvironment(frame Frame) Outcome {
+	environment, ok := frame.Table(1)
+	if !ok {
+		return baseArgumentTypeError(frame, 1, "table")
+	}
+	target, outcome, failed := resolveBaseEnvironmentTarget(frame, false)
+	if failed {
+		return outcome
+	}
+	if target.numberArgument && target.number == 0 {
+		frame.discardArgumentsAfter(2)
+		frame.thread.globals = environment
+		return frame.Return()
+	}
+	if target.function.prototype == nil {
+		return libraryError(
+			frame,
+			"'setfenv' cannot change environment of given object",
+		)
+	}
+	frame.discardArgumentsAfter(2)
+	target.function.environment = environment
+	return frame.returnOne(
+		frame.activation(),
+		slotFromFunction(target.function),
+	)
 }
 
 func baseGetMetatable(frame Frame) Outcome {
@@ -956,30 +1065,16 @@ func luaCallerAtLevel(
 	if level <= 0 {
 		return nil, 0, false
 	}
-	remaining := level
-	for index := len(frame.thread.frames) - 2; index >= 0; index-- {
-		caller := &frame.thread.frames[index]
-		if remaining == 1 {
-			if caller.function == nil ||
-				caller.function.prototype == nil {
-				return nil, 0, false
-			}
-			prototype := caller.function.prototype
-			pc := int(caller.pc) - 1
-			if pc < 0 || pc >= len(prototype.code) {
-				return nil, 0, false
-			}
-			return prototype, pc, true
-		}
-		remaining--
-		if caller.function != nil &&
-			caller.function.prototype != nil {
-			tailCalls := int(caller.tailCalls)
-			if remaining <= tailCalls {
-				return nil, 0, false
-			}
-			remaining -= tailCalls
-		}
+	caller, status := frame.thread.logicalFrame(level)
+	if status != logicalFramePhysical ||
+		caller.function == nil ||
+		caller.function.prototype == nil {
+		return nil, 0, false
 	}
-	return nil, 0, false
+	prototype := caller.function.prototype
+	pc := int(caller.pc) - 1
+	if pc < 0 || pc >= len(prototype.code) {
+		return nil, 0, false
+	}
+	return prototype, pc, true
 }

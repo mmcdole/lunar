@@ -128,7 +128,7 @@ func (state *State) OpenMath() error {
 	); err != nil {
 		return err
 	}
-	return state.globals.RawSetString("math", library.Value())
+	return state.globalEnvironment().RawSetString("math", library.Value())
 }
 
 func mathAbs(frame Frame) Outcome {

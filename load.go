@@ -21,8 +21,9 @@ func Compile(sourceName, source string) (*Prototype, error) {
 	return prototype, nil
 }
 
-// LoadString compiles source and returns a new Lua Function in state's global
-// environment. It does not execute the resulting chunk.
+// LoadString compiles source and returns a new Lua Function in the executing
+// Thread's global environment. Outside a callback, that is the main Thread's
+// environment. LoadString does not execute the resulting chunk.
 func (state *State) LoadString(
 	sourceName string,
 	source string,
@@ -37,7 +38,8 @@ func (state *State) LoadString(
 	return state.loadPrototype(prototype), nil
 }
 
-// LoadPrototype returns a new Lua Function over prototype in state's global
+// LoadPrototype returns a new Lua Function over prototype in the executing
+// Thread's global environment. Outside a callback, that is the main Thread's
 // environment.
 //
 // Prototype is immutable and State-neutral. Loading the same Prototype in
@@ -70,7 +72,7 @@ func (state *State) loadPrototype(prototype *Prototype) *Function {
 	return newLuaFunctionOwned(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.globalEnvironment(),
 		upvalues,
 	)
 }

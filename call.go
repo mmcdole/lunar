@@ -828,3 +828,40 @@ func saturatedIncrement(value uint32) uint32 {
 	}
 	return value
 }
+
+type logicalFrameStatus uint8
+
+const (
+	logicalFrameMissing logicalFrameStatus = iota
+	logicalFramePhysical
+	logicalFrameTail
+)
+
+// logicalFrame resolves a Lua 5.1 stack level without materializing debug
+// records. Level zero is the current activation. Replaced Lua tail calls
+// occupy logical levels between their surviving activation and the next
+// physical frame.
+func (thread *Thread) logicalFrame(
+	level int,
+) (*activation, logicalFrameStatus) {
+	if level < 0 {
+		return nil, logicalFrameMissing
+	}
+	remaining := level
+	for index := len(thread.frames) - 1; index >= 0; index-- {
+		if remaining == 0 {
+			return &thread.frames[index], logicalFramePhysical
+		}
+		remaining--
+		frame := &thread.frames[index]
+		if frame.function == nil || frame.function.prototype == nil {
+			continue
+		}
+		tailCalls := uint64(frame.tailCalls)
+		if uint64(remaining) < tailCalls {
+			return nil, logicalFrameTail
+		}
+		remaining -= int(tailCalls)
+	}
+	return nil, logicalFrameMissing
+}

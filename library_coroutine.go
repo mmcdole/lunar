@@ -38,7 +38,7 @@ func (state *State) OpenCoroutine() error {
 			return setErr
 		}
 	}
-	return state.globals.RawSetString("coroutine", library.Value())
+	return state.globalEnvironment().RawSetString("coroutine", library.Value())
 }
 
 func coroutineCreate(frame Frame) Outcome {

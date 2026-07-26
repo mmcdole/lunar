@@ -83,7 +83,7 @@ func (state *State) OpenString() error {
 	if err := state.SetMetatable(state.String(""), metatable); err != nil {
 		return err
 	}
-	return state.globals.RawSetString("string", library.Value())
+	return state.globalEnvironment().RawSetString("string", library.Value())
 }
 
 func stringLen(frame Frame) Outcome {

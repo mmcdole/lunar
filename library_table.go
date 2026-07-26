@@ -60,7 +60,7 @@ func (state *State) OpenTable() error {
 			return setErr
 		}
 	}
-	return state.globals.RawSetString("table", library.Value())
+	return state.globalEnvironment().RawSetString("table", library.Value())
 }
 
 // tableConcat follows Lua 5.1's argument order exactly: the separator is

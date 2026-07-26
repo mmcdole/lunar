@@ -1132,7 +1132,7 @@ return target:method(7)
 	overlap := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result = executeTestFunction(
@@ -1208,7 +1208,7 @@ func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result := executeTestFunction(
@@ -1233,7 +1233,7 @@ func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
 	function = newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result = executeTestFunction(
@@ -1282,7 +1282,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result := executeTestFunction(t, state, function)
@@ -1320,7 +1320,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	function = newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result = executeTestFunction(t, state, function)
@@ -1375,7 +1375,7 @@ return invalid()
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 
@@ -1423,7 +1423,7 @@ func TestExecutorOpenSetListChecksIndexBeforeMutation(t *testing.T) {
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	arguments := make([]Value, count+1)

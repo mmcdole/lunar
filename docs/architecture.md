@@ -19,7 +19,8 @@ embedding stack made from Go interface values.
    executable kind and upvalue shape; Lua-visible environments and upvalue
    contents remain controllably mutable.
 5. A `State` directly owns runtime-wide resources and one main `Thread`.
-   Coroutines are additional canonical Threads sharing that State.
+   Coroutines are additional canonical Threads sharing that State. Each
+   Thread has one Lua 5.1 global-environment pointer.
 6. A State has one active executor. Consumers serialize execution and
    mutation.
 7. Standalone Table operations are raw. Operations that may invoke Lua live on
@@ -826,6 +827,14 @@ objects. The Lua library derives argument names and wrapper source prefixes
 from the immediate call site, including tail calls, rather than keeping
 diagnostic provenance in the hot representation.
 
+New coroutines inherit the creating Thread's global-environment pointer.
+Changing either Thread's pointer later is isolated, while mutations to an
+inherited table remain shared. Native Function and userdata construction use
+the currently executing Function's environment, matching Lua 5.1's
+`getcurrenv`; loaders instead use the executing Thread's global environment.
+This distinction is explicit at the boundary and adds no field to activations
+or to the executor frame.
+
 Lua 5.1 permits yield through ordinary Lua calls and ordinary `__call`, but
 rejects it across protected calls, metamethod continuations, generic
 iterators, nested native calls, and the main Thread. The runtime enforces that
@@ -877,15 +886,16 @@ bytecode tracing the executor uses for runtime type errors; no provenance is
 stored in the hot representation.
 
 The host-independent base surface currently includes `assert`, `error`,
-`getmetatable`, `setmetatable`, `rawequal`, `rawget`, `rawset`, `type`,
-`next`, `pairs`, `ipairs`, `select`, `unpack`, `tonumber`, `tostring`,
-`pcall`, and `xpcall`. Raw operations and iterators stay in compact slots and
-do not consult metamethods. `pairs` and `ipairs` capture private canonical
-iterators, so replacing global `next` cannot change an existing iterator and
-the private `pairs` generator remains distinct from that global Function.
-`error` preserves arbitrary Lua values, including nil, and resolves explicit
-levels across native activations and elided tail calls without adding
-debugging data to activation records.
+`getfenv`, `setfenv`, `getmetatable`, `setmetatable`, `rawequal`, `rawget`,
+`rawset`, `type`, `next`, `pairs`, `ipairs`, `select`, `unpack`, `tonumber`,
+`tostring`, `pcall`, and `xpcall`. Raw operations and iterators stay in
+compact slots and do not consult metamethods. `pairs` and `ipairs` capture
+private canonical iterators, so replacing global `next` cannot change an
+existing iterator and the private `pairs` generator remains distinct from
+that global Function. `error`, `getfenv`, and `setfenv` resolve physical
+activations and elided tail-call levels through one cold stack walker; no
+debugging data is added to activation records. `error` preserves arbitrary
+Lua values, including nil.
 
 Base-10 `tonumber` uses the runtime's deterministic numeric grammar. Explicit
 bases use a separate allocation-free, 2-through-36 parser matching the LP64
@@ -896,14 +906,12 @@ runtime string pool by bytes; a recurring warm result does not allocate a
 temporary Go string.
 
 The remaining base entries are intentionally absent rather than partial
-stubs. `getfenv`, `setfenv`, and loading first require the Lua 5.1 global
-environment to live on each Thread, inherited by new coroutines. Text and
-binary loading will share one refillable input path and bind new closures to
-that Thread environment; the binary reader must be the inverse of
-`string.dump` before `load` and `loadstring` are complete. File and output
-functions require an explicit per-State host-I/O policy. `collectgarbage`,
-`gcinfo`, and `newproxy` require deliberate State-local GC, weak-reference,
-and finalizer semantics rather than process-wide Go GC shims.
+stubs. Text and binary loading will share one refillable input path and bind
+new closures to the executing Thread environment; the binary reader must be
+the inverse of `string.dump` before `load` and `loadstring` are complete. File
+and output functions require an explicit per-State host-I/O policy.
+`collectgarbage`, `gcinfo`, and `newproxy` require deliberate State-local GC,
+weak-reference, and finalizer semantics rather than process-wide Go GC shims.
 
 The math library is the exact Lua 5.1 surface, including the `mod` alias the
 standard distribution publishes through `LUA_COMPAT_MOD` as the same canonical

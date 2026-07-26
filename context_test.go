@@ -1584,8 +1584,8 @@ func TestContextRuntimeRecordsStayCompact(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit runtime size contract")
 	}
-	if size := unsafe.Sizeof(Thread{}); size != 128 {
-		t.Fatalf("Thread size = %d; want 128", size)
+	if size := unsafe.Sizeof(Thread{}); size != 136 {
+		t.Fatalf("Thread size = %d; want 136", size)
 	}
 	if size := unsafe.Sizeof(activation{}); size != 32 {
 		t.Fatalf("activation size = %d; want 32", size)
@@ -1829,7 +1829,7 @@ func BenchmarkContextDispatch256Moves(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	target := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	target := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	destination := make([]Value, 1)
 	active, cancel := context.WithCancel(context.Background())
 	b.Cleanup(cancel)

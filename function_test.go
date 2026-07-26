@@ -95,7 +95,7 @@ func TestLuaFunctionRejectsInvalidUpvalueCell(t *testing.T) {
 	newLuaFunctionOwned(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		[]*upvalue{{}},
 	)
 }
@@ -146,7 +146,7 @@ func TestFunctionRepresentations(t *testing.T) {
 	luaFunction := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	if luaFunction.nativeBody() != nil {
@@ -166,7 +166,7 @@ func TestFunctionRepresentations(t *testing.T) {
 	}
 	native := newNativeFunctionOwned(
 		state.runtime,
-		state.globals,
+		state.main.globals,
 		entry,
 		captures,
 	)
@@ -235,7 +235,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 	}
 	function := newNativeFunctionOwned(
 		state.runtime,
-		state.globals,
+		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
 		[]slot{slotFromTable(retained)},
 	)
@@ -280,7 +280,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 	}{
 		{
 			name:        "nil owner",
-			environment: state.globals,
+			environment: state.main.globals,
 			entry:       entry,
 		},
 		{
@@ -291,18 +291,18 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 		{
 			name:        "foreign environment",
 			owner:       state.runtime,
-			environment: other.globals,
+			environment: other.main.globals,
 			entry:       entry,
 		},
 		{
 			name:        "nil entry",
 			owner:       state.runtime,
-			environment: state.globals,
+			environment: state.main.globals,
 		},
 		{
 			name:        "foreign capture",
 			owner:       state.runtime,
-			environment: state.globals,
+			environment: state.main.globals,
 			entry:       entry,
 			captures:    []slot{slotFromTable(foreign)},
 		},
@@ -370,6 +370,10 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mainEnvironment, err := state.ThreadEnvironment(state.MainThread())
+	if err != nil {
+		t.Fatal(err)
+	}
 	prototype, syntaxError := testPrototypeBuilder(
 		makeABC(opReturn, 0, 1, 0),
 	).seal()
@@ -379,7 +383,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	if err := state.SetFunctionEnvironment(function, environment); err != nil {
@@ -401,11 +405,87 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got, environmentErr := state.UserDataEnvironment(
+		data,
+	); environmentErr != nil || got != mainEnvironment {
+		t.Fatalf(
+			"initial UserDataEnvironment = (%p, %v); want %p",
+			got,
+			environmentErr,
+			mainEnvironment,
+		)
+	}
 	if err := state.SetUserDataEnvironment(data, environment); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := state.UserDataEnvironment(data); err != nil || got != environment {
 		t.Fatalf("UserDataEnvironment = (%p, %v)", got, err)
+	}
+
+	entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := state.NewThread(entry.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, environmentErr := state.ThreadEnvironment(
+		thread,
+	); environmentErr != nil || got != mainEnvironment {
+		t.Fatalf(
+			"initial ThreadEnvironment = (%p, %v); want %p",
+			got,
+			environmentErr,
+			mainEnvironment,
+		)
+	}
+	if err := state.SetThreadEnvironment(thread, environment); err != nil {
+		t.Fatal(err)
+	}
+	if got, environmentErr := state.ThreadEnvironment(
+		thread,
+	); environmentErr != nil || got != environment {
+		t.Fatalf("ThreadEnvironment = (%p, %v)", got, environmentErr)
+	}
+	if _, environmentErr := state.ThreadEnvironment(
+		other.MainThread(),
+	); !errors.Is(environmentErr, ErrForeignValue) {
+		t.Fatalf("foreign ThreadEnvironment error = %v", environmentErr)
+	}
+	if _, environmentErr := state.ThreadEnvironment(
+		nil,
+	); !errors.Is(environmentErr, ErrInvalidValue) {
+		t.Fatalf("nil ThreadEnvironment error = %v", environmentErr)
+	}
+	if environmentErr := state.SetThreadEnvironment(
+		thread,
+		nil,
+	); !errors.Is(environmentErr, ErrInvalidValue) {
+		t.Fatalf("nil thread environment error = %v", environmentErr)
+	}
+	if environmentErr := state.SetThreadEnvironment(
+		thread,
+		foreignEnvironment,
+	); !errors.Is(environmentErr, ErrForeignValue) {
+		t.Fatalf("foreign thread environment error = %v", environmentErr)
+	}
+	if environmentErr := state.SetThreadEnvironment(
+		other.MainThread(),
+		environment,
+	); !errors.Is(environmentErr, ErrForeignValue) {
+		t.Fatalf("foreign thread error = %v", environmentErr)
+	}
+	if got, environmentErr := state.ThreadEnvironment(
+		thread,
+	); environmentErr != nil || got != environment {
+		t.Fatalf(
+			"rejected setters changed ThreadEnvironment = (%p, %v)",
+			got,
+			environmentErr,
+		)
 	}
 
 	table, err := state.NewTable(0, 0)

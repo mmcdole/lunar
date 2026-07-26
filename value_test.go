@@ -229,11 +229,19 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	main := state.MainThread()
+	environment, err := state.ThreadEnvironment(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := environment.RawSetString("retained", Number(17)); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if state.globals != nil || state.registry != nil {
+	if state.main.globals != nil || state.registry != nil {
 		t.Fatal("Close retained global runtime roots")
 	}
 	if state.MainThread().Status() != ThreadClosed {
@@ -244,6 +252,19 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	}
 	if data.Data() != "alive" {
 		t.Fatal("retained userdata payload became unreadable")
+	}
+	if got, ok := environment.RawGetString("retained").AsNumber(); !ok ||
+		got != 17 {
+		t.Fatalf("retained environment read = (%v, %v); want 17", got, ok)
+	}
+	if _, err := state.ThreadEnvironment(main); !errors.Is(err, ErrClosed) {
+		t.Fatalf("ThreadEnvironment after close = %v; want ErrClosed", err)
+	}
+	if err := state.SetThreadEnvironment(
+		main,
+		environment,
+	); !errors.Is(err, ErrClosed) {
+		t.Fatalf("SetThreadEnvironment after close = %v; want ErrClosed", err)
 	}
 	if err := table.RawSetString("answer", Number(43)); !errors.Is(err, ErrClosed) {
 		t.Fatalf("table mutation after close = %v, want ErrClosed", err)

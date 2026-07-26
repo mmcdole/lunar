@@ -61,7 +61,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if environment != state.globals {
+	if environment != state.main.globals {
 		t.Fatal("native Function did not use the State global environment")
 	}
 	if got, ok := function.Value().Function(); !ok || got != function {
@@ -105,6 +105,139 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	}
 }
 
+func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	functionEnvironment, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadEnvironment, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prototype, err := Compile("@constructed-prototype.lua", "return 43")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var createdNative *Function
+	var createdData *UserData
+	var loaded *Function
+	var loadedPrototype *Function
+	constructor, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if frame.Environment() != functionEnvironment {
+			return frame.RaiseString("callback lost its function environment")
+		}
+		if frame.GlobalEnvironment() != threadEnvironment {
+			return frame.RaiseString("callback lost its thread environment")
+		}
+
+		var constructionErr error
+		createdNative, constructionErr = state.NewNativeFunction(
+			func(inner Frame) Outcome {
+				return inner.Return()
+			},
+		)
+		if constructionErr != nil {
+			return frame.RaiseString(constructionErr.Error())
+		}
+		createdData, constructionErr = state.NewUserData("created")
+		if constructionErr != nil {
+			return frame.RaiseString(constructionErr.Error())
+		}
+		loaded, constructionErr = state.LoadString(
+			"@constructed.lua",
+			"return 42",
+		)
+		if constructionErr != nil {
+			return frame.RaiseString(constructionErr.Error())
+		}
+		loadedPrototype, constructionErr = state.LoadPrototype(prototype)
+		if constructionErr != nil {
+			return frame.RaiseString(constructionErr.Error())
+		}
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetFunctionEnvironment(
+		constructor,
+		functionEnvironment,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	thread, err := state.NewThread(constructor.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetThreadEnvironment(thread, threadEnvironment); err != nil {
+		t.Fatal(err)
+	}
+	results, status, err := thread.Resume()
+	if err != nil || status != ThreadDead || len(results) != 0 {
+		t.Fatalf(
+			"constructor resume = (results=%v, status=%v, err=%v)",
+			results,
+			status,
+			err,
+		)
+	}
+	if createdNative == nil ||
+		createdData == nil ||
+		loaded == nil ||
+		loadedPrototype == nil {
+		t.Fatal("callback did not construct every object")
+	}
+
+	if environment, environmentErr := state.FunctionEnvironment(
+		createdNative,
+	); environmentErr != nil || environment != functionEnvironment {
+		t.Fatalf(
+			"created native environment = (%p, %v); want %p",
+			environment,
+			environmentErr,
+			functionEnvironment,
+		)
+	}
+	if environment, environmentErr := state.UserDataEnvironment(
+		createdData,
+	); environmentErr != nil || environment != functionEnvironment {
+		t.Fatalf(
+			"created userdata environment = (%p, %v); want %p",
+			environment,
+			environmentErr,
+			functionEnvironment,
+		)
+	}
+	if environment, environmentErr := state.FunctionEnvironment(
+		loaded,
+	); environmentErr != nil || environment != threadEnvironment {
+		t.Fatalf(
+			"loaded function environment = (%p, %v); want %p",
+			environment,
+			environmentErr,
+			threadEnvironment,
+		)
+	}
+	if environment, environmentErr := state.FunctionEnvironment(
+		loadedPrototype,
+	); environmentErr != nil || environment != threadEnvironment {
+		t.Fatalf(
+			"LoadPrototype environment = (%p, %v); want %p",
+			environment,
+			environmentErr,
+			threadEnvironment,
+		)
+	}
+}
+
 func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -136,7 +269,7 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 			if frame.State() != state || frame.Thread() != state.MainThread() {
 				t.Fatal("Frame did not expose its executing State and Thread")
 			}
-			if frame.Environment() != state.globals {
+			if frame.Environment() != state.main.globals {
 				t.Fatal("Frame did not expose its function environment")
 			}
 			if value, ok := frame.Bool(0); !ok || !value {

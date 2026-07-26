@@ -15,6 +15,8 @@ var ErrMainThread = errors.New("lua: main thread cannot be resumed")
 //
 // Callable may be a Function or a value with a Function-valued __call
 // metamethod. It must belong to state. Construction does not execute Lua.
+// The new Thread inherits the creating Thread's global-environment pointer;
+// later pointer replacement on either Thread is isolated.
 // Lua's coroutine.create is intentionally narrower and accepts only Lua
 // Functions, as required by Lua 5.1.
 func (state *State) NewThread(callable Value) (*Thread, error) {
@@ -24,9 +26,10 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 	if err := state.runtime.accept(callable); err != nil {
 		return nil, err
 	}
+	parent := state.currentThread()
 	compact := slotFromValue(callable)
 	if _, direct := functionSlot(compact); !direct &&
-		callMetamethodFunction(state.main, compact) == nil {
+		callMetamethodFunction(parent, compact) == nil {
 		message := fmt.Sprintf(
 			"attempt to call a %s value",
 			compact.kind(),
@@ -41,6 +44,7 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 	thread := &Thread{
 		objectHeader: objectHeader{owner: state.runtime},
 		state:        state,
+		globals:      parent.globals,
 		values:       make([]slot, 1, capacity),
 		top:          1,
 		status:       ThreadSuspended,

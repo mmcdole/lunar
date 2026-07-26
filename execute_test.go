@@ -168,7 +168,7 @@ return padded, missing, truncated, missing_right, missing_left,
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread, result := executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(
@@ -275,7 +275,7 @@ return variable_first, first, second, third, fourth, fifth, sixth
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread, result := executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(
@@ -369,7 +369,7 @@ return result`
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread, result := executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, state.String("captured"))
@@ -414,7 +414,7 @@ end
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread := state.MainThread()
 	setTestCall(
 		thread,
@@ -489,7 +489,7 @@ func TestExecutorRunsNot(t *testing.T) {
 			function := newLuaFunction(
 				state.runtime,
 				prototype,
-				state.globals,
+				state.main.globals,
 				nil,
 			)
 			thread := state.MainThread()
@@ -543,7 +543,7 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 		function := newLuaFunction(
 			state.runtime,
 			prototype,
-			state.globals,
+			state.main.globals,
 			nil,
 		)
 		thread := state.MainThread()
@@ -616,7 +616,7 @@ func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
 			function := newLuaFunction(
 				state.runtime,
 				prototype,
-				state.globals,
+				state.main.globals,
 				nil,
 			)
 			thread := state.MainThread()
@@ -659,7 +659,7 @@ func TestExecutorHonorsLoadBoolSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread := state.MainThread()
 	setTestCall(thread, 0, function)
 	if callErr := thread.pushFunctionCall(function, 0, 0, 1); callErr != nil {
@@ -1024,7 +1024,7 @@ return result`
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread, result := executeTestFunction(t, state, function)
 	if result.kind != executionFailed || result.err == nil {
 		t.Fatalf("direct-trace execution = %+v; want failure", result)
@@ -1143,7 +1143,7 @@ return result`
 	defer state.Close()
 	thread := state.MainThread()
 	caller := newTestLuaFunction(t, state, 0, 6, 0, 0)
-	child := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	child := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 
 	setTestCall(thread, 0, caller)
 	if callErr := thread.pushFunctionCall(caller, 0, 0, 0); callErr != nil {
@@ -1283,7 +1283,7 @@ return getter
 	if !hasClose {
 		t.Fatal("captured block did not exercise CLOSE")
 	}
-	factory := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	factory := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 
 	thread, result := executeTestFunction(
 		t,
@@ -1320,7 +1320,7 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 	thread := state.MainThread()
 	thread.reserveValues(8)
 	thread.reserveFrames(1)
@@ -1391,7 +1391,7 @@ end`
 	initializer := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread, result := executeTestFunction(t, state, initializer)
@@ -1439,7 +1439,7 @@ func BenchmarkExecutorDispatch256Moves(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	function := newLuaFunction(state.runtime, prototype, state.globals, nil)
+	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 
 	benchmarkExecutorFunction(b, state, function)
 	b.ReportMetric(257, "opcodes/op")
@@ -1641,7 +1641,7 @@ func executeTestChunk(
 	function := newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		nil,
 	)
 	thread := state.MainThread()
@@ -1669,7 +1669,7 @@ func compileTestFunction(
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	return newLuaFunction(state.runtime, prototype, state.globals, nil)
+	return newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 }
 
 func executeTestFunction(

@@ -1253,7 +1253,7 @@ func newTestLuaFunction(
 	return newLuaFunction(
 		state.runtime,
 		prototype,
-		state.globals,
+		state.main.globals,
 		upvalues,
 	)
 }

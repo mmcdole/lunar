@@ -69,6 +69,9 @@ type Frame struct {
 // NewNativeFunction constructs a canonical native Function with optional
 // captured Values.
 //
+// Its initial environment is the currently executing Function's environment,
+// or the main Thread's global environment outside a callback.
+//
 // Captures are copied into the Function's compact private storage. Reference
 // Values must belong to state; immutable strings and scalar Values are
 // State-neutral.
@@ -100,7 +103,7 @@ func (state *State) NewNativeFunction(
 	}
 	return newNativeFunctionOwned(
 		state.runtime,
-		state.globals,
+		state.constructionEnvironment(),
 		entry,
 		compact,
 	), nil
@@ -218,6 +221,13 @@ func (frame Frame) Thread() *Thread {
 // Environment returns the executing native Function's Lua 5.1 environment.
 func (frame Frame) Environment() *Table {
 	return frame.activation().function.environment
+}
+
+// GlobalEnvironment returns the executing Thread's Lua 5.1 global
+// environment. It can differ from Environment after setfenv(0, table).
+func (frame Frame) GlobalEnvironment() *Table {
+	frame.activation()
+	return frame.thread.globals
 }
 
 // CaptureCount returns the native Function's fixed capture count.

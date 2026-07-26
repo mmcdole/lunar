@@ -551,7 +551,7 @@ end
 			caller := newLuaFunction(
 				state.runtime,
 				root.children[0],
-				state.globals,
+				state.main.globals,
 				nil,
 			)
 			thread := state.MainThread()

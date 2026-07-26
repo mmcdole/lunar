@@ -81,6 +81,131 @@ return a, b, c
 	assertStateExecutionIdle(t, state)
 }
 
+func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	mainEnvironment, err := state.ThreadEnvironment(state.MainThread())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("environment_marker", state.String("main")); err != nil {
+		t.Fatal(err)
+	}
+
+	childEnvironment, err := state.NewTable(0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := childEnvironment.RawSetString(
+		"environment_marker",
+		state.String("child"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var probe *Function
+	var nested *Thread
+	probe, err = state.NewNativeFunction(func(frame Frame) Outcome {
+		if frame.Environment() != mainEnvironment {
+			return frame.RaiseString("native function environment changed")
+		}
+		if frame.GlobalEnvironment() != childEnvironment {
+			return frame.RaiseString("callback did not observe child globals")
+		}
+		marker, globalErr := state.Global("environment_marker")
+		if globalErr != nil {
+			return frame.RaiseString(globalErr.Error())
+		}
+		if text, ok := marker.AsString(); !ok || text != "child" {
+			return frame.RaiseString("State.Global did not use child globals")
+		}
+		if globalErr := state.SetGlobal("child_write", Number(42)); globalErr != nil {
+			return frame.RaiseString(globalErr.Error())
+		}
+		nested, globalErr = state.NewThread(probe.Value())
+		if globalErr != nil {
+			return frame.RaiseString(globalErr.Error())
+		}
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := state.NewThread(probe.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inherited, environmentErr := state.ThreadEnvironment(
+		child,
+	); environmentErr != nil || inherited != mainEnvironment {
+		t.Fatalf(
+			"initial child environment = (%p, %v); want %p",
+			inherited,
+			environmentErr,
+			mainEnvironment,
+		)
+	}
+	if err := state.SetThreadEnvironment(child, childEnvironment); err != nil {
+		t.Fatal(err)
+	}
+	results, status, err := child.Resume()
+	if err != nil || status != ThreadDead || len(results) != 0 {
+		t.Fatalf(
+			"child resume = (results=%v, status=%v, err=%v)",
+			results,
+			status,
+			err,
+		)
+	}
+	if nested == nil {
+		t.Fatal("callback did not construct a nested coroutine")
+	}
+	if inherited, environmentErr := state.ThreadEnvironment(
+		nested,
+	); environmentErr != nil || inherited != childEnvironment {
+		t.Fatalf(
+			"nested environment = (%p, %v); want %p",
+			inherited,
+			environmentErr,
+			childEnvironment,
+		)
+	}
+	if got, ok := childEnvironment.RawGetString("child_write").AsNumber(); !ok ||
+		got != 42 {
+		t.Fatalf("child environment write = (%v, %v); want 42", got, ok)
+	}
+	if got := mainEnvironment.RawGetString("child_write"); !got.IsNil() {
+		t.Fatalf("child write leaked into main environment: %v", got)
+	}
+	marker, err := state.Global("environment_marker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := marker.AsString(); !ok || text != "main" {
+		t.Fatalf("idle State.Global = (%q, %v); want main", text, ok)
+	}
+
+	sibling, err := state.NewThread(probe.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inherited, environmentErr := state.ThreadEnvironment(
+		sibling,
+	); environmentErr != nil || inherited != mainEnvironment {
+		t.Fatalf(
+			"idle sibling environment = (%p, %v); want %p",
+			inherited,
+			environmentErr,
+			mainEnvironment,
+		)
+	}
+}
+
 func TestThreadResumeAppliesCallResultAdjustmentAfterYield(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
