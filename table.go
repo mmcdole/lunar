@@ -13,23 +13,6 @@ const (
 	minimumStoreCapacity = 4
 )
 
-const (
-	entryHashEmpty uint64 = 0
-)
-
-type tableEntry struct {
-	key   slot
-	value slot
-	hash  uint64
-}
-
-type tableStore struct {
-	entries     []tableEntry
-	count       int
-	deleted     int
-	integerKeys int
-}
-
 type tableLane uint8
 
 const (
@@ -162,7 +145,10 @@ func (table *Table) rawStringSlot(key string) (slot, bool) {
 	if table == nil || table.owner == nil {
 		return nilSlot, false
 	}
-	return table.store.getString(key, table.owner.strings.hash(key))
+	return table.store.getString(
+		key,
+		uint32(table.owner.strings.hash(key)),
+	)
 }
 
 // RawSetString associates a string key with value without invoking
@@ -174,23 +160,45 @@ func (table *Table) RawSetString(key string, value Value) error {
 	if err := table.owner.accept(value); err != nil {
 		return err
 	}
-	hash := table.owner.strings.hash(key)
+	hash := uint32(table.owner.strings.hash(key))
 	valueSlot := slotFromValue(value)
-	index, found := table.store.findString(key, hash)
+	index, stored := table.store.findStoredString(key, hash)
 	var structural, changed bool
 	switch {
-	case found && valueSlot.kind() == NilKind:
+	case stored &&
+		table.store.entries[index].value.kind() != NilKind &&
+		valueSlot.kind() == NilKind:
 		table.store.deleteAt(index)
 		structural, changed = true, true
-	case found:
+	case stored && table.store.entries[index].value.kind() != NilKind:
 		current := table.store.entries[index].value
 		if !rawSlotEqual(current, valueSlot) {
 			writeSlot(&table.store.entries[index].value, valueSlot)
 			changed = true
 		}
+	case stored && valueSlot.kind() != NilKind:
+		if table.store.shouldCompact() {
+			table.store.rehash(len(table.store.entries))
+			keySlot := stringSlot(
+				table.owner.strings.makeKnownHash(
+					key,
+					stringHash(hash),
+				),
+			)
+			table.store.insertNew(keySlot, valueSlot, hash)
+		} else {
+			table.store.reviveAt(index, valueSlot)
+		}
+		structural, changed = true, true
 	case valueSlot.kind() != NilKind:
-		keySlot := slotFromValue(stringValue(table.owner.strings.make(key)))
-		structural, changed = table.store.set(keySlot, valueSlot, hash)
+		keySlot := stringSlot(
+			table.owner.strings.makeKnownHash(
+				key,
+				stringHash(hash),
+			),
+		)
+		table.store.insertNew(keySlot, valueSlot, hash)
+		structural, changed = true, true
 	}
 	if structural {
 		table.structuralVersion++
@@ -323,7 +331,7 @@ func normalizeTableKey(
 	normalized slot,
 	index int,
 	arrayKey bool,
-	hash uint64,
+	hash uint32,
 	status tableKeyStatus,
 ) {
 	normalized = key
@@ -348,7 +356,7 @@ func normalizeTableKey(
 			hash = hashNumber(number)
 		}
 	case StringKind:
-		hash = stringSlotHash(normalized)
+		hash = uint32(stringSlotHash(normalized))
 	default:
 		hash = hashReference(normalized)
 	}
@@ -373,7 +381,7 @@ func (table *Table) rawNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
-	hash uint64,
+	hash uint32,
 ) (slot, bool) {
 	if arrayKey {
 		return table.rawIntSlot(index)
@@ -385,7 +393,7 @@ func (table *Table) resolveNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
-	hash uint64,
+	hash uint32,
 ) (slot, tableLocation, bool) {
 	if arrayKey {
 		if index <= len(table.array) {
@@ -473,7 +481,7 @@ func (table *Table) rawSetNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
-	hash uint64,
+	hash uint32,
 	value slot,
 ) {
 	structural, changed := table.set(
@@ -588,6 +596,11 @@ func (table *Table) rawSetList(first int, values []slot) {
 		if last == 0 {
 			return
 		}
+		if table.store.shouldCompact() {
+			// SETLIST appends new fields, so it is the same legal
+			// compaction seam as any other insertion.
+			table.store.rehash(len(table.store.entries))
+		}
 
 		oldLength := len(table.array)
 		table.growArray(oldLength + last)
@@ -626,7 +639,7 @@ func (table *Table) set(
 	key slot,
 	index int,
 	arrayKey bool,
-	hash uint64,
+	hash uint32,
 	value slot,
 ) (structural, changed bool) {
 	if arrayKey {
@@ -642,30 +655,49 @@ func (table *Table) set(
 }
 
 func (table *Table) setInteger(index int, value slot) (structural, changed bool) {
-	useArray := table.shouldUseArray(index, value.kind() != NilKind)
-	if useArray {
-		var (
-			hash        uint64
-			storedValue slot
-			stored      bool
-		)
-		if table.store.integerKeys != 0 {
-			number := float64(index)
-			hash = hashNumber(number)
-			storedValue, stored = table.store.get(
-				slot{bits: math.Float64bits(number)},
-				hash,
-			)
-		}
-		if stored {
-			key := slot{bits: math.Float64bits(float64(index))}
-			table.store.delete(key, hash)
+	if index > 0 &&
+		index <= len(table.array) &&
+		(value.kind() == NilKind ||
+			table.array[index-1].kind() != NilKind) {
+		// Existing array fields and absent nil writes cannot release record
+		// tombstones. Keep the dense update path out of insertion policy.
+		return table.setArray(index, value)
+	}
+
+	// Updating an existing field must not change its traversal position.
+	// Lua permits value updates during next; only inserting a new field makes
+	// the continuation order undefined. Keep an existing sparse integer in
+	// the record store until a later insertion is free to reorganize lanes.
+	if index > len(table.array) && table.store.integerKeys != 0 {
+		number := float64(index)
+		key := slot{bits: math.Float64bits(number)}
+		if storedIndex, stored := table.store.find(
+			key,
+			hashNumber(number),
+		); stored {
+			entry := &table.store.entries[storedIndex]
 			if value.kind() == NilKind {
+				table.store.deleteAt(storedIndex)
 				return true, true
 			}
-			_, arrayChanged := table.setArray(index, value)
-			return false, arrayChanged || !rawSlotEqual(storedValue, value)
+			if rawSlotEqual(entry.value, value) {
+				return false, false
+			}
+			writeSlot(&entry.value, value)
+			return false, true
 		}
+	}
+
+	inserting := value.kind() != NilKind && index > 0
+	if inserting && table.store.shouldCompact() {
+		// Any logical insertion makes next traversal order undefined. Use
+		// that permitted seam to release dead record keys even when the new
+		// integer itself belongs in the array lane.
+		table.store.rehash(len(table.store.entries))
+	}
+
+	useArray := table.shouldUseArray(index, value.kind() != NilKind)
+	if useArray {
 		return table.setArray(index, value)
 	}
 
@@ -819,198 +851,6 @@ func (table *Table) rawIntSlot(key int) (slot, bool) {
 	)
 }
 
-func (store *tableStore) init(hint int) {
-	if hint <= 0 {
-		return
-	}
-	capacity := minimumStoreCapacity
-	for capacity*3/4 < hint {
-		capacity *= 2
-	}
-	store.entries = make([]tableEntry, capacity)
-}
-
-func (store *tableStore) get(key slot, hash uint64) (slot, bool) {
-	if len(store.entries) == 0 {
-		return nilSlot, false
-	}
-	mask := len(store.entries) - 1
-	for probe := 0; probe < len(store.entries); probe++ {
-		index := (int(hash&uint64(mask)) + probe) & mask
-		entry := &store.entries[index]
-		switch {
-		case entry.hash == entryHashEmpty:
-			return nilSlot, false
-		case entry.value.kind() == NilKind:
-			continue
-		default:
-			if entry.hash == hash && rawSlotEqual(entry.key, key) {
-				return entry.value, true
-			}
-		}
-	}
-	return nilSlot, false
-}
-
-func (store *tableStore) getString(text string, hash uint64) (slot, bool) {
-	index, found := store.findString(text, hash)
-	if !found {
-		return nilSlot, false
-	}
-	return store.entries[index].value, true
-}
-
-func (store *tableStore) findString(text string, hash uint64) (int, bool) {
-	if len(store.entries) == 0 {
-		return 0, false
-	}
-	mask := len(store.entries) - 1
-	for probe := 0; probe < len(store.entries); probe++ {
-		index := (int(hash&uint64(mask)) + probe) & mask
-		entry := &store.entries[index]
-		switch {
-		case entry.hash == entryHashEmpty:
-			return 0, false
-		case entry.value.kind() == NilKind:
-			continue
-		default:
-			if entry.hash != hash || entry.key.kind() != StringKind {
-				continue
-			}
-			if stringSlotMatchesText(entry.key, text, hash) {
-				return index, true
-			}
-		}
-	}
-	return 0, false
-}
-
-func (store *tableStore) set(key, value slot, hash uint64) (inserted, changed bool) {
-	if len(store.entries) == 0 {
-		store.rehash(minimumStoreCapacity)
-	}
-	index, found := store.find(key, hash)
-	if found {
-		if rawSlotEqual(store.entries[index].value, value) {
-			return false, false
-		}
-		writeSlot(&store.entries[index].value, value)
-		return false, true
-	}
-	if store.needsInsertRehash() {
-		capacity := len(store.entries)
-		if store.deleted <= store.count {
-			capacity *= 2
-		}
-		store.rehash(capacity)
-		index, _ = store.find(key, hash)
-	}
-	if store.entries[index].value.kind() == NilKind {
-		store.deleted--
-	}
-	store.entries[index] = tableEntry{
-		key:   key,
-		value: value,
-		hash:  hash,
-	}
-	store.count++
-	if isPositiveIntegerKey(key) {
-		store.integerKeys++
-	}
-	return true, true
-}
-
-func (store *tableStore) delete(key slot, hash uint64) bool {
-	if len(store.entries) == 0 {
-		return false
-	}
-	index, found := store.find(key, hash)
-	if !found {
-		return false
-	}
-	store.deleteAt(index)
-	return true
-}
-
-func (store *tableStore) deleteAt(index int) {
-	entry := &store.entries[index]
-	if isPositiveIntegerKey(entry.key) {
-		store.integerKeys--
-	}
-	writeSlot(&entry.value, nilSlot)
-	store.count--
-	store.deleted++
-}
-
-func (store *tableStore) find(key slot, hash uint64) (index int, found bool) {
-	mask := len(store.entries) - 1
-	firstDeleted := -1
-	for probe := 0; probe < len(store.entries); probe++ {
-		index = (int(hash&uint64(mask)) + probe) & mask
-		entry := &store.entries[index]
-		switch {
-		case entry.hash == entryHashEmpty:
-			if firstDeleted >= 0 {
-				return firstDeleted, false
-			}
-			return index, false
-		case entry.value.kind() == NilKind:
-			if firstDeleted < 0 {
-				firstDeleted = index
-			}
-		default:
-			if entry.hash == hash && rawSlotEqual(entry.key, key) {
-				return index, true
-			}
-		}
-	}
-	return firstDeleted, false
-}
-
-func (store *tableStore) findContinuation(key slot, hash uint64) (int, bool) {
-	if len(store.entries) == 0 {
-		return 0, false
-	}
-	mask := len(store.entries) - 1
-	for probe := 0; probe < len(store.entries); probe++ {
-		index := (int(hash&uint64(mask)) + probe) & mask
-		entry := &store.entries[index]
-		if entry.hash == entryHashEmpty {
-			return 0, false
-		}
-		if entry.hash == hash && rawSlotEqual(entry.key, key) {
-			return index, true
-		}
-	}
-	return 0, false
-}
-
-func (store *tableStore) needsInsertRehash() bool {
-	occupied := store.count + store.deleted + 1
-	return occupied*4 > len(store.entries)*3 ||
-		store.deleted > len(store.entries)/4 && store.deleted > store.count
-}
-
-func (store *tableStore) rehash(capacity int) {
-	previous := store.entries
-	store.entries = make([]tableEntry, capacity)
-	store.count = 0
-	store.deleted = 0
-	store.integerKeys = 0
-	for index := range previous {
-		entry := previous[index]
-		if entry.hash == entryHashEmpty || entry.value.kind() == NilKind {
-			continue
-		}
-		target, _ := store.find(entry.key, entry.hash)
-		store.entries[target] = entry
-		store.count++
-		if isPositiveIntegerKey(entry.key) {
-			store.integerKeys++
-		}
-	}
-}
-
 func isPositiveIntegerKey(key slot) bool {
 	if key.kind() != NumberKind {
 		return false
@@ -1028,7 +868,7 @@ func arrayIndex(key slot) (int, bool) {
 
 func positiveIntegerIndex(number float64) (int, bool) {
 	limit := float64(int(^uint(0) >> 1))
-	const largestExactFloatInteger = 1 << 53
+	const largestExactFloatInteger float64 = 1 << 53
 	if limit > largestExactFloatInteger {
 		limit = largestExactFloatInteger
 	}
@@ -1047,8 +887,8 @@ func exactIntegerTableKey(key slot) (int, bool) {
 	maxInt := int(^uint(0) >> 1)
 	minimum := float64(-maxInt - 1)
 	maximum := float64(maxInt)
-	const largestExactFloatInteger = 1 << 53
-	if maxInt > largestExactFloatInteger {
+	const largestExactFloatInteger float64 = 1 << 53
+	if float64(maxInt) > largestExactFloatInteger {
 		minimum = -largestExactFloatInteger
 		maximum = largestExactFloatInteger
 	}
@@ -1060,7 +900,7 @@ func exactIntegerTableKey(key slot) (int, bool) {
 	return index, float64(index) == number
 }
 
-func hashTableKey(key slot) (uint64, error) {
+func hashTableKey(key slot) (uint32, error) {
 	switch key.kind() {
 	case NilKind:
 		return 0, ErrInvalidKey
@@ -1071,7 +911,7 @@ func hashTableKey(key slot) (uint64, error) {
 		}
 		return hashNumber(number), nil
 	case StringKind:
-		return stringSlotHash(key), nil
+		return uint32(stringSlotHash(key)), nil
 	default:
 		return hashReference(key), nil
 	}
@@ -1086,25 +926,35 @@ func writeSlot(destination *slot, value slot) {
 	destination.bits = value.bits
 }
 
-func hashNumber(number float64) uint64 {
+func hashNumber(number float64) uint32 {
 	if number == 0 {
 		number = 0
 	}
-	return mixHash(math.Float64bits(number) ^ 0x9e3779b97f4a7c15)
+	return normalizeTableHash(
+		mixHash(math.Float64bits(number) ^ 0x9e3779b97f4a7c15),
+	)
 }
 
-func hashReference(value slot) uint64 {
+func hashReference(value slot) uint32 {
 	switch value.kind() {
 	case BoolKind:
 		if value.ref == trueMarkerPointer {
-			return 0x6eed0e9da4d94a4f
+			return normalizeTableHash(0x6eed0e9da4d94a4f)
 		}
-		return 0x8a5cd789635d2dff
+		return normalizeTableHash(0x8a5cd789635d2dff)
 	case StringKind:
-		return stringSlotHash(value)
+		return uint32(stringSlotHash(value))
 	default:
-		return mixHash(uint64(uintptr(value.ref)))
+		return normalizeTableHash(mixHash(uint64(uintptr(value.ref))))
 	}
+}
+
+func normalizeTableHash(value uint64) uint32 {
+	hash := uint32(value ^ value>>32)
+	if hash == entryHashEmpty {
+		return 1
+	}
+	return hash
 }
 
 func mixHash(value uint64) uint64 {
@@ -1113,8 +963,5 @@ func mixHash(value uint64) uint64 {
 	value ^= value >> 27
 	value *= 0x94d049bb133111eb
 	value ^= value >> 31
-	if value < 2 {
-		return value + 2
-	}
 	return value
 }

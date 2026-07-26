@@ -47,9 +47,9 @@ var metamethodNames = [...]string{
 	metaGC:         "__gc",
 }
 
-var metamethodNameHashes = func() (hashes [metamethodCount]uint64) {
+var metamethodNameHashes = func() (hashes [metamethodCount]uint32) {
 	for event, name := range metamethodNames {
-		hashes[event] = uint64(hashString(name))
+		hashes[event] = uint32(hashString(name))
 	}
 	return hashes
 }()

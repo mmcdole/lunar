@@ -73,14 +73,14 @@ type stringPool struct {
 }
 
 func (pool *stringPool) make(text string) stringRef {
-	return pool.makeText(text, false)
+	return pool.makeHashed(text, hashString(text), false)
 }
 
 // makeBorrowed publishes text whose backing storage belongs to a larger
 // value. Cache hits remain allocation-free; a miss clones before retaining the
 // string so a small Lua value cannot pin an unrelated backing buffer.
 func (pool *stringPool) makeBorrowed(text string) stringRef {
-	return pool.makeText(text, true)
+	return pool.makeHashed(text, hashString(text), true)
 }
 
 // makeBytes looks up caller-owned bytes without first allocating a Go string.
@@ -110,11 +110,24 @@ func (pool *stringPool) makeBytes(bytes []byte) stringRef {
 	return created
 }
 
-func (pool *stringPool) makeText(text string, borrowed bool) stringRef {
+// makeKnownHash retains text using a hash already computed at a trusted
+// runtime seam. It keeps table string insertion from hashing the same Go
+// string once for lookup and again for storage.
+func (pool *stringPool) makeKnownHash(
+	text string,
+	hash stringHash,
+) stringRef {
+	return pool.makeHashed(text, hash, false)
+}
+
+func (pool *stringPool) makeHashed(
+	text string,
+	hash stringHash,
+	borrowed bool,
+) stringRef {
 	if text == "" {
 		return emptyStringRef
 	}
-	hash := hashString(text)
 	if pool.closed || len(text) > shortStringLimit {
 		if borrowed {
 			text = strings.Clone(text)
@@ -140,8 +153,8 @@ func (pool *stringPool) makeText(text string, borrowed bool) stringRef {
 	return created
 }
 
-func (pool *stringPool) hash(text string) uint64 {
-	return uint64(hashString(text))
+func (pool *stringPool) hash(text string) stringHash {
+	return hashString(text)
 }
 
 func newStringRef(text string) stringRef {
@@ -242,8 +255,8 @@ func stringSlotText(value slot) string {
 	return stringText(value.ref, value.bits)
 }
 
-func stringSlotHash(value slot) uint64 {
-	return uint64(stringHash(value.bits >> stringHashShift))
+func stringSlotHash(value slot) stringHash {
+	return stringHash(value.bits >> stringHashShift)
 }
 
 func stringSlotLen(value slot) int {
@@ -260,15 +273,6 @@ func stringSlotsEqual(left, right slot) bool {
 	}
 	return stringText(left.ref, left.bits) ==
 		stringText(right.ref, right.bits)
-}
-
-func stringSlotMatchesText(
-	value slot,
-	text string,
-	hash uint64,
-) bool {
-	return uint64(stringHash(value.bits>>stringHashShift)) == hash &&
-		stringText(value.ref, value.bits) == text
 }
 
 // stringFromOwnedBytes transfers an exact byte buffer into immutable string

@@ -708,7 +708,7 @@ func (thread *Thread) makeLegacyArgTable(
 	table.store.set(
 		slotFromValue(stringValue(name)),
 		slot{bits: math.Float64bits(float64(extraCount))},
-		uint64(name.hash()),
+		uint32(name.hash()),
 	)
 	return slotFromTable(table)
 }
