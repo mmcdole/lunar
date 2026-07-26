@@ -962,14 +962,14 @@ stored in the hot representation.
 The base surface currently includes `assert`, `dofile`, `error`, `getfenv`,
 `setfenv`, `getmetatable`, `setmetatable`, `load`, `loadfile`, `loadstring`,
 `rawequal`, `rawget`, `rawset`, `type`, `next`, `pairs`, `ipairs`, `select`,
-`unpack`, `tonumber`, `tostring`, `pcall`, and `xpcall`. Raw operations and
-iterators stay in compact slots and do not consult metamethods. `pairs` and
-`ipairs` capture private canonical iterators, so replacing global `next`
-cannot change an existing iterator and the private `pairs` generator remains
-distinct from that global Function. `error`, `getfenv`, and `setfenv` resolve
-physical activations and elided tail-call levels through one cold stack walker;
-no debugging data is added to activation records. `error` preserves arbitrary
-Lua values, including nil.
+`unpack`, `tonumber`, `tostring`, `print`, `pcall`, and `xpcall`. Raw
+operations and iterators stay in compact slots and do not consult metamethods.
+`pairs` and `ipairs` capture private canonical iterators, so replacing global
+`next` cannot change an existing iterator and the private `pairs` generator
+remains distinct from that global Function. `error`, `getfenv`, and `setfenv`
+resolve physical activations and elided tail-call levels through one cold
+stack walker; no debugging data is added to activation records. `error`
+preserves arbitrary Lua values, including nil.
 
 Base-10 `tonumber` uses the runtime's deterministic numeric grammar. Explicit
 bases use a separate allocation-free, 2-through-36 parser matching the LP64
@@ -990,15 +990,28 @@ paths constructs an intermediate slice of owning `Value` objects. A
 context-aware outer call is inherited from `Frame.Context`; cancellation is a
 host `ContextError`, not a `(nil, message)` load result.
 
-`loadfile` and `dofile` use the process filesystem and use `os.Stdin` when
-called without a filename. They apply the same leading-`#` file rule as
-`State.LoadFile`. Every loaded closure binds to the executing Thread's global
-environment, not to a caller Function's private environment.
+`Options.Stdin`, `Stdout`, and `Stderr` give every State its own standard
+streams and default to `os.Stdin`, `os.Stdout`, and `os.Stderr`. The State
+borrows these interfaces: libraries serialize access under the ordinary
+single-executor contract, and `Close` never closes a caller-owned stream.
+`loadfile` and `dofile` use the process filesystem and use the State's input
+stream when called without a filename. They apply the same leading-`#` file
+rule as `State.LoadFile`. Every loaded closure binds to the executing Thread's
+global environment, not to a caller Function's private environment.
+
+`print` resolves the current Thread global `tostring` once, then calls that
+same callable once for every argument through the compact nested-call seam.
+As in Lua 5.1, a returned number or string is accepted, embedded NUL ends the
+written text, separators are emitted only after a successful conversion, and
+an error preserves output already written by earlier arguments. Writes are
+sequential and their errors are deliberately ignored, matching PUC's
+unchecked `fputs`; the later `io` library will report I/O failures through its
+own Lua-visible result convention.
 
 The remaining base entries are intentionally absent rather than partial
-stubs. Output functions require an explicit per-State host-I/O policy.
-`collectgarbage`, `gcinfo`, and `newproxy` require deliberate State-local GC,
-weak-reference, and finalizer semantics rather than process-wide Go GC shims.
+stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate
+State-local GC, weak-reference, and finalizer semantics rather than
+process-wide Go GC shims.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

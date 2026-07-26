@@ -2,6 +2,8 @@ package lua
 
 import (
 	"errors"
+	"io"
+	"os"
 	"sync/atomic"
 	"unsafe"
 )
@@ -37,6 +39,15 @@ var ErrCapacity = errors.New("lua: capacity hint is too large")
 // Options is copied by New. Mutating the caller's value after construction
 // does not affect a live State.
 type Options struct {
+	// Stdin is the State's standard input stream. A nil interface selects
+	// os.Stdin. Lua libraries borrow the stream and never close it.
+	Stdin io.Reader
+	// Stdout is the State's standard output stream. A nil interface selects
+	// os.Stdout. Lua libraries borrow the stream and never close it.
+	Stdout io.Writer
+	// Stderr is the State's standard error stream. A nil interface selects
+	// os.Stderr. Lua libraries borrow the stream and never close it.
+	Stderr io.Writer
 	// MaxValues limits values held by ordinary execution. Zero selects 65,536
 	// values. Exceeding the limit raises an ordinary Lua error classified as
 	// ResourceError. While an xpcall error handler runs, the runtime provides
@@ -131,6 +142,15 @@ func New(options Options) (*State, error) {
 	if options.MaxLoadBytes == 0 {
 		options.MaxLoadBytes = defaultMaxLoadBytes
 	}
+	if options.Stdin == nil {
+		options.Stdin = os.Stdin
+	}
+	if options.Stdout == nil {
+		options.Stdout = os.Stdout
+	}
+	if options.Stderr == nil {
+		options.Stderr = os.Stderr
+	}
 
 	rt := &runtimeState{}
 	state := &State{
@@ -181,6 +201,9 @@ func (state *State) Close() error {
 		state.main.status = ThreadClosed
 	}
 	state.registry = nil
+	state.options.Stdin = nil
+	state.options.Stdout = nil
+	state.options.Stderr = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
 	return nil
 }

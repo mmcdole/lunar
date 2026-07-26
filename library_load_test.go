@@ -84,6 +84,64 @@ return type(loaded),loadError,a,b,c,
 	}
 }
 
+func TestArgumentlessLoadFileAndDoFileUseStateInput(t *testing.T) {
+	testCases := []struct {
+		name   string
+		source string
+		caller string
+	}{
+		{
+			name:   "loadfile",
+			source: `return 41,nil,43`,
+			caller: `local loaded,message=loadfile()
+return type(loaded),message,loaded()`,
+		},
+		{
+			name:   "dofile",
+			source: `return 51,nil,53`,
+			caller: `return dofile()`,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			state := newStateWithBase(t, Options{
+				Stdin: strings.NewReader(test.source),
+			})
+			defer state.Close()
+			chunk := mustLoadString(
+				t,
+				state,
+				"@standard-input.lua",
+				test.caller,
+			)
+			results, err := state.Call(chunk.Value())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.name == "loadfile" {
+				assertTestValues(
+					t,
+					results,
+					state.String("function"),
+					Nil(),
+					Number(41),
+					Nil(),
+					Number(43),
+				)
+			} else {
+				assertTestValues(
+					t,
+					results,
+					Number(51),
+					Nil(),
+					Number(53),
+				)
+			}
+		})
+	}
+}
+
 func TestLoadedChunksUseTheThreadGlobalEnvironment(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()

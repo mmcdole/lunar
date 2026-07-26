@@ -1,8 +1,10 @@
 package lua
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -47,6 +49,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		"next",
 		"pairs",
 		"pcall",
+		"print",
 		"rawequal",
 		"rawget",
 		"rawset",
@@ -124,6 +127,114 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	}
 	if err := state.OpenBase(); !errors.Is(err, ErrClosed) {
 		t.Fatalf("OpenBase after Close = %v; want ErrClosed", err)
+	}
+}
+
+type failingPrintWriter struct {
+	err    error
+	writes int
+}
+
+func (writer *failingPrintWriter) Write(text []byte) (int, error) {
+	writer.writes++
+	return 0, writer.err
+}
+
+func TestBasePrintUsesLua51ConversionAndOutputOrder(t *testing.T) {
+	var output bytes.Buffer
+	state := newStateWithBase(t, Options{Stdout: &output})
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@print.lua", `
+local calls=0
+tostring=function(value)
+	calls=calls+1
+	if value=="bad" then return {} end
+	if type(value)=="number" then return value end
+	return value.."\000hidden"
+end
+print()
+print(12,"text")
+local ok,message=pcall(print,"first","bad")
+return calls,ok,message
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "\n12\ttext\nfirst" {
+		t.Fatalf("print output = %q", output.String())
+	}
+	if len(results) != 3 {
+		t.Fatalf("print results = %v", results)
+	}
+	assertTestValue(t, results[0], Number(4))
+	assertTestValue(t, results[1], Bool(false))
+	message, ok := results[2].AsString()
+	if !ok || !strings.Contains(
+		message,
+		"'tostring' must return a string to 'print'",
+	) {
+		t.Fatalf("print failure = %v", results[2])
+	}
+
+	output.Reset()
+	chunk = mustLoadString(t, state, "@print-lookup.lua", `
+local calls=0
+local function original(value)
+	calls=calls+1
+	tostring=function() return "replacement" end
+	return "original"
+end
+tostring=original
+print(1,2)
+return calls
+`)
+	results, err = state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "original\toriginal\n" {
+		t.Fatalf("one-lookup output = %q", output.String())
+	}
+	assertTestValues(t, results, Number(2))
+}
+
+func TestBasePrintIgnoresWriterFailuresAndIsStateLocal(t *testing.T) {
+	sentinel := errors.New("output failed")
+	failing := &failingPrintWriter{err: sentinel}
+	state := newStateWithBase(t, Options{Stdout: failing})
+	chunk := mustLoadString(t, state, "@print-failure.lua", `print(1,2)`)
+	if _, err := state.Call(chunk.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if failing.writes != 4 {
+		t.Fatalf("writer calls = %d; want 4", failing.writes)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var firstOutput, secondOutput bytes.Buffer
+	first := newStateWithBase(t, Options{Stdout: &firstOutput})
+	defer first.Close()
+	second := newStateWithBase(t, Options{Stdout: &secondOutput})
+	defer second.Close()
+	firstChunk := mustLoadString(t, first, "@first-print.lua", `print("first")`)
+	secondChunk := mustLoadString(t, second, "@second-print.lua", `print("second")`)
+	if _, err := first.Call(firstChunk.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Call(secondChunk.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if firstOutput.String() != "first\n" ||
+		secondOutput.String() != "second\n" {
+		t.Fatalf(
+			"state outputs = (%q, %q)",
+			firstOutput.String(),
+			secondOutput.String(),
+		)
 	}
 }
 
@@ -770,7 +881,7 @@ func TestBaseToNumberUsesTheDeterministicDecimalGrammar(t *testing.T) {
 
 func TestWarmBaseLibraryCallsDoNotAllocate(t *testing.T) {
 	requireStableAllocationAccounting(t)
-	state := newStateWithBase(t, Options{})
+	state := newStateWithBase(t, Options{Stdout: io.Discard})
 	defer state.Close()
 
 	testCases := []struct {
@@ -820,6 +931,14 @@ return function()
 		if eq(get(t),mt) and eq(set(t,mt),t) then total=total+1 end
 	end
 	return total
+end`,
+		},
+		{
+			name: "print",
+			source: `local print=print
+return function()
+	for i=1,100 do print(12.5,false) end
+	return true
 end`,
 		},
 		{

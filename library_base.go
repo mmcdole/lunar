@@ -2,6 +2,7 @@ package lua
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"strings"
 )
@@ -20,6 +21,7 @@ var baseLibraryFunctions = [...]struct {
 	{name: "loadstring", entry: baseLoadString},
 	{name: "next", entry: baseNext},
 	{name: "pcall", entry: basePCall},
+	{name: "print", entry: basePrint},
 	{name: "rawequal", entry: baseRawEqual},
 	{name: "rawget", entry: baseRawGet},
 	{name: "rawset", entry: baseRawSet},
@@ -35,10 +37,10 @@ var baseLibraryFunctions = [...]struct {
 
 // OpenBase installs the implemented Lua 5.1 base-library globals.
 //
-// The garbage-collection, output, and newproxy entries are still under
-// construction. Opening is explicit: New returns an empty State. Calling
-// OpenBase again replaces every installed function and the coroutine table
-// with fresh canonical objects and restores _G and _VERSION.
+// The garbage-collection and newproxy entries are still under construction.
+// Opening is explicit: New returns an empty State. Calling OpenBase again
+// replaces every installed function and the coroutine table with fresh
+// canonical objects and restores _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
@@ -155,6 +157,42 @@ func baseError(frame Frame) Outcome {
 		return frame.RaiseString(text)
 	}
 	return frame.Raise(value.owningValue())
+}
+
+func basePrint(frame Frame) Outcome {
+	toString, failure := frame.indexCompact(
+		slotFromTable(frame.thread.globals),
+		stringSlot(frame.thread.owner.strings.make("tostring")),
+	)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+
+	writer := frame.thread.state.options.Stdout
+	for index := 0; index < frame.ArgumentCount(); index++ {
+		value, _ := frame.argument(index)
+		arguments := [1]slot{value}
+		textValue, callFailure := frame.callCompactOne(
+			toString,
+			arguments[:],
+		)
+		if callFailure != nil {
+			return frame.sealError(callFailure)
+		}
+		text, ok := compactText(textValue)
+		if !ok {
+			return libraryError(
+				frame,
+				"'tostring' must return a string to 'print'",
+			)
+		}
+		if index != 0 {
+			_, _ = io.WriteString(writer, "\t")
+		}
+		_, _ = io.WriteString(writer, luaCString(text))
+	}
+	_, _ = io.WriteString(writer, "\n")
+	return frame.Return()
 }
 
 type baseEnvironmentTarget struct {

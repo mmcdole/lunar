@@ -2,7 +2,6 @@ package lua
 
 import (
 	"io"
-	"os"
 	"strings"
 )
 
@@ -81,7 +80,7 @@ func baseLoadFile(frame Frame) Outcome {
 		prototype, err = loadFileReaderPrototype(
 			"=stdin",
 			"stdin",
-			os.Stdin,
+			frame.thread.state.options.Stdin,
 			&control,
 		)
 	} else {
@@ -106,7 +105,7 @@ func baseDoFile(frame Frame) Outcome {
 		prototype, err = loadFileReaderPrototype(
 			"=stdin",
 			"stdin",
-			os.Stdin,
+			frame.thread.state.options.Stdin,
 			&control,
 		)
 	} else {

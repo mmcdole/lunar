@@ -1,6 +1,7 @@
 package lua_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,6 +139,39 @@ func TestPublicReaderAndFileLoading(t *testing.T) {
 	number, ok = results[0].AsNumber()
 	if !ok || number != 42 {
 		t.Fatalf("file value = (%v, %v); want 42", number, ok)
+	}
+}
+
+func TestPublicStandardStreams(t *testing.T) {
+	var output, diagnostic bytes.Buffer
+	state, err := lua.New(lua.Options{
+		Stdin:  strings.NewReader(`return 41`),
+		Stdout: &output,
+		Stderr: &diagnostic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+
+	chunk, err := state.LoadString(
+		"@standard-streams.lua",
+		`local loaded=assert(loadfile()); print(loaded())`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(chunk.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "41\n" {
+		t.Fatalf("standard output = %q", output.String())
+	}
+	if diagnostic.Len() != 0 {
+		t.Fatalf("standard error = %q; want empty", diagnostic.String())
 	}
 }
 

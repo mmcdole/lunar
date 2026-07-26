@@ -45,9 +45,12 @@ and `LoadFile`, with context-aware variants. Fixed source strings scan
 directly; streamed input is consumed as immutable pieces and preserves reader
 error identity. The base library exposes Lua 5.1's `load`, `loadstring`,
 `loadfile`, and `dofile`; file loading honors a leading interpreter line, and
-`dofile` returns all chunk results through the compact stack. The explicit
-`package` library provides registry-backed `require`, preload and Lua-file
-searchers, `module`, and `package.seeall`. Native C modules expose Lua 5.1's
+`dofile` returns all chunk results through the compact stack. Each State is
+configured with borrowed standard input, output, and error streams;
+argumentless loaders and Lua 5.1 `print` use those streams without
+process-global redirection. The explicit `package` library provides
+registry-backed `require`, preload and Lua-file searchers, `module`, and
+`package.seeall`. Native C modules expose Lua 5.1's
 standard unavailable-platform result because the compact Go runtime does not
 pretend to implement the C `lua_State` ABI. Warmed scalar and sequence library
 calls and cached `require` calls allocate nothing. The remaining standard
