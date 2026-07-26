@@ -44,6 +44,10 @@ func (state *State) OpenTable() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	loaded, err := state.ensureLoadedModules()
+	if err != nil {
+		return err
+	}
 	library, err := state.NewTable(0, len(tableLibraryFunctions))
 	if err != nil {
 		return err
@@ -60,7 +64,14 @@ func (state *State) OpenTable() error {
 			return setErr
 		}
 	}
-	return state.globalEnvironment().RawSetString("table", library.Value())
+	if err := state.globalEnvironment().RawSetString(
+		"table",
+		library.Value(),
+	); err != nil {
+		return err
+	}
+	state.setLoadedModule(loaded, "table", slotFromTable(library))
+	return nil
 }
 
 // tableConcat follows Lua 5.1's argument order exactly: the separator is

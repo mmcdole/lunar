@@ -70,6 +70,10 @@ func (state *State) OpenMath() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	loaded, err := state.ensureLoadedModules()
+	if err != nil {
+		return err
+	}
 	const constantCount = 3 // pi, huge, and the mod alias.
 	library, err := state.NewTable(
 		0,
@@ -128,7 +132,14 @@ func (state *State) OpenMath() error {
 	); err != nil {
 		return err
 	}
-	return state.globalEnvironment().RawSetString("math", library.Value())
+	if err := state.globalEnvironment().RawSetString(
+		"math",
+		library.Value(),
+	); err != nil {
+		return err
+	}
+	state.setLoadedModule(loaded, "math", slotFromTable(library))
+	return nil
 }
 
 func mathAbs(frame Frame) Outcome {

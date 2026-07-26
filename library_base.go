@@ -43,12 +43,16 @@ func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	loaded, err := state.ensureLoadedModules()
+	if err != nil {
+		return err
+	}
 	globals := state.globalEnvironment()
 	functions := make([]*Function, len(baseLibraryFunctions))
 	for index, definition := range baseLibraryFunctions {
-		function, err := state.NewNativeFunction(definition.entry)
-		if err != nil {
-			return err
+		function, functionErr := state.NewNativeFunction(definition.entry)
+		if functionErr != nil {
+			return functionErr
 		}
 		functions[index] = function
 	}
@@ -98,6 +102,7 @@ func (state *State) OpenBase() error {
 	if err := globals.RawSetString("ipairs", ipairs.Value()); err != nil {
 		return err
 	}
+	state.setLoadedModule(loaded, "_G", slotFromTable(globals))
 	return state.OpenCoroutine()
 }
 

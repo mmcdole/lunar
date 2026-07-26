@@ -41,8 +41,9 @@ The low-level interface currently includes:
 
 - `Frame` for direct typed callback arguments and results;
 - `CallInto` for caller-owned result storage; and
-- `Frame.Index` for ordinary Lua indexing, including a bounded `__index`
-  chain and synchronous Lua handlers, without a second value representation.
+- `Frame.Index` and `Frame.SetIndex` for ordinary Lua indexing and assignment,
+  including bounded metamethod chains and synchronous Lua handlers, without a
+  second value representation.
 
 It will later add:
 
@@ -128,15 +129,16 @@ Files are organized by substantial runtime concepts:
 - `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
   and cooperative context polling;
 - `library_base.go`, `library_load.go`, `library_coroutine.go`,
-  `library_math.go`, `library_table.go`, `library_string.go`, and
-  `library_string_format.go`: the implemented Lua 5.1 runtime library surface
-  using native frames. `library_base.go` also owns the auxiliary layer shared
-  by every library file, corresponding to PUC's `lauxlib` plus the runtime
-  operations libraries need: argument coercion, positioned argument and
-  general diagnostics, compact result publication, reentrant compact calls,
-  ordinary indexing, and less-than. `library_load.go` owns the Lua-visible
-  source readers and file-loading boundaries. Later `library_*.go` files add
-  the remaining standard libraries.
+  `library_math.go`, `library_table.go`, `library_string.go`,
+  `library_string_format.go`, and `library_package.go`: the implemented Lua
+  5.1 runtime library surface using native frames. `library_base.go` also owns
+  the auxiliary layer shared by every library file, corresponding to PUC's
+  `lauxlib` plus the runtime operations libraries need: argument coercion,
+  positioned argument and general diagnostics, compact result publication,
+  reentrant compact calls, ordinary indexing, and less-than. `library_load.go`
+  owns the Lua-visible source readers and file-loading boundaries;
+  `library_package.go` owns module discovery and the registry-backed load
+  cache. Later `library_*.go` files add the remaining standard libraries.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -926,8 +928,8 @@ Each library has its own explicit opener and no implicit installation. `New`
 returns an empty State. Reopening replaces the library table and every
 Function in it with fresh canonical objects, so a program cannot half-restore
 a tampered library. `OpenBase` also opens `coroutine` because Lua 5.1's
-`luaopen_base` registers those functions; `math` and `table` are separate
-openers because PUC registers them separately.
+`luaopen_base` registers those functions; `package`, `math`, `table`, and
+`string` are separate openers because PUC registers them separately.
 
 Libraries are ordinary native callbacks. They read compact arguments and
 publish compact results, so a scalar entry never materializes an owning
@@ -997,6 +999,41 @@ The remaining base entries are intentionally absent rather than partial
 stubs. Output functions require an explicit per-State host-I/O policy.
 `collectgarbage`, `gcinfo`, and `newproxy` require deliberate State-local GC,
 weak-reference, and finalizer semantics rather than process-wide Go GC shims.
+
+The package library keeps Lua 5.1's `_LOADED` table in the State registry.
+Reopening package replaces the public package table, its searcher tables, and
+all of its Functions, while preserving that registry table and its cached
+module identities. `require` consults the registry directly and follows
+ordinary Lua indexing for cache reads and writes; replacing the public
+`package.loaded` field therefore does not redirect it. A warmed cache hit
+stays entirely in compact slots and allocates nothing. Load cycles use one
+State-owned immutable object identity. It has no environment and remains
+recognizable if a host mutates the ordinary userdata payload exposed while a
+loader runs.
+
+The Go library openers deliberately publish their global and `_LOADED`
+entries through raw host assignment. Reopening repairs a library with a fresh
+table and fresh Functions instead of executing user metamethods or merging
+with a tampered table. This is an embedding-boundary policy; Lua-side
+`require`, `module`, and cache access retain their ordinary Lua 5.1
+metamethod behavior.
+
+The default searchers preserve Lua 5.1's order: `package.preload`, Lua source
+or binary files, C modules, then C root modules. Lua files use the same
+bounded, context-aware, single-open loader as the public file API. Search
+misses accumulate the standard candidate diagnostics, while syntax, resource,
+context, and reader failures remain fatal with their original classification.
+The pure-Go runtime deliberately uses PUC's supported
+"dynamic libraries not enabled" platform behavior for both C searchers and
+`package.loadlib`; calling a symbol would require the complete C
+`lua_State` ABI, not merely a dynamic-library handle.
+
+Lua 5.1's `module` and `package.seeall` remain available for source
+compatibility. Module tables are created through ordinary Lua assignment,
+the calling Lua closure receives the module environment before options run,
+and `seeall` installs `_G` as the module metatable's `__index`. Go modules use
+the canonical `package.preload` table rather than a second host-only module
+registry.
 
 The math library is the exact Lua 5.1 surface, including the `mod` alias the
 standard distribution publishes through `LUA_COMPAT_MOD` as the same canonical

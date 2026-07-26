@@ -140,3 +140,75 @@ func TestPublicReaderAndFileLoading(t *testing.T) {
 		t.Fatalf("file value = (%v, %v); want 42", number, ok)
 	}
 }
+
+func TestPublicPackageLoadingAndOrdinaryNativeAssignment(t *testing.T) {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenPackage(); err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+		table, _ := frame.Argument(0)
+		key, _ := frame.Argument(1)
+		value, _ := frame.Argument(2)
+		if err := frame.SetIndex(table, key, value); err != nil {
+			return frame.RaiseString(err.Error())
+		}
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(
+		assign.Value(),
+		target.Value(),
+		state.String("answer"),
+		lua.Number(42),
+	); err != nil {
+		t.Fatal(err)
+	}
+	value := target.RawGetString("answer")
+	number, ok := value.AsNumber()
+	if !ok || number != 42 {
+		t.Fatalf("assigned value = %v; want 42", value)
+	}
+
+	packageValue, err := state.Global("package")
+	if err != nil {
+		t.Fatal(err)
+	}
+	library, _ := packageValue.Table()
+	preload, _ := library.RawGetString("preload").Table()
+	module, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+		return frame.ReturnString("loaded")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := preload.RawSetString("host.module", module.Value()); err != nil {
+		t.Fatal(err)
+	}
+	require, err := state.Global("require")
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(require, state.String("host.module"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("require results = %v; want one value", results)
+	}
+	text, ok := results[0].AsString()
+	if !ok || text != "loaded" {
+		t.Fatalf("required value = (%q, %v); want loaded", text, ok)
+	}
+}

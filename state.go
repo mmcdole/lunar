@@ -103,15 +103,16 @@ type runtimeState struct {
 //
 // A State must not be copied after first use. Retain and pass its pointer.
 type State struct {
-	noCopy         noCopy
-	runtime        *runtimeState
-	options        Options
-	limits         resourceLimits
-	active         *Thread
-	main           *Thread
-	registry       *Table
-	execution      executionContext
-	typeMetatables [TableKind + 1]*Table
+	noCopy          noCopy
+	runtime         *runtimeState
+	options         Options
+	limits          resourceLimits
+	active          *Thread
+	main            *Thread
+	registry        *Table
+	packageSentinel *UserData
+	execution       executionContext
+	typeMetatables  [TableKind + 1]*Table
 }
 
 // New constructs an empty State.

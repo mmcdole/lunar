@@ -43,6 +43,10 @@ func (state *State) OpenString() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	loaded, err := state.ensureLoadedModules()
+	if err != nil {
+		return err
+	}
 	const aliasCount = 1 // gfind
 	library, err := state.NewTable(
 		0,
@@ -83,7 +87,14 @@ func (state *State) OpenString() error {
 	if err := state.SetMetatable(state.String(""), metatable); err != nil {
 		return err
 	}
-	return state.globalEnvironment().RawSetString("string", library.Value())
+	if err := state.globalEnvironment().RawSetString(
+		"string",
+		library.Value(),
+	); err != nil {
+		return err
+	}
+	state.setLoadedModule(loaded, "string", slotFromTable(library))
+	return nil
 }
 
 func stringLen(frame Frame) Outcome {

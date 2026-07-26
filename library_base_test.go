@@ -1094,6 +1094,9 @@ func runLua51Case(t *testing.T, source string) string {
 	if err := state.OpenBase(); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.OpenPackage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := state.OpenMath(); err != nil {
 		t.Fatal(err)
 	}
@@ -1182,12 +1185,14 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 		0,
 		len(baseLibraryLua51Cases)+
 			len(loadLibraryLua51Cases)+
+			len(packageLibraryLua51Cases)+
 			len(mathLibraryLua51Cases)+
 			len(tableLibraryLua51Cases)+
 			len(stringLibraryLua51Cases),
 	)
 	cases = append(cases, baseLibraryLua51Cases...)
 	cases = append(cases, loadLibraryLua51Cases...)
+	cases = append(cases, packageLibraryLua51Cases...)
 	cases = append(cases, mathLibraryLua51Cases...)
 	cases = append(cases, tableLibraryLua51Cases...)
 	cases = append(cases, stringLibraryLua51Cases...)

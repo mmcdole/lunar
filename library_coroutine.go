@@ -22,6 +22,10 @@ func (state *State) OpenCoroutine() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
+	loaded, err := state.ensureLoadedModules()
+	if err != nil {
+		return err
+	}
 	library, err := state.NewTable(0, len(coroutineLibraryFunctions))
 	if err != nil {
 		return err
@@ -38,7 +42,14 @@ func (state *State) OpenCoroutine() error {
 			return setErr
 		}
 	}
-	return state.globalEnvironment().RawSetString("coroutine", library.Value())
+	if err := state.globalEnvironment().RawSetString(
+		"coroutine",
+		library.Value(),
+	); err != nil {
+		return err
+	}
+	state.setLoadedModule(loaded, "coroutine", slotFromTable(library))
+	return nil
 }
 
 func coroutineCreate(frame Frame) Outcome {
