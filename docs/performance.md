@@ -289,7 +289,48 @@ A shared record layout remains a later option only if a fresh profile shows a
 general recurring-record gap; the predecessor's shape system is not a
 starting dependency.
 
-### 4. Re-profile execution
+### 4. Canonical byte strings — complete
+
+The empty string and every one-byte string now have finite, process-wide
+backing. These 257 immutable values are State-neutral, bypass adaptive
+admission, and remain valid after a State closes. All ordinary string
+publication paths select them before allocating or retaining caller storage.
+`string.char` publishes its single-argument result directly as the same
+compact value.
+
+This is the finite case of PUC's cache-before-allocation behavior, not a codec
+special case or an unbounded interner. It makes all 256 warm single-byte
+`string.char` results allocation-free and also applies to source constants,
+substrings, byte inputs, table keys, and public string construction.
+
+Five alternating fresh-process comparisons against the density revision
+produced:
+
+| Mode | Median elapsed | Allocated bytes | Mallocs |
+| --- | ---: | ---: | ---: |
+| Large-CBOR load | 1.6603 to 1.6223 s, 2.29% faster | unchanged | 673,641 to 669,549 |
+| Large-CBOR save | 1.0426 to 1.0111 s, 3.02% faster | 235.87 to 232.69 MB | 4,757,750 to 3,251,503 |
+
+The save path therefore removes about 1.51 million allocations at the exact
+profiled cause. Its allocation count is now about 5.6% above the mature
+predecessor rather than 54% above it, and its allocated bytes are slightly
+lower. A representative string-construction screen retained identical
+allocation counts and no timing cell moved by 2%.
+
+The forced-GC decoded graph remained about 67.3 MiB, as expected: canonical
+byte backing is process-wide and does not change the graph's table layout.
+The frozen predecessor's corresponding profile is 51.15 MiB. Closing that
+live-memory gap therefore remains table-layout work rather than a reason to
+add broader string retention.
+
+A general 64-byte stack scratch path for multi-byte `string.char` results was
+also tested. Go's escape analysis placed the scratch on the heap across the
+result-publication seam, leaving one allocation and increasing its minimum
+size. It was rejected. Multi-byte results retain one exact owned allocation
+until a cache-before-allocation builder can prove stack ownership without
+compiler directives or unsafe lifetime claims.
+
+### 5. Re-profile execution
 
 Only after storage churn falls do CPU profiles decide the next executor work.
 Likely candidates are direct constant-string and integer table access, native

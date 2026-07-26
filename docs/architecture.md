@@ -682,6 +682,15 @@ the executor access strings through one text, hash, and equality kernel; they
 do not branch on the ordinary and long encodings. Pointer equality is only a
 fast path, and content equality remains authoritative.
 
+The empty string and all 256 one-byte strings use finite process-wide backing.
+They are selected before runtime-local admission or caller-storage retention,
+so every production path observes the same compact representation without
+allocating. This is safe across States because strings are immutable scalar
+values; Go pointer identity remains an internal shortcut rather than Lua
+semantics. Longer recurring strings use the bounded State-local probation and
+protected sets. Badger does not use an unbounded strong interner or let a
+retained short string pin an unrelated arena page.
+
 Runtime number coercion accepts numbers and complete numeric strings. The
 shared parser recognizes signed decimal fractions and exponents, signed
 hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
