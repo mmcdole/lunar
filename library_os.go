@@ -9,6 +9,7 @@ var osLibraryFunctions = [...]struct {
 	{name: "clock", entry: osClock},
 	{name: "date", entry: osDate},
 	{name: "difftime", entry: osDifferenceTime},
+	{name: "exit", entry: osExit},
 	{name: "getenv", entry: osGetEnvironment},
 	{name: "remove", entry: osRemove},
 	{name: "rename", entry: osRename},
@@ -66,6 +67,14 @@ func osGetEnvironment(frame Frame) Outcome {
 		return frame.ReturnNil()
 	}
 	return frame.ReturnString(value)
+}
+
+func osExit(frame Frame) Outcome {
+	code, outcome, failed := optionalLibraryInteger(frame, 0, 0)
+	if failed {
+		return outcome
+	}
+	return frame.sealError(newExitError(code))
 }
 
 func osRemove(frame Frame) Outcome {

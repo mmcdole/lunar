@@ -187,7 +187,7 @@ func returnLoadResult(
 	}
 
 	failure, luaFailure := err.(*Error)
-	if luaFailure && failure.category == ContextError {
+	if luaFailure && isHostControlFailure(failure) {
 		return frame.RaiseError(failure)
 	}
 	errorValue := stringSlot(
@@ -209,7 +209,7 @@ func raiseDoFileError(frame Frame, err error) Outcome {
 		return frame.RaiseString(err.Error())
 	}
 	switch failure.category {
-	case ContextError, RuntimeError, ResourceError:
+	case ContextError, ExitError, RuntimeError, ResourceError:
 		return frame.RaiseError(failure)
 	default:
 		// Loading failures are values raised by dofile. Reclassify syntax

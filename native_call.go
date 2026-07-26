@@ -184,11 +184,15 @@ func (frame Frame) returnScratchValues(
 //
 // A raw table hit returns directly. Otherwise Index follows the bounded
 // __index chain and may synchronously invoke Lua. Invalid or foreign Values
-// are rejected before Lua executes. Lua failures are returned as *Error; a
-// yield across this native-call boundary becomes Lua 5.1's illegal-yield
-// failure. The borrowed Frame remains valid after Index returns.
+// are rejected before Lua executes. Execution failures are returned as
+// *Error; a yield across this native-call boundary becomes Lua 5.1's
+// illegal-yield failure. The borrowed Frame remains valid after Index
+// returns.
 func (frame Frame) Index(target, key Value) (Value, error) {
 	frame.activation()
+	if failure := frame.thread.state.execution.pendingExit; failure != nil {
+		return Value{}, failure
+	}
 	if err := frame.thread.owner.accept(target); err != nil {
 		return Value{}, err
 	}
@@ -242,12 +246,15 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 //
 // An existing table field is replaced directly. Otherwise SetIndex follows
 // the bounded __newindex chain and may synchronously invoke Lua. Invalid or
-// foreign Values are rejected before Lua executes. Lua failures are returned
-// as *Error; a yield across this native-call boundary becomes Lua 5.1's
-// illegal-yield failure. The borrowed Frame remains valid after SetIndex
+// foreign Values are rejected before Lua executes. Execution failures are
+// returned as *Error; a yield across this native-call boundary becomes Lua
+// 5.1's illegal-yield failure. The borrowed Frame remains valid after SetIndex
 // returns.
 func (frame Frame) SetIndex(target, key, value Value) error {
 	frame.activation()
+	if failure := frame.thread.state.execution.pendingExit; failure != nil {
+		return failure
+	}
 	if err := frame.thread.owner.accept(target); err != nil {
 		return err
 	}
@@ -340,9 +347,12 @@ func (frame Frame) setIndexCompact(
 //
 // Callable may be a Function or a value with a Function-valued __call
 // metamethod. Results are owning Values and remain valid after this callback
-// returns. Invalid or foreign inputs are rejected before Lua executes. Lua
-// failures are returned as *Error, and Lua-visible side effects are not rolled
-// back.
+// returns. Invalid or foreign inputs are rejected before Lua executes.
+// Execution failures are returned as *Error, and Lua-visible side effects are
+// not rolled back. ExitError is terminal for the enclosing public execution:
+// after a nested call observes one, later Call, Index, or SetIndex operations
+// return that first request and a callback's ordinary Outcome cannot suppress
+// it.
 //
 // A Go panic from the nested call propagates after the outer Frame is
 // restored. A yield on this same Thread returns Lua 5.1's illegal-yield error;
@@ -368,9 +378,9 @@ func (frame Frame) Call(
 //
 // Arguments are staged before execution, so arguments and destination may
 // overlap. On success, count entries are written and the destination tail is
-// unchanged. On a Lua failure or input error, destination is unchanged and
-// count is zero. If Lua produces more than len(destination) results, count is
-// the required size and a *ResultCapacityError is returned; destination is
+// unchanged. On an execution failure or input error, destination is unchanged
+// and count is zero. If Lua produces more than len(destination) results, count
+// is the required size and a *ResultCapacityError is returned; destination is
 // unchanged, but Lua side effects have already occurred.
 //
 // CallInto otherwise follows Call. When the target itself does not allocate, a
@@ -399,6 +409,9 @@ func (frame Frame) callNested(
 ) (owned []Value, count int, err error) {
 	frame.activation()
 	thread := frame.thread
+	if failure := thread.state.execution.pendingExit; failure != nil {
+		return nil, 0, failure
+	}
 	if err := thread.owner.accept(callable); err != nil {
 		return nil, 0, err
 	}
@@ -480,7 +493,8 @@ func (frame Frame) callNested(
 	return owned, count, nil
 }
 
-// RaiseError completes the callback by propagating a protected Lua failure.
+// RaiseError completes the callback by propagating a protected execution
+// failure.
 //
 // The arbitrary Lua error Value, category, Go cause, and nested traceback are
 // preserved. As the propagated error unwinds, the executor appends each

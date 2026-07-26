@@ -330,6 +330,9 @@ func startNestedCall(
 	arguments callArguments,
 	wantedResults int,
 ) (int, *Error) {
+	if failure := thread.state.execution.pendingExit; failure != nil {
+		return 0, failure
+	}
 	function, direct := functionSlot(callable)
 	if !direct {
 		function = callMetamethodFunction(thread, callable)

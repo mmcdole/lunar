@@ -145,7 +145,7 @@ type State struct {
 	registry        *Table
 	packageSentinel *UserData
 	resources       *nativeResourceRegistry
-	execution       executionContext
+	execution       executionControl
 	typeMetatables  [TableKind + 1]*Table
 }
 

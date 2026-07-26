@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -180,8 +181,456 @@ func TestOSLibraryTemporaryNameCreatesClosedFile(t *testing.T) {
 	}
 }
 
+func TestOSExitReturnsInspectableRequestAndLeavesStateReusable(
+	t *testing.T,
+) {
+	state := newStateWithOS(t)
+	chunk := mustLoadString(t, state, "@exit.lua", `
+before_exit = true
+os.exit(23)
+after_exit = true
+`)
+	destination := []Value{Number(80), Number(81)}
+	count, err := state.CallInto(chunk.Value(), nil, destination)
+	failure, request := requireExitRequest(t, err, 23)
+	if count != 0 {
+		t.Fatalf("exit result count = %d; want 0", count)
+	}
+	assertTestValues(t, destination, Number(80), Number(81))
+	if !strings.Contains(
+		failure.Error(),
+		"exit.lua:3: exit requested with status 23",
+	) {
+		t.Fatalf("exit description = %q", failure.Error())
+	}
+	errorText, ok := failure.Value().AsString()
+	if !ok || errorText != failure.Error() {
+		t.Fatalf(
+			"exit value = (%q, %v); want positioned description",
+			errorText,
+			ok,
+		)
+	}
+	trace := failure.Traceback()
+	foundSource := false
+	for _, entry := range trace {
+		if entry.Source == "@exit.lua" {
+			foundSource = true
+			break
+		}
+	}
+	if !foundSource {
+		t.Fatalf("exit traceback = %+v; want @exit.lua", trace)
+	}
+	if request.Error() != "lua: exit requested with status 23" {
+		t.Fatalf("request description = %q", request.Error())
+	}
+
+	before, err := state.Global("before_exit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := state.Global("after_exit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, before, Bool(true))
+	assertTestValue(t, after, Nil())
+
+	recovery := mustLoadString(t, state, "@after-exit.lua", `return 42`)
+	results, err := state.Call(recovery.Value())
+	if err != nil {
+		t.Fatalf("call after exit request: %v", err)
+	}
+	assertTestValues(t, results, Number(42))
+	assertRootThreadReady(t, state.MainThread())
+
+	description := failure.Error()
+	value := failure.Value()
+	trace = failure.Traceback()
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if failure.Error() != description ||
+		request.ExitCode() != 23 ||
+		!value.Valid() ||
+		len(failure.Traceback()) != len(trace) {
+		t.Fatal("exit request changed after State.Close")
+	}
+}
+
+func TestOSExitStatusConversionAndArgumentFailure(t *testing.T) {
+	state := newStateWithOS(t)
+	defer state.Close()
+
+	tests := []struct {
+		name   string
+		source string
+		want   int
+	}{
+		{name: "omitted", source: `os.exit()`, want: 0},
+		{name: "nil", source: `os.exit(nil)`, want: 0},
+		{name: "numeric string", source: `os.exit("7.9")`, want: 7},
+		{name: "fraction", source: `os.exit(-7.9)`, want: -7},
+		{name: "ordinary status", source: `os.exit(300)`, want: 300},
+		{
+			name:   "positive saturation",
+			source: `os.exit(1e100)`,
+			want:   2147483647,
+		},
+		{
+			name:   "negative saturation",
+			source: `os.exit(-1e100)`,
+			want:   -2147483648,
+		},
+		{name: "defined NaN", source: `os.exit(0/0)`, want: 0},
+		{name: "extra arguments", source: `os.exit(12, 99)`, want: 12},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			chunk := mustLoadString(
+				t,
+				state,
+				"@exit-status.lua",
+				test.source,
+			)
+			_, err := state.Call(chunk.Value())
+			requireExitRequest(t, err, test.want)
+			assertRootThreadReady(t, state.MainThread())
+		})
+	}
+
+	chunk := mustLoadString(t, state, "@exit-argument.lua", `
+local function invoke()
+	os.exit({})
+end
+local ok, message = pcall(invoke)
+return ok, message
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("argument failure results = %v", results)
+	}
+	assertTestValue(t, results[0], Bool(false))
+	message, ok := results[1].AsString()
+	if !ok || !strings.Contains(
+		message,
+		"bad argument #1 to 'exit' (number expected, got table)",
+	) {
+		t.Fatalf("exit argument failure = %q", message)
+	}
+}
+
+func TestOSExitBypassesLuaProtectionAndCoroutines(t *testing.T) {
+	state := newStateWithOS(t)
+	defer state.Close()
+
+	tests := []struct {
+		name      string
+		source    string
+		code      int
+		untouched string
+	}{
+		{
+			name: "pcall",
+			source: `
+pcall_continued = false
+pcall(function() os.exit(31) end)
+pcall_continued = true
+`,
+			code:      31,
+			untouched: "pcall_continued",
+		},
+		{
+			name: "xpcall target",
+			source: `
+xpcall_handler_calls = 0
+xpcall_continued = false
+xpcall(
+	function() os.exit(32) end,
+	function() xpcall_handler_calls = xpcall_handler_calls + 1 end
+)
+xpcall_continued = true
+`,
+			code:      32,
+			untouched: "xpcall_continued",
+		},
+		{
+			name: "xpcall handler",
+			source: `
+xpcall_handler_continued = false
+xpcall(
+	function() error("ordinary") end,
+	function() os.exit(33) end
+)
+xpcall_handler_continued = true
+`,
+			code:      33,
+			untouched: "xpcall_handler_continued",
+		},
+		{
+			name: "coroutine resume",
+			source: `
+exit_coroutine = coroutine.create(function() os.exit(34) end)
+resume_continued = false
+coroutine.resume(exit_coroutine)
+resume_continued = true
+`,
+			code:      34,
+			untouched: "resume_continued",
+		},
+		{
+			name: "coroutine wrap",
+			source: `
+wrap_continued = false
+coroutine.wrap(function() os.exit(35) end)()
+wrap_continued = true
+`,
+			code:      35,
+			untouched: "wrap_continued",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			chunk := mustLoadString(
+				t,
+				state,
+				"@protected-exit.lua",
+				test.source,
+			)
+			_, err := state.Call(chunk.Value())
+			requireExitRequest(t, err, test.code)
+			value, globalErr := state.Global(test.untouched)
+			if globalErr != nil {
+				t.Fatal(globalErr)
+			}
+			assertTestValue(t, value, Bool(false))
+			assertRootThreadReady(t, state.MainThread())
+		})
+	}
+
+	handlerCalls, err := state.Global("xpcall_handler_calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, handlerCalls, Number(0))
+	coroutineValue, err := state.Global("exit_coroutine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	coroutine, ok := coroutineValue.Thread()
+	if !ok || coroutine.Status() != ThreadDead {
+		t.Fatalf("exit coroutine = (%v, %v); want dead", coroutine, ok)
+	}
+}
+
+func TestOSExitPropagatesAcrossLoadAndNativeCallBoundaries(t *testing.T) {
+	state := newStateWithOS(t)
+	defer state.Close()
+
+	load := mustLoadString(t, state, "@load-exit.lua", `
+load(function() os.exit(41) end)
+load_continued = true
+`)
+	_, err := state.Call(load.Value())
+	requireExitRequest(t, err, 41)
+	continued, err := state.Global("load_continued")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, continued, Nil())
+
+	exit := mustLoadString(t, state, "@nested-exit.lua", `os.exit(42)`)
+	followup := mustLoadString(t, state, "@nested-followup.lua", `
+native_followup_ran = true
+`)
+	var nestedFailure error
+	var followupFailure error
+	var invalidFailure error
+	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		_, nestedFailure = frame.Call(exit.Value())
+		_, followupFailure = frame.Call(followup.Value())
+		_, invalidFailure = frame.Call(Value{})
+		return frame.ReturnString("ignored")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(native.Value())
+	if results != nil {
+		t.Fatalf("native exit results = %v; want nil", results)
+	}
+	failure, _ := requireExitRequest(t, err, 42)
+	if nestedFailure != failure ||
+		followupFailure != failure ||
+		invalidFailure != failure {
+		t.Fatalf(
+			"nested failures = (%p, %p, %p); want first request %p",
+			nestedFailure,
+			followupFailure,
+			invalidFailure,
+			failure,
+		)
+	}
+	followupRan, err := state.Global("native_followup_ran")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, followupRan, Nil())
+
+	invalid, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		_, _ = frame.Call(exit.Value())
+		return Outcome{}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = state.Call(invalid.Value())
+	requireExitRequest(t, err, 42)
+	assertRootThreadReady(t, state.MainThread())
+}
+
+func TestOSExitAtExternalCoroutineAndContextBoundaries(t *testing.T) {
+	state := newStateWithOS(t)
+	defer state.Close()
+
+	entry := mustLoadString(t, state, "@resume-exit.lua", `os.exit(51)`)
+	thread, err := state.NewThread(entry.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := []Value{Number(90)}
+	count, status, err := thread.ResumeInto(nil, destination)
+	requireExitRequest(t, err, 51)
+	if count != 0 || status != ThreadDead {
+		t.Fatalf(
+			"exit resume = (count=%d, status=%v); want (0, dead)",
+			count,
+			status,
+		)
+	}
+	assertTestValues(t, destination, Number(90))
+
+	contextExit := mustLoadString(
+		t,
+		state,
+		"@context-exit.lua",
+		`os.exit(52)`,
+	)
+	count, err = state.CallIntoContext(
+		context.Background(),
+		contextExit.Value(),
+		nil,
+		destination,
+	)
+	requireExitRequest(t, err, 52)
+	if count != 0 {
+		t.Fatalf("context exit count = %d; want 0", count)
+	}
+	assertTestValues(t, destination, Number(90))
+
+	recovery := mustLoadString(t, state, "@exit-recovery.lua", `return 53`)
+	results, err := state.Call(recovery.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(53))
+}
+
+func TestOSExitAndCancellationUseFirstObservedHostControl(t *testing.T) {
+	t.Run("cancellation before exit", func(t *testing.T) {
+		state := newStateWithOS(t)
+		defer state.Close()
+		exit := mustLoadString(
+			t,
+			state,
+			"@cancel-before-exit.lua",
+			`os.exit(61)`,
+		)
+		ctx, cancel := context.WithCancel(context.Background())
+		native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			cancel()
+			_, nestedErr := frame.Call(exit.Value())
+			var failure *Error
+			if !errors.As(nestedErr, &failure) {
+				panic("nested cancellation did not return *Error")
+			}
+			return frame.RaiseError(failure)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = state.CallContext(ctx, native.Value())
+		var failure *Error
+		if !errors.As(err, &failure) ||
+			failure.Category() != ContextError ||
+			!errors.Is(err, context.Canceled) {
+			t.Fatalf("cancel-before-exit error = %#v", err)
+		}
+		var request *ExitRequest
+		if errors.As(err, &request) {
+			t.Fatalf("cancel-before-exit exposed request %+v", request)
+		}
+	})
+
+	t.Run("exit before cancellation poll", func(t *testing.T) {
+		state := newStateWithOS(t)
+		defer state.Close()
+		exit := mustLoadString(
+			t,
+			state,
+			"@exit-before-cancel.lua",
+			`os.exit(62)`,
+		)
+		ctx, cancel := context.WithCancel(context.Background())
+		native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			_, _ = frame.Call(exit.Value())
+			cancel()
+			return frame.Return()
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = state.CallContext(ctx, native.Value())
+		requireExitRequest(t, err, 62)
+		if errors.Is(err, context.Canceled) {
+			t.Fatalf("exit-before-cancel error = %#v; cancellation won", err)
+		}
+	})
+}
+
 func TestOSLibraryCoreMatchesLua51(t *testing.T) {
 	runLua51Cases(t, osLibraryLua51Cases)
+}
+
+func requireExitRequest(
+	t testing.TB,
+	err error,
+	wantCode int,
+) (*Error, *ExitRequest) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("call succeeded; want exit request")
+	}
+	var failure *Error
+	if !errors.As(err, &failure) || failure.Category() != ExitError {
+		t.Fatalf("exit error = %#v; want categorized *Error", err)
+	}
+	var request *ExitRequest
+	if !errors.As(err, &request) {
+		t.Fatalf("exit error = %#v; want *ExitRequest cause", err)
+	}
+	if request.ExitCode() != wantCode {
+		t.Fatalf(
+			"exit status = %d; want %d",
+			request.ExitCode(),
+			wantCode,
+		)
+	}
+	return failure, request
 }
 
 func newStateWithOS(t *testing.T) *State {

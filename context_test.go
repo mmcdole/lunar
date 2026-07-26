@@ -876,7 +876,7 @@ return value`)
 		t.Fatalf("first resume contexts = %#v", seen)
 	}
 	cancelFirst()
-	if state.execution != (executionContext{}) || thread.contextBudget != 0 {
+	if state.execution != (executionControl{}) || thread.contextBudget != 0 {
 		t.Fatalf(
 			"yield retained execution context: state=%+v budget=%d",
 			state.execution,
@@ -956,7 +956,7 @@ return ok, value`)
 	}
 	if child.Status() != ThreadSuspended ||
 		child.contextBudget != 0 ||
-		state.execution != (executionContext{}) {
+		state.execution != (executionControl{}) {
 		t.Fatalf(
 			"internally yielded child retained context state: status=%v budget=%d state=%+v",
 			child.Status(),
@@ -1514,7 +1514,7 @@ func suspendedContextLifetimeFixture(
 			err,
 		)
 	}
-	if state.execution != (executionContext{}) || thread.contextBudget != 0 {
+	if state.execution != (executionControl{}) || thread.contextBudget != 0 {
 		state.Close()
 		t.Fatal("suspended coroutine retained active context machinery")
 	}
@@ -2049,7 +2049,7 @@ func contextTraceTopLuaLine(trace []TraceFrame) string {
 func assertContextStateIdle(t *testing.T, state *State) {
 	t.Helper()
 	assertStateExecutionIdle(t, state)
-	if state.execution != (executionContext{}) {
+	if state.execution != (executionControl{}) {
 		t.Fatalf("state retained execution context: %+v", state.execution)
 	}
 	if state.MainThread().contextBudget != 0 {

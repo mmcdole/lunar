@@ -124,8 +124,8 @@ Files are organized by substantial runtime concepts:
   egress;
 - `coroutine.go`: canonical Thread construction, compact resume transfer,
   suspension lifecycle, and State-wide execution ownership;
-- `context.go`: operation-scoped context ownership, polling budgets, and
-  cancellation failures;
+- `context.go`: operation-scoped host control, context ownership, polling
+  budgets, cancellation failures, and terminal exit requests;
 - `resource.go`: exactly-once native resource cleanup, finalizer tokens, and
   the State-close registry used by resource-owning libraries;
 - `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
@@ -597,6 +597,20 @@ This is cooperative cancellation, not a per-instruction deadline. A
 `NativeFunc` must observe `Frame.Context` itself while it blocks or performs
 long-running Go work; the runtime checks again after the callback returns but
 cannot preempt Go code.
+
+Lua 5.1's `os.exit` is a second host-control operation. Badger never calls
+`os.Exit`, closes the State, or decides that ending one script should end an
+embedding process. Instead the public call or resume returns an `ExitError`
+whose cause is an immutable `*ExitRequest`; `errors.As` exposes its
+`ExitCode()`. The first request is terminal across `pcall`, `xpcall`,
+coroutines, loaders, and nested native calls. A native callback may inspect a
+returned request, but cannot suppress it and continue the same public
+execution. The request and its traceback remain valid after `State.Close`,
+and a host that declines to terminate anything may reuse the unwound State.
+
+This guarantee uses one operation-scoped pointer in `State` and one cold check
+at native-call and nested-call seams. It adds no field to compact values,
+activations, Threads, or the instruction loop.
 
 The pattern matcher follows the same rule while it owns control in Go. Raw
 calls take an unpolled path; context-aware calls sample recursive
@@ -1137,10 +1151,22 @@ ordering consistent across States.
 on Unix and Windows. It therefore measures the whole embedding process, as C
 `clock` does, rather than wall time or one State. Unsupported Go targets fall
 back to the runtime's estimated user, GC, and scavenging CPU metrics.
-`os.execute` and `os.exit` remain absent pending their separate process and
-host-exit contracts. In particular, an embedding library must not make
-`os.exit` unconditionally terminate its host, and future `io.popen` cleanup
-must distinguish an explicit wait from abandoned-resource termination.
+`os.exit` keeps Lua 5.1's optional integer coercion but reports a terminal
+host request instead of terminating the embedding process. Lua protection and
+coroutines cannot catch it. Go handles it conventionally:
+
+```go
+var request *lua.ExitRequest
+if errors.As(err, &request) {
+	code := request.ExitCode()
+	// End one plugin, stop a service, or explicitly call os.Exit(code).
+}
+```
+
+Status values remain signed and unmasked; the host decides how a Lua status
+maps to its own process or service. `os.execute` remains absent pending its
+separate process contract, and future `io.popen` cleanup must distinguish an
+explicit wait from abandoned-resource termination.
 
 The remaining base entries are intentionally absent rather than partial
 stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate

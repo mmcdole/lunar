@@ -758,6 +758,7 @@ func (frame Frame) sealError(failure *Error) Outcome {
 	if failure == nil {
 		panic("lua: nil native failure")
 	}
+	frame.thread.state.rememberExitRequest(failure)
 	frame.seal()
 	return Outcome{
 		owner:   frame.thread.owner,
@@ -826,6 +827,9 @@ func invokeNativeCall(thread *Thread) *Error {
 		depth:  len(thread.frames),
 	})
 	callbackReturned = true
+	if failure := thread.state.execution.pendingExit; failure != nil {
+		return failure
+	}
 	if failure := validateNativeOutcome(
 		thread,
 		outcome,

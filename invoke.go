@@ -36,8 +36,11 @@ func (err *ResultCapacityError) Error() string {
 // results returns a nil slice.
 //
 // Invalid or foreign Values and a State already executing are rejected before
-// Lua runs. Lua failures are returned as *Error. A panic from a NativeFunc is
-// propagated after the State has been restored to a callable state.
+// Lua runs. Execution failures are returned as *Error. An ExitError unwraps
+// to *ExitRequest and asks the host to apply its own lifecycle policy; Badger
+// neither closes the State nor terminates the process. A panic from a
+// NativeFunc is propagated after the State has been restored to a callable
+// state.
 func (state *State) Call(
 	callable Value,
 	arguments ...Value,
@@ -82,12 +85,12 @@ func (state *State) CallContext(
 //
 // Arguments are copied before execution, so arguments and destination may
 // overlap. On success, count entries are written and the destination tail is
-// unchanged. On a Lua failure or ingress error, destination is unchanged and
-// count is zero. If Lua produces more than len(destination) results, count is
-// the required size and the returned *ResultCapacityError describes the
-// shortfall; destination is still unchanged. Lua side effects completed before
-// that result-count check are not rolled back. Panics from NativeFunc behave as
-// documented by Call.
+// unchanged. On an execution failure or ingress error, destination is
+// unchanged and count is zero. If Lua produces more than len(destination)
+// results, count is the required size and the returned *ResultCapacityError
+// describes the shortfall; destination is still unchanged. Lua side effects
+// completed before that result-count check are not rolled back. Panics from
+// NativeFunc behave as documented by Call.
 func (state *State) CallInto(
 	callable Value,
 	arguments []Value,
@@ -157,6 +160,8 @@ func (state *State) callMain(
 		if contextInstalled {
 			thread.contextBudget = 0
 			state.endExecutionContext()
+		} else {
+			state.execution.pendingExit = nil
 		}
 	}()
 
@@ -235,6 +240,7 @@ func (state *State) prepareMainCall(
 		state.execution.context != nil ||
 		state.execution.done != nil ||
 		state.execution.failure != nil ||
+		state.execution.pendingExit != nil ||
 		state.limits.values != state.options.MaxValues ||
 		state.limits.frames != state.options.MaxFrames {
 		panic("lua: ready main thread retains execution state")

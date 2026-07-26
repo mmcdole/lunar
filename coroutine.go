@@ -57,8 +57,10 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 //
 // On a yield, status is ThreadSuspended and results are the yielded values.
 // On a final return, status is ThreadDead and results are the function's
-// return values. A Lua failure also leaves the coroutine dead and is returned
-// as *Error. The returned slice and Values are owned by the caller.
+// return values. An execution failure also leaves the coroutine dead and is
+// returned as *Error. ExitError asks the embedding host to apply its own
+// lifecycle policy and is never converted to an ordinary coroutine result.
+// The returned slice and Values are owned by the caller.
 func (thread *Thread) Resume(
 	arguments ...Value,
 ) (results []Value, status ThreadStatus, err error) {
@@ -282,6 +284,7 @@ func (thread *Thread) resumeExternal(
 	if state.execution.context != nil ||
 		state.execution.done != nil ||
 		state.execution.failure != nil ||
+		state.execution.pendingExit != nil ||
 		thread.contextBudget != 0 {
 		panic("lua: idle coroutine state retains execution context")
 	}
@@ -293,6 +296,9 @@ func (thread *Thread) resumeExternal(
 			return threadResumeResult{}, err
 		}
 	}
+	defer func() {
+		state.execution.pendingExit = nil
+	}()
 	return resumeThread(nil, thread, arguments), nil
 }
 
@@ -316,6 +322,7 @@ func (thread *Thread) resumeExternalContext(
 	if state.execution.context != nil ||
 		state.execution.done != nil ||
 		state.execution.failure != nil ||
+		state.execution.pendingExit != nil ||
 		thread.contextBudget != 0 {
 		panic("lua: idle coroutine state retains execution context")
 	}

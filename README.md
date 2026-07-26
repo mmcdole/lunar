@@ -58,9 +58,10 @@ adds opaque managed files, State-local defaults, compact binary-safe reads,
 buffered writes, seeking, line iteration, and deterministic owned-resource
 cleanup. The explicit `os` library provides process CPU time, per-State
 calendar conversion and C-locale formatting, environment and filesystem
-operations, secure temporary names, and deterministic locale selection.
-`os.execute`, embedding-safe `os.exit`, process-backed `io.popen`, and the
-debug library remain under construction.
+operations, secure temporary names, deterministic locale selection, and an
+embedding-safe `os.exit` request returned to Go without terminating the host.
+`os.execute`, process-backed `io.popen`, and the debug library remain under
+construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order. Adapted reference algorithms retain their original permissive license

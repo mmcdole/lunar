@@ -21,7 +21,38 @@ const (
 	// ContextError identifies cancellation or deadline expiry requested by
 	// the host. Lua protected calls do not catch it.
 	ContextError
+	// ExitError identifies an os.exit request returned to the host. Lua
+	// protected calls do not catch it.
+	ExitError
 )
+
+// ExitRequest reports that Lua called os.exit.
+//
+// Badger never terminates the Go process itself. An os.exit call returns an
+// *Error that unwraps to *ExitRequest, allowing the application to apply its
+// own process, service, or request-lifecycle policy.
+type ExitRequest struct {
+	code int
+}
+
+// ExitCode returns the status supplied to os.exit.
+func (request *ExitRequest) ExitCode() int {
+	if request == nil {
+		return 0
+	}
+	return request.code
+}
+
+// Error returns a stable host-facing description of the request.
+func (request *ExitRequest) Error() string {
+	if request == nil {
+		return "lua: exit requested"
+	}
+	return fmt.Sprintf(
+		"lua: exit requested with status %d",
+		request.code,
+	)
+}
 
 // TraceFrame is an immutable source-level traceback entry.
 type TraceFrame struct {
@@ -36,7 +67,7 @@ type TraceFrame struct {
 	TailCalls uint32
 }
 
-// Error is a protected Lua failure.
+// Error is a protected execution failure.
 //
 // It owns the original Lua Value and a compact traceback snapshot. Formatting
 // never invokes Lua, tostring, or a metamethod, so Error remains safe after the
@@ -120,6 +151,39 @@ func newResourceError(format string, arguments ...any) *Error {
 		description:        message,
 		category:           ResourceError,
 		sourcePositionable: true,
+	}
+}
+
+func newExitError(code int) *Error {
+	request := &ExitRequest{code: code}
+	message := fmt.Sprintf("exit requested with status %d", code)
+	return &Error{
+		value:              errorStringValue(message),
+		description:        message,
+		category:           ExitError,
+		sourcePositionable: true,
+		cause:              request,
+	}
+}
+
+func isHostControlFailure(failure *Error) bool {
+	if failure == nil {
+		return false
+	}
+	switch failure.category {
+	case ContextError, ExitError:
+		return true
+	default:
+		return false
+	}
+}
+
+func (state *State) rememberExitRequest(failure *Error) {
+	if state == nil || failure == nil || failure.category != ExitError {
+		return
+	}
+	if state.execution.pendingExit == nil {
+		state.execution.pendingExit = failure
 	}
 }
 

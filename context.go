@@ -10,42 +10,46 @@ const contextPollInterval uint16 = 256
 // ErrNilContext reports a nil context passed to a context-aware operation.
 var ErrNilContext = errors.New("lua: nil context")
 
-// executionContext belongs only to one active public call or resume. It is
-// cleared before that operation returns, so a suspended Thread never retains
-// the caller's context graph.
-type executionContext struct {
-	context context.Context
-	done    <-chan struct{}
-	failure *Error
+// executionControl belongs only to one active public call or resume. Context
+// fields are populated only for context-aware entry points. pendingExit makes
+// the first os.exit request terminal across nested native calls, even if a Go
+// callback ignores a returned error. The whole record is cleared before the
+// public operation returns.
+type executionControl struct {
+	context     context.Context
+	done        <-chan struct{}
+	failure     *Error
+	pendingExit *Error
 }
 
 func prepareExecutionContext(
 	ctx context.Context,
-) (executionContext, *Error) {
+) (executionControl, *Error) {
 	if ctx == nil {
-		return executionContext{}, nil
+		return executionControl{}, nil
 	}
-	execution := executionContext{
+	execution := executionControl{
 		context: ctx,
 		done:    ctx.Done(),
 	}
 	if execution.done != nil && contextChannelClosed(execution.done) {
-		return executionContext{}, newContextError(ctx, false)
+		return executionControl{}, newContextError(ctx, false)
 	}
 	return execution, nil
 }
 
-func (state *State) beginExecutionContext(execution executionContext) {
+func (state *State) beginExecutionContext(execution executionControl) {
 	if state.execution.context != nil ||
 		state.execution.done != nil ||
-		state.execution.failure != nil {
+		state.execution.failure != nil ||
+		state.execution.pendingExit != nil {
 		panic("lua: nested public execution context")
 	}
 	state.execution = execution
 }
 
 func (state *State) endExecutionContext() {
-	state.execution = executionContext{}
+	state.execution = executionControl{}
 }
 
 func (thread *Thread) resetContextBudget() {
