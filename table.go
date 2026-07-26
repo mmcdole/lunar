@@ -243,9 +243,7 @@ func (table *Table) RawSetString(key string, value Value) error {
 		changed = true
 	case stored &&
 		entry.value.kind() != NilKind:
-		current := entry.value
-		if !rawSlotEqual(current, valueSlot) {
-			writeSlot(&entry.value, valueSlot)
+		if replaceTableValue(&entry.value, valueSlot) {
 			changed = true
 		}
 	case stored && valueSlot.kind() != NilKind:
@@ -518,10 +516,9 @@ func (table *Table) replaceResolvedSlot(
 		table.absentMetamethods = 0
 		return
 	}
-	if rawSlotEqual(*current, value) {
+	if !replaceTableValue(current, value) {
 		return
 	}
-	writeSlot(current, value)
 	table.absentMetamethods = 0
 }
 
@@ -718,11 +715,7 @@ func (table *Table) setStoredRecord(
 	entry := table.store.entries.at(index)
 	current := entry.value
 	if current.kind() != NilKind && value.kind() != NilKind {
-		if rawSlotEqual(current, value) {
-			return false
-		}
-		writeSlot(&entry.value, value)
-		return true
+		return replaceTableValue(&entry.value, value)
 	}
 	return table.setStoredRecordSlow(index, value)
 }
@@ -895,11 +888,7 @@ func (table *Table) setInteger(index int, value slot) bool {
 				table.recordIntegerDeleted()
 				return true
 			}
-			if rawSlotEqual(entry.value, value) {
-				return false
-			}
-			writeSlot(&entry.value, value)
-			return true
+			return replaceTableValue(&entry.value, value)
 		}
 	}
 	return table.setIntegerUnresolved(index, value)
@@ -945,11 +934,7 @@ func (table *Table) setIntegerUnresolved(
 				table.recordIntegerDeleted()
 				return true
 			}
-			if rawSlotEqual(entry.value, value) {
-				return false
-			}
-			writeSlot(&entry.value, value)
-			return true
+			return replaceTableValue(&entry.value, value)
 		}
 	}
 
@@ -1297,11 +1282,7 @@ func (table *Table) setArray(index int, value slot) bool {
 		table.arrayUsed--
 		return true
 	default:
-		if rawSlotEqual(current, value) {
-			return false
-		}
-		writeSlot(target, value)
-		return true
+		return replaceTableValue(target, value)
 	}
 }
 
@@ -1465,6 +1446,18 @@ func writeSlot(destination *slot, value slot) {
 	}
 	destination.ref = value.ref
 	destination.bits = value.bits
+}
+
+// replaceTableValue stores the latest representation unless those exact bits
+// are already present. Lua equality is not the authority for assignment:
+// +0 and -0 compare equal, but their sign remains observable.
+func replaceTableValue(destination *slot, value slot) bool {
+	current := *destination
+	if current.ref == value.ref && current.bits == value.bits {
+		return false
+	}
+	writeSlot(destination, value)
+	return true
 }
 
 func hashNumber(number float64) uint32 {

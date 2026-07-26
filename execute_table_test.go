@@ -41,6 +41,25 @@ return table[1], table[2], table[3], table[4], table[5],
 	)
 }
 
+func TestExecutorTableUpdateStoresLatestNumberRepresentation(t *testing.T) {
+	const source = `
+local table = { field = 0, 0 }
+local negative_zero = -1 * 0
+table.field = negative_zero
+table[1] = negative_zero
+return 1 / table.field, 1 / table[1]
+`
+	state, thread, result := executeTestChunk(t, source)
+	defer state.Close()
+	assertExecutionReturned(t, result)
+	assertExecutionValues(
+		t,
+		thread,
+		Number(math.Inf(-1)),
+		Number(math.Inf(-1)),
+	)
+}
+
 func TestExecutorTableWriteRejectsInvalidKeysBeforeMetamethods(t *testing.T) {
 	tests := []struct {
 		name    string

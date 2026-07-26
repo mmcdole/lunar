@@ -51,6 +51,59 @@ func TestTableRawScalarAccess(t *testing.T) {
 	if got := table.RawGetInt(0); got.String() != "9" {
 		t.Fatalf("-0/+0 canonicalization = %v, want 9", got)
 	}
+
+	negativeZero := math.Copysign(0, -1)
+	for _, test := range []struct {
+		name string
+		set  func(Value) error
+		get  func() (Value, error)
+	}{
+		{
+			name: "string",
+			set: func(value Value) error {
+				return table.RawSetString("signed-zero", value)
+			},
+			get: func() (Value, error) {
+				return table.RawGetString("signed-zero"), nil
+			},
+		},
+		{
+			name: "array",
+			set: func(value Value) error {
+				return table.RawSetInt(1, value)
+			},
+			get: func() (Value, error) {
+				return table.RawGetInt(1), nil
+			},
+		},
+		{
+			name: "record",
+			set: func(value Value) error {
+				return table.RawSet(Number(-1), value)
+			},
+			get: func() (Value, error) {
+				return table.RawGet(Number(-1))
+			},
+		},
+	} {
+		t.Run("latest number representation/"+test.name, func(t *testing.T) {
+			if err := test.set(Number(0)); err != nil {
+				t.Fatal(err)
+			}
+			if err := test.set(Number(negativeZero)); err != nil {
+				t.Fatal(err)
+			}
+			got, err := test.get()
+			if err != nil {
+				t.Fatal(err)
+			}
+			number, ok := got.AsNumber()
+			if !ok || !math.Signbit(number) {
+				t.Fatalf("stored value = %v, want negative zero", got)
+			}
+		})
+	}
+
 	if err := table.RawSet(Nil(), Bool(true)); !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("nil key error = %v, want ErrInvalidKey", err)
 	}
@@ -344,6 +397,24 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 			if number, ok := got.AsNumber(); !ok || number != 2 {
 				t.Fatalf("updated value = %v, want 2", got)
 			}
+
+			table.replaceResolvedSlot(location, numberSlot(0))
+			table.replaceResolvedSlot(
+				location,
+				numberSlot(math.Copysign(0, -1)),
+			)
+			got, err = table.RawGet(test.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			number, ok := got.AsNumber()
+			if !ok || !math.Signbit(number) {
+				t.Fatalf(
+					"resolved update = %v, want negative zero",
+					got,
+				)
+			}
+
 			_, updatedLocation, found := table.resolveNormalizedSlot(
 				normalized,
 				index,
