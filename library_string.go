@@ -833,16 +833,5 @@ func (frame Frame) textArgument(index int) (string, bool) {
 	if !present {
 		return "", false
 	}
-	switch value.kind() {
-	case StringKind:
-		return (*luaString)(value.ref).text, true
-	case NumberKind:
-		var buffer [32]byte
-		return string(appendLuaNumber(
-			buffer[:0],
-			math.Float64frombits(value.bits),
-		)), true
-	default:
-		return "", false
-	}
+	return compactText(value)
 }

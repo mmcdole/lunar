@@ -421,7 +421,6 @@ func TestStringPatternMatchingCooperatesWithContextCancellation(t *testing.T) {
 func TestStringLibraryCallbackFailuresCarryATraceback(t *testing.T) {
 	state := newStateWithString(t)
 	defer state.Close()
-	installTestPrelude(t, state)
 
 	chunk := mustLoadString(t, state, "@gsub-traceback.lua", `
 local function outer()

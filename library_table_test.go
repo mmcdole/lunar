@@ -319,7 +319,6 @@ func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
 func TestTableLibraryCallbackFailuresCarryATraceback(t *testing.T) {
 	state := newStateWithTable(t)
 	defer state.Close()
-	installTestPrelude(t, state)
 
 	chunk := mustLoadString(t, state, "@sort-traceback.lua", `
 local function outer()

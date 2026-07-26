@@ -876,6 +876,35 @@ distinct bad-self message. The name and category come from the same verified
 bytecode tracing the executor uses for runtime type errors; no provenance is
 stored in the hot representation.
 
+The host-independent base surface currently includes `assert`, `error`,
+`getmetatable`, `setmetatable`, `rawequal`, `rawget`, `rawset`, `type`,
+`next`, `pairs`, `ipairs`, `select`, `unpack`, `tonumber`, `tostring`,
+`pcall`, and `xpcall`. Raw operations and iterators stay in compact slots and
+do not consult metamethods. `pairs` and `ipairs` capture private canonical
+iterators, so replacing global `next` cannot change an existing iterator and
+the private `pairs` generator remains distinct from that global Function.
+`error` preserves arbitrary Lua values, including nil, and resolves explicit
+levels across native activations and elided tail calls without adding
+debugging data to activation records.
+
+Base-10 `tonumber` uses the runtime's deterministic numeric grammar. Explicit
+bases use a separate allocation-free, 2-through-36 parser matching the LP64
+`strtoul` behavior Lua 5.1 exposes, including its C-string boundary, with a
+fixed unsigned 64-bit range rather than a host-dependent `unsigned long`.
+Primitive numeric `tostring` formats into a stack buffer and probes the
+runtime string pool by bytes; a recurring warm result does not allocate a
+temporary Go string.
+
+The remaining base entries are intentionally absent rather than partial
+stubs. `getfenv`, `setfenv`, and loading first require the Lua 5.1 global
+environment to live on each Thread, inherited by new coroutines. Text and
+binary loading will share one refillable input path and bind new closures to
+that Thread environment; the binary reader must be the inverse of
+`string.dump` before `load` and `loadstring` are complete. File and output
+functions require an explicit per-State host-I/O policy. `collectgarbage`,
+`gcinfo`, and `newproxy` require deliberate State-local GC, weak-reference,
+and finalizer semantics rather than process-wide Go GC shims.
+
 The math library is the exact Lua 5.1 surface, including the `mod` alias the
 standard distribution publishes through `LUA_COMPAT_MOD` as the same canonical
 Function as `fmod`. Where Go's standard library differs from C, C wins:

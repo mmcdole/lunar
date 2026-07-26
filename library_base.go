@@ -3,27 +3,71 @@ package lua
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
-// OpenBase installs the currently implemented Lua 5.1 base-library globals.
+var baseLibraryFunctions = [...]struct {
+	name  string
+	entry NativeFunc
+}{
+	{name: "assert", entry: baseAssert},
+	{name: "error", entry: baseError},
+	{name: "getmetatable", entry: baseGetMetatable},
+	{name: "next", entry: baseNext},
+	{name: "pcall", entry: basePCall},
+	{name: "rawequal", entry: baseRawEqual},
+	{name: "rawget", entry: baseRawGet},
+	{name: "rawset", entry: baseRawSet},
+	{name: "select", entry: baseSelect},
+	{name: "setmetatable", entry: baseSetMetatable},
+	{name: "tonumber", entry: baseToNumber},
+	{name: "tostring", entry: baseToString},
+	{name: "type", entry: baseType},
+	{name: "unpack", entry: baseUnpack},
+	{name: "xpcall", entry: baseXPCall},
+}
+
+// OpenBase installs the implemented Lua 5.1 base-library globals.
 //
-// The base library is still under construction; this currently installs _G,
-// _VERSION, pcall, xpcall, and the Lua 5.1 coroutine library. Opening is
-// explicit: New returns an empty State. Calling OpenBase again replaces the
-// functions and coroutine table with fresh canonical objects and restores the
-// other globals.
+// The file, environment, garbage-collection, output, and newproxy entries are
+// still under construction. Opening is explicit: New returns an empty State.
+// Calling OpenBase again replaces every installed function and the coroutine
+// table with fresh canonical objects and restores _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
-	pcall, err := state.NewNativeFunction(basePCall)
+	functions := make([]*Function, len(baseLibraryFunctions))
+	for index, definition := range baseLibraryFunctions {
+		function, err := state.NewNativeFunction(definition.entry)
+		if err != nil {
+			return err
+		}
+		functions[index] = function
+	}
+	ipairsIterator, err := state.NewNativeFunction(baseIPairsIterator)
 	if err != nil {
 		return err
 	}
-	xpcall, err := state.NewNativeFunction(baseXPCall)
+	pairsIterator, err := state.NewNativeFunction(baseNext)
 	if err != nil {
 		return err
 	}
+	pairs, err := state.NewNativeFunction(
+		basePairs,
+		pairsIterator.Value(),
+	)
+	if err != nil {
+		return err
+	}
+	ipairs, err := state.NewNativeFunction(
+		baseIPairs,
+		ipairsIterator.Value(),
+	)
+	if err != nil {
+		return err
+	}
+
 	if err := state.globals.RawSetString("_G", state.globals.Value()); err != nil {
 		return err
 	}
@@ -33,13 +77,404 @@ func (state *State) OpenBase() error {
 	); err != nil {
 		return err
 	}
-	if err := state.globals.RawSetString("pcall", pcall.Value()); err != nil {
+	for index, definition := range baseLibraryFunctions {
+		if err := state.globals.RawSetString(
+			definition.name,
+			functions[index].Value(),
+		); err != nil {
+			return err
+		}
+	}
+	if err := state.globals.RawSetString("pairs", pairs.Value()); err != nil {
 		return err
 	}
-	if err := state.globals.RawSetString("xpcall", xpcall.Value()); err != nil {
+	if err := state.globals.RawSetString("ipairs", ipairs.Value()); err != nil {
 		return err
 	}
 	return state.OpenCoroutine()
+}
+
+func baseAssert(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	if truthySlot(value) {
+		return frame.returnArguments()
+	}
+
+	message := "assertion failed!"
+	if supplied, present := frame.argument(1); present &&
+		supplied.kind() != NilKind {
+		var ok bool
+		message, ok = frame.textArgument(1)
+		if !ok {
+			return baseArgumentTypeError(frame, 1, "string")
+		}
+	}
+	if end := strings.IndexByte(message, 0); end >= 0 {
+		message = message[:end]
+	}
+	return libraryError(frame, "%s", message)
+}
+
+func baseError(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		value = nilSlot
+	}
+	level := 1
+	if supplied, present := frame.argument(1); present &&
+		supplied.kind() != NilKind {
+		var ok bool
+		level, ok = frame.integerArgument(1)
+		if !ok {
+			return numberArgumentError(frame, 1)
+		}
+	}
+	frame.discardArgumentsAfter(1)
+
+	if level > 0 &&
+		(value.kind() == StringKind || value.kind() == NumberKind) {
+		text, _ := compactText(value)
+		if prototype, pc, found := luaCallerAtLevel(frame, level); found {
+			text = executionErrorDescription(prototype, pc, text)
+		}
+		return frame.RaiseString(text)
+	}
+	return frame.Raise(value.owningValue())
+}
+
+func baseGetMetatable(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	metatable := metatableForSlot(frame.thread, value)
+	if metatable == nil {
+		return frame.ReturnNil()
+	}
+	if protected, found := metamethodSlot(
+		frame.thread,
+		value,
+		metaMetatable,
+	); found {
+		return frame.returnOne(frame.activation(), protected)
+	}
+	return frame.returnOne(
+		frame.activation(),
+		slotFromTable(metatable),
+	)
+}
+
+func baseSetMetatable(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	value, present := frame.argument(1)
+	if !present ||
+		value.kind() != NilKind && value.kind() != TableKind {
+		return baseArgumentError(frame, 1, "nil or table expected")
+	}
+	if _, protected := metamethodSlot(
+		frame.thread,
+		slotFromTable(table),
+		metaMetatable,
+	); protected {
+		return libraryError(frame, "cannot change a protected metatable")
+	}
+
+	var metatable *Table
+	if value.kind() == TableKind {
+		metatable = (*Table)(value.ref)
+	}
+	frame.discardArgumentsAfter(2)
+	table.metatable = metatable
+	return frame.returnOne(frame.activation(), slotFromTable(table))
+}
+
+func baseRawEqual(frame Frame) Outcome {
+	left, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	right, present := frame.argument(1)
+	if !present {
+		return baseArgumentError(frame, 1, "value expected")
+	}
+	return frame.ReturnBool(rawSlotEqual(left, right))
+}
+
+func baseRawGet(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	key, present := frame.argument(1)
+	if !present {
+		return baseArgumentError(frame, 1, "value expected")
+	}
+	value, _ := table.rawSlot(key)
+	return frame.returnOne(frame.activation(), value)
+}
+
+func baseRawSet(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	key, present := frame.argument(1)
+	if !present {
+		return baseArgumentError(frame, 1, "value expected")
+	}
+	value, present := frame.argument(2)
+	if !present {
+		return baseArgumentError(frame, 2, "value expected")
+	}
+	switch table.rawSetSlot(key, value) {
+	case tableKeyNil:
+		return frame.raiseString("table index is nil")
+	case tableKeyNaN:
+		return frame.raiseString("table index is NaN")
+	}
+	frame.discardArgumentsAfter(3)
+	return frame.returnOne(frame.activation(), slotFromTable(table))
+}
+
+func baseType(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	return frame.ReturnString(value.kind().String())
+}
+
+func baseNext(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	previous, present := frame.argument(1)
+	if !present {
+		previous = nilSlot
+	}
+	key, value, found, err := table.next(previous)
+	if err != nil {
+		return frame.raiseString("invalid key to 'next'")
+	}
+	if !found {
+		return frame.ReturnNil()
+	}
+	return frame.returnCompactValues(
+		[2]slot{key, value},
+		2,
+		nil,
+	)
+}
+
+func basePairs(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	iterator := frame.nativeCapture(0)
+	frame.discardArgumentsAfter(1)
+	return frame.returnCompactValues(
+		[2]slot{iterator, slotFromTable(table)},
+		2,
+		[]slot{nilSlot},
+	)
+}
+
+func baseIPairs(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	iterator := frame.nativeCapture(0)
+	frame.discardArgumentsAfter(1)
+	return frame.returnCompactValues(
+		[2]slot{iterator, slotFromTable(table)},
+		2,
+		[]slot{numberSlot(0)},
+	)
+}
+
+func baseIPairsIterator(frame Frame) Outcome {
+	index, ok := frame.integerArgument(1)
+	if !ok {
+		return numberArgumentError(frame, 1)
+	}
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	// PUC increments a signed C int here, which is undefined at MaxInt32.
+	// Badger defines the common two's-complement wrap instead.
+	if index == math.MaxInt32 {
+		index = math.MinInt32
+	} else {
+		index++
+	}
+	value, _ := table.rawIntSlot(index)
+	if value.kind() == NilKind {
+		return frame.Return()
+	}
+	return frame.returnCompactValues(
+		[2]slot{numberSlot(float64(index)), value},
+		2,
+		nil,
+	)
+}
+
+func baseSelect(frame Frame) Outcome {
+	count := frame.ArgumentCount()
+	selector, present := frame.argument(0)
+	if selector.kind() == StringKind {
+		text := (*luaString)(selector.ref).text
+		if len(text) != 0 && text[0] == '#' {
+			return frame.ReturnNumber(float64(count - 1))
+		}
+	}
+	if !present {
+		return numberArgumentError(frame, 0)
+	}
+	index, ok := frame.integerArgument(0)
+	if !ok {
+		return numberArgumentError(frame, 0)
+	}
+	if index < 0 {
+		index = count + index
+	} else if index > count {
+		index = count
+	}
+	if index < 1 {
+		return baseArgumentError(frame, 0, "index out of range")
+	}
+	base := int(frame.activation().base)
+	return frame.returnCompactValues(
+		[2]slot{},
+		0,
+		frame.thread.values[base+index:frame.thread.top],
+	)
+}
+
+func baseUnpack(frame Frame) Outcome {
+	table, ok := frame.Table(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "table")
+	}
+	first, outcome, failed := optionalLibraryInteger(frame, 1, 1)
+	if failed {
+		return outcome
+	}
+	last, outcome, failed := optionalLibraryInteger(
+		frame,
+		2,
+		table.RawLen(),
+	)
+	if failed {
+		return outcome
+	}
+	if first > last {
+		return frame.Return()
+	}
+
+	count := int64(last) - int64(first) + 1
+	call := frame.activation()
+	resultBase := int(call.resultBase)
+	limit := frame.thread.valueLimit()
+	if count <= 0 ||
+		resultBase < 0 ||
+		resultBase > limit ||
+		count > int64(limit-resultBase) {
+		return libraryError(frame, "too many results to unpack")
+	}
+
+	writer, failure := frame.beginResults(int(count))
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	for offset := 0; offset < writer.outputCount; offset++ {
+		value, _ := table.rawIntSlot(first + offset)
+		writer.put(value)
+	}
+	writer.written = int(count)
+	return frame.finishResults(&writer)
+}
+
+func baseToNumber(frame Frame) Outcome {
+	base, outcome, failed := optionalLibraryInteger(frame, 1, 10)
+	if failed {
+		return outcome
+	}
+	value, present := frame.argument(0)
+	if base == 10 {
+		if !present {
+			return baseArgumentError(frame, 0, "value expected")
+		}
+		if number, ok := slotToNumber(value); ok {
+			return frame.ReturnNumber(number)
+		}
+		return frame.ReturnNil()
+	}
+
+	text, ok := frame.textArgument(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "string")
+	}
+	if base < 2 || base > 36 {
+		return baseArgumentError(frame, 1, "base out of range")
+	}
+	number, ok := parseBaseNumber(text, base)
+	if !ok {
+		return frame.ReturnNil()
+	}
+	return frame.ReturnNumber(number)
+}
+
+func baseToString(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	if method, found := metamethodSlot(
+		frame.thread,
+		value,
+		metaToString,
+	); found {
+		arguments := [1]slot{value}
+		result, failure := frame.callCompactOne(method, arguments[:])
+		if failure != nil {
+			return frame.sealError(failure)
+		}
+		return frame.returnOne(frame.activation(), result)
+	}
+
+	switch value.kind() {
+	case StringKind:
+		return frame.returnOne(frame.activation(), value)
+	case NumberKind:
+		var scratch [32]byte
+		return frame.returnStringBytes(appendLuaNumber(
+			scratch[:0],
+			math.Float64frombits(value.bits),
+		))
+	case BoolKind:
+		if value.ref == trueMarkerPointer {
+			return frame.ReturnString("true")
+		}
+		return frame.ReturnString("false")
+	case NilKind:
+		return frame.ReturnString("nil")
+	default:
+		return frame.ReturnString(fmt.Sprintf(
+			"%s: %p",
+			value.kind(),
+			value.ref,
+		))
+	}
 }
 
 func basePCall(frame Frame) Outcome {
@@ -140,6 +575,125 @@ func (frame Frame) integerArgument(index int) (int, bool) {
 		return 0, false
 	}
 	return libraryInteger(number), true
+}
+
+func optionalLibraryInteger(
+	frame Frame,
+	index int,
+	fallback int,
+) (int, Outcome, bool) {
+	value, present := frame.argument(index)
+	if !present || value.kind() == NilKind {
+		return fallback, Outcome{}, false
+	}
+	number, ok := slotToNumber(value)
+	if !ok {
+		return 0, numberArgumentError(frame, index), true
+	}
+	return libraryInteger(number), Outcome{}, false
+}
+
+// compactText applies lua_tolstring's string-or-number conversion without
+// replacing a compact stack slot with an owning string.
+func compactText(value slot) (string, bool) {
+	switch value.kind() {
+	case StringKind:
+		return (*luaString)(value.ref).text, true
+	case NumberKind:
+		var buffer [32]byte
+		return string(appendLuaNumber(
+			buffer[:0],
+			math.Float64frombits(value.bits),
+		)), true
+	default:
+		return "", false
+	}
+}
+
+// parseBaseNumber implements the strtoul conversion used by Lua 5.1's
+// non-decimal tonumber form. It uses a deterministic 64-bit unsigned range;
+// a leading minus sign wraps modulo 2**64 unless the magnitude overflowed,
+// in which case the result remains saturated.
+func parseBaseNumber(text string, base int) (float64, bool) {
+	for index := 0; index < len(text); index++ {
+		if text[index] == 0 {
+			text = text[:index]
+			break
+		}
+	}
+
+	index := 0
+	for index < len(text) && isLuaNumberSpace(text[index]) {
+		index++
+	}
+	negative := false
+	if index < len(text) {
+		switch text[index] {
+		case '-':
+			negative = true
+			index++
+		case '+':
+			index++
+		}
+	}
+	if base == 16 &&
+		index+2 < len(text) &&
+		text[index] == '0' &&
+		(text[index+1] == 'x' || text[index+1] == 'X') {
+		if digit, ok := baseDigitValue(text[index+2]); ok &&
+			digit < uint64(base) {
+			index += 2
+		}
+	}
+
+	const maximum = uint64(math.MaxUint64)
+	var (
+		number   uint64
+		digits   int
+		overflow bool
+	)
+	for index < len(text) {
+		digit, ok := baseDigitValue(text[index])
+		if !ok || digit >= uint64(base) {
+			break
+		}
+		digits++
+		if !overflow {
+			if number > (maximum-digit)/uint64(base) {
+				number = maximum
+				overflow = true
+			} else {
+				number = number*uint64(base) + digit
+			}
+		}
+		index++
+	}
+	if digits == 0 {
+		return 0, false
+	}
+	for index < len(text) && isLuaNumberSpace(text[index]) {
+		index++
+	}
+	if index != len(text) {
+		return 0, false
+	}
+	if negative && !overflow {
+		number = 0 - number
+	}
+	return float64(number), true
+}
+
+func baseDigitValue(value byte) (uint64, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return uint64(value - '0'), true
+	case value >= 'a' && value <= 'z':
+		return uint64(value-'a') + 10, true
+	case value >= 'A' && value <= 'Z':
+		return uint64(value-'A') + 10, true
+	default:
+		return 0, false
+	}
 }
 
 // libraryInteger converts a coerced library argument to the integer PUC would
@@ -388,18 +942,44 @@ func libraryFailure(
 }
 
 func immediateLuaCaller(frame Frame) (*Prototype, int, bool) {
+	return luaCallerAtLevel(frame, 1)
+}
+
+// luaCallerAtLevel resolves lua_getstack's logical activation levels,
+// including native activations and tail calls whose physical frames were
+// replaced. A native or elided-tail target has no Lua source position.
+func luaCallerAtLevel(
+	frame Frame,
+	level int,
+) (*Prototype, int, bool) {
 	frame.activation()
-	if len(frame.thread.frames) < 2 {
+	if level <= 0 {
 		return nil, 0, false
 	}
-	caller := &frame.thread.frames[len(frame.thread.frames)-2]
-	if caller.function == nil || caller.function.prototype == nil {
-		return nil, 0, false
+	remaining := level
+	for index := len(frame.thread.frames) - 2; index >= 0; index-- {
+		caller := &frame.thread.frames[index]
+		if remaining == 1 {
+			if caller.function == nil ||
+				caller.function.prototype == nil {
+				return nil, 0, false
+			}
+			prototype := caller.function.prototype
+			pc := int(caller.pc) - 1
+			if pc < 0 || pc >= len(prototype.code) {
+				return nil, 0, false
+			}
+			return prototype, pc, true
+		}
+		remaining--
+		if caller.function != nil &&
+			caller.function.prototype != nil {
+			tailCalls := int(caller.tailCalls)
+			if remaining <= tailCalls {
+				return nil, 0, false
+			}
+			remaining -= tailCalls
+		}
 	}
-	prototype := caller.function.prototype
-	pc := int(caller.pc) - 1
-	if pc < 0 || pc >= len(prototype.code) {
-		return nil, 0, false
-	}
-	return prototype, pc, true
+	return nil, 0, false
 }

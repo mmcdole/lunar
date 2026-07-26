@@ -48,6 +48,36 @@ func (pool *stringPool) makeBorrowed(text string) *luaString {
 	return pool.makeText(text, true)
 }
 
+// makeBytes looks up caller-owned bytes without first allocating a Go string.
+// A miss copies the bytes before the resulting Lua string can outlive the
+// call; a hit retains no view of the caller's storage.
+func (pool *stringPool) makeBytes(bytes []byte) *luaString {
+	hash := hashBytes(bytes)
+	if len(bytes) == 0 && !pool.closed {
+		if pool.empty == nil {
+			pool.empty = pool.newString("", hash)
+		}
+		return pool.empty
+	}
+	if pool.closed || len(bytes) > shortStringLimit {
+		return pool.newString(string(bytes), hash)
+	}
+
+	if found := pool.lookupProtectedBytes(bytes, hash); found != nil {
+		return found
+	}
+
+	if found, set, way := pool.lookupProbationBytes(bytes, hash); found != nil {
+		set.entries[way] = nil
+		pool.storeProtected(found)
+		return found
+	}
+
+	created := pool.newString(string(bytes), hash)
+	pool.storeProbation(created)
+	return created
+}
+
 func (pool *stringPool) makeText(text string, borrowed bool) *luaString {
 	hash := pool.hash(text)
 	if text == "" && !pool.closed {
@@ -128,6 +158,27 @@ func (pool *stringPool) lookupProtected(text string, hash uint64) *luaString {
 	return nil
 }
 
+func (pool *stringPool) lookupProtectedBytes(
+	bytes []byte,
+	hash uint64,
+) *luaString {
+	shardIndex, setIndex := stringSetLocation(
+		hash,
+		stringProtectedShardCount,
+	)
+	shard := pool.protected[shardIndex]
+	if shard == nil {
+		return nil
+	}
+	set := &shard.sets[setIndex]
+	for _, candidate := range set.entries {
+		if stringMatchesBytes(candidate, bytes, hash) {
+			return candidate
+		}
+	}
+	return nil
+}
+
 func (pool *stringPool) lookupProbation(
 	text string,
 	hash uint64,
@@ -147,6 +198,45 @@ func (pool *stringPool) lookupProbation(
 		}
 	}
 	return nil, nil, -1
+}
+
+func (pool *stringPool) lookupProbationBytes(
+	bytes []byte,
+	hash uint64,
+) (*luaString, *stringSet, int) {
+	shardIndex, setIndex := stringSetLocation(
+		hash,
+		stringProbationShardCount,
+	)
+	shard := pool.probation[shardIndex]
+	if shard == nil {
+		return nil, nil, -1
+	}
+	set := &shard.sets[setIndex]
+	for index, candidate := range set.entries {
+		if stringMatchesBytes(candidate, bytes, hash) {
+			return candidate, set, index
+		}
+	}
+	return nil, nil, -1
+}
+
+func stringMatchesBytes(
+	candidate *luaString,
+	bytes []byte,
+	hash uint64,
+) bool {
+	if candidate == nil ||
+		candidate.hash != hash ||
+		len(candidate.text) != len(bytes) {
+		return false
+	}
+	for index, value := range bytes {
+		if candidate.text[index] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func (pool *stringPool) storeProbation(value *luaString) {
@@ -207,6 +297,15 @@ func hashString(text string) uint64 {
 	step := len(text)>>5 + 1
 	for index := len(text); index >= step; index -= step {
 		hash ^= hash<<5 + hash>>2 + uint64(text[index-1])
+	}
+	return mixHash(hash ^ 0x517cc1b727220a95)
+}
+
+func hashBytes(bytes []byte) uint64 {
+	hash := uint64(len(bytes))
+	step := len(bytes)>>5 + 1
+	for index := len(bytes); index >= step; index -= step {
+		hash ^= hash<<5 + hash>>2 + uint64(bytes[index-1])
 	}
 	return mixHash(hash ^ 0x517cc1b727220a95)
 }

@@ -34,7 +34,26 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"pcall", "xpcall"} {
+	baseFunctions := []string{
+		"assert",
+		"error",
+		"getmetatable",
+		"ipairs",
+		"next",
+		"pairs",
+		"pcall",
+		"rawequal",
+		"rawget",
+		"rawset",
+		"select",
+		"setmetatable",
+		"tonumber",
+		"tostring",
+		"type",
+		"unpack",
+		"xpcall",
+	}
+	for _, name := range baseFunctions {
 		value, globalErr := state.Global(name)
 		if globalErr != nil {
 			t.Fatal(globalErr)
@@ -64,8 +83,10 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	}
 	assertTestValues(t, results, Bool(true), Number(42))
 
-	oldPCall, _ := state.Global("pcall")
-	oldXPCall, _ := state.Global("xpcall")
+	oldFunctions := make(map[string]Value, len(baseFunctions))
+	for _, name := range baseFunctions {
+		oldFunctions[name], _ = state.Global(name)
+	}
 	if err := state.SetGlobal("pcall", Number(1)); err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +96,15 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	if err := state.OpenBase(); err != nil {
 		t.Fatal(err)
 	}
-	newPCall, _ := state.Global("pcall")
-	newXPCall, _ := state.Global("xpcall")
-	for name, pair := range map[string][2]Value{
-		"pcall":  {oldPCall, newPCall},
-		"xpcall": {oldXPCall, newXPCall},
-	} {
-		if pair[1].Kind() != FunctionKind {
-			t.Fatalf("reopened %s = %v; want function", name, pair[1])
+	for _, name := range baseFunctions {
+		current, getErr := state.Global(name)
+		if getErr != nil {
+			t.Fatal(getErr)
 		}
-		if same, applicable := pair[0].SameObject(pair[1]); !applicable || same {
+		if current.Kind() != FunctionKind {
+			t.Fatalf("reopened %s = %v; want function", name, current)
+		}
+		if same, applicable := oldFunctions[name].SameObject(current); !applicable || same {
 			t.Fatalf("reopened %s did not receive a fresh function", name)
 		}
 	}
@@ -507,6 +527,398 @@ return firstOK, first, secondOK, second
 	)
 }
 
+func TestBaseErrorPreservesObjectIdentityAndHonorsLuaLevels(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	marker, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("marker", marker.Value()); err != nil {
+		t.Fatal(err)
+	}
+	chunk := mustLoadString(t, state, "@base-error-level.lua", `local objectOK,object=pcall(function() error(marker) end)
+local function inner(level)
+	error("boom",level)
+end
+local function outer(level)
+	return pcall(inner,level)
+end
+local a,b=outer(1); local c,d=outer(2); local e,f=outer(3)
+return objectOK,object,a,b,c,d,e,f`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 8 {
+		t.Fatalf("result count = %d; want 8", len(results))
+	}
+	assertTestValue(t, results[0], Bool(false))
+	if same, applicable := results[1].SameObject(marker.Value()); !applicable || !same {
+		t.Fatal("error did not preserve the arbitrary error object")
+	}
+	assertTestValues(
+		t,
+		results[2:],
+		Bool(false),
+		state.String("base-error-level.lua:3: boom"),
+		Bool(false),
+		state.String("boom"),
+		Bool(false),
+		state.String("base-error-level.lua:6: boom"),
+	)
+}
+
+func TestBaseToStringCallsMetamethodWithCanonicalObjects(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	target, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receivedTarget := false
+	method, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		value, present := frame.Argument(0)
+		if present {
+			receivedTarget, _ = value.SameObject(target.Value())
+		}
+		return frame.ReturnValue(marker.Value())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := metatable.RawSetString("__tostring", method.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(target.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+	tostring, err := state.Global("tostring")
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(tostring, target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receivedTarget {
+		t.Fatal("__tostring did not receive the canonical target")
+	}
+	if len(results) != 1 {
+		t.Fatalf("result count = %d; want 1", len(results))
+	}
+	if same, applicable := results[0].SameObject(marker.Value()); !applicable || !same {
+		t.Fatal("tostring did not preserve the metamethod's arbitrary result")
+	}
+}
+
+func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	target, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := actual.RawSetString("__metatable", sentinel.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(target.Value(), actual); err != nil {
+		t.Fatal(err)
+	}
+
+	getmetatable, err := state.Global("getmetatable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(getmetatable, target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("getmetatable returned %d values; want 1", len(results))
+	}
+	if same, applicable := results[0].SameObject(sentinel.Value()); !applicable || !same {
+		t.Fatal("getmetatable did not preserve the protected sentinel")
+	}
+
+	setmetatable, err := state.Global("setmetatable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(setmetatable, target.Value(), Nil()); err == nil ||
+		err.Error() != "cannot change a protected metatable" {
+		t.Fatalf("protected setmetatable error = %v", err)
+	}
+	current, err := state.Metatable(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != actual {
+		t.Fatal("failed setmetatable changed the protected metatable")
+	}
+}
+
+// Lua 5.1 delegates decimal conversion to the platform strtod, whose handling
+// of embedded NUL and named non-finite values varies. Badger's decimal grammar
+// is deliberately byte-complete and deterministic. Explicit nondecimal bases
+// retain strtoul's C-string boundary for Lua 5.1 compatibility.
+func TestBaseToNumberUsesTheDeterministicDecimalGrammar(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@tonumber-grammar.lua",
+		`return tonumber("10\000junk",10),tonumber("10\000junk",2)`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Nil(), Number(2))
+}
+
+func TestWarmBaseLibraryCallsDoNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	testCases := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "scalar and raw operations",
+			source: `local a,eq,get,set,kind,choose,number,text=assert,rawequal,rawget,rawset,type,select,tonumber,tostring
+local t={1,2,3,x=4}
+return function()
+	local total=0
+	for i=1,100 do
+		a(true)
+		if eq(t,t) and kind(t)=="table" then total=total+1 end
+		total=total+get(t,1)+choose(2,0,2)+number("12")
+		set(t,"x",get(t,"x")+1)
+		if text(false)=="false" then total=total+1 end
+		if text(12.5)=="12.5" then total=total+1 end
+	end
+	return total
+end`,
+		},
+		{
+			name: "iteration and unpack",
+			source: `local t={1,2,3}
+local pairs,ipairs,unpack=pairs,ipairs,unpack
+return function()
+	local total=0
+	for repeatIndex=1,20 do
+		for _,value in pairs(t) do total=total+value end
+		for _,value in ipairs(t) do total=total+value end
+		local a,b,c=unpack(t)
+		total=total+a+b+c
+	end
+	return total
+end`,
+		},
+		{
+			name: "metatable access",
+			source: `local get,set,eq=getmetatable,setmetatable,rawequal
+local mt={}
+local t=set({},mt)
+return function()
+	local total=0
+	for i=1,100 do
+		if eq(get(t),mt) and eq(set(t,mt),t) then total=total+1 end
+	end
+	return total
+end`,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			chunk := mustLoadString(t, state, "@base-allocation.lua", test.source)
+			results, err := state.Call(chunk.Value())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(results) != 1 {
+				t.Fatalf("loader produced %d results; want 1", len(results))
+			}
+			body := results[0]
+			var destination [1]Value
+			for index := 0; index < 64; index++ {
+				if _, err := state.CallInto(body, nil, destination[:]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			allocations := testing.AllocsPerRun(64, func() {
+				if _, err := state.CallInto(body, nil, destination[:]); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if allocations != 0 {
+				t.Fatalf("warm calls allocated %v times per run", allocations)
+			}
+		})
+	}
+}
+
+func TestBaseLibraryCasesMatchLua51(t *testing.T) {
+	runLua51Cases(t, baseLibraryLua51Cases)
+}
+
+var baseLibraryLua51Cases = []lua51Case{
+	{
+		name:   "assert_returns_every_argument",
+		source: `local a,b,c=assert("yes",nil,3); return a,b,c,select("#",assert(true,nil,3))`,
+		want:   "ok 'yes' nil 3 3",
+	},
+	{
+		name:   "assert_default_and_numeric_messages",
+		source: `local a,b=pcall(assert,false); local c,d=pcall(assert,false,23); return a,b,c,d`,
+		want:   "ok false 'assertion failed!' false '23'",
+	},
+	{
+		name:   "assert_formats_message_through_c_string_boundary",
+		source: `local ok,message=pcall(assert,false,"a\000b"); return ok,message`,
+		want:   "ok false 'a'",
+	},
+	{
+		name:   "error_preserves_values_and_level_zero_text",
+		source: `local marker={}; local a,b=pcall(error,marker); local c,d=pcall(error,"plain",0); return a,rawequal(b,marker),c,d`,
+		want:   "ok false true false 'plain'",
+	},
+	{
+		name:   "error_without_a_value_raises_nil",
+		source: `local count=select("#",pcall(error)); local ok,value=pcall(error); return count,ok,value`,
+		want:   "ok 2 false nil",
+	},
+	{
+		name: "error_levels",
+		source: `local function inner(level) error("boom",level) end
+local function outer(level) return pcall(inner,level) end
+local a,b=outer(1); local c,d=outer(2); local e,f=outer(3)
+return a,b,c,d,e,f`,
+		want: "ok false 'case:1: boom' false 'boom' false 'case:2: boom'",
+	},
+	{
+		name:   "metatable_install_remove_and_identity",
+		source: `local mt={tag=1}; local t=setmetatable({},mt); return rawequal(getmetatable(t),mt),rawequal(setmetatable(t,nil),t),getmetatable(t)`,
+		want:   "ok true true nil",
+	},
+	{
+		name:   "protected_metatable",
+		source: `local mt={__metatable="sealed"}; local t=setmetatable({},mt); local ok,e=pcall(setmetatable,t,{}); return getmetatable(t),ok,e`,
+		want:   "ok 'sealed' false 'cannot change a protected metatable'",
+	},
+	{
+		name:   "rawequal_ignores_equal_metamethod",
+		source: `local mt={__eq=function() return true end}; local a=setmetatable({},mt); local b=setmetatable({},mt); return a==b,rawequal(a,b),rawequal(a,a),rawequal(1,"1"),rawequal(0,-0)`,
+		want:   "ok true false true false true",
+	},
+	{
+		name:   "rawget_rawset_ignore_metamethods",
+		source: `local mt={__index=function() return 99 end,__newindex=function() error("used") end}; local t=setmetatable({},mt); local same=rawset(t,"x",7); return rawequal(same,t),rawget(t,"x"),rawget(t,"missing"),t.missing`,
+		want:   "ok true 7 nil 99",
+	},
+	{
+		name:   "rawset_rejects_nil_and_nan_keys",
+		source: `local a,b=pcall(rawset,{},nil,1); local c,d=pcall(rawset,{},0/0,1); return a,b,c,d`,
+		want:   "ok false 'table index is nil' false 'table index is NaN'",
+	},
+	{
+		name:   "type_names_every_available_lua_kind",
+		source: `return type(nil),type(false),type(1),type("x"),type({}),type(function() end),type(coroutine.create(function() end))`,
+		want:   "ok 'nil' 'boolean' 'number' 'string' 'table' 'function' 'thread'",
+	},
+	{
+		name:   "next_walks_array_and_reports_end",
+		source: `local t={10,20}; local k1,v1=next(t); local k2,v2=next(t,k1); local k3=next(t,k2); return k1,v1,k2,v2,k3`,
+		want:   "ok 1 10 2 20 nil",
+	},
+	{
+		name:   "next_rejects_unknown_continuation",
+		source: `local ok,e=pcall(next,{[1]=1},2); return ok,e`,
+		want:   "ok false 'invalid key to 'next''",
+	},
+	{
+		name:   "pairs_captures_next_and_ignores_pairs_metamethod",
+		source: `local hit=false; local t=setmetatable({a=1,b=2},{__pairs=function() hit=true end}); local f,s,k=pairs(t); local sum,count=0,0; for _,v in f,s,k do sum=sum+v; count=count+1 end; return rawequal(f,next),rawequal(s,t),k,sum,count,hit`,
+		want:   "ok false true nil 3 2 false",
+	},
+	{
+		name:   "pairs_iterator_is_private_and_ignores_reassigned_next",
+		source: `next=function() error("replacement used") end; local t={4,5}; local f,s,k=pairs(t); local sum=0; for _,v in f,s,k do sum=sum+v end; return rawequal(f,next),sum`,
+		want:   "ok false 9",
+	},
+	{
+		name:   "ipairs_is_raw_and_stops_at_first_hole",
+		source: `local t=setmetatable({10,20,nil,40},{__index=function() return 99 end}); local f,s,k=ipairs(t); local sum,count=0,0; for _,v in f,s,k do sum=sum+v; count=count+1 end; return rawequal(s,t),k,sum,count`,
+		want:   "ok true 0 30 2",
+	},
+	{
+		name:   "select_counts_and_slices_arguments",
+		source: `local n=select("#",1,nil,3); local weird=select("#anything",1,2); local a,b=select(2,"a","b","c"); local c,d=select(-2,"a","b","c"); return n,weird,a,b,c,d,select(99,1,2)`,
+		want:   "ok 3 2 'b' 'c' 'b' 'c'",
+	},
+	{
+		name:   "select_rejects_zero_and_too_negative_indexes",
+		source: `local a,b=pcall(select,0,1,2); local c,d=pcall(select,-4,1,2); return a,b,c,d`,
+		want:   "ok false 'bad argument #1 to '?' (index out of range)' false 'bad argument #1 to '?' (index out of range)'",
+	},
+	{
+		name:   "unpack_preserves_holes_and_empty_ranges",
+		source: `local t={[1]="a",[3]="c"}; local a,b,c=unpack(t,1,3); return select("#",unpack(t,1,3)),a,b,c,select("#",unpack(t,4,2))`,
+		want:   "ok 3 'a' nil 'c' 0",
+	},
+	{
+		name:   "unpack_honors_explicit_bounds",
+		source: `return unpack({10,20,30},2,2),select("#",unpack({},1,0))`,
+		want:   "ok 20 0",
+	},
+	{
+		name:   "tonumber_standard_conversion",
+		source: `return tonumber(12),tonumber("  -12.5 "),tonumber("0x10"),tonumber("1x"),tonumber(true),tonumber("bad")`,
+		want:   "ok 12 -12.5 16 nil nil nil",
+	},
+	{
+		name:   "tonumber_explicit_bases",
+		source: `return tonumber("101",2),tonumber("  +ff ",16),tonumber("0xff",16),tonumber("z",36),tonumber("12",8),tonumber("2",2)`,
+		want:   "ok 5 255 255 35 10 nil",
+	},
+	{
+		name:   "tonumber_base_validation_order",
+		source: `local a,b=pcall(tonumber,{},1); local c,d=pcall(tonumber,"10",1); return a,b,c,d`,
+		want:   "ok false 'bad argument #1 to '?' (string expected, got table)' false 'bad argument #2 to '?' (base out of range)'",
+	},
+	{
+		name:   "tostring_primitives_and_reference_kinds",
+		source: `local t={}; local f=function() end; return tostring(nil),tostring(false),tostring(12.5),tostring("x"),type(tostring(t)),type(tostring(f)),tostring(12.5)=="12.5"`,
+		want:   "ok 'nil' 'false' '12.5' 'x' 'string' 'string' true",
+	},
+	{
+		name:   "tostring_returns_arbitrary_metamethod_result",
+		source: `local marker={}; local target=setmetatable({},{__tostring=function(self) return marker end}); return rawequal(tostring(target),marker)`,
+		want:   "ok true",
+	},
+}
+
 func newStateWithBase(t testing.TB, options Options) *State {
 	t.Helper()
 	state, err := New(options)
@@ -561,8 +973,6 @@ func runLua51Case(t *testing.T, source string) string {
 	if err := state.OpenString(); err != nil {
 		t.Fatal(err)
 	}
-	installTestPrelude(t, state)
-
 	chunk, err := state.LoadString("=case", source)
 	if err != nil {
 		return "syntax " + formatLua51Text(err.Error())
@@ -640,10 +1050,12 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	cases := make(
 		[]lua51Case,
 		0,
-		len(mathLibraryLua51Cases)+
+		len(baseLibraryLua51Cases)+
+			len(mathLibraryLua51Cases)+
 			len(tableLibraryLua51Cases)+
 			len(stringLibraryLua51Cases),
 	)
+	cases = append(cases, baseLibraryLua51Cases...)
 	cases = append(cases, mathLibraryLua51Cases...)
 	cases = append(cases, tableLibraryLua51Cases...)
 	cases = append(cases, stringLibraryLua51Cases...)
@@ -751,129 +1163,4 @@ func quoteLuaString(text string) string {
 	}
 	quoted.WriteByte('"')
 	return quoted.String()
-}
-
-// The differential cases need a few base-library primitives that the base
-// library does not implement yet: metamethod access and installation,
-// multiple-result counting, type naming, and Lua-level error raising.
-// installTestPrelude supplies exactly those six, and only for tests. They are
-// deliberate throwaway scaffolding
-// with no claim to being the eventual base-library implementations; delete
-// them once library_base.go provides the real ones.
-func installTestPrelude(t *testing.T, state *State) {
-	t.Helper()
-	prelude := [...]struct {
-		name  string
-		entry NativeFunc
-	}{
-		{name: "error", entry: testPreludeError},
-		{name: "getmetatable", entry: testPreludeGetMetatable},
-		{name: "select", entry: testPreludeSelect},
-		{name: "setmetatable", entry: testPreludeSetMetatable},
-		{name: "tostring", entry: testPreludeToString},
-		{name: "type", entry: testPreludeType},
-	}
-	for _, definition := range prelude {
-		function, err := state.NewNativeFunction(definition.entry)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := state.SetGlobal(
-			definition.name,
-			function.Value(),
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func testPreludeGetMetatable(frame Frame) Outcome {
-	value, present := frame.Argument(0)
-	if !present {
-		return baseArgumentError(frame, 0, "value expected")
-	}
-	metatable, err := frame.State().Metatable(value)
-	if err != nil {
-		return frame.RaiseString(err.Error())
-	}
-	if metatable == nil {
-		return frame.ReturnNil()
-	}
-	return frame.ReturnValue(metatable.Value())
-}
-
-func testPreludeError(frame Frame) Outcome {
-	value, present := frame.argument(0)
-	if !present {
-		value = nilSlot
-	}
-	level := 1
-	if _, hasLevel := frame.argument(1); hasLevel {
-		if supplied, ok := frame.integerArgument(1); ok {
-			level = supplied
-		}
-	}
-	if value.kind() == StringKind && level > 0 {
-		return libraryError(frame, "%s", (*luaString)(value.ref).text)
-	}
-	return frame.Raise(value.owningValue())
-}
-
-func testPreludeSelect(frame Frame) Outcome {
-	count := frame.ArgumentCount()
-	if text, ok := frame.String(0); ok && text == "#" {
-		return frame.ReturnNumber(float64(count - 1))
-	}
-	index, ok := frame.integerArgument(0)
-	if !ok || index < 1 {
-		return baseArgumentError(frame, 0, "index out of range")
-	}
-	call := frame.activation()
-	base := int(call.base) + index
-	if base > frame.thread.top {
-		base = frame.thread.top
-	}
-	return frame.returnCompactValues(
-		[2]slot{},
-		0,
-		frame.thread.values[base:frame.thread.top],
-	)
-}
-
-func testPreludeSetMetatable(frame Frame) Outcome {
-	target, ok := frame.Table(0)
-	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
-	}
-	var metatable *Table
-	if value, present := frame.argument(1); present &&
-		value.kind() != NilKind {
-		metatable, ok = frame.Table(1)
-		if !ok {
-			return baseArgumentTypeError(frame, 1, "table")
-		}
-	}
-	if err := frame.State().SetMetatable(
-		target.Value(),
-		metatable,
-	); err != nil {
-		return frame.RaiseString(err.Error())
-	}
-	return frame.returnCompactValues([2]slot{slotFromValue(target.Value())}, 1, nil)
-}
-
-func testPreludeToString(frame Frame) Outcome {
-	value, present := frame.argument(0)
-	if !present {
-		return baseArgumentError(frame, 0, "value expected")
-	}
-	return frame.ReturnString(value.owningValue().String())
-}
-
-func testPreludeType(frame Frame) Outcome {
-	kind := frame.Kind(0)
-	if kind == InvalidKind {
-		return baseArgumentError(frame, 0, "value expected")
-	}
-	return frame.ReturnString(kind.String())
 }

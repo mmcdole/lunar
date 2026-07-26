@@ -229,9 +229,7 @@ func (frame Frame) CaptureCount() int {
 // Capture returns captured Value index. An out-of-range index is a
 // programming error.
 func (frame Frame) Capture(index int) Value {
-	call := frame.activation()
-	frame.checkCaptureIndex(call.function, index)
-	return call.function.nativeBodyUnchecked().captures[index].owningValue()
+	return frame.nativeCapture(index).owningValue()
 }
 
 // SetCapture replaces captured Value index.
@@ -304,6 +302,17 @@ func (frame Frame) ReturnValues(values ...Value) Outcome {
 	return frame.sealReturn(outputCount)
 }
 
+// returnArguments returns every supplied argument without materializing it.
+func (frame Frame) returnArguments() Outcome {
+	call := frame.activation()
+	base := int(call.base)
+	return frame.returnCompactValues(
+		[2]slot{},
+		0,
+		frame.thread.values[base:frame.thread.top],
+	)
+}
+
 // ReturnNil completes the callback with one Lua nil result.
 func (frame Frame) ReturnNil() Outcome {
 	call := frame.activation()
@@ -337,6 +346,25 @@ func (frame Frame) ReturnString(value string) Outcome {
 		writeSlot(
 			&frame.thread.values[int(call.resultBase)],
 			stringSlot(frame.thread.owner.strings.make(value)),
+		)
+		frame.thread.fillNil(
+			int(call.resultBase)+1,
+			int(call.resultBase)+outputCount,
+		)
+	}
+	return frame.sealReturn(outputCount)
+}
+
+func (frame Frame) returnStringBytes(value []byte) Outcome {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	if outputCount != 0 {
+		writeSlot(
+			&frame.thread.values[int(call.resultBase)],
+			stringSlot(frame.thread.owner.strings.makeBytes(value)),
 		)
 		frame.thread.fillNil(
 			int(call.resultBase)+1,
@@ -586,6 +614,12 @@ func (frame Frame) checkCaptureIndex(function *Function, index int) {
 		index >= len(function.nativeBodyUnchecked().captures) {
 		panic("lua: native capture index out of range")
 	}
+}
+
+func (frame Frame) nativeCapture(index int) slot {
+	call := frame.activation()
+	frame.checkCaptureIndex(call.function, index)
+	return call.function.nativeBodyUnchecked().captures[index]
 }
 
 func (frame Frame) returnOne(call *activation, value slot) Outcome {
