@@ -421,11 +421,81 @@ no object bytes and did not improve point access or combined length/capacity
 reads, so the clearer two-field descriptor remains canonical. The loaded
 graph itself is 61.595 MiB after removing non-graph allocations from the exact
 profile, about 3.73 MiB above the measured PUC Lua 5.1 graph. The `169b37d`
-predecessor remains leaner at 44.27 MiB. Shared recurring record layouts, if
-justified independently, are the next table-memory question; the descriptor
-does not pre-commit to them.
+predecessor remains leaner at 44.27 MiB. Shared recurring record storage was
+evaluated next, but the descriptor did not pre-commit the runtime to retaining
+it.
 
-### 7. Re-profile execution
+### 7. Shared record layouts — experiment rejected
+
+An automatic shared-layout experiment separated recurring short string keys
+from each table's compact value vector. On the large decoded graph it reduced
+the exact forced-GC heap from 61.73 to 39.48 MiB. Repeated record lookup also
+became cheaper. Those results proved that shared key metadata can matter, but
+they did not prove that a classless Lua table should speculate on layouts.
+
+The general counterexample was common-prefix, unique-tail construction:
+
+```lua
+{ kind = "room", room_123 = value }
+{ kind = "room", room_456 = value }
+```
+
+Once `kind` became recurring, each later table briefly adopted its one-field
+layout, missed the unique extension, and promoted back to the generic store.
+Compared with the compact generic parent, four-, eight-, and sixteen-field
+construction became about 54%, 40%, and 46% slower. Allocations rose from two
+to three, four, and five, while charged bytes rose from 240/400/784 to
+304/688/1,520. Completely unique first keys were much closer to neutral, so a
+benchmark containing only those keys would have concealed the defect.
+
+Shared property layouts are established designs when an object has a class,
+prototype, type, or allocation template that scopes the metadata. Ordinary
+PUC Lua, LuaJIT, and Luau tables instead retain their own key/value nodes.
+Without such identity, Badger needed probabilistic admission, bounded
+eviction, transition learning, promotion, and collision policy merely to
+guess whether an ordinary table was record-like. That machinery failed the
+complexity and non-record neutrality bar.
+
+The experiment therefore remains off the production branch. A future
+compiler allocation-site or explicit object design may revisit shared storage
+only if it can select the final representation without speculative
+conversion. CBOR memory alone is not sufficient evidence.
+
+### 8. Exact table value replacement — complete
+
+A CPU profile of allocation-free table updates found Lua-value equality in
+the mutation path. Existing fields called `rawSlotEqual` before replacement,
+even though assignment needs the latest representation rather than an
+equality decision. This was both unnecessary work for changing numbers and a
+Lua 5.1 error: computed `+0` and `-0` compare equal, but the stored sign is
+observable through division.
+
+Table updates now skip only an exact pointer-and-bits match. Otherwise they
+use the existing barrier-aware slot write. The one small helper inlines into
+array, record, public string, integer, and executor mutation paths. It adds no
+state, cache, allocation, or alternate object representation.
+
+An external embedding runner kept the harness and binary surface identical
+while changing only the imported runtime. Eight alternating samples of 100
+numeric string-field updates per Lua call improved from 2,113.4 to
+1,975.1 ns/call, or 6.55%. The corresponding read-only loop was neutral
+(2,070.1 versus 2,079.3 ns/call), and both remained allocation-free.
+Existing public set-plus-get benchmarks improved by 14.58% for an integer
+field and 6.33% for a string field. Twelve unrelated string-map hit and churn
+cells stayed within 3.4% with no allocation movement.
+
+Five alternating fresh-process large-CBOR pairs were likewise neutral:
+
+| Mode | Elapsed | Allocated bytes | Mallocs |
+| --- | ---: | ---: | ---: |
+| Load | 0.03% faster | unchanged | unchanged |
+| Save | 0.16% faster | unchanged | unchanged |
+
+Tests cover the latest signed-zero representation through public array,
+record, and string setters as well as both executor table lanes. Full, race,
+checkptr, and vet gates pass.
+
+### 9. Re-profile execution
 
 Only after storage churn falls do CPU profiles decide the next executor work.
 Likely candidates are direct constant-string and integer table access, native
