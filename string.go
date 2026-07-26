@@ -205,17 +205,6 @@ func (value stringRef) valid() bool {
 	return value.ref != nil
 }
 
-func (value stringRef) text() string {
-	if !value.valid() || Kind(value.bits&0xff) != StringKind {
-		panic("lua: invalid string reference")
-	}
-	return value.textUnchecked()
-}
-
-func (value stringRef) textUnchecked() string {
-	return stringText(value.ref, value.bits)
-}
-
 func stringText(reference unsafe.Pointer, bits uint64) string {
 	length := int(bits >> stringLengthShift & stringLengthSentinel)
 	if length == stringLengthSentinel {
@@ -225,17 +214,6 @@ func stringText(reference unsafe.Pointer, bits uint64) string {
 		return ""
 	}
 	return unsafe.String((*byte)(reference), length)
-}
-
-func (value stringRef) len() int {
-	if !value.valid() || Kind(value.bits&0xff) != StringKind {
-		panic("lua: invalid string reference")
-	}
-	return value.lenUnchecked()
-}
-
-func (value stringRef) lenUnchecked() int {
-	return stringLength(value.ref, value.bits)
 }
 
 func stringLength(reference unsafe.Pointer, bits uint64) int {

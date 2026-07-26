@@ -191,7 +191,8 @@ func TestFlatStringLengthBoundarySurvivesGC(t *testing.T) {
 				unsafe.Pointer(unsafe.StringData(text)); flat != test.wantFlat {
 				t.Fatalf("flat storage = %v, want %v", flat, test.wantFlat)
 			}
-			if reference.len() != len(text) || reference.text() != text {
+			if stringLength(reference.ref, reference.bits) != len(text) ||
+				stringText(reference.ref, reference.bits) != text {
 				t.Fatal("string boundary representation changed its contents")
 			}
 
@@ -201,7 +202,7 @@ func TestFlatStringLengthBoundarySurvivesGC(t *testing.T) {
 			for range 3 {
 				runtime.GC()
 			}
-			retained := reference.text()
+			retained := stringText(reference.ref, reference.bits)
 			if len(retained) != test.length ||
 				retained[0] != 'x' ||
 				retained[len(retained)-1] != 'x' {
