@@ -280,6 +280,167 @@ return "handled:" .. key
 	assertTestValues(t, destination[:], Number(41))
 }
 
+func TestFrameSetIndexAppliesLuaTableSemantics(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	direct, err := state.NewTable(0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := direct.RawSetString("existing", Number(1)); err != nil {
+		t.Fatal(err)
+	}
+
+	fallback, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chained, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainedMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chainedMetatable.RawSetString(
+		"__newindex",
+		fallback.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(chained.Value(), chainedMetatable); err != nil {
+		t.Fatal(err)
+	}
+
+	sink, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("setIndexSink", sink.Value()); err != nil {
+		t.Fatal(err)
+	}
+	handlerChunk := mustLoadString(t, state, "@frame-set-index.lua", `
+return function(_, key, value)
+	setIndexSink[key] = value + 1
+	return "discarded"
+end
+`)
+	handlerResults, err := state.Call(handlerChunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, ok := handlerResults[0].Function()
+	if !ok {
+		t.Fatalf("handler = %v; want Function", handlerResults[0])
+	}
+	computed, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	computedMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := computedMetatable.RawSetString(
+		"__newindex",
+		handler.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(computed.Value(), computedMetatable); err != nil {
+		t.Fatal(err)
+	}
+
+	var nestedError error
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		target, _ := frame.Argument(0)
+		key, _ := frame.Argument(1)
+		value, _ := frame.Argument(2)
+		nestedError = frame.SetIndex(target, key, value)
+		if nestedError != nil {
+			var failure *Error
+			if errors.As(nestedError, &failure) {
+				return frame.RaiseError(failure)
+			}
+			return frame.RaiseString(nestedError.Error())
+		}
+		if frame.ArgumentCount() != 3 {
+			return frame.RaiseString("SetIndex invalidated its Frame")
+		}
+		return frame.ReturnBool(true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	set := func(target *Table, key string, value Value) {
+		t.Helper()
+		results, callErr := state.Call(
+			host.Value(),
+			target.Value(),
+			state.String(key),
+			value,
+		)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		if nestedError != nil {
+			t.Fatalf("SetIndex error = %v", nestedError)
+		}
+		assertTestValues(t, results, Bool(true))
+	}
+
+	set(direct, "existing", Number(41))
+	assertTestValue(t, direct.RawGetString("existing"), Number(41))
+	set(direct, "new", Number(42))
+	assertTestValue(t, direct.RawGetString("new"), Number(42))
+	set(chained, "chained", Number(43))
+	assertTestValue(t, chained.RawGetString("chained"), Nil())
+	assertTestValue(t, fallback.RawGetString("chained"), Number(43))
+	set(computed, "computed", Number(44))
+	assertTestValue(t, computed.RawGetString("computed"), Nil())
+	assertTestValue(t, sink.RawGetString("computed"), Number(45))
+	set(direct, "existing", Nil())
+	assertTestValue(t, direct.RawGetString("existing"), Nil())
+
+	// Warm replacement takes the direct raw-hit path and allocates nothing.
+	set(direct, "warm", Number(0))
+	var destination [1]Value
+	arguments := []Value{
+		direct.Value(),
+		state.String("warm"),
+		Number(46),
+	}
+	for range 16 {
+		if _, err := state.CallInto(
+			host.Value(),
+			arguments,
+			destination[:],
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allocations := testing.AllocsPerRun(256, func() {
+		if _, err := state.CallInto(
+			host.Value(),
+			arguments,
+			destination[:],
+		); err != nil {
+			panic(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm raw SetIndex allocated %v times", allocations)
+	}
+	assertTestValue(t, direct.RawGetString("warm"), Number(46))
+}
+
 func TestFrameCallRejectsInputsAtomically(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

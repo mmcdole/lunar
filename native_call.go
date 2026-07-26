@@ -7,6 +7,28 @@ func (frame Frame) callCompactOne(
 	callable slot,
 	arguments []slot,
 ) (slot, *Error) {
+	return frame.callCompactFixed(callable, arguments, 1)
+}
+
+// callCompactNone invokes callable with compact arguments and discards every
+// result. It is the internal lua_call(..., 0) seam for library callbacks and
+// metamethods.
+func (frame Frame) callCompactNone(
+	callable slot,
+	arguments []slot,
+) *Error {
+	_, failure := frame.callCompactFixed(callable, arguments, 0)
+	return failure
+}
+
+func (frame Frame) callCompactFixed(
+	callable slot,
+	arguments []slot,
+	wantedResults int,
+) (slot, *Error) {
+	if wantedResults < 0 || wantedResults > 1 {
+		panic("lua: compact fixed call requires zero or one result")
+	}
 	thread := frame.thread
 	checkpoint := captureExecutionCheckpoint(frame)
 	restored := false
@@ -20,7 +42,7 @@ func (frame Frame) callCompactOne(
 		thread,
 		callable,
 		callArguments{compact: arguments},
-		1,
+		wantedResults,
 	)
 	if failure == nil {
 		result := driveExecution(thread, checkpoint.frameDepth)
@@ -30,7 +52,13 @@ func (frame Frame) callCompactOne(
 				len(thread.continuations) != checkpoint.continuationDepth {
 				panic("lua: compact call returned invalid execution state")
 			}
-			value := thread.values[resultBase]
+			value := nilSlot
+			if wantedResults == 1 {
+				if thread.top <= resultBase {
+					panic("lua: compact call omitted its adjusted result")
+				}
+				value = thread.values[resultBase]
+			}
 			checkpoint.restore(thread, true)
 			restored = true
 			return value, nil
@@ -208,6 +236,103 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 		target = handler
 	}
 	return nilSlot, libraryFailure(frame, "loop in gettable")
+}
+
+// SetIndex applies an ordinary Lua table assignment from a native callback.
+//
+// An existing table field is replaced directly. Otherwise SetIndex follows
+// the bounded __newindex chain and may synchronously invoke Lua. Invalid or
+// foreign Values are rejected before Lua executes. Lua failures are returned
+// as *Error; a yield across this native-call boundary becomes Lua 5.1's
+// illegal-yield failure. The borrowed Frame remains valid after SetIndex
+// returns.
+func (frame Frame) SetIndex(target, key, value Value) error {
+	frame.activation()
+	if err := frame.thread.owner.accept(target); err != nil {
+		return err
+	}
+	if err := frame.thread.owner.accept(key); err != nil {
+		return err
+	}
+	if err := frame.thread.owner.accept(value); err != nil {
+		return err
+	}
+	if failure := frame.setIndexCompact(
+		slotFromValue(target),
+		slotFromValue(key),
+		slotFromValue(value),
+	); failure != nil {
+		return failure
+	}
+	return nil
+}
+
+func (frame Frame) setIndexCompact(
+	target slot,
+	key slot,
+	value slot,
+) *Error {
+	for range maxTableMetamethodChain {
+		var handler slot
+		var found bool
+		if target.kind() == TableKind {
+			table := (*Table)(target.ref)
+			normalized, index, arrayKey, hash, status :=
+				normalizeTableKey(key)
+			switch status {
+			case tableKeyNil:
+				return libraryFailure(frame, "table index is nil")
+			case tableKeyNaN:
+				return libraryFailure(frame, "table index is NaN")
+			case tableKeyValid:
+			default:
+				panic("lua: invalid normalized table key status")
+			}
+			if _, location, present := table.resolveNormalizedSlot(
+				normalized,
+				index,
+				arrayKey,
+				hash,
+			); present {
+				table.replaceResolvedSlot(location, value)
+				return nil
+			}
+			handler, found = metamethodSlot(
+				frame.thread,
+				target,
+				metaNewIndex,
+			)
+			if !found {
+				table.rawSetNormalizedSlot(
+					normalized,
+					index,
+					arrayKey,
+					hash,
+					value,
+				)
+				return nil
+			}
+		} else {
+			handler, found = metamethodSlot(
+				frame.thread,
+				target,
+				metaNewIndex,
+			)
+			if !found {
+				return libraryFailure(
+					frame,
+					"attempt to index a %s value",
+					target.kind(),
+				)
+			}
+		}
+		if _, callable := functionSlot(handler); callable {
+			arguments := [3]slot{target, key, value}
+			return frame.callCompactNone(handler, arguments[:])
+		}
+		target = handler
+	}
+	return libraryFailure(frame, "loop in settable")
 }
 
 // Call invokes callable synchronously and in protected mode on the Thread
