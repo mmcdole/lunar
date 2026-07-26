@@ -79,7 +79,10 @@ func (state *State) OpenIO() error {
 		len(ioLibraryFunctions)+3,
 	)
 
-	closeFunction, err := state.newIOFunction(environment, ioClose)
+	closeFunction, err := state.newIOFunction(
+		environment,
+		fileOwnedClose,
+	)
 	if err != nil {
 		return err
 	}
@@ -306,7 +309,7 @@ func ioType(frame Frame) Outcome {
 		}
 		return frame.ReturnNil()
 	}
-	if !isManagedUserDataClass(data, &fileResourceClass) {
+	if !isFileUserData(frame.thread.state, data) {
 		return frame.ReturnNil()
 	}
 	lease, open := acquireManagedResource(data)
@@ -418,10 +421,21 @@ func ioClose(frame Frame) Outcome {
 			present = true
 		}
 	}
-	if !present || !isManagedUserDataClass(data, &fileResourceClass) {
+	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
+	return closeFileUserData(frame, data)
+}
 
+func fileOwnedClose(frame Frame) Outcome {
+	data, present := frame.UserData(0)
+	if !present || !isFileUserData(frame.thread.state, data) {
+		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+	}
+	return closeFileUserData(frame, data)
+}
+
+func closeFileUserData(frame Frame, data *UserData) Outcome {
 	lease, open := acquireManagedResource(data)
 	if !open {
 		return libraryError(frame, "attempt to use a closed file")
@@ -462,7 +476,7 @@ func fileNoClose(frame Frame) Outcome {
 
 func fileCollect(frame Frame) Outcome {
 	data, present := frame.UserData(0)
-	if !present || !isManagedUserDataClass(data, &fileResourceClass) {
+	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	lease, open := acquireManagedResource(data)
@@ -479,7 +493,7 @@ func fileCollect(frame Frame) Outcome {
 
 func fileToString(frame Frame) Outcome {
 	data, present := frame.UserData(0)
-	if !present || !isManagedUserDataClass(data, &fileResourceClass) {
+	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	lease, open := acquireManagedResource(data)
@@ -539,7 +553,7 @@ func ioDefaultFile(
 			if argument.kind() == UserDataKind {
 				data = (*UserData)(argument.ref)
 			}
-			if !isManagedUserDataClass(data, &fileResourceClass) {
+			if !isFileUserData(frame.thread.state, data) {
 				return baseArgumentTypeError(
 					frame,
 					0,
@@ -562,6 +576,20 @@ func ioDefaultFile(
 	}
 	current, _ := frame.Environment().rawIntSlot(defaultIndex)
 	return frame.returnOne(frame.activation(), current)
+}
+
+func isFileUserData(state *State, data *UserData) bool {
+	if state == nil ||
+		state.registry == nil ||
+		!isManagedUserDataClass(data, &fileResourceClass) {
+		return false
+	}
+	current, found := state.registry.rawStringSlot(
+		luaFileHandleRegistryKey,
+	)
+	return found &&
+		current.kind() == TableKind &&
+		data.metatable == (*Table)(current.ref)
 }
 
 func ioFailureResult(

@@ -277,6 +277,85 @@ return io.type(forged_file),ok,message
 	}
 	results = runIOChunk(t, state, `return io.type(io.stdin)`)
 	assertTestValues(t, results, state.String("file"))
+
+	replacement, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.registry.RawSetString(
+		luaFileHandleRegistryKey,
+		replacement.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	results = runIOChunk(t, state, `return io.type(io.stdin)`)
+	assertTestValues(t, results, Nil())
+	if err := state.registry.RawSetString(
+		luaFileHandleRegistryKey,
+		metatable.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	results = runIOChunk(t, state, `return io.type(io.stdin)`)
+	assertTestValues(t, results, state.String("file"))
+}
+
+func TestIOOwnedCloseEnvironmentNeverUsesTheDefaultOutput(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	path := filepath.Join(t.TempDir(), "owned-close")
+
+	results := runIOChunk(t, state, `
+return io.open(`+luaTestQuote(path)+`,"w")
+`)
+	data, ok := results[0].UserData()
+	if !ok {
+		t.Fatalf("io.open result = %v", results[0])
+	}
+	environment, err := state.UserDataEnvironment(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeValue := environment.RawGetString("__close")
+	if closeValue.Kind() != FunctionKind {
+		t.Fatalf("regular file __close = %v", closeValue)
+	}
+	if err := state.SetGlobal("owned_close", closeValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("owned_file", data.Value()); err != nil {
+		t.Fatal(err)
+	}
+
+	results = runIOChunk(t, state, `
+local absentOK,absentError=pcall(owned_close)
+local beforeFile=io.type(owned_file)
+local beforeOutput=io.type(io.stdout)
+local closed=owned_close(owned_file)
+return absentOK,absentError,beforeFile,beforeOutput,closed,
+	io.type(owned_file),io.type(io.stdout)
+`)
+	assertTestValues(
+		t,
+		[]Value{
+			results[0],
+			results[2],
+			results[3],
+			results[4],
+			results[5],
+			results[6],
+		},
+		Bool(false),
+		state.String("file"),
+		state.String("file"),
+		Bool(true),
+		state.String("closed file"),
+		state.String("file"),
+	)
+	message, _ := results[1].AsString()
+	if !strings.Contains(message, "FILE* expected, got no value") {
+		t.Fatalf("argumentless owned __close error = %q", message)
+	}
 }
 
 func TestIOOpenModesAndFailureTuples(t *testing.T) {
