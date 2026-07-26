@@ -674,6 +674,24 @@ func (table *Table) growArray(length int) {
 	for index := oldLength; index < length; index++ {
 		table.array[index] = nilSlot
 	}
+	if table.store.integerKeys == 0 {
+		return
+	}
+	// Normal growth covers at most maxDenseArrayGap keys, and the rawSetList
+	// bulk path reaches here only when no integer hash keys exist. Probe the
+	// newly covered keys rather than scanning an unrelated record store.
+	for key := oldLength + 1; key <= length; key++ {
+		number := float64(key)
+		keySlot := numberSlot(number)
+		index, found := table.store.find(keySlot, hashNumber(number))
+		if !found {
+			continue
+		}
+		value := table.store.entries[index].value
+		table.store.deleteAt(index)
+		writeSlot(&table.array[key-1], value)
+		table.arrayUsed++
+	}
 }
 
 func (table *Table) promoteArrayTail() {

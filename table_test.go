@@ -176,6 +176,59 @@ func TestTableMovesExistingIntegerFromHashToArray(t *testing.T) {
 	}
 }
 
+func TestTableArrayGrowthMigratesCoveredHashKeys(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table := newTable(state.runtime, 0, 0)
+
+	table.rawSetIntegerSlot(14, numberSlot(140))
+	for key := 1; key <= 10; key++ {
+		table.rawSetIntegerSlot(key, numberSlot(float64(key)))
+	}
+	if len(table.array) != 10 || table.store.integerKeys != 1 {
+		t.Fatalf(
+			"setup storage = array:%d hash integers:%d",
+			len(table.array),
+			table.store.integerKeys,
+		)
+	}
+
+	version := table.structuralVersion
+	table.rawSetIntegerSlot(18, numberSlot(180))
+	if len(table.array) != 18 {
+		t.Fatalf("array length = %d; want 18", len(table.array))
+	}
+	if value, found := table.rawIntSlot(14); !found ||
+		!rawSlotEqual(value, numberSlot(140)) {
+		t.Fatalf(
+			"covered key 14 = (%v, %v); want (140, true)",
+			value.owningValue(),
+			found,
+		)
+	}
+	if table.store.integerKeys != 0 {
+		t.Fatalf(
+			"covered integer remained in hash: %d",
+			table.store.integerKeys,
+		)
+	}
+	if table.arrayUsed != 12 {
+		t.Fatalf("arrayUsed = %d; want 12", table.arrayUsed)
+	}
+	// Inserting key 18 is the only logical structural change. Moving key 14
+	// between private storage lanes must not create another generation.
+	if table.structuralVersion != version+1 {
+		t.Fatalf(
+			"structural version = %d; want %d",
+			table.structuralVersion,
+			version+1,
+		)
+	}
+}
+
 func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
