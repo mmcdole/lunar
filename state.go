@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -57,6 +58,15 @@ type Options struct {
 	// os.Stderr. Diagnostic consumers share one buffering endpoint. Lua
 	// libraries borrow the stream and never close it.
 	Stderr io.Writer
+	// Location is the State's local timezone for operating-system library
+	// calendar operations. Nil snapshots time.Local when New is called.
+	// Later process-global timezone changes do not affect the State.
+	Location *time.Location
+	// Now supplies wall-clock time to Lua libraries. Nil selects time.Now.
+	// The callback runs under the State's single-executor contract and must
+	// not reenter that State. If shared by multiple States, it may be called
+	// concurrently and must provide its own synchronization.
+	Now func() time.Time
 	// MaxValues limits values held by ordinary execution. Zero selects 65,536
 	// values. Exceeding the limit raises an ordinary Lua error classified as
 	// ResourceError. While an xpcall error handler runs, the runtime provides
@@ -128,6 +138,8 @@ type State struct {
 	options         Options
 	limits          resourceLimits
 	streams         *standardStreams
+	location        *time.Location
+	now             func() time.Time
 	active          *Thread
 	main            *Thread
 	registry        *Table
@@ -162,6 +174,12 @@ func New(options Options) (*State, error) {
 	if options.Stderr == nil {
 		options.Stderr = os.Stderr
 	}
+	if options.Location == nil {
+		options.Location = time.Local
+	}
+	if options.Now == nil {
+		options.Now = time.Now
+	}
 
 	rt := &runtimeState{}
 	state := &State{
@@ -172,6 +190,8 @@ func New(options Options) (*State, error) {
 			options.Stdout,
 			options.Stderr,
 		),
+		location: options.Location,
+		now:      options.Now,
 		limits: resourceLimits{
 			values: options.MaxValues,
 			frames: options.MaxFrames,
@@ -216,8 +236,10 @@ func (state *State) Close() error {
 	var streamErr error
 	if state.streams != nil {
 		streamErr = state.streams.release()
-		state.streams = nil
 	}
+	state.streams = nil
+	state.location = nil
+	state.now = nil
 	var resourceErr error
 	if state.resources != nil {
 		resourceErr = state.resources.releaseAll()
@@ -238,6 +260,8 @@ func (state *State) Close() error {
 	state.options.Stdin = nil
 	state.options.Stdout = nil
 	state.options.Stderr = nil
+	state.options.Location = nil
+	state.options.Now = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
 	return errors.Join(streamErr, resourceErr)
 }
