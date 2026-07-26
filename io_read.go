@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultIOReadLimit = maxStringRepLength
+	defaultIOReadLimit = maximumConstructedStringBytes
 	smallIOReadBytes   = 512
 )
 

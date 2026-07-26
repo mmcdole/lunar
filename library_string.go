@@ -226,17 +226,11 @@ func stringRep(frame Frame) Outcome {
 	// Lua 5.1 relies on its allocator to reject an impossible result. This
 	// runtime has no string-size budget to consult, so the one case that
 	// cannot be attempted at all is reported rather than left to the host.
-	if count > maxStringRepLength/len(text) {
+	if count > maximumConstructedStringBytes/len(text) {
 		return libraryError(frame, "resulting string too large")
 	}
 	return frame.ReturnString(strings.Repeat(text, count))
 }
-
-// maxStringRepLength keeps string.rep from submitting an obviously hostile
-// allocation to the Go runtime. It is a local safety bound, not a general
-// State string budget; a cross-runtime output budget remains a separate
-// design decision.
-const maxStringRepLength = 1 << 30
 
 func stringByte(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)

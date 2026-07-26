@@ -6,11 +6,14 @@ import (
 )
 
 const (
-	shortStringLimit          = 64
-	stringCacheWays           = 4
-	stringSetsPerShard        = 8
-	stringProbationShardCount = 8
-	stringProtectedShardCount = 16
+	// maximumConstructedStringBytes rejects library operations that would ask
+	// the host allocator for an impractically large contiguous result.
+	maximumConstructedStringBytes = 1 << 30
+	shortStringLimit              = 64
+	stringCacheWays               = 4
+	stringSetsPerShard            = 8
+	stringProbationShardCount     = 8
+	stringProtectedShardCount     = 16
 )
 
 type luaString struct {
