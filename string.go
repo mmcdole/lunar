@@ -204,14 +204,18 @@ func (value stringRef) text() string {
 }
 
 func (value stringRef) textUnchecked() string {
-	length := int(value.bits >> stringLengthShift & stringLengthSentinel)
+	return stringText(value.ref, value.bits)
+}
+
+func stringText(reference unsafe.Pointer, bits uint64) string {
+	length := int(bits >> stringLengthShift & stringLengthSentinel)
 	if length == stringLengthSentinel {
-		return (*longString)(value.ref).text
+		return (*longString)(reference).text
 	}
 	if length == 0 {
 		return ""
 	}
-	return unsafe.String((*byte)(value.ref), length)
+	return unsafe.String((*byte)(reference), length)
 }
 
 func (value stringRef) len() int {
@@ -222,9 +226,13 @@ func (value stringRef) len() int {
 }
 
 func (value stringRef) lenUnchecked() int {
-	length := int(value.bits >> stringLengthShift & stringLengthSentinel)
+	return stringLength(value.ref, value.bits)
+}
+
+func stringLength(reference unsafe.Pointer, bits uint64) int {
+	length := int(bits >> stringLengthShift & stringLengthSentinel)
 	if length == stringLengthSentinel {
-		return len((*longString)(value.ref).text)
+		return len((*longString)(reference).text)
 	}
 	return length
 }
@@ -233,43 +241,38 @@ func (value stringRef) hash() stringHash {
 	if !value.valid() || Kind(value.bits&0xff) != StringKind {
 		panic("lua: invalid string reference")
 	}
+	return value.hashUnchecked()
+}
+
+func (value stringRef) hashUnchecked() stringHash {
 	return stringHash(value.bits >> stringHashShift)
 }
 
-func stringRefFromSlot(value slot) stringRef {
-	if value.kind() != StringKind {
-		panic("lua: compact value is not a string")
-	}
-	return stringRef{ref: value.ref, bits: value.bits}
-}
-
+// The slot accessors are internal trusted seams. Their callers have already
+// established StringKind; keeping validation out of these tiny operations
+// lets them inline into table lookup, concatenation, and the executor.
 func stringSlotText(value slot) string {
-	reference := stringRefFromSlot(value)
-	return reference.textUnchecked()
+	return stringText(value.ref, value.bits)
 }
 
 func stringSlotHash(value slot) uint64 {
-	reference := stringRefFromSlot(value)
-	return uint64(stringHash(reference.bits >> stringHashShift))
+	return uint64(stringHash(value.bits >> stringHashShift))
 }
 
 func stringSlotLen(value slot) int {
-	reference := stringRefFromSlot(value)
-	return reference.lenUnchecked()
+	return stringLength(value.ref, value.bits)
 }
 
 func stringSlotsEqual(left, right slot) bool {
 	if left.ref == right.ref && left.bits == right.bits {
 		return true
 	}
-	leftRef := stringRefFromSlot(left)
-	rightRef := stringRefFromSlot(right)
-	if stringHash(leftRef.bits>>stringHashShift) !=
-		stringHash(rightRef.bits>>stringHashShift) ||
-		leftRef.lenUnchecked() != rightRef.lenUnchecked() {
+	if stringHash(left.bits>>stringHashShift) !=
+		stringHash(right.bits>>stringHashShift) {
 		return false
 	}
-	return leftRef.textUnchecked() == rightRef.textUnchecked()
+	return stringText(left.ref, left.bits) ==
+		stringText(right.ref, right.bits)
 }
 
 func stringSlotMatchesText(
@@ -277,29 +280,8 @@ func stringSlotMatchesText(
 	text string,
 	hash uint64,
 ) bool {
-	reference := stringRefFromSlot(value)
-	return uint64(stringHash(reference.bits>>stringHashShift)) == hash &&
-		reference.lenUnchecked() == len(text) &&
-		reference.textUnchecked() == text
-}
-
-func stringSlotMatchesBytes(
-	value slot,
-	bytes []byte,
-	hash stringHash,
-) bool {
-	reference := stringRefFromSlot(value)
-	if stringHash(reference.bits>>stringHashShift) != hash ||
-		reference.lenUnchecked() != len(bytes) {
-		return false
-	}
-	text := reference.textUnchecked()
-	for index, current := range bytes {
-		if text[index] != current {
-			return false
-		}
-	}
-	return true
+	return uint64(stringHash(value.bits>>stringHashShift)) == hash &&
+		stringText(value.ref, value.bits) == text
 }
 
 // stringFromOwnedBytes transfers an exact byte buffer into immutable string
@@ -323,11 +305,7 @@ func (pool *stringPool) lookupProtected(text string, hash stringHash) stringRef 
 	}
 	set := &shard.sets[setIndex]
 	for _, candidate := range set.entries {
-		if candidate.valid() && stringSlotMatchesText(
-			stringSlot(candidate),
-			text,
-			uint64(hash),
-		) {
+		if stringRefMatchesText(candidate, text, hash) {
 			return candidate
 		}
 	}
@@ -369,11 +347,7 @@ func (pool *stringPool) lookupProbation(
 	}
 	set := &shard.sets[setIndex]
 	for index, candidate := range set.entries {
-		if candidate.valid() && stringSlotMatchesText(
-			stringSlot(candidate),
-			text,
-			uint64(hash),
-		) {
+		if stringRefMatchesText(candidate, text, hash) {
 			return candidate, set, index
 		}
 	}
@@ -406,13 +380,33 @@ func stringMatchesBytes(
 	bytes []byte,
 	hash stringHash,
 ) bool {
-	return candidate.valid() &&
-		stringSlotMatchesBytes(stringSlot(candidate), bytes, hash)
+	if !candidate.valid() ||
+		candidate.hashUnchecked() != hash ||
+		stringLength(candidate.ref, candidate.bits) != len(bytes) {
+		return false
+	}
+	text := stringText(candidate.ref, candidate.bits)
+	for index, current := range bytes {
+		if text[index] != current {
+			return false
+		}
+	}
+	return true
+}
+
+func stringRefMatchesText(
+	candidate stringRef,
+	text string,
+	hash stringHash,
+) bool {
+	return candidate.ref != nil &&
+		stringHash(candidate.bits>>stringHashShift) == hash &&
+		stringText(candidate.ref, candidate.bits) == text
 }
 
 func (pool *stringPool) storeProbation(value stringRef) {
 	shardIndex, setIndex := stringSetLocation(
-		value.hash(),
+		value.hashUnchecked(),
 		stringProbationShardCount,
 	)
 	shard := pool.probation[shardIndex]
@@ -428,7 +422,7 @@ func (pool *stringPool) storeProbation(value stringRef) {
 
 func (pool *stringPool) storeProtected(value stringRef) {
 	shardIndex, setIndex := stringSetLocation(
-		value.hash(),
+		value.hashUnchecked(),
 		stringProtectedShardCount,
 	)
 	shard := pool.protected[shardIndex]
