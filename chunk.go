@@ -738,7 +738,10 @@ func (decoder *chunkDecoder) readFull(destination []byte) error {
 }
 
 func (decoder *chunkDecoder) inputError(err error) error {
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+	if refill, ok := err.(*chunkRefillFailure); ok {
+		return refill.cause
+	}
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		return decoder.syntaxError("unexpected end")
 	}
 	return err

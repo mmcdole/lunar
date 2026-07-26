@@ -70,7 +70,10 @@ Files are organized by substantial runtime concepts:
   coercion;
 - `metamethod.go`: raw event lookup and shared-handler selection;
 - `opcode.go`: canonical Lua 5.1 instruction encoding;
-- `lexer.go`: direct source scanning with one-token lookahead;
+- `lexer.go`: refillable byte-window scanning, core tokenization, names,
+  numbers, and one-token lookahead;
+- `lexer_string.go`: token-text capture, quoted and long strings, comments,
+  delimiters, and newline handling;
 - `compiler.go`: per-compilation ownership plus mutable function emission
   state;
 - `parser.go`: recursive-descent chunk, statement, scope, and name parsing;
@@ -878,6 +881,15 @@ from the executor's value and frame limits. The sequential input caches the
 first refill failure, preserves arbitrary reader errors, and can return an
 in-piece span without copying; a span crossing pieces receives exact owned
 storage that the string interner can adopt.
+
+Source lexing is byte-oriented, not line-oriented. A fixed string is scanned
+directly; a Reader is exposed through bounded contiguous windows and consulted
+again only when the current window is exhausted. Line tracking exists solely
+for diagnostics and does not constrain token boundaries. Token text contained
+in one input piece borrows that piece, while decoded text or text spanning
+pieces receives owned storage. Before an early compiler return, the lexer
+commits its consumed prefix so load limits and pending input failures observe
+the actual read position.
 
 ## Standard libraries
 

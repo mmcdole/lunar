@@ -17,17 +17,53 @@ type sourceParser struct {
 	previousLine uint32
 }
 
-// compileSource compiles one Lua source chunk directly into an immutable
-// Prototype. It is private until load.go defines the public loading contract.
+// compileSource is the fixed-string convenience path over the canonical input
+// compiler. A fixed input cannot produce an arbitrary refill failure.
 func compileSource(sourceName, source string) (*Prototype, *Error) {
-	if uint64(len(source)) > uint64(^uint32(0)) {
-		return nil, newSourceSyntaxError(
-			sourceName,
-			1,
-			"source exceeds the compiler's 32-bit offset range",
-		)
+	prototype, err := compileLexer(
+		sourceName,
+		newLexer(sourceName, source),
+	)
+	if err == nil {
+		return prototype, nil
 	}
+	failure, ok := err.(*Error)
+	if !ok {
+		panic("lua: fixed source produced a refill failure")
+	}
+	return nil, failure
+}
 
+// compileInput compiles one sequential Lua source chunk directly into an
+// immutable Prototype. Arbitrary refill errors are returned unchanged.
+func compileInput(
+	sourceName string,
+	input *chunkInput,
+) (*Prototype, error) {
+	if input == nil {
+		panic("lua: compiler requires chunk input")
+	}
+	if failure := input.control.check(); failure != nil {
+		return nil, failure
+	}
+	lex := newInputLexer(sourceName, input)
+	prototype, err := compileLexer(sourceName, lex)
+	if failure := lex.commitInput(); failure != nil {
+		return nil, failure
+	}
+	if err != nil {
+		return nil, err
+	}
+	if failure := input.control.check(); failure != nil {
+		return nil, failure
+	}
+	return prototype, nil
+}
+
+func compileLexer(
+	sourceName string,
+	lex *lexer,
+) (*Prototype, error) {
 	unit := newCompileUnit(sourceName)
 	function, syntaxError := unit.newFunction(
 		nil,
@@ -40,16 +76,16 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 	}
 	parser := &sourceParser{
 		unit:     unit,
-		lexer:    newLexer(sourceName, source),
+		lexer:    lex,
 		function: function,
 	}
 	if syntaxError = parser.advance(); syntaxError != nil {
-		return nil, syntaxError
+		return nil, sourceInputError(syntaxError)
 	}
 	function.enterFunctionBlock()
 	terminated, syntaxError := parser.parseBlock()
 	if syntaxError != nil {
-		return nil, syntaxError
+		return nil, sourceInputError(syntaxError)
 	}
 	if parser.current.kind != tokenEOF {
 		return nil, parser.expected(tokenEOF)
@@ -60,7 +96,22 @@ func compileSource(sourceName, source string) (*Prototype, *Error) {
 	} else {
 		function.leaveBlock(parser.current.line)
 	}
-	return function.finish(0)
+	prototype, syntaxError := function.finish(0)
+	if syntaxError != nil {
+		return nil, syntaxError
+	}
+	return prototype, nil
+}
+
+func sourceInputError(failure *Error) error {
+	if failure != nil &&
+		failure.category == SyntaxError &&
+		failure.cause != nil {
+		if refill, ok := failure.cause.(*chunkRefillFailure); ok {
+			return refill.cause
+		}
+	}
+	return failure
 }
 
 func (parser *sourceParser) advance() *Error {

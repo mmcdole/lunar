@@ -3,6 +3,7 @@ package lua
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -867,6 +868,32 @@ func TestDecodeBinaryChunkPropagatesCancellationAndRefillErrors(t *testing.T) {
 		if !errors.Is(decodeErr, refillErr) {
 			t.Fatalf(
 				"refill error = %#v; want original failure",
+				decodeErr,
+			)
+		}
+	})
+
+	t.Run("refill unexpected EOF identity", func(t *testing.T) {
+		control, failure := newLoadControl(nil, 1<<20)
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		supplied := false
+		input := newRefillableChunkInput(func() (string, error) {
+			if !supplied {
+				supplied = true
+				return dumped[:lua51ChunkHeaderSize], nil
+			}
+			return "", io.ErrUnexpectedEOF
+		}, &control)
+		_, decodeErr := decodeBinaryChunk(
+			"@reader.luac",
+			input,
+			&control,
+		)
+		if decodeErr != io.ErrUnexpectedEOF {
+			t.Fatalf(
+				"refill error = %#v; want original io.ErrUnexpectedEOF",
 				decodeErr,
 			)
 		}

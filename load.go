@@ -120,27 +120,58 @@ func newLoadResourceError(
 
 type chunkRefill func() (string, error)
 
+// chunkRefillFailure distinguishes a callback failure from errors produced by
+// the loader itself. Public loading boundaries unwrap it and return the
+// callback's original error.
+type chunkRefillFailure struct {
+	cause error
+}
+
+func (failure *chunkRefillFailure) Error() string {
+	return failure.cause.Error()
+}
+
+func (failure *chunkRefillFailure) Unwrap() error {
+	return failure.cause
+}
+
+func originalChunkRefillError(err error) error {
+	if failure, ok := err.(*chunkRefillFailure); ok {
+		return failure.cause
+	}
+	return err
+}
+
 // chunkInput is the one sequential input used by source and binary loaders.
 // Refill pieces are immutable strings; a span within one piece may therefore
 // be borrowed until its caller either consumes or interns it.
 type chunkInput struct {
-	piece    string
-	offset   int
-	position uint64
-	refill   chunkRefill
-	control  *loadControl
-	failure  error
-	ended    bool
+	piece           string
+	offset          int
+	windowEnd       int
+	position        uint64
+	pieceGeneration uint64
+	refill          chunkRefill
+	control         *loadControl
+	failure         error
+	pendingFailure  error
+	ended           bool
 }
 
 func newStringChunkInput(
 	text string,
 	control *loadControl,
 ) *chunkInput {
+	windowEnd := len(text)
+	if control != nil && windowEnd > loadContextPollBytes {
+		windowEnd = loadContextPollBytes
+	}
 	return &chunkInput{
-		piece:   text,
-		control: control,
-		ended:   true,
+		piece:           text,
+		windowEnd:       windowEnd,
+		pieceGeneration: 1,
+		control:         control,
+		ended:           true,
 	}
 }
 
@@ -155,46 +186,40 @@ func newRefillableChunkInput(
 }
 
 func (input *chunkInput) peekByte() (byte, error) {
-	if err := input.ensurePiece(); err != nil {
-		return 0, err
+	window := input.window()
+	if len(window) == 0 {
+		return 0, input.windowError()
 	}
-	return input.piece[input.offset], nil
+	return window[0], nil
 }
 
 func (input *chunkInput) readByte() (byte, error) {
-	if err := input.ensurePiece(); err != nil {
+	window := input.window()
+	if len(window) == 0 {
+		return 0, input.windowError()
+	}
+	value := window[0]
+	if err := input.advance(1); err != nil {
 		return 0, err
 	}
-	if failure := input.control.consume(1); failure != nil {
-		return 0, failure
-	}
-	value := input.piece[input.offset]
-	input.offset++
-	input.position++
 	return value, nil
 }
 
 func (input *chunkInput) readFull(destination []byte) error {
 	for len(destination) != 0 {
-		if err := input.ensurePiece(); err != nil {
+		window := input.window()
+		if len(window) == 0 {
+			return input.windowError()
+		}
+		count := len(destination)
+		if count > len(window) {
+			count = len(window)
+		}
+		segment := window[:count]
+		if err := input.advance(count); err != nil {
 			return err
 		}
-		available := len(input.piece) - input.offset
-		count := len(destination)
-		if count > available {
-			count = available
-		}
-		if failure := input.control.consume(
-			uint64(count),
-		); failure != nil {
-			return failure
-		}
-		copy(
-			destination[:count],
-			input.piece[input.offset:input.offset+count],
-		)
-		input.offset += count
-		input.position += uint64(count)
+		copy(destination[:count], segment)
 		destination = destination[count:]
 	}
 	return nil
@@ -213,19 +238,28 @@ func (input *chunkInput) readSpan(
 	if count == 0 {
 		return "", false, nil
 	}
-	if err := input.ensurePiece(); err != nil {
-		return "", false, err
+	if len(input.window()) == 0 {
+		return "", false, input.windowError()
 	}
 	if count <= len(input.piece)-input.offset {
-		if failure := input.control.consume(
-			uint64(count),
-		); failure != nil {
-			return "", false, failure
-		}
+		piece := input.piece
 		start := input.offset
-		input.offset += count
-		input.position += uint64(count)
-		return input.piece[start:input.offset], false, nil
+		remaining := count
+		for remaining != 0 {
+			window := input.window()
+			if len(window) == 0 {
+				return "", false, input.windowError()
+			}
+			step := remaining
+			if step > len(window) {
+				step = len(window)
+			}
+			if advanceErr := input.advance(step); advanceErr != nil {
+				return "", false, advanceErr
+			}
+			remaining -= step
+		}
+		return piece[start : start+count], false, nil
 	}
 
 	if failure := input.control.reserve(
@@ -240,10 +274,90 @@ func (input *chunkInput) readSpan(
 	return stringFromOwnedBytes(bytes), true, nil
 }
 
+// window returns the current contiguous input span. Controlled loads expose at
+// most one polling interval at a time so scanners cannot defer cancellation
+// while walking a very large refill piece.
+func (input *chunkInput) window() string {
+	if input.offset != input.windowEnd {
+		return input.piece[input.offset:input.windowEnd]
+	}
+	return input.windowSlow()
+}
+
+func (input *chunkInput) windowSlow() string {
+	if input.failure != nil {
+		return ""
+	}
+	if input.offset < len(input.piece) {
+		input.setWindowEnd()
+		return input.piece[input.offset:input.windowEnd]
+	}
+	if err := input.ensurePiece(); err != nil {
+		return ""
+	}
+	input.setWindowEnd()
+	return input.piece[input.offset:input.windowEnd]
+}
+
+func (input *chunkInput) windowError() error {
+	if input.failure != nil {
+		return input.failure
+	}
+	return io.EOF
+}
+
+func (input *chunkInput) setWindowEnd() {
+	input.windowEnd = len(input.piece)
+	if input.control != nil &&
+		input.windowEnd-input.offset > loadContextPollBytes {
+		input.windowEnd = input.offset + loadContextPollBytes
+	}
+}
+
+// advance consumes bytes from the current window. All input accounting and
+// absolute-position updates pass through this method.
+func (input *chunkInput) advance(count int) error {
+	if input.control == nil {
+		input.offset += count
+		input.position += uint64(count)
+		return nil
+	}
+	return input.advanceSlow(count)
+}
+
+func (input *chunkInput) advanceSlow(count int) error {
+	available := input.windowEnd - input.offset
+	if count < 0 || count > available {
+		panic("lua: chunk input advanced beyond its current window")
+	}
+	if input.failure != nil {
+		return input.failure
+	}
+	if input.control != nil {
+		if failure := input.control.consume(uint64(count)); failure != nil {
+			input.failure = failure
+			return failure
+		}
+	}
+	input.offset += count
+	input.position += uint64(count)
+	return nil
+}
+
 func (input *chunkInput) ensurePiece() error {
 	for input.offset == len(input.piece) {
 		if input.failure != nil {
 			return input.failure
+		}
+		if input.pendingFailure != nil {
+			failure := input.pendingFailure
+			input.pendingFailure = nil
+			if failure == io.EOF {
+				input.ended = true
+				return io.EOF
+			}
+			input.failure = failure
+			return failure
 		}
 		if input.ended || input.refill == nil {
 			return io.EOF
@@ -253,16 +367,23 @@ func (input *chunkInput) ensurePiece() error {
 			return failure
 		}
 		piece, err := input.refill()
-		if err != nil {
-			input.failure = err
-			return err
-		}
 		if piece == "" {
+			if err != nil && err != io.EOF {
+				input.failure = &chunkRefillFailure{cause: err}
+				return input.failure
+			}
 			input.ended = true
 			return io.EOF
 		}
 		input.piece = piece
 		input.offset = 0
+		input.windowEnd = 0
+		input.pieceGeneration++
+		if err == io.EOF {
+			input.pendingFailure = io.EOF
+		} else if err != nil {
+			input.pendingFailure = &chunkRefillFailure{cause: err}
+		}
 	}
 	return nil
 }
@@ -317,21 +438,36 @@ func loadStringPrototype(
 	source string,
 	control *loadControl,
 ) (*Prototype, error) {
-	if len(source) != 0 && source[0] == 0x1b {
+	return loadInputPrototype(
+		sourceName,
+		newStringChunkInput(source, control),
+		control,
+	)
+}
+
+func loadInputPrototype(
+	sourceName string,
+	input *chunkInput,
+	control *loadControl,
+) (*Prototype, error) {
+	if input == nil || control == nil {
+		panic("lua: loader requires input and load control")
+	}
+	if input.control != control {
+		panic("lua: loader and input use different load controls")
+	}
+	first, err := input.peekByte()
+	if err != nil && err != io.EOF {
+		return nil, originalChunkRefillError(err)
+	}
+	if err == nil && first == 0x1b {
 		return decodeBinaryChunk(
 			sourceName,
-			newStringChunkInput(source, control),
+			input,
 			control,
 		)
 	}
-	if failure := control.consume(uint64(len(source))); failure != nil {
-		return nil, failure
-	}
-	prototype, syntaxError := compileSource(sourceName, source)
-	if syntaxError != nil {
-		return nil, syntaxError
-	}
-	return prototype, nil
+	return compileInput(sourceName, input)
 }
 
 // LoadPrototype returns a new Lua Function over prototype in the executing

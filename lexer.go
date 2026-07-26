@@ -2,6 +2,7 @@ package lua
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 )
 
@@ -94,8 +95,6 @@ type token struct {
 	// backing storage may be adopted by the compilation string table.
 	text      string
 	number    float64
-	start     uint32
-	end       uint32
 	line      uint32
 	kind      tokenKind
 	ownedText bool
@@ -103,7 +102,8 @@ type token struct {
 
 type lexer struct {
 	sourceName string
-	source     string
+	window     string
+	input      *chunkInput
 	scratch    []byte
 	offset     int
 	line       uint32
@@ -114,9 +114,95 @@ type lexer struct {
 func newLexer(sourceName, source string) *lexer {
 	return &lexer{
 		sourceName: sourceName,
-		source:     source,
+		window:     source,
 		line:       1,
 	}
+}
+
+func newInputLexer(sourceName string, input *chunkInput) *lexer {
+	if input == nil {
+		panic("lua: lexer requires chunk input")
+	}
+	return &lexer{
+		sourceName: sourceName,
+		input:      input,
+		line:       1,
+	}
+}
+
+func (lex *lexer) inputPiece() string {
+	if lex.input == nil {
+		return lex.window
+	}
+	return lex.input.piece
+}
+
+func (lex *lexer) inputGeneration() uint64 {
+	if lex.input == nil {
+		return 1
+	}
+	return lex.input.pieceGeneration
+}
+
+func (lex *lexer) inputOffset() int {
+	if lex.input == nil {
+		return lex.offset
+	}
+	return lex.input.offset + lex.offset
+}
+
+func (lex *lexer) inputWindow() string {
+	if lex.offset != len(lex.window) {
+		return lex.window[lex.offset:]
+	}
+	return lex.refillWindow()
+}
+
+func (lex *lexer) refillWindow() string {
+	if lex.input == nil {
+		return ""
+	}
+	if len(lex.window) != 0 {
+		if err := lex.input.advance(len(lex.window)); err != nil {
+			return ""
+		}
+		lex.window = ""
+		lex.offset = 0
+	}
+	window := lex.input.window()
+	if len(window) == 0 {
+		return ""
+	}
+	lex.window = window
+	lex.offset = 0
+	return window
+}
+
+func (lex *lexer) inputFailure() error {
+	if lex.input == nil || lex.input.failure == nil {
+		return io.EOF
+	}
+	return lex.input.failure
+}
+
+func (lex *lexer) inputError() error {
+	err := lex.inputFailure()
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
+func (lex *lexer) commitInput() error {
+	if lex.input == nil || lex.offset == 0 {
+		return nil
+	}
+	if err := lex.input.advance(lex.offset); err != nil {
+		return err
+	}
+	lex.window = lex.window[lex.offset:]
+	lex.offset = 0
+	return nil
 }
 
 func (lex *lexer) next() (token, error) {
@@ -141,152 +227,407 @@ func (lex *lexer) peek() (token, error) {
 	return lex.lookahead, nil
 }
 
-func (lex *lexer) scan() (token, error) {
-	for {
-		for lex.offset < len(lex.source) {
-			switch lex.source[lex.offset] {
-			case ' ', '\t', '\v', '\f':
-				lex.offset++
-			case '\n', '\r':
-				if err := lex.consumeNewline(); err != nil {
-					return token{}, err
-				}
-			default:
-				goto skippedSpace
-			}
-		}
+// currentCode follows Lua's reader convention: a byte is returned as a
+// non-negative integer, while -1 means either EOF or an input failure. The
+// failure, when present, is retained by chunkInput.
+func (lex *lexer) currentCode() int {
+	window := lex.inputWindow()
+	if len(window) == 0 {
+		return -1
+	}
+	return int(window[0])
+}
 
-	skippedSpace:
-		if lex.offset+1 < len(lex.source) &&
-			lex.source[lex.offset] == '-' &&
-			lex.source[lex.offset+1] == '-' {
-			lex.offset += 2
-			if level, after, ok := lex.longDelimiter(lex.offset, '['); ok {
-				lex.offset = after
-				if _, _, err := lex.readLong(level, false); err != nil {
-					return token{}, err
+func (lex *lexer) capturedCode(
+	capture *lexerTextCapture,
+) int {
+	code := lex.currentCode()
+	if code >= 0 {
+		capture.sync(lex)
+	}
+	return code
+}
+
+func (lex *lexer) advance(count int) {
+	lex.offset += count
+}
+
+type lexerScanClass uint8
+
+const (
+	horizontalSpaceClass lexerScanClass = iota
+	lineBodyClass
+	numberBodyClass
+	nameBodyClass
+)
+
+func (lex *lexer) advanceWhile(
+	capture *lexerTextCapture,
+	class lexerScanClass,
+) error {
+	for {
+		window := lex.inputWindow()
+		if len(window) == 0 {
+			err := lex.inputFailure()
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if capture != nil {
+			capture.sync(lex)
+		}
+		count := 0
+		switch class {
+		case horizontalSpaceClass:
+			for count < len(window) {
+				value := window[count]
+				if value != ' ' &&
+					value != '\t' &&
+					value != '\v' &&
+					value != '\f' {
+					break
 				}
-			} else {
-				for lex.offset < len(lex.source) &&
-					lex.source[lex.offset] != '\n' &&
-					lex.source[lex.offset] != '\r' {
-					lex.offset++
-				}
+				count++
+			}
+		case lineBodyClass:
+			for count < len(window) &&
+				window[count] != '\n' &&
+				window[count] != '\r' {
+				count++
+			}
+		case numberBodyClass:
+			for count < len(window) &&
+				(isDigit(window[count]) || window[count] == '.') {
+				count++
+			}
+		case nameBodyClass:
+			for count < len(window) &&
+				isNameContinue(window[count]) {
+				count++
+			}
+		default:
+			panic("lua: invalid lexer scan class")
+		}
+		lex.advance(count)
+		if count != len(window) {
+			return nil
+		}
+	}
+}
+
+func (lex *lexer) skipLine() error {
+	return lex.advanceWhile(nil, lineBodyClass)
+}
+
+func (lex *lexer) scan() (token, error) {
+	var tokenWindow string
+	for {
+		if err := lex.advanceWhile(
+			nil,
+			horizontalSpaceClass,
+		); err != nil {
+			return token{}, err
+		}
+		window := lex.inputWindow()
+		if len(window) == 0 {
+			if err := lex.inputFailure(); err != io.EOF {
+				return token{}, err
+			}
+			return lex.token(tokenEOF, lex.line), nil
+		}
+		current := window[0]
+		if current == '\n' || current == '\r' {
+			if _, err := lex.consumeNewline(); err != nil {
+				return token{}, err
 			}
 			continue
 		}
-		break
+		if current != '-' {
+			tokenWindow = window
+			break
+		}
+
+		line := lex.line
+		lex.advance(1)
+		code := lex.currentCode()
+		if code < 0 {
+			if err := lex.inputError(); err != nil {
+				return token{}, err
+			}
+			return lex.token('-', line), nil
+		}
+		current = byte(code)
+		if current != '-' {
+			return lex.token('-', line), nil
+		}
+		lex.advance(1)
+		code = lex.currentCode()
+		if code < 0 {
+			if err := lex.inputError(); err != nil {
+				return token{}, err
+			}
+		} else {
+			current = byte(code)
+		}
+		if code >= 0 && current == '[' {
+			lex.advance(1)
+			level, matched, _, delimiterErr := lex.longDelimiterTail('[')
+			if delimiterErr != nil {
+				return token{}, delimiterErr
+			}
+			if matched {
+				if _, _, err := lex.readLong(level, false); err != nil {
+					return token{}, err
+				}
+				continue
+			}
+		}
+		if err := lex.skipLine(); err != nil {
+			return token{}, err
+		}
 	}
 
-	start := lex.offset
 	line := lex.line
-	if start == len(lex.source) {
-		return lex.token(tokenEOF, start, line), nil
-	}
+	current := tokenWindow[0]
 
-	switch current := lex.source[lex.offset]; current {
+	switch current {
 	case '[':
-		if level, after, ok := lex.longDelimiter(start, '['); ok {
-			lex.offset = after
+		lex.advance(1)
+		level, matched, sawEquals, delimiterErr := lex.longDelimiterTail('[')
+		if delimiterErr != nil {
+			return token{}, delimiterErr
+		}
+		if matched {
 			text, owned, err := lex.readLong(level, true)
 			if err != nil {
 				return token{}, err
 			}
-			value := lex.token(tokenString, start, line)
+			value := lex.token(tokenString, line)
 			value.text = text
 			value.ownedText = owned
 			return value, nil
 		}
-		if start+1 < len(lex.source) && lex.source[start+1] == '=' {
+		if sawEquals {
 			return token{}, lex.errorf(line, "invalid long string delimiter")
 		}
+		return lex.token('[', line), nil
 	case '\'', '"':
+		lex.advance(1)
 		text, owned, err := lex.readQuoted(current)
 		if err != nil {
 			return token{}, err
 		}
-		value := lex.token(tokenString, start, line)
+		value := lex.token(tokenString, line)
 		value.text = text
 		value.ownedText = owned
 		return value, nil
 	case '.':
-		if lex.match("...") {
-			return lex.token(tokenDots, start, line), nil
+		if len(tokenWindow) > 1 &&
+			tokenWindow[1] != '.' &&
+			isDigit(tokenWindow[1]) {
+			if value, complete, numberErr := lex.readNumberWindow(
+				line,
+				tokenWindow,
+			); complete || numberErr != nil {
+				return value, numberErr
+			}
 		}
-		if lex.match("..") {
-			return lex.token(tokenConcat, start, line), nil
+		capture := lex.beginTextCapture()
+		lex.advance(1)
+		nextCode := lex.currentCode()
+		if nextCode < 0 && lex.inputError() != nil {
+			return token{}, lex.inputError()
 		}
-		if start+1 < len(lex.source) && isDigit(lex.source[start+1]) {
-			return lex.readNumber(start, line)
+		if nextCode >= 0 && byte(nextCode) == '.' {
+			lex.advance(1)
+			thirdCode := lex.currentCode()
+			if thirdCode < 0 && lex.inputError() != nil {
+				return token{}, lex.inputError()
+			}
+			if thirdCode >= 0 && byte(thirdCode) == '.' {
+				lex.advance(1)
+				return lex.token(tokenDots, line), nil
+			}
+			return lex.token(tokenConcat, line), nil
 		}
+		if nextCode >= 0 && isDigit(byte(nextCode)) {
+			return lex.readNumber(line, &capture)
+		}
+		return lex.token('.', line), nil
 	case '=':
-		if lex.match("==") {
-			return lex.token(tokenEqual, start, line), nil
+		lex.advance(1)
+		if matched, err := lex.acceptByte('='); err != nil {
+			return token{}, err
+		} else if matched {
+			return lex.token(tokenEqual, line), nil
 		}
+		return lex.token('=', line), nil
 	case '>':
-		if lex.match(">=") {
-			return lex.token(tokenGreaterEqual, start, line), nil
+		lex.advance(1)
+		if matched, err := lex.acceptByte('='); err != nil {
+			return token{}, err
+		} else if matched {
+			return lex.token(tokenGreaterEqual, line), nil
 		}
+		return lex.token('>', line), nil
 	case '<':
-		if lex.match("<=") {
-			return lex.token(tokenLessEqual, start, line), nil
+		lex.advance(1)
+		if matched, err := lex.acceptByte('='); err != nil {
+			return token{}, err
+		} else if matched {
+			return lex.token(tokenLessEqual, line), nil
 		}
+		return lex.token('<', line), nil
 	case '~':
-		if lex.match("~=") {
-			return lex.token(tokenNotEqual, start, line), nil
+		lex.advance(1)
+		if matched, err := lex.acceptByte('='); err != nil {
+			return token{}, err
+		} else if matched {
+			return lex.token(tokenNotEqual, line), nil
 		}
+		return lex.token('~', line), nil
 	default:
 		if isDigit(current) {
-			return lex.readNumber(start, line)
+			if value, complete, numberErr := lex.readNumberWindow(
+				line,
+				tokenWindow,
+			); complete || numberErr != nil {
+				return value, numberErr
+			}
+			capture := lex.beginTextCapture()
+			return lex.readNumber(line, &capture)
 		}
 		if isNameStart(current) {
-			lex.offset++
-			for lex.offset < len(lex.source) &&
-				isNameContinue(lex.source[lex.offset]) {
-				lex.offset++
+			count := 1
+			for count < len(tokenWindow) &&
+				isNameContinue(tokenWindow[count]) {
+				count++
 			}
-			text := lex.source[start:lex.offset]
+			if count != len(tokenWindow) {
+				text := tokenWindow[:count]
+				lex.advance(count)
+				kind := keyword(text)
+				value := lex.token(kind, line)
+				if kind == tokenName {
+					value.text = text
+				}
+				return value, nil
+			}
+			capture := lex.beginTextCapture()
+			lex.advance(count)
+			if err := lex.advanceWhile(
+				&capture,
+				nameBodyClass,
+			); err != nil {
+				return token{}, err
+			}
+			text, owned := capture.finish(lex)
 			kind := keyword(text)
-			value := lex.token(kind, start, line)
+			value := lex.token(kind, line)
 			if kind == tokenName {
 				value.text = text
+				value.ownedText = owned
 			}
 			return value, nil
 		}
 	}
 
-	lex.offset++
-	return lex.token(tokenKind(lex.source[start]), start, line), nil
+	lex.advance(1)
+	return lex.token(tokenKind(current), line), nil
 }
 
-func (lex *lexer) readNumber(start int, line uint32) (token, error) {
-	offset := start
-	if lex.source[offset] == '.' {
+func (lex *lexer) readNumberWindow(
+	line uint32,
+	window string,
+) (token, bool, error) {
+	offset := 0
+	if window[offset] == '.' {
 		offset++
 	}
-	for offset < len(lex.source) &&
-		(isDigit(lex.source[offset]) || lex.source[offset] == '.') {
+	for offset < len(window) &&
+		(isDigit(window[offset]) || window[offset] == '.') {
 		offset++
 	}
-	if offset < len(lex.source) &&
-		(lex.source[offset] == 'e' || lex.source[offset] == 'E') {
+	if offset < len(window) &&
+		(window[offset] == 'e' || window[offset] == 'E') {
 		offset++
-		if offset < len(lex.source) &&
-			(lex.source[offset] == '+' || lex.source[offset] == '-') {
+		if offset < len(window) &&
+			(window[offset] == '+' || window[offset] == '-') {
 			offset++
 		}
 	}
-	for offset < len(lex.source) && isNameContinue(lex.source[offset]) {
+	for offset < len(window) && isNameContinue(window[offset]) {
 		offset++
 	}
+	if offset == len(window) && lex.input != nil {
+		return token{}, false, nil
+	}
 
-	literal := lex.source[start:offset]
+	literal := window[:offset]
+	number, err := parseNumber(literal)
+	if err != nil {
+		return token{}, true, lex.errorf(
+			line,
+			"malformed number near %q",
+			literal,
+		)
+	}
+	lex.advance(offset)
+	value := lex.token(tokenNumber, line)
+	value.number = number
+	return value, true, nil
+}
+
+func (lex *lexer) acceptByte(expected byte) (bool, error) {
+	code := lex.currentCode()
+	if code < 0 {
+		return false, lex.inputError()
+	}
+	if byte(code) != expected {
+		return false, nil
+	}
+	lex.advance(1)
+	return true, nil
+}
+
+func (lex *lexer) readNumber(
+	line uint32,
+	capture *lexerTextCapture,
+) (token, error) {
+	if err := lex.advanceWhile(
+		capture,
+		numberBodyClass,
+	); err != nil {
+		return token{}, err
+	}
+	code := lex.capturedCode(capture)
+	if code < 0 && lex.inputError() != nil {
+		return token{}, lex.inputError()
+	}
+	if code == 'e' || code == 'E' {
+		lex.advance(1)
+		code = lex.capturedCode(capture)
+		if code < 0 && lex.inputError() != nil {
+			return token{}, lex.inputError()
+		}
+		if code == '+' || code == '-' {
+			lex.advance(1)
+		}
+	}
+	if err := lex.advanceWhile(
+		capture,
+		nameBodyClass,
+	); err != nil {
+		return token{}, err
+	}
+
+	literal, _ := capture.finish(lex)
 	number, err := parseNumber(literal)
 	if err != nil {
 		return token{}, lex.errorf(line, "malformed number near %q", literal)
 	}
-	lex.offset = offset
-	value := lex.token(tokenNumber, start, line)
+	value := lex.token(tokenNumber, line)
 	value.number = number
 	return value, nil
 }
@@ -299,225 +640,10 @@ func parseNumber(literal string) (float64, error) {
 	return number, nil
 }
 
-func (lex *lexer) readQuoted(delimiter byte) (string, bool, error) {
-	lex.offset++
-	contentStart := lex.offset
-	lex.scratch = lex.scratch[:0]
-	escaped := false
-
-	for lex.offset < len(lex.source) {
-		current := lex.source[lex.offset]
-		switch current {
-		case delimiter:
-			end := lex.offset
-			lex.offset++
-			if !escaped {
-				return lex.source[contentStart:end], false, nil
-			}
-			return string(lex.scratch), true, nil
-		case '\n', '\r':
-			return "", false, lex.errorf(lex.line, "unfinished string")
-		case '\\':
-			if !escaped {
-				lex.scratch = append(
-					lex.scratch,
-					lex.source[contentStart:lex.offset]...,
-				)
-				escaped = true
-			}
-			lex.offset++
-			if lex.offset == len(lex.source) {
-				return "", false, lex.errorf(lex.line, "unfinished string")
-			}
-			escape := lex.source[lex.offset]
-			switch escape {
-			case 'a':
-				lex.scratch = append(lex.scratch, '\a')
-				lex.offset++
-			case 'b':
-				lex.scratch = append(lex.scratch, '\b')
-				lex.offset++
-			case 'f':
-				lex.scratch = append(lex.scratch, '\f')
-				lex.offset++
-			case 'n':
-				lex.scratch = append(lex.scratch, '\n')
-				lex.offset++
-			case 'r':
-				lex.scratch = append(lex.scratch, '\r')
-				lex.offset++
-			case 't':
-				lex.scratch = append(lex.scratch, '\t')
-				lex.offset++
-			case 'v':
-				lex.scratch = append(lex.scratch, '\v')
-				lex.offset++
-			case '\n', '\r':
-				lex.scratch = append(lex.scratch, '\n')
-				if err := lex.consumeNewline(); err != nil {
-					return "", false, err
-				}
-			default:
-				if !isDigit(escape) {
-					lex.scratch = append(lex.scratch, escape)
-					lex.offset++
-					break
-				}
-				value := 0
-				digits := 0
-				for lex.offset < len(lex.source) &&
-					digits < 3 &&
-					isDigit(lex.source[lex.offset]) {
-					value = value*10 + int(lex.source[lex.offset]-'0')
-					lex.offset++
-					digits++
-				}
-				if value > 255 {
-					return "", false, lex.errorf(
-						lex.line,
-						"escape sequence too large",
-					)
-				}
-				lex.scratch = append(lex.scratch, byte(value))
-			}
-		default:
-			if escaped {
-				lex.scratch = append(lex.scratch, current)
-			}
-			lex.offset++
-		}
-	}
-	return "", false, lex.errorf(lex.line, "unfinished string")
-}
-
-func (lex *lexer) readLong(level int, keepText bool) (string, bool, error) {
-	if lex.offset < len(lex.source) &&
-		(lex.source[lex.offset] == '\n' || lex.source[lex.offset] == '\r') {
-		if err := lex.consumeNewline(); err != nil {
-			return "", false, err
-		}
-	}
-
-	contentStart := lex.offset
-	segmentStart := contentStart
-	lex.scratch = lex.scratch[:0]
-	normalizing := false
-
-	for lex.offset < len(lex.source) {
-		if level == 0 &&
-			lex.offset+1 < len(lex.source) &&
-			lex.source[lex.offset] == '[' &&
-			lex.source[lex.offset+1] == '[' {
-			return "", false, lex.errorf(
-				lex.line,
-				"nesting of [[...]] is deprecated",
-			)
-		}
-		if lex.source[lex.offset] == ']' {
-			_, after, ok := lex.longDelimiter(lex.offset, ']')
-			if ok && after-lex.offset == level+2 {
-				end := lex.offset
-				lex.offset = after
-				if !keepText {
-					return "", false, nil
-				}
-				if !normalizing {
-					return lex.source[contentStart:end], false, nil
-				}
-				lex.scratch = append(
-					lex.scratch,
-					lex.source[segmentStart:end]...,
-				)
-				return string(lex.scratch), true, nil
-			}
-		}
-
-		switch lex.source[lex.offset] {
-		case '\n', '\r':
-			current := lex.source[lex.offset]
-			mixedPair := lex.offset+1 < len(lex.source) &&
-				(lex.source[lex.offset+1] == '\n' ||
-					lex.source[lex.offset+1] == '\r') &&
-				lex.source[lex.offset+1] != current
-			normalize := current == '\r' || mixedPair
-			if keepText && normalize {
-				if !normalizing {
-					lex.scratch = append(
-						lex.scratch,
-						lex.source[contentStart:lex.offset]...,
-					)
-					normalizing = true
-				} else {
-					lex.scratch = append(
-						lex.scratch,
-						lex.source[segmentStart:lex.offset]...,
-					)
-				}
-				lex.scratch = append(lex.scratch, '\n')
-			}
-			if err := lex.consumeNewline(); err != nil {
-				return "", false, err
-			}
-			if normalize {
-				segmentStart = lex.offset
-			}
-		default:
-			lex.offset++
-		}
-	}
-	if keepText {
-		return "", false, lex.errorf(lex.line, "unfinished long string")
-	}
-	return "", false, lex.errorf(lex.line, "unfinished long comment")
-}
-
-func (lex *lexer) longDelimiter(
-	offset int,
-	delimiter byte,
-) (level, after int, ok bool) {
-	if offset >= len(lex.source) || lex.source[offset] != delimiter {
-		return 0, offset, false
-	}
-	cursor := offset + 1
-	for cursor < len(lex.source) && lex.source[cursor] == '=' {
-		cursor++
-	}
-	if cursor >= len(lex.source) || lex.source[cursor] != delimiter {
-		return cursor - offset - 1, cursor, false
-	}
-	return cursor - offset - 1, cursor + 1, true
-}
-
-func (lex *lexer) consumeNewline() error {
-	first := lex.source[lex.offset]
-	lex.offset++
-	if lex.offset < len(lex.source) &&
-		(lex.source[lex.offset] == '\n' || lex.source[lex.offset] == '\r') &&
-		lex.source[lex.offset] != first {
-		lex.offset++
-	}
-	if lex.line == ^uint32(0) {
-		return lex.errorf(lex.line, "chunk has too many lines")
-	}
-	lex.line++
-	return nil
-}
-
-func (lex *lexer) match(text string) bool {
-	if len(lex.source)-lex.offset < len(text) ||
-		lex.source[lex.offset:lex.offset+len(text)] != text {
-		return false
-	}
-	lex.offset += len(text)
-	return true
-}
-
-func (lex *lexer) token(kind tokenKind, start int, line uint32) token {
+func (lex *lexer) token(kind tokenKind, line uint32) token {
 	return token{
-		start: uint32(start),
-		end:   uint32(lex.offset),
-		line:  line,
-		kind:  kind,
+		line: line,
+		kind: kind,
 	}
 }
 

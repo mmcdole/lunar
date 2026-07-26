@@ -1,6 +1,9 @@
 package lua
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -99,6 +102,232 @@ func TestCompileSourceOwnsRetainedTokenText(t *testing.T) {
 		) {
 		t.Fatal("string constant retains the source buffer")
 	}
+}
+
+func TestCompileInputMatchesFixedSourceAcrossRefills(t *testing.T) {
+	source := "--[==[compiler refill coverage]==]\r\n" +
+		"local function build(value, ...)\n" +
+		"  local escaped = \"line\\n\\097\"\n" +
+		"  local long = [=[first\rsecond]=]\n" +
+		"  local result = {value, escaped, long; named = value}\n" +
+		"  if value >= 2 and value ~= 3 then\n" +
+		"    return result, ...\n" +
+		"  end\n" +
+		"  return nil\n" +
+		"end\n" +
+		"return build(.5e1, \"tail\")"
+
+	want, syntaxError := compileSource("@fragmented.lua", source)
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+	wantDump, err := dumpPrototype(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(label string, pieces []string) {
+		t.Helper()
+		input := testChunkInput(pieces, nil, nil)
+		got, compileErr := compileInput("@fragmented.lua", input)
+		if compileErr != nil {
+			t.Fatalf("%s: %v", label, compileErr)
+		}
+		gotDump, dumpErr := dumpPrototype(got)
+		if dumpErr != nil {
+			t.Fatalf("%s dump: %v", label, dumpErr)
+		}
+		if gotDump != wantDump {
+			t.Fatalf("%s produced different prototype bytes", label)
+		}
+		if input.position != uint64(len(source)) {
+			t.Fatalf(
+				"%s consumed %d bytes, want %d",
+				label,
+				input.position,
+				len(source),
+			)
+		}
+	}
+	for split := 1; split < len(source); split++ {
+		check(
+			"split "+strconv.Itoa(split),
+			[]string{source[:split], source[split:]},
+		)
+	}
+	check("one-byte pieces", oneByteTestPieces(source))
+}
+
+func TestCompileInputErrorsMatchFixedSourceAcrossRefills(t *testing.T) {
+	tests := []string{
+		"local =",
+		"return 1e+",
+		"return \"open",
+		"return [=[open",
+		"if true then return 1",
+		"local function broken(",
+		"[=open",
+	}
+
+	for _, source := range tests {
+		wantPrototype, want := compileSource("@malformed.lua", source)
+		if wantPrototype != nil || want == nil {
+			t.Fatalf("fixed source %q was not rejected", source)
+		}
+		check := func(label string, pieces []string) {
+			t.Helper()
+			input := testChunkInput(pieces, nil, nil)
+			gotPrototype, gotErr := compileInput(
+				"@malformed.lua",
+				input,
+			)
+			if gotPrototype != nil {
+				t.Fatalf("%s %q produced a prototype", label, source)
+			}
+			got, ok := gotErr.(*Error)
+			if !ok {
+				t.Fatalf(
+					"%s %q error = %T %v, want *Error",
+					label,
+					source,
+					gotErr,
+					gotErr,
+				)
+			}
+			gotValue, gotString := got.Value().AsString()
+			wantValue, wantString := want.Value().AsString()
+			if got.Error() != want.Error() ||
+				got.Category() != want.Category() ||
+				gotString != wantString ||
+				gotValue != wantValue {
+				t.Fatalf(
+					"%s %q error = (%q, %v, %q), want (%q, %v, %q)",
+					label,
+					source,
+					got.Error(),
+					got.Category(),
+					gotValue,
+					want.Error(),
+					want.Category(),
+					wantValue,
+				)
+			}
+		}
+		for split := 1; split < len(source); split++ {
+			check(
+				"split "+strconv.Itoa(split),
+				[]string{source[:split], source[split:]},
+			)
+		}
+		check("one-byte pieces", oneByteTestPieces(source))
+	}
+}
+
+func TestCompileInputReturnsArbitraryRefillErrorUnchanged(t *testing.T) {
+	sentinel := errors.New("source reader failed")
+	refills := 0
+	input := testChunkInput(
+		[]string{"local value = "},
+		sentinel,
+		&refills,
+	)
+	prototype, err := compileInput("@reader.lua", input)
+	if prototype != nil {
+		t.Fatal("failed refill produced a prototype")
+	}
+	if err != sentinel {
+		t.Fatalf("error = %T %v, want original sentinel", err, err)
+	}
+	if refills != 2 {
+		t.Fatalf("refills = %d, want source piece and failure", refills)
+	}
+}
+
+func TestCompileInputCommitsAnEarlySyntaxErrorPrefix(t *testing.T) {
+	const source = "local = trailing data"
+	input := newStringChunkInput(source, nil)
+	prototype, err := compileInput("@early.lua", input)
+	if prototype != nil || err == nil {
+		t.Fatalf("early syntax error = (%v, %v)", prototype, err)
+	}
+	if input.position != 7 {
+		t.Fatalf("consumed position = %d, want 7", input.position)
+	}
+
+	control, failure := newLoadControl(nil, 6)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	input = newStringChunkInput(source, &control)
+	prototype, err = compileInput("@early.lua", input)
+	if prototype != nil {
+		t.Fatal("limited syntax error produced a prototype")
+	}
+	luaErr, ok := err.(*Error)
+	if !ok || luaErr.Category() != ResourceError {
+		t.Fatalf("limited error = %T %v, want ResourceError", err, err)
+	}
+}
+
+func TestCompileInputPreservesFinalDataAndErrorIdentity(t *testing.T) {
+	t.Run("data with EOF", func(t *testing.T) {
+		called := false
+		input := newRefillableChunkInput(func() (string, error) {
+			if called {
+				t.Fatal("compiler refilled after terminal data")
+			}
+			called = true
+			return "return 1", io.EOF
+		}, nil)
+		prototype, err := compileInput("@reader.lua", input)
+		if err != nil || prototype == nil {
+			t.Fatalf("data with EOF = (%v, %v)", prototype, err)
+		}
+	})
+
+	t.Run("data with failure", func(t *testing.T) {
+		sentinel := errors.New("failure after data")
+		called := false
+		input := newRefillableChunkInput(func() (string, error) {
+			if called {
+				t.Fatal("compiler refilled after pending failure")
+			}
+			called = true
+			return "return 1", sentinel
+		}, nil)
+		prototype, err := compileInput("@reader.lua", input)
+		if prototype != nil || err != sentinel {
+			t.Fatalf("data with failure = (%v, %T %v)", prototype, err, err)
+		}
+	})
+
+	t.Run("wrapped EOF", func(t *testing.T) {
+		wrapped := fmt.Errorf("reader context: %w", io.EOF)
+		input := newRefillableChunkInput(func() (string, error) {
+			return "", wrapped
+		}, nil)
+		prototype, err := compileInput("@reader.lua", input)
+		if prototype != nil || err != wrapped {
+			t.Fatalf("wrapped EOF = (%v, %T %v)", prototype, err, err)
+		}
+	})
+
+	t.Run("caller Lua error", func(t *testing.T) {
+		cause := errors.New("caller cause")
+		supplied := &Error{
+			value:       errorStringValue("caller syntax failure"),
+			description: "caller syntax failure",
+			category:    SyntaxError,
+			cause:       cause,
+		}
+		input := newRefillableChunkInput(func() (string, error) {
+			return "", supplied
+		}, nil)
+		prototype, err := compileInput("@reader.lua", input)
+		if prototype != nil || err != supplied {
+			t.Fatalf("caller error = (%v, %T %v)", prototype, err, err)
+		}
+	})
 }
 
 func TestCompileSourcePrecedenceAndSignedZero(t *testing.T) {
@@ -833,3 +1062,122 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		_, _ = compileSource("@fuzz.lua", source)
 	})
 }
+
+func FuzzCompileInputFragmentation(fuzz *testing.F) {
+	fuzz.Add(
+		"local value = [=[text]=]\nreturn value, 1.5e2",
+		[]byte{1, 3, 2, 7},
+	)
+	fuzz.Add("return \"line\\n\\097\", ...", []byte{1})
+	fuzz.Add("local =", []byte{2, 1})
+	fuzz.Fuzz(func(t *testing.T, source string, widths []byte) {
+		if len(source) > 16<<10 {
+			t.Skip()
+		}
+
+		var pieces []string
+		for offset, widthIndex := 0, 0; offset < len(source); widthIndex++ {
+			width := 1
+			if len(widths) != 0 {
+				width = int(widths[widthIndex%len(widths)]%64) + 1
+			}
+			end := offset + width
+			if end > len(source) {
+				end = len(source)
+			}
+			pieces = append(pieces, source[offset:end])
+			offset = end
+		}
+
+		want, wantErr := compileSource("@fuzz.lua", source)
+		input := testChunkInput(pieces, nil, nil)
+		got, gotErr := compileInput("@fuzz.lua", input)
+		if wantErr != nil || gotErr != nil {
+			if wantErr == nil || gotErr == nil ||
+				wantErr.Error() != gotErr.Error() {
+				t.Fatalf(
+					"fixed error %v; fragmented error %v",
+					wantErr,
+					gotErr,
+				)
+			}
+			return
+		}
+
+		wantDump, err := dumpPrototype(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotDump, err := dumpPrototype(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotDump != wantDump {
+			t.Fatal("fragmentation changed the compiled prototype")
+		}
+	})
+}
+
+func BenchmarkCompileSource(b *testing.B) {
+	const source = `
+local function accumulate(limit, ...)
+	local total = 0
+	local values = {...}
+	for index = 1, limit do
+		local value = values[index] or index
+		total = total + value * value
+	end
+	return {
+		total = total,
+		label = "result:" .. total,
+		values = values,
+	}
+end
+
+local first = accumulate(6, 2, 3, 5)
+if first.total > 20 then
+	return first, accumulate(4)
+end
+return nil
+`
+	b.Run("fixed", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(source)))
+		for range b.N {
+			prototype, syntaxError := compileSource(
+				"@benchmark.lua",
+				source,
+			)
+			if syntaxError != nil {
+				b.Fatal(syntaxError)
+			}
+			benchmarkPrototype = prototype
+		}
+	})
+	b.Run("64-byte-refills", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(source)))
+		for range b.N {
+			offset := 0
+			input := newRefillableChunkInput(func() (string, error) {
+				if offset == len(source) {
+					return "", nil
+				}
+				end := offset + 64
+				if end > len(source) {
+					end = len(source)
+				}
+				piece := source[offset:end]
+				offset = end
+				return piece, nil
+			}, nil)
+			prototype, err := compileInput("@benchmark.lua", input)
+			if err != nil {
+				b.Fatal(err)
+			}
+			benchmarkPrototype = prototype
+		}
+	})
+}
+
+var benchmarkPrototype *Prototype
