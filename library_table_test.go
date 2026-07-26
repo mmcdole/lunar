@@ -637,9 +637,10 @@ func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
 		working.arrayUsed = baseline.arrayUsed
 		working.store.entries = entries
 		copy(working.store.entries, baseline.store.entries)
-		working.store.count = baseline.store.count
-		working.store.deleted = baseline.store.deleted
+		working.store.live = baseline.store.live
+		working.store.dead = baseline.store.dead
 		working.store.integerKeys = baseline.store.integerKeys
+		working.store.lastFree = baseline.store.lastFree
 		working.metatable = baseline.metatable
 		working.structuralVersion = baseline.structuralVersion
 		working.absentMetamethods = baseline.absentMetamethods
@@ -838,31 +839,31 @@ func assertTableStorageAccounting(t *testing.T, table *Table) {
 		t.Fatalf("arrayUsed = %d; counted %d", table.arrayUsed, arrayUsed)
 	}
 
-	count, deleted, integerKeys := 0, 0, 0
+	var live, dead, integerKeys uint32
 	for _, entry := range table.store.entries {
 		if entry.hash == entryHashEmpty {
 			continue
 		}
 		if entry.value.kind() == NilKind {
-			deleted++
+			dead++
 			continue
 		}
-		count++
+		live++
 		if isPositiveIntegerKey(entry.key) {
 			integerKeys++
 		}
 	}
-	if count != table.store.count ||
-		deleted != table.store.deleted ||
+	if live != table.store.live ||
+		dead != table.store.dead ||
 		integerKeys != table.store.integerKeys {
 		t.Fatalf(
-			"store accounting = count:%d deleted:%d integers:%d; "+
+			"store accounting = live:%d dead:%d integers:%d; "+
 				"counted %d/%d/%d",
-			table.store.count,
-			table.store.deleted,
+			table.store.live,
+			table.store.dead,
 			table.store.integerKeys,
-			count,
-			deleted,
+			live,
+			dead,
 			integerKeys,
 		)
 	}

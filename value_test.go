@@ -24,6 +24,12 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(tableEntry{}); size != 40 {
 			t.Fatalf("table entry size = %d, want 40", size)
 		}
+		if size := unsafe.Sizeof(tableStore{}); size != 40 {
+			t.Fatalf("table store size = %d, want 40", size)
+		}
+		if size := unsafe.Sizeof(Table{}); size != 104 {
+			t.Fatalf("table size = %d, want 104", size)
+		}
 		if size := unsafe.Sizeof(stringRef{}); size != 16 {
 			t.Fatalf("stringRef size = %d, want 16", size)
 		}

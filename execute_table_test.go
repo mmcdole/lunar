@@ -1292,14 +1292,14 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 		t.Fatal("NEWTABLE did not return a table")
 	}
 	if cap(table.array) < arrayHint ||
-		len(table.store.entries)*3/4 < recordHint {
+		len(table.store.entries) < recordHint {
 		t.Fatalf(
 			"decoded capacities = array %d, record %d",
 			cap(table.array),
 			len(table.store.entries),
 		)
 	}
-	if table.arrayUsed != 0 || table.store.count != 0 {
+	if table.arrayUsed != 0 || table.store.live != 0 {
 		t.Fatal("capacity hints changed table contents")
 	}
 
@@ -1444,7 +1444,7 @@ func TestExecutorOpenSetListChecksIndexBeforeMutation(t *testing.T) {
 		!strings.Contains(result.err.Error(), "SETLIST index") {
 		t.Fatalf("open SETLIST result = %+v", result)
 	}
-	if target.arrayUsed != 0 || target.store.count != 0 {
+	if target.arrayUsed != 0 || target.store.live != 0 {
 		t.Fatal("failed open SETLIST partially mutated its table")
 	}
 }

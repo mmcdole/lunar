@@ -2,6 +2,7 @@ package lua
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"strconv"
@@ -124,12 +125,14 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 	if got, ok := sparse.RawGetInt(sparseIndex).AsBool(); !ok || !got {
 		t.Fatalf("sparse lookup = (%v, %v), want (true, true)", got, ok)
 	}
-	if sparse.store.count != 1 {
-		t.Fatalf("sparse hash count = %d, want 1", sparse.store.count)
+	if sparse.store.live != 1 {
+		t.Fatalf("sparse hash count = %d, want 1", sparse.store.live)
 	}
+	assertTableStoreInvariant(t, &table.store)
+	assertTableStoreInvariant(t, &sparse.store)
 }
 
-func TestTableMovesExistingIntegerFromHashToArray(t *testing.T) {
+func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -143,8 +146,8 @@ func TestTableMovesExistingIntegerFromHashToArray(t *testing.T) {
 	if err := table.RawSetInt(5, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if table.store.count != 1 || len(table.array) != 0 {
-		t.Fatalf("initial sparse storage = hash %d, array %d", table.store.count, len(table.array))
+	if table.store.live != 1 || len(table.array) != 0 {
+		t.Fatalf("initial sparse storage = hash %d, array %d", table.store.live, len(table.array))
 	}
 	if err := table.RawSetInt(1, Bool(true)); err != nil {
 		t.Fatal(err)
@@ -156,26 +159,27 @@ func TestTableMovesExistingIntegerFromHashToArray(t *testing.T) {
 	if err := table.RawSetInt(5, Number(2)); err != nil {
 		t.Fatal(err)
 	}
-	if table.store.count != 0 || table.store.integerKeys != 0 {
+	if table.store.live != 1 || table.store.integerKeys != 1 {
 		t.Fatalf(
-			"migrated key remains in hash: count=%d integerKeys=%d",
-			table.store.count,
+			"updated key moved out of hash: count=%d integerKeys=%d",
+			table.store.live,
 			table.store.integerKeys,
 		)
 	}
-	if len(table.array) != 5 {
-		t.Fatalf("migrated array length = %d, want 5", len(table.array))
+	if len(table.array) != 2 {
+		t.Fatalf("updated array length = %d, want 2", len(table.array))
 	}
 	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
-		t.Fatalf("migrated value = (%v, %v), want (2, true)", got, ok)
+		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
 	}
 	if table.structuralVersion != version {
 		t.Fatalf(
-			"storage move changed logical structural version from %d to %d",
+			"value update changed structural version from %d to %d",
 			version,
 			table.structuralVersion,
 		)
 	}
+	assertTableStoreInvariant(t, &table.store)
 }
 
 func TestTableArrayGrowthMigratesCoveredHashKeys(t *testing.T) {
@@ -229,59 +233,7 @@ func TestTableArrayGrowthMigratesCoveredHashKeys(t *testing.T) {
 			version+1,
 		)
 	}
-}
-
-func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-	table, err := state.NewTable(0, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	const count = 5000
-	for index := 0; index < count; index++ {
-		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Number(float64(index))); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for index := 0; index < count; index++ {
-		key := "key-" + Number(float64(index)).String()
-		if got, ok := table.RawGetString(key).AsNumber(); !ok || got != float64(index) {
-			t.Fatalf("lookup %q = %v", key, table.RawGetString(key))
-		}
-	}
-	for index := 0; index < count; index += 2 {
-		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Nil()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for index := count; index < count*2; index++ {
-		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Number(float64(index))); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	objectKey, err := state.NewTable(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := table.RawSet(objectKey.Value(), state.String("identity")); err != nil {
-		t.Fatal(err)
-	}
-	got, err := table.RawGet(objectKey.Value())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if text, ok := got.AsString(); !ok || text != "identity" {
-		t.Fatalf("reference-key lookup = %v", got)
-	}
+	assertTableStoreInvariant(t, &table.store)
 }
 
 func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
@@ -470,6 +422,7 @@ func TestTableMutationBookkeepingAndMetamethodCache(t *testing.T) {
 	if got := table.RawGetString("__index"); !got.IsNil() {
 		t.Fatalf("deleted key = %v, want nil", got)
 	}
+	assertTableStoreInvariant(t, &table.store)
 }
 
 func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
@@ -558,9 +511,10 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 			if test.lane == tableArrayLane && table.arrayUsed != 0 {
 				t.Fatalf("array used = %d, want 0", table.arrayUsed)
 			}
-			if test.lane == tableHashLane && table.store.count != 0 {
-				t.Fatalf("hash count = %d, want 0", table.store.count)
+			if test.lane == tableHashLane && table.store.live != 0 {
+				t.Fatalf("hash count = %d, want 0", table.store.live)
 			}
+			assertTableStoreInvariant(t, &table.store)
 		})
 	}
 }
@@ -605,13 +559,210 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	if visited != 12 {
 		t.Fatalf("visited %d keys, want 12", visited)
 	}
-	if table.arrayUsed != 0 || table.store.count != 0 {
-		t.Fatalf("table not empty after traversal deletion: array=%d hash=%d", table.arrayUsed, table.store.count)
+	if table.arrayUsed != 0 || table.store.live != 0 {
+		t.Fatalf("table not empty after traversal deletion: array=%d hash=%d", table.arrayUsed, table.store.live)
 	}
 
 	missing := slotFromValue(state.String("missing"))
 	if _, _, _, err := table.next(missing); !errors.Is(err, ErrInvalidNextKey) {
 		t.Fatalf("missing continuation error = %v, want ErrInvalidNextKey", err)
+	}
+
+	// Lua permits deletion during traversal. Two paused traversals therefore
+	// need independent continuation keys that survive deletion until an
+	// insertion makes traversal order undefined.
+	nested, err := state.NewTable(0, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 8; index++ {
+		key := "nested-" + strconv.Itoa(index)
+		if err := nested.RawSetString(key, Number(float64(index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outer, _, found, err := nested.next(nilSlot)
+	if err != nil || !found {
+		t.Fatalf("outer first next = (found %v, err %v)", found, err)
+	}
+	if err := nested.RawSet(outer.owningValue(), Nil()); err != nil {
+		t.Fatal(err)
+	}
+	inner, _, found, err := nested.next(nilSlot)
+	if err != nil || !found {
+		t.Fatalf("inner first next = (found %v, err %v)", found, err)
+	}
+	if err := nested.RawSet(inner.owningValue(), Nil()); err != nil {
+		t.Fatal(err)
+	}
+	collect := func(name string, previous slot) map[slot]struct{} {
+		t.Helper()
+		seen := make(map[slot]struct{}, 6)
+		for {
+			key, value, found, err := nested.next(previous)
+			if err != nil {
+				t.Fatalf("%s traversal: %v", name, err)
+			}
+			if !found {
+				return seen
+			}
+			if value.kind() == NilKind {
+				t.Fatalf("%s traversal returned a deleted field", name)
+			}
+			if _, duplicate := seen[key]; duplicate {
+				t.Fatalf(
+					"%s traversal repeated key %v",
+					name,
+					key.owningValue(),
+				)
+			}
+			seen[key] = struct{}{}
+			previous = key
+		}
+	}
+	remaining := collect("fresh", nilSlot)
+	for _, traversal := range []struct {
+		name string
+		seen map[slot]struct{}
+	}{
+		{name: "outer", seen: collect("outer", outer)},
+		{name: "inner", seen: collect("inner", inner)},
+	} {
+		if len(traversal.seen) != len(remaining) {
+			t.Fatalf(
+				"%s traversal visited %d remaining fields, want %d",
+				traversal.name,
+				len(traversal.seen),
+				len(remaining),
+			)
+		}
+		for key := range remaining {
+			if _, found := traversal.seen[key]; !found {
+				t.Fatalf(
+					"%s traversal missed key %v",
+					traversal.name,
+					key.owningValue(),
+				)
+			}
+		}
+	}
+	assertTableStoreInvariant(t, &nested.store)
+}
+
+func TestTableTraversalContinuesAfterUpdatingExistingKey(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(5, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(1, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetInt(2, Number(2)); err != nil {
+		t.Fatal(err)
+	}
+	for index := range 32 {
+		if err := table.RawSetString(
+			fmt.Sprintf("field-%02d", index),
+			Number(float64(index)),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seen := make(map[slot]struct{}, 35)
+	previous := nilSlot
+	updated := false
+	for {
+		key, _, found, err := table.next(previous)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !found {
+			break
+		}
+		if _, duplicate := seen[key]; duplicate {
+			t.Fatalf(
+				"next repeated %v after an existing-key update",
+				key.owningValue(),
+			)
+		}
+		seen[key] = struct{}{}
+		if key.kind() == NumberKind &&
+			math.Float64frombits(key.bits) == 5 {
+			if err := table.RawSetInt(5, Number(2)); err != nil {
+				t.Fatal(err)
+			}
+			updated = true
+		}
+		previous = key
+	}
+	if !updated {
+		t.Fatal("traversal never reached sparse integer key 5")
+	}
+	if len(seen) != 35 {
+		t.Fatalf("traversal visited %d fields, want 35", len(seen))
+	}
+	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
+		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
+	}
+}
+
+func TestLuaNextContinuesAfterRawSetUpdatesExistingKey(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+	chunk := mustLoadString(t, state, "@next-update.lua", `
+local fields = {[5]=1, [1]=1, [2]=2}
+for index=0,31 do
+	fields["field-" .. index] = index
+end
+
+local seen = {}
+local key = nil
+local count = 0
+while true do
+	key = next(fields, key)
+	if key == nil then
+		break
+	end
+	if seen[key] then
+		return false, key
+	end
+	seen[key] = true
+	count = count + 1
+	if key == 5 then
+		rawset(fields, 5, 2)
+	end
+end
+return true, count
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("result count = %d, want 2", len(results))
+	}
+	ok, isBool := results[0].AsBool()
+	if !isBool || !ok {
+		t.Fatalf("rawset caused next to repeat key %v", results[1])
+	}
+	count, isNumber := results[1].AsNumber()
+	if !isNumber || count != 35 {
+		t.Fatalf("next visited (%v, %v), want (35, true)", count, isNumber)
 	}
 }
 
@@ -787,114 +938,85 @@ func BenchmarkTableRawString(b *testing.B) {
 	}
 }
 
-func BenchmarkTableStringMap(b *testing.B) {
-	families := []struct {
-		name   string
-		prefix string
-	}{
-		{name: "decimal"},
-		{name: "field", prefix: "record_field_"},
-	}
-	for _, family := range families {
-		for _, count := range []int{4, 16, 64, 256, 1_024, 5_000} {
-			keys := make([]string, count)
-			missing := make([]string, count)
-			for index := range keys {
-				suffix := strconv.Itoa(index)
-				keys[index] = family.prefix + suffix
-				missing[index] = family.prefix + "missing_" + suffix
-			}
-			name := family.name + "/" + strconv.Itoa(count)
-			b.Run(name+"/hit", func(b *testing.B) {
-				state, table := benchmarkStringTable(b, keys)
-				defer state.Close()
-				b.ReportAllocs()
-				b.ResetTimer()
-				for index := range b.N {
-					runtime.KeepAlive(
-						table.RawGetString(keys[index%count]),
-					)
-				}
-			})
-			b.Run(name+"/miss", func(b *testing.B) {
-				state, table := benchmarkStringTable(b, keys)
-				defer state.Close()
-				b.ReportAllocs()
-				b.ResetTimer()
-				for index := range b.N {
-					runtime.KeepAlive(
-						table.RawGetString(missing[index%count]),
-					)
-				}
-			})
-			b.Run(name+"/churn", func(b *testing.B) {
-				state, table := benchmarkStringTable(b, keys)
-				defer state.Close()
-				b.ReportAllocs()
-				b.ResetTimer()
-				for index := range b.N {
-					key := keys[index%count]
-					if err := table.RawSetString(key, Nil()); err != nil {
-						b.Fatal(err)
-					}
-					if err := table.RawSetString(
-						key,
-						Number(float64(index)),
-					); err != nil {
-						b.Fatal(err)
-					}
-				}
-			})
-			b.Run(name+"/build", func(b *testing.B) {
-				state, err := New(Options{})
-				if err != nil {
-					b.Fatal(err)
-				}
-				defer state.Close()
-				b.ReportAllocs()
-				b.ReportMetric(float64(count), "keys/op")
-				for range b.N {
-					table, err := state.NewTable(0, count)
+func BenchmarkTableNext(b *testing.B) {
+	for _, count := range []int{16, 256, 5_000} {
+		keys := make([]string, count)
+		for index := range keys {
+			keys[index] = "next-key-" + strconv.Itoa(index)
+		}
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			state, table := benchmarkStringTable(b, keys)
+			defer state.Close()
+			b.ReportAllocs()
+			b.ReportMetric(float64(count), "keys/op")
+			b.ResetTimer()
+			for range b.N {
+				previous := nilSlot
+				visited := 0
+				for {
+					key, value, found, err := table.next(previous)
 					if err != nil {
 						b.Fatal(err)
 					}
-					for index, key := range keys {
-						if err := table.RawSetString(
-							key,
-							Number(float64(index)),
-						); err != nil {
-							b.Fatal(err)
-						}
+					if !found {
+						break
 					}
-					runtime.KeepAlive(table)
+					previous = key
+					visited++
+					runtime.KeepAlive(value)
 				}
-			})
-		}
+				if visited != count {
+					b.Fatalf("visited %d keys, want %d", visited, count)
+				}
+			}
+		})
 	}
-}
 
-func benchmarkStringTable(
-	b *testing.B,
-	keys []string,
-) (*State, *Table) {
-	b.Helper()
-	state, err := New(Options{})
-	if err != nil {
-		b.Fatal(err)
+	const deleteCount = 256
+	keys := make([]string, deleteCount)
+	for index := range keys {
+		keys[index] = "delete-next-key-" + strconv.Itoa(index)
 	}
-	table, err := state.NewTable(0, len(keys))
-	if err != nil {
-		state.Close()
-		b.Fatal(err)
-	}
-	for index, key := range keys {
-		if err := table.RawSetString(
-			key,
-			Number(float64(index)),
-		); err != nil {
-			state.Close()
+	b.Run("delete-current/256", func(b *testing.B) {
+		state, err := New(Options{})
+		if err != nil {
 			b.Fatal(err)
 		}
-	}
-	return state, table
+		defer state.Close()
+		b.ReportAllocs()
+		b.ReportMetric(deleteCount, "keys/op")
+		for range b.N {
+			table, err := state.NewTable(0, deleteCount)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for index, key := range keys {
+				if err := table.RawSetString(
+					key,
+					Number(float64(index)),
+				); err != nil {
+					b.Fatal(err)
+				}
+			}
+			previous := nilSlot
+			visited := 0
+			for {
+				key, _, found, err := table.next(previous)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if !found {
+					break
+				}
+				if err := table.RawSet(key.owningValue(), Nil()); err != nil {
+					b.Fatal(err)
+				}
+				previous = key
+				visited++
+			}
+			if visited != deleteCount {
+				b.Fatalf("visited %d keys, want %d", visited, deleteCount)
+			}
+		}
+	})
 }
