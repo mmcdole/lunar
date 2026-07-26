@@ -207,7 +207,7 @@ seam to release the other retained Go pointer keys until semantic collection
 can own that work.
 
 The store header is 40 bytes, down from 48, and the canonical Table header is
-104 bytes, down from 112. Each record node remains 40 bytes, the same size as
+96 bytes, down from 112. Each record node remains 40 bytes, the same size as
 PUC's `Node` and the previous Badger entry; its former 64-bit hash word now
 contains a 32-bit cached hash and a 32-bit successor index. The named capacity
 bound preserves index-plus-one encoding on 32- and 64-bit builds.
@@ -226,7 +226,8 @@ growth with no integer records can likewise allocate the exact selected
 power-of-two array directly instead of performing a preliminary full scan.
 Neither mechanism is an identity cache or a second storage policy; stale
 summary information can only request an unnecessary full calculation. It
-occupies tail padding, so the canonical Table header remains 104 bytes.
+shares the final compact suffix with the metamethod absence cache, so the
+canonical Table header remains 96 bytes.
 
 Between allocation seams, existing array and record fields update or delete
 in place, absent nil writes do nothing, and reserved array backing accepts a
@@ -330,7 +331,40 @@ size. It was rejected. Multi-byte results retain one exact owned allocation
 until a cache-before-allocation builder can prove stack ownership without
 compiler directives or unsafe lifetime claims.
 
-### 5. Re-profile execution
+### 5. Table object layout — 96-byte header complete
+
+The table's 64-bit structural generation had production writes but no
+production reader. Lua 5.1 traversal uses physical array positions and
+retained record keys rather than a generation, so the field was test
+telemetry rather than runtime state. Removing it and its two-boolean mutation
+plumbing moves each Table from a 104-byte logical header charged in Go's
+112-byte class to a 96-byte header charged as 96 bytes. Tests now assert
+actual value, storage-location, continuation, and metamethod-cache behavior
+instead of the deleted counter.
+
+Against the canonical-byte revision, exact allocation movement is:
+
+| Mode | Allocated bytes | Mallocs | Forced-GC graph |
+| --- | ---: | ---: | ---: |
+| Large-CBOR load | 98.19 to 95.26 MB | unchanged | 67.34 to 64.52 MiB |
+| Large-CBOR save | 232.69 to 226.82 MB | unchanged | unchanged loaded graph |
+
+Load creates 183,513 retained graph tables; save also creates temporary
+tables, hence its larger cumulative byte reduction. Ten fresh-process samples
+with both process orders put load timing 1.29% slower and save 0.30% faster,
+inside the tranche ceiling and downstream of a deterministic 2.82 MiB
+retained-heap reduction. Longer generic table reruns kept every selected
+median within 1.6%, retained zero-allocation steady-state access, and reduced
+the standing constructor from 448 to 432 bytes per operation.
+
+The remaining two Go slice headers consume 48 bytes of every Table even when
+their backing is empty. Replacing those headers is a separate, timeboxed
+experiment: it lands only if a typed compact descriptor remains visible to
+Go's collector and preserves bounds-check elimination, inlining, checkptr,
+32-bit builds, and table hot-path timing. Shared recurring record layouts are
+considered only after that simpler object-layout result is known.
+
+### 6. Re-profile execution
 
 Only after storage churn falls do CPU profiles decide the next executor work.
 Likely candidates are direct constant-string and integer table access, native

@@ -778,6 +778,14 @@ four-slot array class and already-reserved slice capacity are deliberate Go
 allocation adaptations; neither changes the global density rule at a fresh
 allocation.
 
+On 64-bit Go, the canonical Table header is 96 bytes and occupies the
+96-byte allocator class. It contains only ownership, the two storage
+descriptors and their accounting, the metatable, the metamethod absence
+cache, and the conservative integer-range summary. Traversal correctness does
+not require a mutation generation: array deletions remain valid positions,
+record deletions retain continuation keys, and insertion is already the seam
+where Lua makes traversal order undefined.
+
 Existing fields update and delete in place. A deleted record retains its key
 and collision links so `next` can continue from it; a later absent insertion
 is the legal seam for compaction or movement between lanes because Lua makes
