@@ -280,6 +280,19 @@ func stringChar(frame Frame) Outcome {
 	if count == 0 {
 		return frame.ReturnString("")
 	}
+	if count == 1 {
+		value, ok := frame.integerArgument(0)
+		if !ok {
+			return numberArgumentError(frame, 0)
+		}
+		if value < 0 || value > 255 {
+			return baseArgumentError(frame, 0, "invalid value")
+		}
+		return frame.returnOne(
+			frame.activation(),
+			stringSlot(singleByteStringRef(byte(value))),
+		)
+	}
 	bytes := make([]byte, count)
 	for index := 0; index < count; index++ {
 		value, ok := frame.integerArgument(index)

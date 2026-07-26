@@ -49,9 +49,30 @@ type longString struct {
 }
 
 var (
-	emptyStringMarker byte
-	emptyStringRef    = newHashedStringRef("", hashString(""))
+	emptyStringMarker     byte
+	emptyStringRef        = newUncachedHashedStringRef("", hashString(""))
+	singleByteStringBytes [256]byte
+	singleByteStringRefs  = makeSingleByteStringRefs()
 )
+
+func makeSingleByteStringRefs() [256]stringRef {
+	var refs [256]stringRef
+	for index := range refs {
+		singleByteStringBytes[index] = byte(index)
+		hash := hashBytes(singleByteStringBytes[index : index+1])
+		refs[index] = stringRef{
+			ref: unsafe.Pointer(&singleByteStringBytes[index]),
+			bits: uint64(StringKind) |
+				uint64(1)<<stringLengthShift |
+				uint64(hash)<<stringHashShift,
+		}
+	}
+	return refs
+}
+
+func singleByteStringRef(value byte) stringRef {
+	return singleByteStringRefs[value]
+}
 
 type stringSet struct {
 	entries [stringCacheWays]stringRef
@@ -90,9 +111,12 @@ func (pool *stringPool) makeBytes(bytes []byte) stringRef {
 	if len(bytes) == 0 {
 		return emptyStringRef
 	}
+	if len(bytes) == 1 {
+		return singleByteStringRef(bytes[0])
+	}
 	hash := hashBytes(bytes)
 	if pool.closed || len(bytes) > shortStringLimit {
-		return newHashedStringRef(string(bytes), hash)
+		return newUncachedHashedStringRef(string(bytes), hash)
 	}
 
 	if found := pool.lookupProtectedBytes(bytes, hash); found.valid() {
@@ -105,7 +129,7 @@ func (pool *stringPool) makeBytes(bytes []byte) stringRef {
 		return found
 	}
 
-	created := newHashedStringRef(string(bytes), hash)
+	created := newUncachedHashedStringRef(string(bytes), hash)
 	pool.storeProbation(created)
 	return created
 }
@@ -128,11 +152,14 @@ func (pool *stringPool) makeHashed(
 	if text == "" {
 		return emptyStringRef
 	}
+	if len(text) == 1 {
+		return singleByteStringRef(text[0])
+	}
 	if pool.closed || len(text) > shortStringLimit {
 		if borrowed {
 			text = strings.Clone(text)
 		}
-		return newHashedStringRef(text, hash)
+		return newUncachedHashedStringRef(text, hash)
 	}
 
 	if found := pool.lookupProtected(text, hash); found.valid() {
@@ -148,7 +175,7 @@ func (pool *stringPool) makeHashed(
 	if borrowed {
 		text = strings.Clone(text)
 	}
-	created := newHashedStringRef(text, hash)
+	created := newUncachedHashedStringRef(text, hash)
 	pool.storeProbation(created)
 	return created
 }
@@ -162,6 +189,20 @@ func newStringRef(text string) stringRef {
 }
 
 func newHashedStringRef(text string, hash stringHash) stringRef {
+	length := len(text)
+	if length == 1 {
+		return singleByteStringRef(text[0])
+	}
+	return newUncachedHashedStringRef(text, hash)
+}
+
+// newUncachedHashedStringRef constructs backing storage after the caller has
+// handled the canonical single-byte case. The empty-string initializer is its
+// one zero-length caller.
+func newUncachedHashedStringRef(
+	text string,
+	hash stringHash,
+) stringRef {
 	length := len(text)
 	bits := uint64(StringKind) |
 		uint64(hash)<<stringHashShift

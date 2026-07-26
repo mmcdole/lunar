@@ -383,6 +383,39 @@ func TestStringIdentityAndBoundedAdmission(t *testing.T) {
 	}
 }
 
+func TestSingleByteStringsUseCanonicalStorage(t *testing.T) {
+	firstState, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer firstState.Close()
+	secondState, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondState.Close()
+
+	for value := 0; value <= 255; value++ {
+		firstText := strings.Clone(string([]byte{byte(value)}))
+		secondText := strings.Clone(string([]byte{byte(value)}))
+		first := firstState.String(firstText)
+		second := secondState.String(secondText)
+		if text, ok := first.AsString(); !ok || text != firstText {
+			t.Fatalf("byte %d decoded as %q, %t", value, text, ok)
+		}
+		if first.ref != second.ref || first.bits != second.bits {
+			t.Fatalf(
+				"byte %d used distinct storage: (%p, %#x) and (%p, %#x)",
+				value,
+				first.ref,
+				first.bits,
+				second.ref,
+				second.bits,
+			)
+		}
+	}
+}
+
 func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

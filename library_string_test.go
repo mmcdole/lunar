@@ -576,6 +576,14 @@ return function()
 	return total
 end
 `},
+		{name: "char single byte", source: `
+local char = string.char
+return function()
+	local total = 0
+	for value = 0, 255 do total = total + #char(value) end
+	return total
+end
+`},
 		{name: "find plain", source: `
 local find = string.find
 local s = "the quick brown fox"
