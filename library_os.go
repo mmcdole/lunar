@@ -9,6 +9,7 @@ var osLibraryFunctions = [...]struct {
 	{name: "clock", entry: osClock},
 	{name: "date", entry: osDate},
 	{name: "difftime", entry: osDifferenceTime},
+	{name: "execute", entry: osExecute},
 	{name: "exit", entry: osExit},
 	{name: "getenv", entry: osGetEnvironment},
 	{name: "remove", entry: osRemove},
@@ -18,8 +19,7 @@ var osLibraryFunctions = [...]struct {
 	{name: "tmpname", entry: osTemporaryName},
 }
 
-// OpenOS installs the implemented portion of Lua 5.1's operating-system
-// library.
+// OpenOS installs Lua 5.1's operating-system library.
 //
 // Opening is explicit and idempotent in effect. Each call replaces the global
 // os table and every installed function with fresh canonical objects.
@@ -67,6 +67,32 @@ func osGetEnvironment(frame Frame) Outcome {
 		return frame.ReturnNil()
 	}
 	return frame.ReturnString(value)
+}
+
+func osExecute(frame Frame) Outcome {
+	value, present := frame.argument(0)
+	if !present || value.kind() == NilKind {
+		if hostShellAvailable() {
+			return frame.ReturnNumber(1)
+		}
+		return frame.ReturnNumber(0)
+	}
+	command, ok := frame.textArgument(0)
+	if !ok {
+		return baseArgumentTypeError(frame, 0, "string")
+	}
+	status, cancelled := executeHostShell(
+		frame.Context(),
+		luaCString(command),
+	)
+	if cancelled {
+		failure := pollExecutionContext(frame.thread)
+		if failure == nil {
+			failure = newContextError(frame.Context(), true)
+		}
+		return frame.sealError(failure)
+	}
+	return frame.ReturnNumber(float64(status))
 }
 
 func osExit(frame Frame) Outcome {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -178,6 +179,54 @@ func TestOSLibraryTemporaryNameCreatesClosedFile(t *testing.T) {
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOSExecuteQueryAndArgumentContract(t *testing.T) {
+	state := newStateWithOS(t)
+	defer state.Close()
+	chunk := mustLoadString(t, state, "@execute-contract.lua", `
+local queryCount = select("#", os.execute())
+local query = os.execute()
+local nilQuery = os.execute(nil)
+local ok, message = pcall(function() os.execute({}) end)
+return queryCount, query, nilQuery, ok, message
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	available := Number(0)
+	if hostShellAvailable() {
+		available = Number(1)
+	}
+	if len(results) != 5 {
+		t.Fatalf("execute contract results = %v", results)
+	}
+	assertTestValues(
+		t,
+		results[:4],
+		Number(1),
+		available,
+		available,
+		Bool(false),
+	)
+	message, ok := results[4].AsString()
+	if !ok || !strings.Contains(
+		message,
+		"bad argument #1 to 'execute' (string expected, got table)",
+	) {
+		t.Fatalf("execute argument failure = %q", message)
+	}
+
+	missing := exec.Command(
+		filepath.Join(t.TempDir(), "missing-command-processor"),
+	)
+	if process, startErr := startChildProcess(
+		missing,
+		false,
+	); startErr == nil || process != nil {
+		t.Fatalf("unstartable process = (%v, %v)", process, startErr)
 	}
 }
 
@@ -726,6 +775,20 @@ return t.sec, t.min, t.hour, t.day, t.month, t.year,
 		source: `return os.difftime()`,
 		want: "error 'case:1: bad argument #1 to 'difftime' " +
 			"(number expected, got no value)'",
+	},
+	{
+		name: "execute queries the command processor",
+		source: `
+local count = select("#", os.execute())
+return os.execute() ~= 0, os.execute(nil, "ignored") ~= 0, count
+`,
+		want: "ok true true 1",
+	},
+	{
+		name:   "execute requires a string command",
+		source: `return os.execute({})`,
+		want: "error 'case:1: bad argument #1 to 'execute' " +
+			"(string expected, got table)'",
 	},
 	{
 		name:   "getenv requires a string",

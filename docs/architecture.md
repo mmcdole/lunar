@@ -1041,6 +1041,9 @@ host `ContextError`, not a `(nil, message)` load result.
 streams and default to `os.Stdin`, `os.Stdout`, and `os.Stderr`. The State
 borrows these interfaces: libraries serialize access under the ordinary
 single-executor contract, and `Close` never closes a caller-owned stream.
+They govern Lua's stream operations, not child processes: `os.execute`
+inherits the embedding process's actual standard descriptors and neither
+redirects through nor flushes the State endpoints.
 `loadfile` and `dofile` use the process filesystem and use the State's input
 stream when called without a filename. They apply the same leading-`#` file
 rule as `State.LoadFile`. Every loaded closure binds to the executing Thread's
@@ -1164,9 +1167,34 @@ if errors.As(err, &request) {
 ```
 
 Status values remain signed and unmasked; the host decides how a Lua status
-maps to its own process or service. `os.execute` remains absent pending its
-separate process contract, and future `io.popen` cleanup must distinguish an
-explicit wait from abandoned-resource termination.
+maps to its own process or service.
+
+`os.execute` preserves Lua 5.1's one-result contract: every call returns
+exactly one number. An omitted or nil command queries for a command processor
+and normalizes availability to 1 or 0. A supplied command is passed unchanged
+after Lua's string coercion and C-NUL truncation to `/bin/sh -c` on POSIX or
+the `COMSPEC`/`cmd.exe /c` command line on Windows. POSIX returns the raw wait
+status, including its exit-code shift and signal bits; Windows returns the
+signed command-interpreter exit status. An unavailable processor or failure
+to start or reap it returns -1.
+
+Commands inherit the embedding process's current environment, working
+directory, and actual `os.Stdin`, `os.Stdout`, and `os.Stderr`. They do not
+inherit State-local `Options` streams or Lua's mutable default IO files. A
+context-aware call terminates and reaps the root process before returning a
+`ContextError`. POSIX places a cancellable command in a new process group
+atomically at creation and terminates its descendants with the group; other
+platforms terminate only the root process. That separate POSIX process group
+also means an interactive cancellable command does not become the terminal's
+foreground group; embedders should use an uncancelled call when the command
+must interact with the controlling terminal.
+
+Two host differences are deliberate. Badger does not reproduce C
+`system`'s temporary changes to the embedding process's signal masks and
+dispositions. Windows commands use Go's Unicode process interface rather
+than the C runtime's locale-dependent narrow-character conversion. Future
+`io.popen` cleanup must still distinguish an explicit wait from
+abandoned-resource termination.
 
 The remaining base entries are intentionally absent rather than partial
 stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate
