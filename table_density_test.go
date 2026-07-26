@@ -26,12 +26,12 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 	if got := table.RawLen(); got != denseCount {
 		t.Fatalf("dense RawLen = %d, want %d", got, denseCount)
 	}
-	if len(table.array) != 16_384 ||
+	if table.array.len() != 16_384 ||
 		table.arrayUsed != denseCount ||
 		table.store.live != 0 {
 		t.Fatalf(
 			"dense storage = array:%d used:%d records:%d",
-			len(table.array),
+			table.array.len(),
 			table.arrayUsed,
 			table.store.live,
 		)
@@ -45,8 +45,11 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 	if err := sparse.RawSetInt(sparseIndex, Bool(true)); err != nil {
 		t.Fatal(err)
 	}
-	if len(sparse.array) != 0 {
-		t.Fatalf("sparse assignment materialized %d array slots", len(sparse.array))
+	if sparse.array.len() != 0 {
+		t.Fatalf(
+			"sparse assignment materialized %d array slots",
+			sparse.array.len(),
+		)
 	}
 	if got, ok := sparse.RawGetInt(sparseIndex).AsBool(); !ok || !got {
 		t.Fatalf("sparse lookup = (%v, %v), want (true, true)", got, ok)
@@ -66,12 +69,12 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(strided.array) != 1 ||
+	if strided.array.len() != 1 ||
 		strided.arrayUsed != 1 ||
 		strided.store.live != stridedCount-1 {
 		t.Fatalf(
 			"strided storage = array:%d used:%d records:%d",
-			len(strided.array),
+			strided.array.len(),
 			strided.arrayUsed,
 			strided.store.live,
 		)
@@ -120,18 +123,18 @@ func TestTableDenseLayoutIsInsertionOrderIndependent(t *testing.T) {
 					numberSlot(float64(key)),
 				)
 			}
-			if len(table.array) != count ||
-				cap(table.array) != count ||
+			if table.array.len() != count ||
+				table.array.cap() != count ||
 				table.arrayUsed != count ||
 				table.store.live != 0 ||
-				len(table.store.entries) != 0 {
+				table.store.entries.len() != 0 {
 				t.Fatalf(
 					"layout = array:%d/%d used:%d records:%d/%d",
-					len(table.array),
-					cap(table.array),
+					table.array.len(),
+					table.array.cap(),
 					table.arrayUsed,
 					table.store.live,
-					len(table.store.entries),
+					table.store.entries.len(),
 				)
 			}
 			if table.RawLen() != count {
@@ -264,14 +267,17 @@ func TestTableArraySizingPolicy(t *testing.T) {
 		var random uint64 = 0x13198a2e03707344
 		for length := 1; length <= 128; length++ {
 			for sample := 0; sample < 16; sample++ {
-				table := Table{array: make([]slot, length)}
-				for index := range table.array {
+				table := Table{
+					array: makeTableVector[slot](length, length),
+				}
+				array := table.array.values()
+				for index := range array {
 					random ^= random << 13
 					random ^= random >> 7
 					random ^= random << 17
-					table.array[index] = nilSlot
+					array[index] = nilSlot
 					if random&3 != 0 {
-						table.array[index] = numberSlot(
+						array[index] = numberSlot(
 							float64(index + 1),
 						)
 						table.arrayUsed++
@@ -284,7 +290,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 					table.densityForInsert(pending)
 
 				var counts [maximumTableArrayBits + 1]int
-				for index, value := range table.array {
+				for index, value := range array {
 					if value.kind() != NilKind {
 						countArrayDensityIndex(&counts, index+1)
 					}
@@ -335,10 +341,10 @@ func TestTableArraySizingPolicy(t *testing.T) {
 		} {
 			table.rawSetIntegerSlot(index, numberSlot(float64(index)))
 		}
-		if len(table.array) > initialArrayCapacity {
+		if table.array.len() > initialArrayCapacity {
 			t.Fatalf(
 				"boundary keys grew array to %d slots",
-				len(table.array),
+				table.array.len(),
 			)
 		}
 		for _, index := range []int{
@@ -360,38 +366,46 @@ func TestTableArraySizingPolicy(t *testing.T) {
 
 	t.Run("proven dense growth skips redistribution", func(t *testing.T) {
 		table := Table{
-			array:     make([]slot, initialArrayCapacity),
+			array: makeTableVector[slot](
+				initialArrayCapacity,
+				initialArrayCapacity,
+			),
 			arrayUsed: initialArrayCapacity,
 		}
-		for index := range table.array {
-			table.array[index] = numberSlot(float64(index + 1))
+		array := table.array.values()
+		for index := range array {
+			array[index] = numberSlot(float64(index + 1))
 		}
 		if got := table.directArrayGrowth(5); got != 8 {
 			t.Fatalf("growth target = %d, want 8", got)
 		}
 		table.rawSetIntegerSlot(5, numberSlot(5))
-		if len(table.array) != 8 ||
-			cap(table.array) != 8 ||
+		if table.array.len() != 8 ||
+			table.array.cap() != 8 ||
 			table.arrayUsed != 5 ||
-			len(table.store.entries) != 0 {
+			table.store.entries.len() != 0 {
 			t.Fatalf(
 				"direct growth = array:%d/%d used:%d records:%d",
-				len(table.array),
-				cap(table.array),
+				table.array.len(),
+				table.array.cap(),
 				table.arrayUsed,
-				len(table.store.entries),
+				table.store.entries.len(),
 			)
 		}
 
 		holey := Table{
-			array:     make([]slot, initialArrayCapacity),
+			array: makeTableVector[slot](
+				initialArrayCapacity,
+				initialArrayCapacity,
+			),
 			arrayUsed: initialArrayCapacity - 1,
 		}
-		for index := range holey.array {
-			holey.array[index] = nilSlot
+		holeyArray := holey.array.values()
+		for index := range holeyArray {
+			holeyArray[index] = nilSlot
 		}
 		for index := 0; index < holey.arrayUsed; index++ {
-			holey.array[index] = numberSlot(float64(index + 1))
+			holeyArray[index] = numberSlot(float64(index + 1))
 		}
 		if got := holey.directArrayGrowth(5); got != 0 {
 			t.Fatalf("exact-half growth target = %d, want 0", got)
@@ -466,8 +480,12 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	if err := table.RawSetInt(5, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if table.store.live != 1 || len(table.array) != 0 {
-		t.Fatalf("initial sparse storage = hash %d, array %d", table.store.live, len(table.array))
+	if table.store.live != 1 || table.array.len() != 0 {
+		t.Fatalf(
+			"initial sparse storage = hash %d, array %d",
+			table.store.live,
+			table.array.len(),
+		)
 	}
 	if err := table.RawSetInt(1, Bool(true)); err != nil {
 		t.Fatal(err)
@@ -493,8 +511,8 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 			table.store.integerKeys,
 		)
 	}
-	if len(table.array) != 2 {
-		t.Fatalf("updated array length = %d, want 2", len(table.array))
+	if table.array.len() != 2 {
+		t.Fatalf("updated array length = %d, want 2", table.array.len())
 	}
 	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
 		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
@@ -664,7 +682,7 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 func assertTableLaneInvariant(t *testing.T, table *Table) {
 	t.Helper()
 	arrayUsed := 0
-	for _, value := range table.array {
+	for _, value := range table.array.values() {
 		if value.kind() != NilKind {
 			arrayUsed++
 		}
@@ -677,8 +695,9 @@ func assertTableLaneInvariant(t *testing.T, table *Table) {
 		)
 	}
 	recordIntegerFloor := uint8(0)
-	for index := range table.store.entries {
-		entry := &table.store.entries[index]
+	entries := table.store.entries.values()
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty ||
 			entry.value.kind() == NilKind {
 			continue
@@ -690,11 +709,11 @@ func assertTableLaneInvariant(t *testing.T, table *Table) {
 			recordIntegerFloor = class
 		}
 		if integer, ok := arrayIndex(entry.key); ok &&
-			integer <= len(table.array) {
+			integer <= table.array.len() {
 			t.Fatalf(
 				"record integer %d overlaps array span %d",
 				integer,
-				len(table.array),
+				table.array.len(),
 			)
 		}
 	}
@@ -730,24 +749,24 @@ func TestTableRedistribution(t *testing.T) {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
 		}
 		table.rawSetIntegerSlot(14, numberSlot(140))
-		if len(table.array) != 16 ||
+		if table.array.len() != 16 ||
 			table.arrayUsed != 11 ||
 			table.store.integerKeys != 0 {
 			t.Fatalf(
 				"pre-spill storage = array:%d used:%d integers:%d",
-				len(table.array),
+				table.array.len(),
 				table.arrayUsed,
 				table.store.integerKeys,
 			)
 		}
 
 		table.rawSetIntegerSlot(18, numberSlot(180))
-		if len(table.array) != 16 ||
+		if table.array.len() != 16 ||
 			table.arrayUsed != 11 ||
 			table.store.integerKeys != 1 {
 			t.Fatalf(
 				"post-spill storage = array:%d used:%d integers:%d",
-				len(table.array),
+				table.array.len(),
 				table.arrayUsed,
 				table.store.integerKeys,
 			)
@@ -772,8 +791,9 @@ func TestTableRedistribution(t *testing.T) {
 		table := newTable(state.runtime, 0, 0)
 
 		table.growArray(10)
+		array := table.array.values()
 		for key := 1; key <= 10; key++ {
-			writeSlot(&table.array[key-1], numberSlot(float64(key)))
+			writeSlot(&array[key-1], numberSlot(float64(key)))
 			table.arrayUsed++
 		}
 		table.store.init(4)
@@ -797,17 +817,17 @@ func TestTableRedistribution(t *testing.T) {
 				t.Fatal("failed to seed record field")
 			}
 		}
-		if len(table.array) != 10 || table.store.integerKeys != 1 {
+		if table.array.len() != 10 || table.store.integerKeys != 1 {
 			t.Fatalf(
 				"setup storage = array:%d hash integers:%d",
-				len(table.array),
+				table.array.len(),
 				table.store.integerKeys,
 			)
 		}
 
 		table.rawSetIntegerSlot(18, numberSlot(180))
-		if len(table.array) != 16 {
-			t.Fatalf("array length = %d; want 16", len(table.array))
+		if table.array.len() != 16 {
+			t.Fatalf("array length = %d; want 16", table.array.len())
 		}
 		if value, found := table.rawIntSlot(14); !found ||
 			!rawSlotEqual(value, numberSlot(140)) {
@@ -863,10 +883,10 @@ func TestTableRedistribution(t *testing.T) {
 		for key := 2; key <= 8; key++ {
 			table.rawSetIntegerSlot(key, nilSlot)
 		}
-		if len(table.array) != 8 || table.arrayUsed != 1 {
+		if table.array.len() != 8 || table.arrayUsed != 1 {
 			t.Fatalf(
 				"deleted layout = array:%d used:%d",
-				len(table.array),
+				table.array.len(),
 				table.arrayUsed,
 			)
 		}
@@ -877,19 +897,19 @@ func TestTableRedistribution(t *testing.T) {
 		table.absentMetamethods = ^uint32(0)
 		const sparse = 50_000_000
 		table.rawSetIntegerSlot(sparse, numberSlot(500))
-		if len(table.array) != 1 ||
-			cap(table.array) != 1 ||
+		if table.array.len() != 1 ||
+			table.array.cap() != 1 ||
 			table.arrayUsed != 1 ||
 			table.store.live != 1 ||
 			table.store.dead != 0 ||
-			len(table.store.entries) != minimumStoreCapacity {
+			table.store.entries.len() != minimumStoreCapacity {
 			t.Fatalf(
 				"redistributed layout = array:%d/%d used:%d records:%d/%d dead:%d",
-				len(table.array),
-				cap(table.array),
+				table.array.len(),
+				table.array.cap(),
 				table.arrayUsed,
 				table.store.live,
-				len(table.store.entries),
+				table.store.entries.len(),
 				table.store.dead,
 			)
 		}
@@ -928,18 +948,18 @@ func TestTableRedistribution(t *testing.T) {
 		if err := table.RawSetString("field", Number(9)); err != nil {
 			t.Fatal(err)
 		}
-		if len(table.array) != 1 ||
-			cap(table.array) != 1 ||
+		if table.array.len() != 1 ||
+			table.array.cap() != 1 ||
 			table.arrayUsed != 1 ||
 			table.store.live != 2 ||
-			len(table.store.entries) != minimumStoreCapacity {
+			table.store.entries.len() != minimumStoreCapacity {
 			t.Fatalf(
 				"string redistribution = array:%d/%d used:%d records:%d/%d",
-				len(table.array),
-				cap(table.array),
+				table.array.len(),
+				table.array.cap(),
 				table.arrayUsed,
 				table.store.live,
-				len(table.store.entries),
+				table.store.entries.len(),
 			)
 		}
 		value, found := table.rawStringSlot("field")
@@ -1017,21 +1037,21 @@ func TestTableRedistribution(t *testing.T) {
 			}
 		}
 		if table.store.live != 4 ||
-			len(table.store.entries) != 4 {
+			table.store.entries.len() != 4 {
 			t.Fatalf(
 				"record setup = %d/%d",
 				table.store.live,
-				len(table.store.entries),
+				table.store.entries.len(),
 			)
 		}
 
 		table.rawSetIntegerSlot(5, numberSlot(5))
-		if len(table.array) != 8 ||
+		if table.array.len() != 8 ||
 			table.arrayUsed != 5 ||
 			table.store.live != 4 {
 			t.Fatalf(
 				"redistributed storage = array:%d used:%d records:%d",
-				len(table.array),
+				table.array.len(),
 				table.arrayUsed,
 				table.store.live,
 			)
@@ -1081,25 +1101,25 @@ func TestTableRedistribution(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if len(table.store.entries) != minimumStoreCapacity ||
+		if table.store.entries.len() != minimumStoreCapacity ||
 			table.store.live != minimumStoreCapacity {
 			t.Fatalf(
 				"record setup = %d/%d",
 				table.store.live,
-				len(table.store.entries),
+				table.store.entries.len(),
 			)
 		}
-		backing := &table.store.entries[0]
+		backing := table.store.entries.data
 
 		table.rawSetIntegerSlot(5, numberSlot(5))
-		if len(table.array) != 8 ||
+		if table.array.len() != 8 ||
 			table.arrayUsed != 5 ||
-			&table.store.entries[0] != backing {
+			table.store.entries.data != backing {
 			t.Fatalf(
 				"spill = array:%d used:%d backing:%p/%p",
-				len(table.array),
+				table.array.len(),
 				table.arrayUsed,
-				&table.store.entries[0],
+				table.store.entries.data,
 				backing,
 			)
 		}

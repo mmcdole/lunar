@@ -21,7 +21,7 @@ type tableEntry struct {
 }
 
 type tableStore struct {
-	entries     []tableEntry
+	entries     tableVector[tableEntry]
 	live        uint32
 	dead        uint32
 	integerKeys uint32
@@ -33,7 +33,7 @@ func (store *tableStore) init(hint int) {
 		return
 	}
 	capacity := nextPowerOfTwo(hint)
-	store.entries = make([]tableEntry, capacity)
+	store.entries = makeTableVector[tableEntry](capacity, capacity)
 	store.lastFree = uint32(capacity)
 }
 
@@ -53,12 +53,12 @@ func nextPowerOfTwo(value int) int {
 // next continuation; putting that distinction behind another result layer
 // makes every ordinary table access pay for mutation-only state.
 func (store *tableStore) get(key slot, hash uint32) (slot, bool) {
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		return nilSlot, false
 	}
 	index := store.mainIndex(hash)
 	for {
-		entry := &store.entries[index]
+		entry := store.entries.at(index)
 		if entry.hash == entryHashEmpty {
 			return nilSlot, false
 		}
@@ -79,12 +79,12 @@ func (store *tableStore) get(key slot, hash uint32) (slot, bool) {
 }
 
 func (store *tableStore) getString(text string, hash uint32) (slot, bool) {
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		return nilSlot, false
 	}
 	index := store.mainIndex(hash)
 	for {
-		entry := &store.entries[index]
+		entry := store.entries.at(index)
 		if entry.hash == entryHashEmpty {
 			return nilSlot, false
 		}
@@ -105,12 +105,12 @@ func (store *tableStore) findStoredString(
 	text string,
 	hash uint32,
 ) (int, bool) {
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		return 0, false
 	}
 	index := store.mainIndex(hash)
 	for {
-		entry := &store.entries[index]
+		entry := store.entries.at(index)
 		if entry.hash == entryHashEmpty {
 			return 0, false
 		}
@@ -127,7 +127,7 @@ func (store *tableStore) findStoredString(
 }
 
 func (store *tableStore) reviveAt(index int, value slot) {
-	entry := &store.entries[index]
+	entry := store.entries.at(index)
 	if entry.value.kind() != NilKind || value.kind() == NilKind {
 		panic("lua: invalid table tombstone revival")
 	}
@@ -148,7 +148,7 @@ func growTableStoreCapacity(capacity int) int {
 }
 
 func (store *tableStore) deleteAt(index int) {
-	entry := &store.entries[index]
+	entry := store.entries.at(index)
 	if entry.value.kind() == NilKind {
 		panic("lua: deleting an absent table entry")
 	}
@@ -165,12 +165,12 @@ func (store *tableStore) deleteAt(index int) {
 }
 
 func (store *tableStore) find(key slot, hash uint32) (index int, found bool) {
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		return 0, false
 	}
 	index = store.mainIndex(hash)
 	for {
-		entry := &store.entries[index]
+		entry := store.entries.at(index)
 		if entry.hash == entryHashEmpty {
 			return 0, false
 		}
@@ -194,12 +194,12 @@ func (store *tableStore) findStored(
 	key slot,
 	hash uint32,
 ) (index int, stored bool) {
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		return 0, false
 	}
 	index = store.mainIndex(hash)
 	for {
-		entry := &store.entries[index]
+		entry := store.entries.at(index)
 		if entry.hash == entryHashEmpty {
 			return 0, false
 		}
@@ -232,7 +232,7 @@ func (store *tableStore) shouldCompact() bool {
 	// majority so insertion also releases the other retained continuation
 	// keys instead of carrying them indefinitely.
 	return store.dead > 1 &&
-		store.dead > uint32(len(store.entries)/4) &&
+		store.dead > uint32(store.entries.len()/4) &&
 		store.dead > store.live
 }
 
@@ -243,13 +243,13 @@ func (store *tableStore) rehash(capacity int) {
 		uint64(capacity) > maximumTableStoreCapacity {
 		panic("lua: table capacity overflow")
 	}
-	previous := store.entries
+	previous := store.entries.values()
 	live := int(store.live)
 	if capacity < live {
 		capacity = nextPowerOfTwo(live)
 	}
 	*store = tableStore{
-		entries:  make([]tableEntry, capacity),
+		entries:  makeTableVector[tableEntry](capacity, capacity),
 		lastFree: uint32(capacity),
 	}
 	for index := range previous {
@@ -272,8 +272,9 @@ func (store *tableStore) insertAbsent(
 		panic("lua: zero table hash")
 	}
 	main := store.mainIndex(hash)
-	if store.entries[main].hash == entryHashEmpty {
-		store.entries[main] = tableEntry{
+	mainEntry := store.entries.at(main)
+	if mainEntry.hash == entryHashEmpty {
+		*mainEntry = tableEntry{
 			key:   key,
 			value: value,
 			hash:  hash,
@@ -281,18 +282,18 @@ func (store *tableStore) insertAbsent(
 		store.recordInsert(key)
 		return true
 	}
-	if store.entries[main].value.kind() == NilKind {
+	if mainEntry.value.kind() == NilKind {
 		// Insertion invalidates next order, so the dead node can be removed
 		// from its old chain. A native chain head is overwritten in place to
 		// retain its successors; a displaced node is first unlinked.
 		var next uint32
-		if store.mainIndex(store.entries[main].hash) == main {
-			next = store.entries[main].next
+		if store.mainIndex(mainEntry.hash) == main {
+			next = mainEntry.next
 			store.dead--
 		} else if free := store.reclaimDeadAt(main); free != main {
 			panic("lua: displaced table node reclaimed another position")
 		}
-		store.entries[main] = tableEntry{
+		*mainEntry = tableEntry{
 			key:   key,
 			value: value,
 			hash:  hash,
@@ -307,8 +308,9 @@ func (store *tableStore) insertAbsent(
 	if !found {
 		return false
 	}
-	if store.entries[main].hash == entryHashEmpty {
-		store.entries[main] = tableEntry{
+	entries := store.entries.values()
+	if entries[main].hash == entryHashEmpty {
+		entries[main] = tableEntry{
 			key:   key,
 			value: value,
 			hash:  hash,
@@ -316,28 +318,28 @@ func (store *tableStore) insertAbsent(
 		store.recordInsert(key)
 		return true
 	}
-	occupant := store.entries[main]
+	occupant := entries[main]
 	occupantMain := store.mainIndex(occupant.hash)
 	if occupantMain != main {
 		predecessor := occupantMain
-		for store.entries[predecessor].next != uint32(main+1) {
-			link := store.entries[predecessor].next
+		for entries[predecessor].next != uint32(main+1) {
+			link := entries[predecessor].next
 			if link == 0 {
 				panic("lua: broken table collision chain")
 			}
 			predecessor = int(link - 1)
 		}
-		store.entries[free] = occupant
-		store.entries[predecessor].next = uint32(free + 1)
-		store.entries[main] = tableEntry{
+		entries[free] = occupant
+		entries[predecessor].next = uint32(free + 1)
+		entries[main] = tableEntry{
 			key:   key,
 			value: value,
 			hash:  hash,
 		}
 	} else {
-		next := store.entries[main].next
-		store.entries[main].next = uint32(free + 1)
-		store.entries[free] = tableEntry{
+		next := entries[main].next
+		entries[main].next = uint32(free + 1)
+		entries[free] = tableEntry{
 			key:   key,
 			value: value,
 			hash:  hash,
@@ -353,7 +355,7 @@ func (store *tableStore) recordInsert(key slot) {
 	if isPositiveIntegerKey(key) {
 		store.integerKeys++
 	}
-	if store.dead == 0 && store.live == uint32(len(store.entries)) {
+	if store.dead == 0 && store.live == uint32(store.entries.len()) {
 		store.lastFree = 0
 	}
 }
@@ -363,13 +365,13 @@ func (store *tableStore) takeFree() (int, bool) {
 	if free, found := store.takeFreeDownTo(0); found {
 		return free, true
 	}
-	if store.dead == 0 && store.live == uint32(len(store.entries)) {
+	if store.dead == 0 && store.live == uint32(store.entries.len()) {
 		return 0, false
 	}
 
 	// Deletion may retarget the cursor below empty nodes that an earlier
 	// downward scan had not reached. Wrap once through that skipped suffix.
-	store.lastFree = uint32(len(store.entries))
+	store.lastFree = uint32(store.entries.len())
 	if free, found := store.takeFreeDownTo(start); found {
 		return free, true
 	}
@@ -377,15 +379,16 @@ func (store *tableStore) takeFree() (int, bool) {
 }
 
 func (store *tableStore) takeFreeDownTo(limit uint32) (int, bool) {
+	entries := store.entries.values()
 	for store.lastFree > limit {
 		store.lastFree--
 		index := int(store.lastFree)
-		if store.entries[index].hash == entryHashEmpty {
+		if entries[index].hash == entryHashEmpty {
 			return index, true
 		}
-		if store.entries[index].value.kind() == NilKind {
+		if entries[index].value.kind() == NilKind {
 			free := store.reclaimDeadAt(index)
-			remaining := &store.entries[index]
+			remaining := &entries[index]
 			if remaining.hash != entryHashEmpty &&
 				remaining.value.kind() == NilKind {
 				// Reclaiming a dead chain head may promote another dead
@@ -400,34 +403,35 @@ func (store *tableStore) takeFreeDownTo(limit uint32) (int, bool) {
 }
 
 func (store *tableStore) reclaimDeadAt(index int) int {
-	entry := store.entries[index]
+	entries := store.entries.values()
+	entry := entries[index]
 	if entry.hash == entryHashEmpty || entry.value.kind() != NilKind {
 		panic("lua: reclaiming a live table entry")
 	}
 	main := store.mainIndex(entry.hash)
 	if main != index {
 		predecessor := main
-		for store.entries[predecessor].next != uint32(index+1) {
-			link := store.entries[predecessor].next
+		for entries[predecessor].next != uint32(index+1) {
+			link := entries[predecessor].next
 			if link == 0 {
 				panic("lua: broken table collision chain")
 			}
 			predecessor = int(link - 1)
 		}
-		store.entries[predecessor].next = entry.next
-		store.entries[index] = tableEntry{}
+		entries[predecessor].next = entry.next
+		entries[index] = tableEntry{}
 		store.dead--
 		return index
 	}
 	if entry.next == 0 {
-		store.entries[index] = tableEntry{}
+		entries[index] = tableEntry{}
 		store.dead--
 		return index
 	}
 
 	successor := int(entry.next - 1)
-	store.entries[index] = store.entries[successor]
-	store.entries[successor] = tableEntry{}
+	entries[index] = entries[successor]
+	entries[successor] = tableEntry{}
 	store.dead--
 	return successor
 }
@@ -439,5 +443,5 @@ func (store *tableStore) consumeDeadCandidate(index int) {
 }
 
 func (store *tableStore) mainIndex(hash uint32) int {
-	return int(hash & uint32(len(store.entries)-1))
+	return int(hash & uint32(store.entries.len()-1))
 }

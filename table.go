@@ -25,6 +25,64 @@ const (
 	tableHashLane
 )
 
+// tableVector stores the same typed backing pointer as a Go slice while using
+// 32-bit lengths permitted by Lua's table capacity bounds. values returns a
+// fixed-capacity view so growth remains explicit through construction or
+// withLength. Like a slice element pointer, an at result or values view must
+// not survive replacement of the descriptor's backing storage.
+type tableVector[T any] struct {
+	data     *T
+	length   uint32
+	capacity uint32
+}
+
+func makeTableVector[T any](length, capacity int) tableVector[T] {
+	if length < 0 ||
+		capacity < length ||
+		uint64(capacity) > uint64(^uint32(0)) {
+		panic("lua: table capacity overflow")
+	}
+	if capacity == 0 {
+		return tableVector[T]{}
+	}
+	values := make([]T, capacity)
+	return tableVector[T]{
+		data:     unsafe.SliceData(values),
+		length:   uint32(length),
+		capacity: uint32(capacity),
+	}
+}
+
+func (vector tableVector[T]) len() int {
+	return int(vector.length)
+}
+
+func (vector tableVector[T]) cap() int {
+	return int(vector.capacity)
+}
+
+func (vector tableVector[T]) values() []T {
+	return unsafe.Slice(vector.data, int(vector.length))
+}
+
+func (vector tableVector[T]) at(index int) *T {
+	if uint(index) >= uint(vector.length) {
+		panic("lua: table vector index out of range")
+	}
+	return (*T)(unsafe.Add(
+		unsafe.Pointer(vector.data),
+		uintptr(index)*unsafe.Sizeof(*vector.data),
+	))
+}
+
+func (vector tableVector[T]) withLength(length int) tableVector[T] {
+	if length < 0 || uint64(length) > uint64(vector.capacity) {
+		panic("lua: table capacity overflow")
+	}
+	vector.length = uint32(length)
+	return vector
+}
+
 // tableLocation is valid only until the table's next structural mutation.
 // It lets an immediately following update use the slot already found by a
 // lookup, mirroring Lua's resolve-once table-set path without retaining an
@@ -48,7 +106,7 @@ type integerTableValue struct {
 // A Table must not be copied after first use. Retain and pass its pointer.
 type Table struct {
 	objectHeader
-	array             []slot
+	array             tableVector[slot]
 	arrayUsed         int
 	store             tableStore
 	metatable         *Table
@@ -63,7 +121,7 @@ type Table struct {
 func newTable(owner *runtimeState, arrayHint, recordHint int) *Table {
 	table := &Table{objectHeader: objectHeader{owner: owner}}
 	if arrayHint > 0 {
-		table.array = make([]slot, 0, arrayHint)
+		table.array = makeTableVector[slot](0, arrayHint)
 	}
 	table.store.init(recordHint)
 	return table
@@ -172,24 +230,28 @@ func (table *Table) RawSetString(key string, value Value) error {
 	hash := uint32(table.owner.strings.hash(key))
 	valueSlot := slotFromValue(value)
 	index, stored := table.store.findStoredString(key, hash)
+	var entry *tableEntry
+	if stored {
+		entry = table.store.entries.at(index)
+	}
 	changed := false
 	switch {
 	case stored &&
-		table.store.entries[index].value.kind() != NilKind &&
+		entry.value.kind() != NilKind &&
 		valueSlot.kind() == NilKind:
 		table.store.deleteAt(index)
 		changed = true
 	case stored &&
-		table.store.entries[index].value.kind() != NilKind:
-		current := table.store.entries[index].value
+		entry.value.kind() != NilKind:
+		current := entry.value
 		if !rawSlotEqual(current, valueSlot) {
-			writeSlot(&table.store.entries[index].value, valueSlot)
+			writeSlot(&entry.value, valueSlot)
 			changed = true
 		}
 	case stored && valueSlot.kind() != NilKind:
 		if table.store.shouldCompact() {
-			storedKey := table.store.entries[index].key
-			table.store.rehash(len(table.store.entries))
+			storedKey := entry.key
+			table.store.rehash(table.store.entries.len())
 			table.insertNewField(storedKey, valueSlot, hash, 0)
 		} else {
 			table.store.reviveAt(index, valueSlot)
@@ -220,12 +282,14 @@ func (table *Table) RawLen() int {
 		return 0
 	}
 
-	arrayLength := len(table.array)
-	if arrayLength > 0 && table.array[arrayLength-1].kind() == NilKind {
+	arrayLength := table.array.len()
+	if arrayLength > 0 &&
+		table.array.at(arrayLength-1).kind() == NilKind {
+		array := table.array.values()
 		low, high := 0, arrayLength
 		for high-low > 1 {
 			middle := low + (high-low)/2
-			if table.array[middle-1].kind() == NilKind {
+			if array[middle-1].kind() == NilKind {
 				high = middle
 			} else {
 				low = middle
@@ -270,13 +334,15 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 		return nilSlot, nilSlot, false, ErrClosed
 	}
 
+	arrayLength := table.array.len()
+	storeLength := table.store.entries.len()
 	arrayStart := 0
 	storeStart := 0
 	if previous.kind() != NilKind {
 		// PUC Lua 5.1 treats an exact positive integer within the allocated
 		// array part as a traversal position even when its slot is nil. This
 		// permits next to continue after deletion of the current array field.
-		if index, ok := arrayIndex(previous); ok && index <= len(table.array) {
+		if index, ok := arrayIndex(previous); ok && index <= arrayLength {
 			arrayStart = index
 		} else {
 			hash, hashErr := hashTableKey(previous)
@@ -287,13 +353,13 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 			if !exists {
 				return nilSlot, nilSlot, false, ErrInvalidNextKey
 			}
-			arrayStart = len(table.array)
+			arrayStart = arrayLength
 			storeStart = index + 1
 		}
 	}
 
-	for index := arrayStart; index < len(table.array); index++ {
-		candidate := table.array[index]
+	for index := arrayStart; index < arrayLength; index++ {
+		candidate := *table.array.at(index)
 		if candidate.kind() == NilKind {
 			continue
 		}
@@ -302,8 +368,8 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 			true,
 			nil
 	}
-	for index := storeStart; index < len(table.store.entries); index++ {
-		entry := &table.store.entries[index]
+	for index := storeStart; index < storeLength; index++ {
+		entry := table.store.entries.at(index)
 		if entry.hash == entryHashEmpty || entry.value.kind() == NilKind {
 			continue
 		}
@@ -398,8 +464,8 @@ func (table *Table) resolveNormalizedSlot(
 	hash uint32,
 ) (slot, tableLocation, bool) {
 	if arrayKey {
-		if index <= len(table.array) {
-			value := table.array[index-1]
+		if index <= table.array.len() {
+			value := *table.array.at(index - 1)
 			return value,
 				tableLocation{
 					index: index - 1,
@@ -415,7 +481,7 @@ func (table *Table) resolveNormalizedSlot(
 	if !found {
 		return nilSlot, tableLocation{}, false
 	}
-	return table.store.entries[storeIndex].value,
+	return table.store.entries.at(storeIndex).value,
 		tableLocation{
 			index: storeIndex,
 			lane:  tableHashLane,
@@ -427,12 +493,12 @@ func (table *Table) replaceResolvedSlot(
 	location tableLocation,
 	value slot,
 ) {
-	var current slot
+	var current *slot
 	switch location.lane {
 	case tableArrayLane:
-		current = table.array[location.index]
+		current = table.array.at(location.index)
 	case tableHashLane:
-		current = table.store.entries[location.index].value
+		current = &table.store.entries.at(location.index).value
 	default:
 		panic("lua: invalid table storage lane")
 	}
@@ -443,7 +509,7 @@ func (table *Table) replaceResolvedSlot(
 	if value.kind() == NilKind {
 		switch location.lane {
 		case tableArrayLane:
-			table.array[location.index] = nilSlot
+			*current = nilSlot
 			table.arrayUsed--
 		case tableHashLane:
 			table.store.deleteAt(location.index)
@@ -452,15 +518,10 @@ func (table *Table) replaceResolvedSlot(
 		table.absentMetamethods = 0
 		return
 	}
-	if rawSlotEqual(current, value) {
+	if rawSlotEqual(*current, value) {
 		return
 	}
-	switch location.lane {
-	case tableArrayLane:
-		writeSlot(&table.array[location.index], value)
-	case tableHashLane:
-		writeSlot(&table.store.entries[location.index].value, value)
-	}
+	writeSlot(current, value)
 	table.absentMetamethods = 0
 }
 
@@ -526,12 +587,13 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 	if arrayFirst < 1 {
 		arrayFirst = 1
 	}
+	array := table.array.values()
 	arrayLast := last
-	if arrayLast > len(table.array) {
-		arrayLast = len(table.array)
+	if arrayLast > len(array) {
+		arrayLast = len(array)
 	}
 	for key := arrayFirst; key <= arrayLast; key++ {
-		value := table.array[key-1]
+		value := array[key-1]
 		if value.kind() != NilKind {
 			values = append(values, integerTableValue{
 				key:   key,
@@ -540,8 +602,9 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 		}
 	}
 
-	for index := range table.store.entries {
-		entry := &table.store.entries[index]
+	entries := table.store.entries.values()
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty ||
 			entry.value.kind() == NilKind {
 			continue
@@ -550,7 +613,7 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 		if !ok {
 			continue
 		}
-		if key > 0 && key <= len(table.array) {
+		if key > 0 && key <= len(array) {
 			// growArray maintains the single-lane invariant. Be defensive
 			// against malformed internal state without treating a masked
 			// hash entry as a visible source.
@@ -589,7 +652,7 @@ func (table *Table) rawSetList(first int, values []slot) {
 	if len(values) == 0 {
 		return
 	}
-	if first == len(table.array)+1 && table.store.integerKeys == 0 {
+	if first == table.array.len()+1 && table.store.integerKeys == 0 {
 		last := len(values)
 		for last > 0 && values[last-1].kind() == NilKind {
 			last--
@@ -597,19 +660,20 @@ func (table *Table) rawSetList(first int, values []slot) {
 		if last == 0 {
 			return
 		}
-		if len(table.array) <= maximumTableArrayCapacity &&
-			last <= maximumTableArrayCapacity-len(table.array) {
+		if table.array.len() <= maximumTableArrayCapacity &&
+			last <= maximumTableArrayCapacity-table.array.len() {
 			if table.store.shouldCompact() {
 				// SETLIST appends new fields, so it is the same legal
 				// compaction seam as any other insertion.
-				table.store.rehash(len(table.store.entries))
+				table.store.rehash(table.store.entries.len())
 			}
 
-			oldLength := len(table.array)
+			oldLength := table.array.len()
 			table.growArray(oldLength + last)
+			array := table.array.values()
 			inserted := 0
 			for index, value := range values[:last] {
-				writeSlot(&table.array[oldLength+index], value)
+				writeSlot(&array[oldLength+index], value)
 				if value.kind() != NilKind {
 					inserted++
 				}
@@ -651,7 +715,7 @@ func (table *Table) setStoredRecord(
 	index int,
 	value slot,
 ) bool {
-	entry := &table.store.entries[index]
+	entry := table.store.entries.at(index)
 	current := entry.value
 	if current.kind() != NilKind && value.kind() != NilKind {
 		if rawSlotEqual(current, value) {
@@ -667,7 +731,7 @@ func (table *Table) setStoredRecordSlow(
 	index int,
 	value slot,
 ) bool {
-	entry := &table.store.entries[index]
+	entry := table.store.entries.at(index)
 	current := entry.value
 	if current.kind() == NilKind {
 		if value.kind() == NilKind {
@@ -675,7 +739,7 @@ func (table *Table) setStoredRecordSlow(
 		}
 		if table.store.shouldCompact() {
 			key, hash := entry.key, entry.hash
-			table.store.rehash(len(table.store.entries))
+			table.store.rehash(table.store.entries.len())
 			table.insertNewField(
 				key,
 				value,
@@ -704,9 +768,9 @@ func (table *Table) insertNewField(
 	if value.kind() == NilKind {
 		panic("lua: inserting a nil table record")
 	}
-	if len(table.store.entries) != 0 {
+	if table.store.entries.len() != 0 {
 		if table.store.shouldCompact() {
-			table.store.rehash(len(table.store.entries))
+			table.store.rehash(table.store.entries.len())
 		}
 		if table.store.insertAbsent(key, value, hash) {
 			table.recordIntegerInsertedClass(integerClass)
@@ -715,9 +779,9 @@ func (table *Table) insertNewField(
 	}
 	if table.canGrowRecordStore(integerClass) {
 		capacity := minimumStoreCapacity
-		if len(table.store.entries) != 0 {
+		if table.store.entries.len() != 0 {
 			capacity = growTableStoreCapacity(
-				len(table.store.entries),
+				table.store.entries.len(),
 			)
 		}
 		table.store.rehash(capacity)
@@ -731,7 +795,7 @@ func (table *Table) insertNewField(
 }
 
 func (table *Table) canGrowRecordStore(pendingClass uint8) bool {
-	arraySize := len(table.array)
+	arraySize := table.array.len()
 	arrayExponent := -1
 	switch {
 	case arraySize == 0:
@@ -807,9 +871,9 @@ func integerRecordClass(integer int) uint8 {
 
 func (table *Table) setInteger(index int, value slot) bool {
 	if index > 0 &&
-		index <= len(table.array) &&
+		index <= table.array.len() &&
 		(value.kind() == NilKind ||
-			table.array[index-1].kind() != NilKind) {
+			table.array.at(index-1).kind() != NilKind) {
 		// Existing array fields and absent nil writes cannot release record
 		// tombstones. Keep the dense update path out of insertion policy.
 		return table.setArray(index, value)
@@ -818,14 +882,14 @@ func (table *Table) setInteger(index int, value slot) bool {
 	// Updating an existing field must retain its next continuation position.
 	// Keep the common sparse update in this first mutation frame as well,
 	// rather than entering allocation policy through another call.
-	if index > len(table.array) && table.store.integerKeys != 0 {
+	if index > table.array.len() && table.store.integerKeys != 0 {
 		number := float64(index)
 		key := slot{bits: math.Float64bits(number)}
 		if storedIndex, found := table.store.find(
 			key,
 			hashNumber(number),
 		); found {
-			entry := &table.store.entries[storedIndex]
+			entry := table.store.entries.at(storedIndex)
 			if value.kind() == NilKind {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
@@ -845,18 +909,19 @@ func (table *Table) setIntegerUnresolved(
 	index int,
 	value slot,
 ) bool {
+	arrayLength := table.array.len()
 	if value.kind() != NilKind &&
 		index > 0 &&
-		(index <= len(table.array) ||
+		(index <= arrayLength ||
 			table.store.integerKeys == 0) {
 		// With no live sparse integer, this key cannot already exist in the
 		// record lane. Compact before the cheap array-admission decision.
 		if table.store.shouldCompact() {
-			table.store.rehash(len(table.store.entries))
+			table.store.rehash(table.store.entries.len())
 		}
 		if target := table.directArrayGrowth(index); target != 0 {
 			table.growArrayExact(target)
-			writeSlot(&table.array[index-1], value)
+			writeSlot(table.array.at(index-1), value)
 			table.arrayUsed++
 			return true
 		}
@@ -872,9 +937,9 @@ func (table *Table) setIntegerUnresolved(
 	// Existing record fields update or delete in place. A positive integer
 	// covered by the array cannot also be live in the record store; ignoring
 	// an old tombstone there keeps reinsertion in the visible array lane.
-	if index <= 0 && len(table.store.entries) != 0 {
+	if index <= 0 && table.store.entries.len() != 0 {
 		if storedIndex, found := table.store.find(key, hash); found {
-			entry := &table.store.entries[storedIndex]
+			entry := table.store.entries.at(storedIndex)
 			if value.kind() == NilKind {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
@@ -891,8 +956,8 @@ func (table *Table) setIntegerUnresolved(
 	if value.kind() == NilKind {
 		return false
 	}
-	if (index <= 0 || index > len(table.array)) &&
-		len(table.store.entries) != 0 {
+	if (index <= 0 || index > arrayLength) &&
+		table.store.entries.len() != 0 {
 		// The live lookup above is the steady-state path. Only a genuine
 		// insertion needs to recognize a retained next tombstone.
 		if storedIndex, stored :=
@@ -905,7 +970,7 @@ func (table *Table) setIntegerUnresolved(
 		// that permitted seam to release dead record keys even when the new
 		// integer itself belongs in the array lane. This check must follow
 		// findStored: an existing sparse field must retain its position.
-		table.store.rehash(len(table.store.entries))
+		table.store.rehash(table.store.entries.len())
 	}
 	if table.admitsArrayInsert(index) {
 		return table.setArray(index, value)
@@ -924,7 +989,7 @@ func (table *Table) admitsArrayInsert(index int) bool {
 	if index <= 0 || index > maximumTableArrayCapacity {
 		return false
 	}
-	if index <= len(table.array) {
+	if index <= table.array.len() {
 		return true
 	}
 	// This small Go allocation class is intentionally more permissive than
@@ -933,7 +998,7 @@ func (table *Table) admitsArrayInsert(index int) bool {
 	if index <= initialArrayCapacity {
 		return true
 	}
-	if index > cap(table.array) || table.store.integerKeys != 0 {
+	if index > table.array.cap() || table.store.integerKeys != 0 {
 		return false
 	}
 	// Reserved capacity has already paid the memory cost. It may therefore
@@ -944,7 +1009,7 @@ func (table *Table) admitsArrayInsert(index int) bool {
 
 func (table *Table) directArrayGrowth(index int) int {
 	if index <= initialArrayCapacity ||
-		index <= cap(table.array) ||
+		index <= table.array.cap() ||
 		index > maximumTableArrayCapacity ||
 		table.store.integerKeys != 0 {
 		return 0
@@ -958,12 +1023,14 @@ func (table *Table) directArrayGrowth(index int) int {
 }
 
 func (table *Table) growArrayExact(length int) {
-	array := make([]slot, length)
-	copy(array, table.array)
-	for index := len(table.array); index < length; index++ {
+	arrayVector := makeTableVector[slot](length, length)
+	array := arrayVector.values()
+	oldArray := table.array.values()
+	copy(array, oldArray)
+	for index := len(oldArray); index < length; index++ {
 		array[index] = nilSlot
 	}
-	table.array = array
+	table.array = arrayVector
 }
 
 func (table *Table) redistributeForInsert(
@@ -980,18 +1047,22 @@ func (table *Table) redistributeForInsert(
 		table.densityForInsert(key)
 	recordLive := totalLive - arrayLive
 
-	oldArray := table.array
+	oldArray := table.array.values()
 	oldStore := table.store
+	var arrayVector tableVector[slot]
 	var array []slot
 	switch {
 	case arraySize == 0:
-	case arraySize >= len(oldArray) && arraySize <= cap(oldArray):
-		array = oldArray[:arraySize]
+	case arraySize >= len(oldArray) &&
+		arraySize <= table.array.cap():
+		arrayVector = table.array.withLength(arraySize)
+		array = arrayVector.values()
 		for index := len(oldArray); index < arraySize; index++ {
 			array[index] = nilSlot
 		}
 	default:
-		array = make([]slot, arraySize)
+		arrayVector = makeTableVector[slot](arraySize, arraySize)
+		array = arrayVector.values()
 		for index := range array {
 			array[index] = nilSlot
 		}
@@ -1000,7 +1071,7 @@ func (table *Table) redistributeForInsert(
 	var store tableStore
 	recordHint := recordLive
 	if recordHint > 0 &&
-		len(oldStore.entries) == 0 &&
+		oldStore.entries.len() == 0 &&
 		recordHint < minimumStoreCapacity {
 		recordHint = minimumStoreCapacity
 	}
@@ -1015,7 +1086,7 @@ func (table *Table) redistributeForInsert(
 		oldStore.dead == 0 &&
 		oldStore.integerKeys == 0 &&
 		int(oldStore.live) == recordLive &&
-		len(oldStore.entries) == recordCapacity
+		oldStore.entries.len() == recordCapacity
 	if reuseStore {
 		store = oldStore
 	} else {
@@ -1052,8 +1123,9 @@ func (table *Table) redistributeForInsert(
 		}
 	}
 	if !reuseStore {
-		for index := range oldStore.entries {
-			entry := &oldStore.entries[index]
+		oldEntries := oldStore.entries.values()
+		for index := range oldEntries {
+			entry := &oldEntries[index]
 			if entry.hash == entryHashEmpty ||
 				entry.value.kind() == NilKind {
 				continue
@@ -1097,7 +1169,7 @@ func (table *Table) redistributeForInsert(
 		int(store.live)+installedArray != totalLive {
 		panic("lua: inconsistent table redistribution")
 	}
-	table.array = array
+	table.array = arrayVector
 	table.arrayUsed = installedArray
 	table.store = store
 	table.recordIntegerFloor = recordIntegerFloor
@@ -1117,8 +1189,9 @@ func (table *Table) densityForInsert(
 
 	var counts [maximumTableArrayBits + 1]int
 	table.countArrayDensity(&counts)
-	for index := range table.store.entries {
-		entry := &table.store.entries[index]
+	entries := table.store.entries.values()
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty ||
 			entry.value.kind() == NilKind {
 			continue
@@ -1141,7 +1214,7 @@ func (table *Table) countArrayDensity(
 	if table.arrayUsed == 0 {
 		return
 	}
-	exponent := bits.Len(uint(len(table.array) - 1))
+	exponent := bits.Len(uint(table.array.len() - 1))
 	candidate := 1 << exponent
 	if table.arrayUsed > candidate/2 {
 		// Once the current span is itself a valid density candidate, only
@@ -1150,7 +1223,7 @@ func (table *Table) countArrayDensity(
 		counts[exponent] = table.arrayUsed
 		return
 	}
-	for index, value := range table.array {
+	for index, value := range table.array.values() {
 		if value.kind() != NilKind {
 			countArrayDensityIndex(counts, index+1)
 		}
@@ -1189,7 +1262,7 @@ func mustInsertTableRecord(
 	value slot,
 	hash uint32,
 ) {
-	if len(store.entries) == 0 ||
+	if store.entries.len() == 0 ||
 		!store.insertAbsent(key, value, hash) {
 		panic("lua: table redistribution exhausted its record store")
 	}
@@ -1202,12 +1275,13 @@ func mustInsertTableRecord(
 }
 
 func (table *Table) setArray(index int, value slot) bool {
-	if index > len(table.array) {
+	if index > table.array.len() {
 		table.growArrayWith(index, value)
 		table.arrayUsed++
 		return true
 	}
-	current := table.array[index-1]
+	target := table.array.at(index - 1)
+	current := *target
 	currentNil := current.kind() == NilKind
 	valueNil := value.kind() == NilKind
 
@@ -1215,42 +1289,44 @@ func (table *Table) setArray(index int, value slot) bool {
 	case currentNil && valueNil:
 		return false
 	case currentNil:
-		writeSlot(&table.array[index-1], value)
+		writeSlot(target, value)
 		table.arrayUsed++
 		return true
 	case valueNil:
-		table.array[index-1] = nilSlot
+		*target = nilSlot
 		table.arrayUsed--
 		return true
 	default:
 		if rawSlotEqual(current, value) {
 			return false
 		}
-		writeSlot(&table.array[index-1], value)
+		writeSlot(target, value)
 		return true
 	}
 }
 
 func (table *Table) growArrayWith(length int, value slot) {
 	table.growArray(length)
-	writeSlot(&table.array[length-1], value)
+	writeSlot(table.array.at(length-1), value)
 }
 
 func (table *Table) growArray(length int) {
-	oldLength := len(table.array)
-	if length <= cap(table.array) {
-		table.array = table.array[:length]
+	oldArray := table.array.values()
+	oldLength := len(oldArray)
+	if length <= table.array.cap() {
+		table.array = table.array.withLength(length)
 	} else {
 		capacity := growTableArrayCapacity(
-			cap(table.array),
+			table.array.cap(),
 			length,
 		)
-		grown := make([]slot, length, capacity)
-		copy(grown, table.array)
+		grown := makeTableVector[slot](length, capacity)
+		copy(grown.values(), oldArray)
 		table.array = grown
 	}
+	array := table.array.values()
 	for index := oldLength; index < length; index++ {
-		table.array[index] = nilSlot
+		array[index] = nilSlot
 	}
 	if table.store.integerKeys == 0 {
 		return
@@ -1265,10 +1341,10 @@ func (table *Table) growArray(length int) {
 		if !found {
 			continue
 		}
-		value := table.store.entries[index].value
+		value := table.store.entries.at(index).value
 		table.store.deleteAt(index)
 		table.recordIntegerDeleted()
-		writeSlot(&table.array[key-1], value)
+		writeSlot(&array[key-1], value)
 		table.arrayUsed++
 	}
 }
@@ -1305,8 +1381,8 @@ func (table *Table) rawIntSlot(key int) (slot, bool) {
 			hashNumber(number),
 		)
 	}
-	if key <= len(table.array) {
-		value := table.array[key-1]
+	if key <= table.array.len() {
+		value := *table.array.at(key - 1)
 		return value, value.kind() != NilKind
 	}
 	number := float64(key)

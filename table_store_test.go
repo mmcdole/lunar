@@ -16,7 +16,8 @@ func (store *tableStore) setFixture(
 	hash uint32,
 ) (inserted, changed bool) {
 	if index, stored := store.findStored(key, hash); stored {
-		entry := &store.entries[index]
+		entries := store.entries.values()
+		entry := &entries[index]
 		if entry.value.kind() == NilKind {
 			store.reviveAt(index, value)
 			return true, true
@@ -27,11 +28,11 @@ func (store *tableStore) setFixture(
 		writeSlot(&entry.value, value)
 		return false, true
 	}
-	if len(store.entries) == 0 {
+	if store.entries.len() == 0 {
 		store.rehash(minimumStoreCapacity)
 	}
 	for !store.insertAbsent(key, value, hash) {
-		store.rehash(growTableStoreCapacity(len(store.entries)))
+		store.rehash(growTableStoreCapacity(store.entries.len()))
 	}
 	return true, true
 }
@@ -71,7 +72,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := len(table.store.entries); got != test.capacity {
+			if got := table.store.entries.len(); got != test.capacity {
 				t.Fatalf(
 					"record hint %d reserved %d entries, want %d",
 					test.hint,
@@ -92,7 +93,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if got := len(table.store.entries); got != test.capacity {
+			if got := table.store.entries.len(); got != test.capacity {
 				t.Fatalf(
 					"record hint %d grew at %d live entries to %d",
 					test.hint,
@@ -115,7 +116,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 			if err := table.RawSetString("overflow", Number(99)); err != nil {
 				t.Fatal(err)
 			}
-			if got := len(table.store.entries); got != test.capacity*2 {
+			if got := table.store.entries.len(); got != test.capacity*2 {
 				t.Fatalf(
 					"full %d-node store grew to %d entries, want %d",
 					test.capacity,
@@ -140,10 +141,10 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unhinted.store.entries) != 0 {
+	if unhinted.store.entries.len() != 0 {
 		t.Fatalf(
 			"zero record hint reserved %d entries",
-			len(unhinted.store.entries),
+			unhinted.store.entries.len(),
 		)
 	}
 }
@@ -168,7 +169,7 @@ func TestTableStoreCapacityBound(t *testing.T) {
 				t.Fatalf("insert %d exhausted the store", index)
 			}
 		}
-		backing := &store.entries[0]
+		backing := store.entries.data
 		live, dead := store.live, store.dead
 		integerKeys, lastFree := store.integerKeys, store.lastFree
 		if store.insertAbsent(
@@ -178,7 +179,7 @@ func TestTableStoreCapacityBound(t *testing.T) {
 		) {
 			t.Fatal("full store accepted a fifth entry")
 		}
-		if &store.entries[0] != backing ||
+		if store.entries.data != backing ||
 			store.live != live ||
 			store.dead != dead ||
 			store.integerKeys != integerKeys ||
@@ -323,8 +324,11 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 				)
 			}
 		}
-		if len(store.entries) != 4 {
-			t.Fatalf("full collision chain grew to %d entries", len(store.entries))
+		if store.entries.len() != 4 {
+			t.Fatalf(
+				"full collision chain grew to %d entries",
+				store.entries.len(),
+			)
 		}
 		for index := 1; index <= 4; index++ {
 			assertValue(t, &store, index, hash)
@@ -341,14 +345,16 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 		store.setFixture(key(3), value(3), collisionHash)
 
 		displacedIndex, found := store.find(key(3), collisionHash)
-		if !found || displacedIndex == int(collisionHash)&(len(store.entries)-1) {
+		if !found ||
+			displacedIndex == int(collisionHash)&(store.entries.len()-1) {
 			t.Fatalf(
 				"collision key index = (%d, %v), want displaced node",
 				displacedIndex,
 				found,
 			)
 		}
-		if store.entries[displacedIndex].next == 0 {
+		entries := store.entries.values()
+		if entries[displacedIndex].next == 0 {
 			t.Fatal("test setup selected a collision-chain tail")
 		}
 		newMainHash := uint32(displacedIndex)
@@ -396,9 +402,10 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			)
 		}
 		middleIndex, found := store.find(key(3), hash)
+		entries := store.entries.values()
 		if !found ||
 			middleIndex == mainIndex ||
-			store.entries[middleIndex].next == 0 {
+			entries[middleIndex].next == 0 {
 			t.Fatalf(
 				"middle key index = (%d, %v), want a non-tail collision",
 				middleIndex,
@@ -440,8 +447,8 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			}
 		}
 
-		capacity := len(store.entries)
-		backing := &store.entries[0]
+		capacity := store.entries.len()
+		backing := store.entries.data
 		for _, index := range []int{1, 3} {
 			inserted, changed := store.setFixture(key(index), value(index), hash)
 			if !inserted || !changed {
@@ -453,12 +460,12 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 				)
 			}
 		}
-		if len(store.entries) != capacity || &store.entries[0] != backing {
+		if store.entries.len() != capacity || store.entries.data != backing {
 			t.Fatalf(
 				"exact revival changed store layout: capacity %d/%d, backing %p/%p",
-				len(store.entries),
+				store.entries.len(),
 				capacity,
-				&store.entries[0],
+				store.entries.data,
 				backing,
 			)
 		}
@@ -488,15 +495,15 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			t.Fatal("deleted key stopped being a traversal continuation")
 		}
 
-		backing := &store.entries[0]
+		backing := store.entries.data
 		store.setFixture(key(5), value(5), hash)
-		if len(store.entries) != 4 {
+		if store.entries.len() != 4 {
 			t.Fatalf(
 				"reusing one dead node grew store to %d entries",
-				len(store.entries),
+				store.entries.len(),
 			)
 		}
-		if &store.entries[0] != backing {
+		if store.entries.data != backing {
 			t.Fatal("reusing one dead node replaced the backing store")
 		}
 		if _, found := store.get(key(2), hash); found {
@@ -511,10 +518,10 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 		assertTableStoreInvariant(t, &store)
 
 		store.setFixture(key(6), value(6), hash)
-		if len(store.entries) != 8 {
+		if store.entries.len() != 8 {
 			t.Fatalf(
 				"inserting beyond full capacity grew to %d entries, want 8",
-				len(store.entries),
+				store.entries.len(),
 			)
 		}
 		for _, index := range []int{1, 3, 4, 5, 6} {
@@ -540,9 +547,9 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			t.Fatal("failed to delete the main collision key")
 		}
 
-		backing := &store.entries[0]
+		backing := store.entries.data
 		store.setFixture(key(5), value(5), 6)
-		if &store.entries[0] != backing {
+		if store.entries.data != backing {
 			t.Fatal("main tombstone reuse replaced the backing store")
 		}
 		if store.live != 4 || store.dead != 0 {
@@ -584,8 +591,9 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			store.setFixture(key(index), value(index), hash)
 		}
 		main := store.mainIndex(hash)
-		successor := int(store.entries[main].next - 1)
-		successorKey := store.entries[successor].key
+		entries := store.entries.values()
+		successor := int(entries[main].next - 1)
+		successorKey := entries[successor].key
 		if !store.deleteFixture(successorKey, hash) ||
 			!store.deleteFixture(key(1), hash) {
 			t.Fatal("failed to delete adjacent collision nodes")
@@ -598,7 +606,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			)
 		}
 
-		backing := &store.entries[0]
+		backing := store.entries.data
 		store.setFixture(key(5), value(5), 2)
 		if store.live != 3 || store.dead != 1 {
 			t.Fatalf(
@@ -615,7 +623,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			)
 		}
 		store.setFixture(key(6), value(6), 3)
-		if &store.entries[0] != backing {
+		if store.entries.data != backing {
 			t.Fatal("successive tombstone reuse replaced the backing store")
 		}
 		if store.live != 4 || store.dead != 0 || store.lastFree != 0 {
@@ -662,9 +670,9 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			t.Fatalf("revived cursor = %d, want 1", store.lastFree)
 		}
 
-		backing := &store.entries[0]
+		backing := store.entries.data
 		store.setFixture(key(6), value(6), 10)
-		if &store.entries[0] != backing {
+		if store.entries.data != backing {
 			t.Fatal("wrapped insertion replaced the backing store")
 		}
 		if store.live != 6 || store.dead != 0 {
@@ -772,16 +780,16 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 		)
 	}
 
-	capacity := len(table.store.entries)
+	capacity := table.store.entries.len()
 	if err := table.RawSetString(keys[0], Number(100)); err != nil {
 		t.Fatal(err)
 	}
-	if len(table.store.entries) != capacity ||
+	if table.store.entries.len() != capacity ||
 		table.store.live != 2 ||
 		table.store.dead != 0 {
 		t.Fatalf(
 			"post-revival store = capacity:%d/%d live:%d dead:%d",
-			len(table.store.entries),
+			table.store.entries.len(),
 			capacity,
 			table.store.live,
 			table.store.dead,
@@ -880,17 +888,17 @@ func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 				)
 			}
 
-			capacity := len(table.store.entries)
+			capacity := table.store.entries.len()
 			if err := test.insert(table); err != nil {
 				t.Fatal(err)
 			}
-			if len(table.store.entries) != capacity ||
+			if table.store.entries.len() != capacity ||
 				table.store.live != 1 ||
 				table.store.dead != 0 ||
 				table.arrayUsed != 1 {
 				t.Fatalf(
 					"post-array-insert storage = capacity:%d/%d live:%d dead:%d array:%d",
-					len(table.store.entries),
+					table.store.entries.len(),
 					capacity,
 					table.store.live,
 					table.store.dead,
@@ -998,13 +1006,13 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 		)
 	}
 
-	entries := &table.store.entries[0]
+	entries := table.store.entries.data
 	live, dead := table.store.live, table.store.dead
 	lastFree := table.store.lastFree
 	if err := table.RawSetString(byLocation[7], Number(100)); err != nil {
 		t.Fatal(err)
 	}
-	if &table.store.entries[0] != entries ||
+	if table.store.entries.data != entries ||
 		table.store.live != live ||
 		table.store.dead != dead ||
 		table.store.lastFree != lastFree {
@@ -1139,7 +1147,7 @@ func TestTableStoreRecyclesTombstoneForNewKeyWithoutAllocation(t *testing.T) {
 		t.Fatalf("full store = live:%d dead:%d", store.live, store.dead)
 	}
 
-	backing := &store.entries[0]
+	backing := store.entries.data
 	oldKey, oldHash := keys[0], hashes[0]
 	newKey, newHash := keys[4], hashes[4]
 	replace := func() {
@@ -1160,7 +1168,7 @@ func TestTableStoreRecyclesTombstoneForNewKeyWithoutAllocation(t *testing.T) {
 		}
 	}
 	replace()
-	if &store.entries[0] != backing {
+	if store.entries.data != backing {
 		t.Fatal("replacement changed the store backing array")
 	}
 	if store.live != 4 || store.dead != 0 {
@@ -1174,7 +1182,7 @@ func TestTableStoreRecyclesTombstoneForNewKeyWithoutAllocation(t *testing.T) {
 		if allocations != 0 {
 			t.Fatalf("replacement allocations = %v, want 0", allocations)
 		}
-		if &store.entries[0] != backing {
+		if store.entries.data != backing {
 			t.Fatal("replacement changed the store backing array")
 		}
 		assertTableStoreInvariant(t, &store)
@@ -1183,7 +1191,7 @@ func TestTableStoreRecyclesTombstoneForNewKeyWithoutAllocation(t *testing.T) {
 
 func assertTableStoreInvariant(t *testing.T, store *tableStore) {
 	t.Helper()
-	size := len(store.entries)
+	size := store.entries.len()
 	if size == 0 {
 		if store.live != 0 ||
 			store.dead != 0 ||
@@ -1206,9 +1214,10 @@ func assertTableStoreInvariant(t *testing.T, store *tableStore) {
 		t.Fatalf("lastFree = %d, capacity = %d", store.lastFree, size)
 	}
 
+	entries := store.entries.values()
 	var live, dead, integerKeys uint32
-	for index := range store.entries {
-		entry := &store.entries[index]
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty {
 			if entry.next != 0 {
 				t.Fatalf("empty entry %d links to %d", index, entry.next)
@@ -1229,8 +1238,8 @@ func assertTableStoreInvariant(t *testing.T, store *tableStore) {
 	}
 
 	reachable := make([]bool, size)
-	for main := range store.entries {
-		entry := &store.entries[main]
+	for main := range entries {
+		entry := &entries[main]
 		if entry.hash == entryHashEmpty ||
 			int(entry.hash)&(size-1) != main {
 			continue
@@ -1241,7 +1250,7 @@ func assertTableStoreInvariant(t *testing.T, store *tableStore) {
 				t.Fatalf("chain rooted at %d contains a cycle at %d", main, current)
 			}
 			reachable[current] = true
-			currentEntry := &store.entries[current]
+			currentEntry := &entries[current]
 			if currentEntry.hash == entryHashEmpty {
 				t.Fatalf(
 					"chain rooted at %d reached empty entry %d",
@@ -1270,8 +1279,8 @@ func assertTableStoreInvariant(t *testing.T, store *tableStore) {
 			current = int(currentEntry.next - 1)
 		}
 	}
-	for index := range store.entries {
-		entry := &store.entries[index]
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty {
 			continue
 		}

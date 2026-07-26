@@ -1291,12 +1291,12 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	if !ok {
 		t.Fatal("NEWTABLE did not return a table")
 	}
-	if cap(table.array) < arrayHint ||
-		len(table.store.entries) < recordHint {
+	if table.array.cap() < arrayHint ||
+		table.store.entries.len() < recordHint {
 		t.Fatalf(
 			"decoded capacities = array %d, record %d",
-			cap(table.array),
-			len(table.store.entries),
+			table.array.cap(),
+			table.store.entries.len(),
 		)
 	}
 	if table.arrayUsed != 0 || table.store.live != 0 {
@@ -1461,7 +1461,8 @@ func TestExecutorTableKeyClassificationDoesNotUseCapacityLimit(t *testing.T) {
 	}
 	key := maxTableHint + 1
 	table.growArray(key)
-	writeSlot(&table.array[key-1], numberSlot(17))
+	array := table.array.values()
+	writeSlot(&array[key-1], numberSlot(17))
 	table.arrayUsed = 1
 	got, err := table.RawGet(Number(float64(key)))
 	if err != nil {

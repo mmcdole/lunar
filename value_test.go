@@ -24,11 +24,14 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(tableEntry{}); size != 40 {
 			t.Fatalf("table entry size = %d, want 40", size)
 		}
-		if size := unsafe.Sizeof(tableStore{}); size != 40 {
-			t.Fatalf("table store size = %d, want 40", size)
+		if size := unsafe.Sizeof(tableVector[slot]{}); size != 16 {
+			t.Fatalf("table vector size = %d, want 16", size)
 		}
-		if size := unsafe.Sizeof(Table{}); size != 96 {
-			t.Fatalf("table size = %d, want 96", size)
+		if size := unsafe.Sizeof(tableStore{}); size != 32 {
+			t.Fatalf("table store size = %d, want 32", size)
+		}
+		if size := unsafe.Sizeof(Table{}); size != 80 {
+			t.Fatalf("table size = %d, want 80", size)
 		}
 		if size := unsafe.Sizeof(stringRef{}); size != 16 {
 			t.Fatalf("stringRef size = %d, want 16", size)
@@ -97,6 +100,107 @@ func TestValueRepresentation(t *testing.T) {
 	if !ok || zero != 0 {
 		t.Fatalf("zero slot = (%v, %v), want numeric zero", zero, ok)
 	}
+}
+
+func TestTableVectorDescriptor(t *testing.T) {
+	vector := makeTableVector[int](2, 5)
+	if vector.len() != 2 || vector.cap() != 5 || vector.data == nil {
+		t.Fatalf(
+			"new vector = length:%d capacity:%d data:%p",
+			vector.len(),
+			vector.cap(),
+			vector.data,
+		)
+	}
+	values := vector.values()
+	if cap(values) != len(values) {
+		t.Fatalf(
+			"vector view capacity = %d, want fixed length %d",
+			cap(values),
+			len(values),
+		)
+	}
+	values[0], values[1] = 17, 23
+	backing := vector.data
+	vector = vector.withLength(5)
+	values = vector.values()
+	if vector.data != backing ||
+		len(values) != 5 ||
+		cap(values) != 5 ||
+		values[0] != 17 ||
+		values[1] != 23 {
+		t.Fatalf(
+			"grown vector = data:%p/%p length:%d capacity:%d values:%v",
+			vector.data,
+			backing,
+			len(values),
+			cap(values),
+			values,
+		)
+	}
+}
+
+type tableVectorLifetimeMarker struct {
+	id int
+}
+
+func TestTableVectorRetainsPointerBackingAcrossGC(t *testing.T) {
+	finalized := make(chan int, 3)
+	newMarker := func(id int) *tableVectorLifetimeMarker {
+		marker := &tableVectorLifetimeMarker{id: id}
+		runtime.SetFinalizer(
+			marker,
+			func(marker *tableVectorLifetimeMarker) {
+				finalized <- marker.id
+			},
+		)
+		return marker
+	}
+
+	array := makeTableVector[slot](1, 1)
+	*array.at(0) = objectSlot(
+		TableKind,
+		unsafe.Pointer(newMarker(1)),
+	)
+	entries := makeTableVector[tableEntry](1, 1)
+	*entries.at(0) = tableEntry{
+		key: objectSlot(
+			TableKind,
+			unsafe.Pointer(newMarker(2)),
+		),
+		value: objectSlot(
+			TableKind,
+			unsafe.Pointer(newMarker(3)),
+		),
+		hash: 1,
+	}
+
+	for range 3 {
+		runtime.GC()
+	}
+	select {
+	case id := <-finalized:
+		t.Fatalf("table vector lost marker %d during collection", id)
+	default:
+	}
+
+	retained := []*tableVectorLifetimeMarker{
+		(*tableVectorLifetimeMarker)(array.at(0).ref),
+		(*tableVectorLifetimeMarker)(entries.at(0).key.ref),
+		(*tableVectorLifetimeMarker)(entries.at(0).value.ref),
+	}
+	for index, marker := range retained {
+		if marker.id != index+1 {
+			t.Fatalf(
+				"retained marker %d has id %d",
+				index+1,
+				marker.id,
+			)
+		}
+		runtime.SetFinalizer(marker, nil)
+	}
+	runtime.KeepAlive(array)
+	runtime.KeepAlive(entries)
 }
 
 func TestFlatStringRepresentation(t *testing.T) {

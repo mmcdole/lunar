@@ -313,8 +313,8 @@ func useSparseTableInsertShift(
 	if width < tableInsertSparseShiftMinimum {
 		return false
 	}
-	scanSlots := uint64(len(target.array)) +
-		uint64(len(target.store.entries)) + 1
+	scanSlots := uint64(target.array.len()) +
+		uint64(target.store.entries.len()) + 1
 	return width/tableInsertSparseScanRatio > scanSlots
 }
 

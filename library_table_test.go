@@ -627,16 +627,25 @@ func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
 		baseline.rawSetIntegerSlot(key, numberSlot(value))
 	}
 
-	array := make([]slot, len(baseline.array), cap(baseline.array))
-	entries := make([]tableEntry, len(baseline.store.entries))
+	array := makeTableVector[slot](
+		baseline.array.len(),
+		baseline.array.cap(),
+	)
+	entries := makeTableVector[tableEntry](
+		baseline.store.entries.len(),
+		baseline.store.entries.cap(),
+	)
 	var working Table
 	restore := func() {
 		working.objectHeader.owner = baseline.owner
-		working.array = array[:len(baseline.array)]
-		copy(working.array, baseline.array)
+		working.array = array.withLength(baseline.array.len())
+		copy(working.array.values(), baseline.array.values())
 		working.arrayUsed = baseline.arrayUsed
 		working.store.entries = entries
-		copy(working.store.entries, baseline.store.entries)
+		copy(
+			working.store.entries.values(),
+			baseline.store.entries.values(),
+		)
 		working.store.live = baseline.store.live
 		working.store.dead = baseline.store.dead
 		working.store.integerKeys = baseline.store.integerKeys
@@ -822,7 +831,7 @@ func assertEquivalentTableInsertResult(
 func assertTableStorageAccounting(t *testing.T, table *Table) {
 	t.Helper()
 	arrayUsed := 0
-	for _, value := range table.array {
+	for _, value := range table.array.values() {
 		if value.kind() != NilKind {
 			arrayUsed++
 		}
@@ -832,7 +841,7 @@ func assertTableStorageAccounting(t *testing.T, table *Table) {
 	}
 
 	var live, dead, integerKeys uint32
-	for _, entry := range table.store.entries {
+	for _, entry := range table.store.entries.values() {
 		if entry.hash == entryHashEmpty {
 			continue
 		}

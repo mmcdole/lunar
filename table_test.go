@@ -741,7 +741,7 @@ func TestTableSteadyStateRawAccessDoesNotAllocate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if capacity := len(table.store.entries); capacity != minimumStoreCapacity {
+	if capacity := table.store.entries.len(); capacity != minimumStoreCapacity {
 		t.Fatalf("one-field store capacity = %d, want %d", capacity, minimumStoreCapacity)
 	}
 
