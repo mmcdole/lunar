@@ -1,102 +1,13 @@
 package lua
 
 import (
+	"context"
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+	"unsafe"
 )
-
-// runStringCase executes source with every implemented library open and
-// reports the outcome the recorded Lua 5.1 driver would print.
-//
-// It mirrors runLua51Case but adds the string library and the two extra base
-// primitives these cases need. Merge the two once the base library lands.
-func runStringCase(t *testing.T, source string) string {
-	t.Helper()
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	for _, open := range []func() error{
-		state.OpenBase,
-		state.OpenMath,
-		state.OpenTable,
-		state.OpenString,
-	} {
-		if err := open(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	installTestPrelude(t, state)
-	installStringTestPrelude(t, state)
-
-	chunk, err := state.LoadString("=case", source)
-	if err != nil {
-		return "syntax " + formatLua51Text(err.Error())
-	}
-	results, err := state.Call(chunk.Value())
-	if err != nil {
-		var failure *Error
-		if errors.As(err, &failure) {
-			return "error " + formatLua51Value(failure.Value())
-		}
-		return "error " + formatLua51Text(err.Error())
-	}
-	parts := make([]string, 0, len(results)+1)
-	parts = append(parts, "ok")
-	for _, value := range results {
-		parts = append(parts, formatLua51Value(value))
-	}
-	return strings.Join(parts, " ")
-}
-
-// installStringTestPrelude adds the base primitives the string cases need
-// beyond installTestPrelude. Like that one, it is throwaway test scaffolding,
-// not a claim about the eventual base library.
-func installStringTestPrelude(t *testing.T, state *State) {
-	t.Helper()
-	getMetatable, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		value, present := frame.Argument(0)
-		if !present {
-			return baseArgumentError(frame, 0, "value expected")
-		}
-		metatable, err := frame.State().Metatable(value)
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		if metatable == nil {
-			return frame.ReturnNil()
-		}
-		return frame.ReturnValue(metatable.Value())
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetGlobal("getmetatable", getMetatable.Value()); err != nil {
-		t.Fatal(err)
-	}
-	typeName, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		kind := frame.Kind(0)
-		if kind == InvalidKind {
-			return baseArgumentError(frame, 0, "value expected")
-		}
-		return frame.ReturnString(kind.String())
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetGlobal("type", typeName.Value()); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	state, err := New(Options{})
@@ -245,79 +156,50 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	}
 }
 
-func TestStringLibraryMatchesLua51(t *testing.T) {
-	for _, test := range stringLibraryLua51Cases {
-		t.Run(test.name, func(t *testing.T) {
-			if got := runStringCase(t, test.source); got != test.want {
-				t.Fatalf(
-					"%s\n got: %s\nwant: %s",
-					test.source,
-					got,
-					test.want,
-				)
-			}
-		})
+func TestStringDumpSerializesLuaFunctions(t *testing.T) {
+	state := newStateWithString(t)
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@string-dump.lua", `
+local offset = 2
+local function add(value)
+	return value + offset
+end
+return add, string.dump(add), pcall(string.dump, string.len)
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 4 {
+		t.Fatalf("string.dump test returned %d values; want 4", len(results))
+	}
+	function, ok := results[0].Function()
+	if !ok {
+		t.Fatalf("first result = %v; want Function", results[0])
+	}
+	dumped, ok := results[1].AsString()
+	if !ok {
+		t.Fatalf("second result = %v; want string", results[1])
+	}
+	want, err := dumpPrototype(function.Prototype())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dumped != want {
+		t.Fatal("string.dump did not serialize the function's Prototype")
+	}
+	if truth, ok := results[2].AsBool(); !ok || truth {
+		t.Fatalf("native dump status = %v; want false", results[2])
+	}
+	if message, ok := results[3].AsString(); !ok ||
+		message != "unable to dump given function" {
+		t.Fatalf("native dump failure = %v", results[3])
 	}
 }
 
-// TestStringLibraryCasesMatchTheLua51Oracle re-derives every recorded
-// expectation from a real Lua 5.1 interpreter. It is skipped unless
-// BADGER_LUA51 names one, because the reference binary is deliberately not
-// carried in this repository.
-//
-// Fold this into the base library's oracle test once both branches land; the
-// driver and the case type are already shared.
-func TestStringLibraryCasesMatchTheLua51Oracle(t *testing.T) {
-	binary := os.Getenv("BADGER_LUA51")
-	if binary == "" {
-		t.Skip("set BADGER_LUA51 to a Lua 5.1 interpreter to verify")
-	}
-	driver := &strings.Builder{}
-	driver.WriteString(lua51OracleDriver)
-	driver.WriteString("local sources = {\n")
-	for _, test := range stringLibraryLua51Cases {
-		driver.WriteString(quoteLuaString(test.source))
-		driver.WriteString(",\n")
-	}
-	driver.WriteString("}\nrun(sources)\n")
-
-	path := filepath.Join(t.TempDir(), "oracle.lua")
-	if err := os.WriteFile(path, []byte(driver.String()), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	output, err := exec.Command(binary, path).Output()
-	if err != nil {
-		t.Fatalf("%s: %v", binary, err)
-	}
-	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
-	if len(lines) != len(stringLibraryLua51Cases) {
-		t.Fatalf(
-			"oracle produced %d lines; want %d",
-			len(lines),
-			len(stringLibraryLua51Cases),
-		)
-	}
-	record := os.Getenv("BADGER_LUA51_RECORD") != ""
-	for index, test := range stringLibraryLua51Cases {
-		if record {
-			t.Logf(
-				"{\n\tname:   %q,\n\tsource: %q,\n\twant:   %q,\n},",
-				test.name,
-				test.source,
-				lines[index],
-			)
-			continue
-		}
-		if lines[index] != test.want {
-			t.Errorf(
-				"%s: oracle disagrees with the recorded expectation\n%s\n got: %s\nwant: %s",
-				test.name,
-				test.source,
-				lines[index],
-				test.want,
-			)
-		}
-	}
+func TestStringLibraryMatchesLua51(t *testing.T) {
+	runLua51Cases(t, stringLibraryLua51Cases)
 }
 
 // TestStringLibraryDefinesCUndefinedFormatting records this library's one
@@ -374,7 +256,7 @@ func TestStringLibraryDefinesCUndefinedFormatting(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			if got := runStringCase(t, test.source); got != test.want {
+			if got := runLua51Case(t, test.source); got != test.want {
 				t.Fatalf(
 					"%s\n got: %s\nwant: %s",
 					test.source,
@@ -489,7 +371,7 @@ return table.concat(out, ",")
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			if got := runStringCase(t, test.source); got != test.want {
+			if got := runLua51Case(t, test.source); got != test.want {
 				t.Fatalf(
 					"%s\n got: %s\nwant: %s",
 					test.source,
@@ -498,6 +380,38 @@ return table.concat(out, ",")
 				)
 			}
 		})
+	}
+}
+
+func TestStringPatternMatchingCooperatesWithContextCancellation(t *testing.T) {
+	state := newStateWithString(t)
+	defer state.Close()
+
+	subject := strings.Repeat("a", 32)
+	pattern := strings.Repeat("a*", 16) + "b"
+	chunk := mustLoadString(
+		t,
+		state,
+		"@pattern-context.lua",
+		"return string.match("+
+			quoteLuaString(subject)+","+
+			quoteLuaString(pattern)+")",
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	timer := time.AfterFunc(5*time.Millisecond, cancel)
+	defer timer.Stop()
+	started := time.Now()
+	_, err := state.CallContext(ctx, chunk.Value())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pattern cancellation = %v; want context.Canceled", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("pattern cancellation took %s", elapsed)
+	}
+	var failure *Error
+	if !errors.As(err, &failure) || failure.Category() != ContextError {
+		t.Fatalf("pattern cancellation = %#v; want ContextError", err)
 	}
 }
 
@@ -556,16 +470,67 @@ func TestStringLibraryBoundsConstructedStrings(t *testing.T) {
 		"return ('abcdefgh'):rep(2000000000)",
 		"return ('a'):rep(2000000000)",
 	} {
-		if got := runStringCase(t, "return "+source[len("return "):]); got != want {
+		if got := runLua51Case(t, "return "+source[len("return "):]); got != want {
 			t.Errorf("%s\n got: %s\nwant: %s", source, got, want)
 		}
 	}
 	// A request that merely allocates a lot still succeeds.
-	if got := runStringCase(
+	if got := runLua51Case(
 		t,
 		"return #('a'):rep(1000000)",
 	); got != "ok 1000000" {
 		t.Errorf("large rep: %s", got)
+	}
+}
+
+func TestPublishedSubstringsOwnTheirBackingStorage(t *testing.T) {
+	state := newStateWithString(t)
+	source := strings.Repeat("a", 1<<19) +
+		"\xf1" +
+		strings.Repeat("b", 1<<19)
+	position := 1<<19 + 1
+	chunk := mustLoadString(t, state, "@substring-ownership.lua", `
+return function(subject, position)
+	return subject:sub(position, position),
+		subject:match("(.)", position)
+end
+`)
+	loaded, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(
+		loaded[0],
+		state.String(source),
+		Number(float64(position)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("substring call returned %d results; want 2", len(results))
+	}
+
+	sourceStart := uintptr(unsafe.Pointer(unsafe.StringData(source)))
+	sourceEnd := sourceStart + uintptr(len(source))
+	for index, result := range results {
+		text, ok := result.AsString()
+		if !ok || text != "\xf1" {
+			t.Fatalf("result %d = %v; want one-byte string", index, result)
+		}
+		resultStart := uintptr(unsafe.Pointer(unsafe.StringData(text)))
+		if resultStart >= sourceStart && resultStart < sourceEnd {
+			t.Fatalf("result %d retains the subject backing storage", index)
+		}
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for index, result := range results {
+		if text, ok := result.AsString(); !ok || text != "\xf1" {
+			t.Fatalf("closed result %d = %v", index, result)
+		}
 	}
 }
 
@@ -689,6 +654,15 @@ return function()
 	return total
 end
 `},
+		{name: "gsub miss reuses source", source: `
+local gsub = string.gsub
+local s = ("abcdefgh"):rep(128)
+return function()
+	local result, count = gsub(s, "%d", "x")
+	if result ~= s then return -1 end
+	return count
+end
+`},
 	}
 
 	for _, test := range testCases {
@@ -728,7 +702,93 @@ end
 	}
 }
 
-func newStateWithString(t *testing.T) *State {
+func BenchmarkStringLibraryBuilders(b *testing.B) {
+	state := newStateWithString(b)
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	for _, benchmark := range []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "reverse",
+			source: `
+local operation = string.reverse
+local text = ("abcdefgh"):rep(128)
+return function() return operation(text) end
+`,
+		},
+		{
+			name: "upper",
+			source: `
+local operation = string.upper
+local text = ("abcdefgh"):rep(128)
+return function() return operation(text) end
+`,
+		},
+		{
+			name: "gsub miss",
+			source: `
+local operation = string.gsub
+local text = ("abcdefgh"):rep(128)
+return function() return (operation(text, "%d", "x")) end
+`,
+		},
+		{
+			name: "gsub replacement",
+			source: `
+local operation = string.gsub
+local text = ("abcdefgh"):rep(128)
+return function() return (operation(text, "a", "A")) end
+`,
+		},
+		{
+			name: "format",
+			source: `
+local operation = string.format
+local text = ("abcdefgh"):rep(128)
+return function() return operation("%s:%08d", text, 42) end
+`,
+		},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			chunk := mustLoadString(
+				b,
+				state,
+				"@string-builder-benchmark.lua",
+				benchmark.source,
+			)
+			loaded, err := state.Call(chunk.Value())
+			if err != nil {
+				b.Fatal(err)
+			}
+			var destination [1]Value
+			for range 16 {
+				if _, err := state.CallInto(
+					loaded[0],
+					nil,
+					destination[:],
+				); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := state.CallInto(
+					loaded[0],
+					nil,
+					destination[:],
+				); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func newStateWithString(t testing.TB) *State {
 	t.Helper()
 	state, err := New(Options{})
 	if err != nil {
@@ -911,6 +971,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		name:   "dump_type_check",
 		source: "return string.dump(5)",
 		want:   "error 'case:1: bad argument #1 to 'dump' (function expected, got number)'",
+	},
+	{
+		name:   "dump_rejects_native_function",
+		source: "return pcall(string.dump, string.len)",
+		want:   "ok false 'unable to dump given function'",
 	},
 	{
 		name:   "find_plain",
@@ -1248,6 +1313,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		want:   "error 'case:1: bad argument #3 to 'gsub' (number expected, got table)'",
 	},
 	{
+		name:   "gsub_validates_limit_before_replacement_type",
+		source: "return string.gsub('a', 'a', true, {})",
+		want:   "error 'case:1: bad argument #4 to 'gsub' (number expected, got table)'",
+	},
+	{
 		name:   "gsub_no_match",
 		source: "return ('abc'):gsub('%d', 'x')",
 		want:   "ok 'abc' 0",
@@ -1271,6 +1341,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		name:   "format_s_nul",
 		source: "return #string.format('%s', 'a\\0b'), #string.format('%s', 'a\\0b' .. ('x'):rep(200))",
 		want:   "ok 1 203",
+	},
+	{
+		name:   "format_s_nul_width_and_precision",
+		source: "return string.format('[%5.4s][%-5.4s]', 'a\\0bc', 'a\\0bc')",
+		want:   "ok '[    a][a    ]'",
 	},
 	{
 		name:   "format_s_bad",
@@ -1313,6 +1388,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		want:   "ok '0|0'",
 	},
 	{
+		name:   "format_alternate_octal_zero_precision",
+		source: "return '[' .. string.format('%#.0o|%#.0x|%#.0u', 0, 0, 0) .. ']'",
+		want:   "ok '[0||]'",
+	},
+	{
 		name:   "format_f",
 		source: "return string.format('%f|%.0f|%.2f|%10.3f|%-10.3f|', 1/3, 0.5, 1.005, 3.14159, 3.14159)",
 		want:   "ok '0.333333|0|1.00|     3.142|3.142     |'",
@@ -1346,6 +1426,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		name:   "format_hash_g_small",
 		source: "return string.format('%#g|%#.3g', 0.0015, 1.0)",
 		want:   "ok '0.00150000|1.00'",
+	},
+	{
+		name:   "format_hash_g_zero",
+		source: "return string.format('%#.4g|%#.1g|%#.0g', 0, 0, 0)",
+		want:   "ok '0.000|0.|0.'",
 	},
 	{
 		name:   "format_nonfinite",
@@ -1411,6 +1496,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		name:   "format_trailing_percent",
 		source: "return string.format('%')",
 		want:   "error 'case:1: bad argument #2 to 'format' (no value)'",
+	},
+	{
+		name:   "format_trailing_percent_with_value",
+		source: "return string.format('%', 1)",
+		want:   "error 'case:1: invalid option '%' to 'format''",
 	},
 	{
 		name:   "format_invalid_option",

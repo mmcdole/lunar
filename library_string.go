@@ -2,9 +2,11 @@ package lua
 
 import (
 	"math"
-	"strconv"
 	"strings"
 )
+
+// Several algorithms in this file follow Lua 5.1's lstrlib.c. See
+// THIRD_PARTY_NOTICES.md for the reference implementation's license.
 
 var stringLibraryFunctions = [...]struct {
 	name  string
@@ -120,7 +122,18 @@ func stringSub(frame Frame) Outcome {
 	if start > end {
 		return frame.ReturnString("")
 	}
-	return frame.ReturnString(text[start-1 : end])
+	if start == 1 && end == int64(len(text)) {
+		return frame.ReturnString(text)
+	}
+	return frame.returnBorrowedString(text[start-1 : end])
+}
+
+func (frame Frame) returnBorrowedString(text string) Outcome {
+	call := frame.activation()
+	return frame.returnOne(
+		call,
+		stringSlot(frame.thread.owner.strings.makeBorrowed(text)),
+	)
 }
 
 func stringReverse(frame Frame) Outcome {
@@ -129,10 +142,10 @@ func stringReverse(frame Frame) Outcome {
 		return baseArgumentTypeError(frame, 0, "string")
 	}
 	reversed := make([]byte, len(text))
-	for index := 0; index < len(text); index++ {
+	for index := range text {
 		reversed[len(text)-1-index] = text[index]
 	}
-	return frame.ReturnString(string(reversed))
+	return frame.ReturnString(stringFromOwnedBytes(reversed))
 }
 
 func stringLower(frame Frame) Outcome {
@@ -168,7 +181,7 @@ func (frame Frame) returnMappedBytes(
 	for offset := changed; offset < len(text); offset++ {
 		mapped[offset] = convert(text[offset])
 	}
-	return frame.ReturnString(string(mapped))
+	return frame.ReturnString(stringFromOwnedBytes(mapped))
 }
 
 // lowerByte and upperByte are C's tolower and toupper in the "C" locale, which
@@ -202,15 +215,17 @@ func stringRep(frame Frame) Outcome {
 	// Lua 5.1 relies on its allocator to reject an impossible result. This
 	// runtime has no string-size budget to consult, so the one case that
 	// cannot be attempted at all is reported rather than left to the host.
-	if count > maxStringLength/len(text) {
+	if count > maxStringRepLength/len(text) {
 		return libraryError(frame, "resulting string too large")
 	}
 	return frame.ReturnString(strings.Repeat(text, count))
 }
 
-// maxStringLength bounds a constructed string at 1 GiB. It is a deterministic
-// stand-in for Lua 5.1's allocator failure, not a configured runtime limit.
-const maxStringLength = 1 << 30
+// maxStringRepLength keeps string.rep from submitting an obviously hostile
+// allocation to the Go runtime. It is a local safety bound, not a general
+// State string budget; a cross-runtime output budget remains a separate
+// design decision.
+const maxStringRepLength = 1 << 30
 
 func stringByte(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
@@ -271,19 +286,23 @@ func stringChar(frame Frame) Outcome {
 		}
 		bytes[index] = byte(value)
 	}
-	return frame.ReturnString(string(bytes))
+	return frame.ReturnString(stringFromOwnedBytes(bytes))
 }
 
-// stringDump reports Lua 5.1's own failure for a function it cannot serialize.
-//
-// This runtime has no bytecode writer, so no function can be dumped. PUC
-// raises exactly this message for every C function, and the argument check
-// still matches, so the surface and the failure remain Lua 5.1's.
 func stringDump(frame Frame) Outcome {
-	if _, ok := frame.Function(0); !ok {
+	function, ok := frame.Function(0)
+	if !ok {
 		return baseArgumentTypeError(frame, 0, "function")
 	}
-	return libraryError(frame, "unable to dump given function")
+	frame.discardArgumentsAfter(1)
+	if function.prototype == nil {
+		return libraryError(frame, "unable to dump given function")
+	}
+	dumped, err := dumpPrototype(function.prototype)
+	if err != nil {
+		return libraryError(frame, "%s", err)
+	}
+	return frame.ReturnString(dumped)
 }
 
 func stringFind(frame Frame) Outcome {
@@ -345,10 +364,13 @@ func stringFindAux(frame Frame, find bool) Outcome {
 		}
 	}
 
+	stripped, anchored := patternAnchor(pattern)
 	var state matchState
-	start, end, found := state.find(subject, pattern, int(offset))
+	state.reset(subject, stripped)
+	state.bindContext(frame.thread)
+	start, end, found := state.searchFrom(int(offset), anchored)
 	if state.failed() {
-		return libraryError(frame, "%s", state.failure)
+		return frame.patternFailure(&state)
 	}
 	if !found {
 		return frame.ReturnNil()
@@ -391,7 +413,7 @@ func (frame Frame) captureSlot(value patternCaptureValue) slot {
 	if value.isPosition {
 		return numberSlot(float64(value.position))
 	}
-	return stringSlot(frame.thread.owner.strings.make(value.text))
+	return stringSlot(frame.thread.owner.strings.makeBorrowed(value.text))
 }
 
 // gmatch capture slots. The iterator keeps its subject, pattern, and resume
@@ -412,6 +434,10 @@ func stringGMatch(frame Frame) Outcome {
 	if !ok {
 		return baseArgumentTypeError(frame, 1, "string")
 	}
+	// PUC closes over exactly the subject and pattern. Release any supplied
+	// tail before constructing the iterator so unrelated values are not kept
+	// live through the native allocation.
+	frame.discardArgumentsAfter(2)
 	state := frame.State()
 	iterator, err := state.NewNativeFunction(
 		gmatchStep,
@@ -438,9 +464,10 @@ func gmatchStep(frame Frame) Outcome {
 
 	var state matchState
 	state.reset(subject, pattern)
+	state.bindContext(frame.thread)
 	start, end, found := state.searchFrom(offset, false)
 	if state.failed() {
-		return libraryError(frame, "%s", state.failure)
+		return frame.patternFailure(&state)
 	}
 	if !found {
 		return frame.Return()
@@ -467,6 +494,7 @@ const (
 )
 
 func stringGSub(frame Frame) Outcome {
+	subjectValue, _ := frame.argument(0)
 	subject, ok := frame.textArgument(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "string")
@@ -476,6 +504,14 @@ func stringGSub(frame Frame) Outcome {
 		return baseArgumentTypeError(frame, 1, "string")
 	}
 	replacement, _ := frame.argument(2)
+	limit := len(subject) + 1
+	if _, present := frame.argument(3); present {
+		limit, ok = frame.integerArgument(3)
+		if !ok {
+			return numberArgumentError(frame, 3)
+		}
+	}
+
 	replacementKind := gsubText
 	var replacementText string
 	switch replacement.kind() {
@@ -492,31 +528,30 @@ func stringGSub(frame Frame) Outcome {
 			"string/function/table expected",
 		)
 	}
-	limit := len(subject) + 1
-	if _, present := frame.argument(3); present {
-		limit, ok = frame.integerArgument(3)
-		if !ok {
-			return numberArgumentError(frame, 3)
-		}
-	}
 
 	stripped, anchored := patternAnchor(pattern)
 	var state matchState
 	state.reset(subject, stripped)
+	state.bindContext(frame.thread)
 
-	var built []byte
+	var built strings.Builder
 	position := 0
+	copiedThrough := 0
 	count := 0
 	for count < limit {
 		state.restart()
 		end := state.match(position, 0)
 		if end == matchFailed {
-			return libraryError(frame, "%s", state.failure)
+			return frame.patternFailure(&state)
 		}
 		if end >= 0 {
+			if count == 0 {
+				built.Grow(len(subject))
+			}
+			built.WriteString(subject[copiedThrough:position])
 			count++
-			appended, failure := frame.appendReplacement(
-				built,
+			failure := frame.appendReplacement(
+				&built,
 				&state,
 				position,
 				end,
@@ -527,15 +562,19 @@ func stringGSub(frame Frame) Outcome {
 			if failure != nil {
 				return frame.sealError(failure)
 			}
-			built = appended
 		}
 		if end > position {
 			// A non-empty match consumes its own text.
 			position = end
+			copiedThrough = position
 		} else if position < len(subject) {
-			// An empty match, or no match at all, copies one byte and moves
-			// on, which is what makes an empty pattern terminate.
-			built = append(built, subject[position])
+			// An empty match must emit the byte after its replacement. A miss
+			// merely advances; that untouched run is copied if a later match
+			// needs a builder.
+			if end >= 0 {
+				built.WriteByte(subject[position])
+				copiedThrough = position + 1
+			}
 			position++
 		} else {
 			// No progress is possible at the end of the subject.
@@ -545,11 +584,20 @@ func stringGSub(frame Frame) Outcome {
 			break
 		}
 	}
-	built = append(built, subject[position:]...)
+
+	result := subjectValue
+	if count != 0 {
+		built.WriteString(subject[copiedThrough:])
+		result = stringSlot(
+			frame.thread.owner.strings.make(built.String()),
+		)
+	} else if result.kind() != StringKind {
+		result = stringSlot(frame.thread.owner.strings.make(subject))
+	}
 
 	return frame.returnCompactValues(
 		[2]slot{
-			stringSlot(frame.thread.owner.strings.make(string(built))),
+			result,
 			numberSlot(float64(count)),
 		},
 		2,
@@ -557,18 +605,25 @@ func stringGSub(frame Frame) Outcome {
 	)
 }
 
+func (frame Frame) patternFailure(state *matchState) Outcome {
+	if state.contextFailure != nil {
+		return frame.sealError(state.contextFailure)
+	}
+	return libraryError(frame, "%s", state.failure)
+}
+
 // appendReplacement is add_value: it resolves one match's replacement and
 // appends it. A nil or false result keeps the matched text, and any other
 // non-text result is Lua 5.1's invalid-replacement failure.
 func (frame Frame) appendReplacement(
-	built []byte,
+	built *strings.Builder,
 	state *matchState,
 	start int,
 	end int,
 	kind int,
 	text string,
 	replacement slot,
-) ([]byte, *Error) {
+) *Error {
 	switch kind {
 	case gsubText:
 		return frame.appendTemplate(built, state, start, end, text)
@@ -580,45 +635,49 @@ func (frame Frame) appendReplacement(
 			end,
 		)
 		if failure != nil {
-			return built, failure
+			return failure
 		}
 		return frame.appendResolved(built, state, start, end, result)
 	default:
 		key, ok := state.captureValue(0, start, end)
 		if !ok {
-			return built, libraryFailure(frame, "%s", state.failure)
+			return libraryFailure(frame, "%s", state.failure)
 		}
-		result, failure := frame.indexValue(
+		result, failure := frame.indexCompact(
 			replacement,
 			frame.captureSlot(key),
 		)
 		if failure != nil {
-			return built, failure
+			return failure
 		}
 		return frame.appendResolved(built, state, start, end, result)
 	}
 }
 
 func (frame Frame) appendResolved(
-	built []byte,
+	built *strings.Builder,
 	state *matchState,
 	start int,
 	end int,
 	result slot,
-) ([]byte, *Error) {
+) *Error {
 	if !truthySlot(result) {
-		return append(built, state.source[start:end]...), nil
+		built.WriteString(state.source[start:end])
+		return nil
 	}
 	switch result.kind() {
 	case StringKind:
-		return append(built, (*luaString)(result.ref).text...), nil
+		built.WriteString((*luaString)(result.ref).text)
+		return nil
 	case NumberKind:
-		return appendLuaNumber(
-			built,
+		var scratch [32]byte
+		built.Write(appendLuaNumber(
+			scratch[:0],
 			math.Float64frombits(result.bits),
-		), nil
+		))
+		return nil
 	}
-	return built, libraryFailure(
+	return libraryFailure(
 		frame,
 		"invalid replacement value (a %s)",
 		result.kind(),
@@ -629,16 +688,16 @@ func (frame Frame) appendResolved(
 // selects the whole match, and '%' followed by anything else emits that byte
 // literally — including the zero byte PUC reads past the end of the template.
 func (frame Frame) appendTemplate(
-	built []byte,
+	built *strings.Builder,
 	state *matchState,
 	start int,
 	end int,
 	template string,
-) ([]byte, *Error) {
+) *Error {
 	for index := 0; index < len(template); index++ {
 		character := template[index]
 		if character != patternEscape {
-			built = append(built, character)
+			built.WriteByte(character)
 			continue
 		}
 		index++
@@ -648,9 +707,9 @@ func (frame Frame) appendTemplate(
 		}
 		switch {
 		case !isPatternDigit(next):
-			built = append(built, next)
+			built.WriteByte(next)
 		case next == '0':
-			built = append(built, state.source[start:end]...)
+			built.WriteString(state.source[start:end])
 		default:
 			value, ok := state.captureValue(
 				int(next)-'1',
@@ -658,16 +717,20 @@ func (frame Frame) appendTemplate(
 				end,
 			)
 			if !ok {
-				return built, libraryFailure(frame, "%s", state.failure)
+				return libraryFailure(frame, "%s", state.failure)
 			}
 			if value.isPosition {
-				built = appendLuaNumber(built, float64(value.position))
+				var scratch [32]byte
+				built.Write(appendLuaNumber(
+					scratch[:0],
+					float64(value.position),
+				))
 				continue
 			}
-			built = append(built, value.text...)
+			built.WriteString(value.text)
 		}
 	}
-	return built, nil
+	return nil
 }
 
 // callCaptures invokes a gsub replacement function with the match's captures
@@ -692,86 +755,7 @@ func (frame Frame) callCaptures(
 		}
 		arguments[index] = frame.captureSlot(value)
 	}
-
-	thread := frame.thread
-	checkpoint := captureExecutionCheckpoint(frame)
-	restored := false
-	defer func() {
-		if !restored {
-			checkpoint.restore(thread, true)
-		}
-	}()
-
-	resultBase, failure := startNestedCall(
-		thread,
-		callable,
-		callArguments{compact: arguments[:count]},
-		1,
-	)
-	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth {
-				panic("lua: library call returned invalid execution state")
-			}
-			value := thread.values[resultBase]
-			checkpoint.restore(thread, true)
-			restored = true
-			return value, nil
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: library call failed without an error")
-			}
-			failure = result.err
-			snapshotExecutionFailure(
-				thread,
-				checkpoint.frameDepth,
-				failure,
-			)
-		default:
-			panic("lua: library call produced an invalid execution result")
-		}
-	}
-	checkpoint.restore(thread, true)
-	restored = true
-	return nilSlot, failure
-}
-
-// indexValue is lua_gettable for a gsub table replacement: a raw hit wins, and
-// a miss follows the same bounded __index chain the executor follows, calling
-// a Function-valued handler and treating any other value as the next target.
-func (frame Frame) indexValue(target, key slot) (slot, *Error) {
-	for step := 0; step < maxTableMetamethodChain; step++ {
-		var handler slot
-		var found bool
-		if target.kind() == TableKind {
-			table := (*Table)(target.ref)
-			if result, hit := table.rawSlot(key); hit &&
-				result.kind() != NilKind {
-				return result, nil
-			}
-			handler, found = metamethodSlot(frame.thread, target, metaIndex)
-			if !found {
-				return nilSlot, nil
-			}
-		} else {
-			handler, found = metamethodSlot(frame.thread, target, metaIndex)
-			if !found {
-				return nilSlot, libraryFailure(
-					frame,
-					"attempt to index a %s value",
-					target.kind(),
-				)
-			}
-		}
-		if _, callable := functionSlot(handler); callable {
-			return frame.callBinary(handler, target, key)
-		}
-		target = handler
-	}
-	return nilSlot, libraryFailure(frame, "loop in gettable")
+	return frame.callCompactOne(callable, arguments[:count])
 }
 
 // relativePosition is posrelat: a negative position counts back from the end
@@ -861,577 +845,4 @@ func (frame Frame) textArgument(index int) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-// resultWriter publishes a native result window one value at a time, so a
-// variable number of scalar results never passes through a slice.
-type resultWriter struct {
-	thread      *Thread
-	base        int
-	outputCount int
-	written     int
-}
-
-func (frame Frame) beginResults(supplied int) (resultWriter, *Error) {
-	call := frame.activation()
-	outputCount, failure := frame.prepareResults(call, supplied)
-	if failure != nil {
-		return resultWriter{}, failure
-	}
-	return resultWriter{
-		thread:      frame.thread,
-		base:        int(call.resultBase),
-		outputCount: outputCount,
-	}, nil
-}
-
-// put publishes the next result, discarding values the caller did not request.
-func (writer *resultWriter) put(value slot) {
-	if writer.written < writer.outputCount {
-		writeSlot(
-			&writer.thread.values[writer.base+writer.written],
-			value,
-		)
-	}
-	writer.written++
-}
-
-func (frame Frame) finishResults(writer *resultWriter) Outcome {
-	written := writer.written
-	if written > writer.outputCount {
-		written = writer.outputCount
-	}
-	writer.thread.fillNil(
-		writer.base+written,
-		writer.base+writer.outputCount,
-	)
-	return frame.sealReturn(writer.outputCount)
-}
-
-// String formatting.
-//
-// Lua 5.1 hands each item to C's sprintf, so the accepted specification and
-// the produced text are C's, not Go's. The scanner below is PUC's scanformat
-// (at most five flags, a two-digit width, and a two-digit precision), and each
-// conversion is rendered to match C rather than Go's defaults: %g without an
-// explicit precision means six significant digits, a non-finite number is
-// spelled inf or nan, %c writes one byte, %u has no Go verb, and %s stops at
-// an embedded NUL exactly as sprintf does.
-
-const (
-	formatFlags = "-+ #0"
-	// maxFormatFlags is sizeof(FLAGS) in PUC, which bounds the flag run at
-	// one byte more than the flag set itself.
-	maxFormatFlags = len(formatFlags) + 1
-)
-
-// formatItem is one scanned %-specification.
-type formatItem struct {
-	flags        string
-	width        string
-	precision    string
-	hasPrecision bool
-}
-
-func stringFormat(frame Frame) Outcome {
-	template, ok := frame.textArgument(0)
-	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
-	}
-	top := frame.ArgumentCount()
-	argument := 0
-	var built []byte
-
-	for index := 0; index < len(template); {
-		if template[index] != patternEscape {
-			built = append(built, template[index])
-			index++
-			continue
-		}
-		index++
-		// PUC reads the byte after '%' from a NUL-terminated string, so a
-		// trailing '%' behaves as a specification with no conversion.
-		var next byte
-		if index < len(template) {
-			next = template[index]
-		}
-		if next == patternEscape {
-			built = append(built, patternEscape)
-			index++
-			continue
-		}
-
-		argument++
-		if argument >= top {
-			return baseArgumentError(frame, argument, "no value")
-		}
-		item, verb, scanned, failure := scanFormatItem(template, index)
-		if failure != "" {
-			return libraryError(frame, "%s", failure)
-		}
-		index = scanned
-
-		var scratch [640]byte
-		rendered, direct, outcome, done := frame.formatOne(
-			scratch[:0],
-			item,
-			verb,
-			argument,
-		)
-		if done {
-			return outcome
-		}
-		if !direct {
-			if end := bytesIndexZero(rendered); end >= 0 {
-				rendered = rendered[:end]
-			}
-		}
-		built = append(built, rendered...)
-	}
-	return frame.ReturnString(string(built))
-}
-
-// bytesIndexZero is strlen over an item PUC would have produced in its fixed
-// buffer.
-func bytesIndexZero(text []byte) int {
-	for index, character := range text {
-		if character == 0 {
-			return index
-		}
-	}
-	return -1
-}
-
-// scanFormatItem is scanformat. It returns the parsed item, its conversion
-// byte, the offset just past it, and a failure message.
-func scanFormatItem(
-	template string,
-	index int,
-) (item formatItem, verb byte, next int, failure string) {
-	at := func(offset int) byte {
-		if offset >= len(template) {
-			return 0
-		}
-		return template[offset]
-	}
-
-	start := index
-	for strings.IndexByte(formatFlags, at(index)) >= 0 && at(index) != 0 {
-		index++
-	}
-	if index-start >= maxFormatFlags {
-		return item, 0, index, "invalid format (repeated flags)"
-	}
-	item.flags = template[start:index]
-
-	widthStart := index
-	if isPatternDigit(at(index)) {
-		index++
-	}
-	if isPatternDigit(at(index)) {
-		index++
-	}
-	item.width = template[widthStart:index]
-
-	if at(index) == '.' {
-		index++
-		item.hasPrecision = true
-		precisionStart := index
-		if isPatternDigit(at(index)) {
-			index++
-		}
-		if isPatternDigit(at(index)) {
-			index++
-		}
-		item.precision = template[precisionStart:index]
-	}
-	if isPatternDigit(at(index)) {
-		return item, 0, index, "invalid format (width or precision too long)"
-	}
-	return item, at(index), index + 1, ""
-}
-
-// formatOne renders one conversion into scratch.
-//
-// It reports direct when the item bypasses PUC's fixed sprintf buffer, and
-// done when a terminal outcome has already been produced. Everything else goes
-// through that buffer, whose content PUC measures with strlen, so the caller
-// truncates the item at its first NUL.
-func (frame Frame) formatOne(
-	built []byte,
-	item formatItem,
-	verb byte,
-	argument int,
-) (rendered []byte, direct bool, outcome Outcome, done bool) {
-	switch verb {
-	case 'c':
-		number, ok := frame.numberArgument(argument)
-		if !ok {
-			return built, false, numberArgumentError(frame, argument), true
-		}
-		// C converts through int and then to unsigned char, so only the
-		// low byte of the same conversion luaL_checkint performs survives.
-		return item.pad(
-			built,
-			[]byte{byte(libraryInteger(number))},
-			false,
-		), false, Outcome{}, false
-
-	case 'd', 'i':
-		number, ok := frame.numberArgument(argument)
-		if !ok {
-			return built, false, numberArgumentError(frame, argument), true
-		}
-		var scratch [24]byte
-		value := saturatingInt64(number)
-		return item.appendInteger(
-			built,
-			strconv.AppendInt(scratch[:0], value, 10),
-			value == 0,
-		), false, Outcome{}, false
-
-	case 'o', 'u', 'x', 'X':
-		number, ok := frame.numberArgument(argument)
-		if !ok {
-			return built, false, numberArgumentError(frame, argument), true
-		}
-		return item.appendUnsigned(
-			built,
-			unsignedConversion(number),
-			verb,
-		), false, Outcome{}, false
-
-	case 'e', 'E', 'f', 'g', 'G':
-		number, ok := frame.numberArgument(argument)
-		if !ok {
-			return built, false, numberArgumentError(frame, argument), true
-		}
-		return item.appendFloat(built, number, verb), false, Outcome{}, false
-
-	case 'q':
-		text, ok := frame.textArgument(argument)
-		if !ok {
-			return built, false, baseArgumentTypeError(
-				frame,
-				argument,
-				"string",
-			), true
-		}
-		return appendQuoted(built, text), false, Outcome{}, false
-
-	case 's':
-		text, ok := frame.textArgument(argument)
-		if !ok {
-			return built, false, baseArgumentTypeError(
-				frame,
-				argument,
-				"string",
-			), true
-		}
-		if !item.hasPrecision && len(text) >= 100 {
-			// PUC keeps a long unformatted string as-is rather than passing
-			// it through its fixed sprintf buffer. Because a width is limited
-			// to two digits, no padding could apply anyway; the visible effect
-			// is that embedded NULs survive.
-			return append(built, text...), true, Outcome{}, false
-		}
-		if item.hasPrecision {
-			if precision := item.precisionValue(6); precision < len(text) {
-				text = text[:precision]
-			}
-		}
-		return item.pad(built, []byte(text), false), false, Outcome{}, false
-
-	default:
-		return built, false, libraryError(
-			frame,
-			"invalid option '%%%c' to 'format'",
-			verb,
-		), true
-	}
-}
-
-func (item formatItem) widthValue() int {
-	if item.width == "" {
-		return 0
-	}
-	value, _ := strconv.Atoi(item.width)
-	return value
-}
-
-func (item formatItem) precisionValue(fallback int) int {
-	if !item.hasPrecision {
-		return fallback
-	}
-	if item.precision == "" {
-		return 0
-	}
-	value, _ := strconv.Atoi(item.precision)
-	return value
-}
-
-func (item formatItem) has(flag byte) bool {
-	return strings.IndexByte(item.flags, flag) >= 0
-}
-
-// pad applies the width and the '-' and '0' flags. Zero padding follows C: it
-// is ignored when the value is left-aligned, and it goes after any sign.
-func (item formatItem) pad(
-	built []byte,
-	text []byte,
-	numeric bool,
-) []byte {
-	width := item.widthValue()
-	if len(text) >= width {
-		return append(built, text...)
-	}
-	fill := width - len(text)
-	if item.has('-') {
-		built = append(built, text...)
-		return appendRepeatedByte(built, ' ', fill)
-	}
-	if item.has('0') {
-		prefix := 0
-		if numeric {
-			if len(text) != 0 &&
-				(text[0] == '-' || text[0] == '+' || text[0] == ' ') {
-				prefix = 1
-			}
-			if prefix == 0 && len(text) > 1 && text[0] == '0' &&
-				(text[1] == 'x' || text[1] == 'X') {
-				prefix = 2
-			}
-		}
-		built = append(built, text[:prefix]...)
-		built = appendRepeatedByte(built, '0', fill)
-		return append(built, text[prefix:]...)
-	}
-	built = appendRepeatedByte(built, ' ', fill)
-	return append(built, text...)
-}
-
-func appendRepeatedByte(built []byte, value byte, count int) []byte {
-	for index := 0; index < count; index++ {
-		built = append(built, value)
-	}
-	return built
-}
-
-// appendInteger applies C's integer conversion rules: a precision sets a
-// minimum digit count and suppresses zero padding, and the sign flags apply to
-// a non-negative value.
-func (item formatItem) appendInteger(
-	built []byte,
-	digits []byte,
-	zero bool,
-) []byte {
-	sign := ""
-	if digits[0] == '-' {
-		sign, digits = "-", digits[1:]
-	} else if item.has('+') {
-		sign = "+"
-	} else if item.has(' ') {
-		sign = " "
-	}
-	return item.finishNumber(built, sign, "", item.zeroDigits(digits, zero))
-}
-
-// zeroDigits applies C's rule that converting a zero value with an explicit
-// precision of zero produces no digits at all.
-func (item formatItem) zeroDigits(digits []byte, zero bool) []byte {
-	if zero && item.hasPrecision && item.precisionValue(0) == 0 {
-		return digits[:0]
-	}
-	return digits
-}
-
-func (item formatItem) appendUnsigned(
-	built []byte,
-	value uint64,
-	verb byte,
-) []byte {
-	base := 10
-	switch verb {
-	case 'o':
-		base = 8
-	case 'x', 'X':
-		base = 16
-	}
-	var scratch [24]byte
-	digits := strconv.AppendUint(scratch[:0], value, base)
-	if verb == 'X' {
-		for index := range digits {
-			digits[index] = upperByte(digits[index])
-		}
-	}
-	prefix := ""
-	if item.has('#') && value != 0 {
-		switch verb {
-		case 'o':
-			if len(digits) == 0 || digits[0] != '0' {
-				digits = append([]byte{'0'}, digits...)
-			}
-		case 'x':
-			prefix = "0x"
-		case 'X':
-			prefix = "0X"
-		}
-	}
-	return item.finishNumber(built, "", prefix, item.zeroDigits(digits, value == 0))
-}
-
-// finishNumber assembles an integer conversion: sign, base prefix, the zeros a
-// precision requires, then width. C ignores the '0' flag once a precision is
-// given for an integer conversion.
-func (item formatItem) finishNumber(
-	built []byte,
-	sign string,
-	prefix string,
-	digits []byte,
-) []byte {
-	var body [64]byte
-	assembled := append(body[:0], sign...)
-	assembled = append(assembled, prefix...)
-	if item.hasPrecision {
-		if zeros := item.precisionValue(0) - len(digits); zeros > 0 {
-			assembled = appendRepeatedByte(assembled, '0', zeros)
-		}
-		assembled = append(assembled, digits...)
-		return item.withoutZeroFlag().pad(built, assembled, true)
-	}
-	assembled = append(assembled, digits...)
-	return item.pad(built, assembled, true)
-}
-
-// withoutZeroFlag drops '0' where C ignores it.
-func (item formatItem) withoutZeroFlag() formatItem {
-	item.flags = strings.ReplaceAll(item.flags, "0", "")
-	return item
-}
-
-// appendFloat renders a floating conversion the way C does, including the
-// spelling of infinities and NaN and %g's default precision of six.
-func (item formatItem) appendFloat(
-	built []byte,
-	number float64,
-	verb byte,
-) []byte {
-	sign := ""
-	switch {
-	case math.Signbit(number):
-		sign = "-"
-	case item.has('+'):
-		sign = "+"
-	case item.has(' '):
-		sign = " "
-	}
-
-	if math.IsNaN(number) || math.IsInf(number, 0) {
-		word := "inf"
-		if math.IsNaN(number) {
-			word = "nan"
-		}
-		if verb == 'E' || verb == 'G' {
-			word = strings.ToUpper(word)
-		}
-		var body [8]byte
-		spelled := append(append(body[:0], sign...), word...)
-		// C never zero-pads a non-finite value.
-		return item.withoutZeroFlag().pad(built, spelled, true)
-	}
-
-	precision := item.precisionValue(6)
-	format := byte('f')
-	switch verb {
-	case 'e', 'E':
-		format = verb
-	case 'g', 'G':
-		format = verb
-		if precision == 0 {
-			// C reads a zero precision as one significant digit.
-			precision = 1
-		}
-	}
-	var scratch [512]byte
-	digits := strconv.AppendFloat(
-		scratch[:0],
-		math.Abs(number),
-		format,
-		precision,
-		64,
-	)
-	var body [576]byte
-	assembled := append(body[:0], sign...)
-	if item.has('#') {
-		assembled = appendAlternateFloat(assembled, digits, verb, precision)
-	} else {
-		assembled = append(assembled, digits...)
-	}
-	return item.pad(built, assembled, true)
-}
-
-// appendAlternateFloat applies C's '#' flag: the result always keeps its
-// decimal point, and %g keeps the trailing zeros it would otherwise drop.
-//
-// digits must not alias dst; the point and the padding are inserted between
-// the mantissa and any exponent.
-func appendAlternateFloat(
-	dst []byte,
-	digits []byte,
-	verb byte,
-	precision int,
-) []byte {
-	exponent := len(digits)
-	for index, character := range digits {
-		if character == 'e' || character == 'E' {
-			exponent = index
-			break
-		}
-	}
-	mantissa, suffix := digits[:exponent], digits[exponent:]
-
-	point := false
-	significant := 0
-	leading := true
-	for _, character := range mantissa {
-		if character == '.' {
-			point = true
-			continue
-		}
-		if character == '0' && leading {
-			continue
-		}
-		leading = false
-		significant++
-	}
-
-	dst = append(dst, mantissa...)
-	if !point {
-		dst = append(dst, '.')
-	}
-	if verb == 'g' || verb == 'G' {
-		for ; significant < precision; significant++ {
-			dst = append(dst, '0')
-		}
-	}
-	return append(dst, suffix...)
-}
-
-// appendQuoted is addquoted: a Lua string literal that reads back as the same
-// bytes.
-func appendQuoted(built []byte, text string) []byte {
-	built = append(built, '"')
-	for index := 0; index < len(text); index++ {
-		switch character := text[index]; character {
-		case '"', '\\', '\n':
-			built = append(built, '\\', character)
-		case '\r':
-			built = append(built, '\\', 'r')
-		case 0:
-			built = append(built, '\\', '0', '0', '0')
-		default:
-			built = append(built, character)
-		}
-	}
-	return append(built, '"')
 }

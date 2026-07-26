@@ -346,6 +346,50 @@ func (frame Frame) ReturnString(value string) Outcome {
 	return frame.sealReturn(outputCount)
 }
 
+// resultWriter publishes a native result window one compact value at a time,
+// allowing variable scalar result counts without constructing a slice.
+type resultWriter struct {
+	thread      *Thread
+	base        int
+	outputCount int
+	written     int
+}
+
+func (frame Frame) beginResults(supplied int) (resultWriter, *Error) {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, supplied)
+	if failure != nil {
+		return resultWriter{}, failure
+	}
+	return resultWriter{
+		thread:      frame.thread,
+		base:        int(call.resultBase),
+		outputCount: outputCount,
+	}, nil
+}
+
+func (writer *resultWriter) put(value slot) {
+	if writer.written < writer.outputCount {
+		writeSlot(
+			&writer.thread.values[writer.base+writer.written],
+			value,
+		)
+	}
+	writer.written++
+}
+
+func (frame Frame) finishResults(writer *resultWriter) Outcome {
+	written := writer.written
+	if written > writer.outputCount {
+		written = writer.outputCount
+	}
+	writer.thread.fillNil(
+		writer.base+written,
+		writer.base+writer.outputCount,
+	)
+	return frame.sealReturn(writer.outputCount)
+}
+
 // Yield suspends the executing coroutine without yielded values.
 //
 // The borrowed Frame becomes invalid immediately. Yielding from the main

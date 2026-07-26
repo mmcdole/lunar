@@ -558,6 +558,9 @@ func runLua51Case(t *testing.T, source string) string {
 	if err := state.OpenTable(); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.OpenString(); err != nil {
+		t.Fatal(err)
+	}
 	installTestPrelude(t, state)
 
 	chunk, err := state.LoadString("=case", source)
@@ -634,9 +637,16 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	if binary == "" {
 		t.Skip("set BADGER_LUA51 to a Lua 5.1 interpreter to verify")
 	}
-	cases := make([]lua51Case, 0, len(mathLibraryLua51Cases)+len(tableLibraryLua51Cases))
+	cases := make(
+		[]lua51Case,
+		0,
+		len(mathLibraryLua51Cases)+
+			len(tableLibraryLua51Cases)+
+			len(stringLibraryLua51Cases),
+	)
 	cases = append(cases, mathLibraryLua51Cases...)
 	cases = append(cases, tableLibraryLua51Cases...)
+	cases = append(cases, stringLibraryLua51Cases...)
 
 	driver := &strings.Builder{}
 	driver.WriteString(lua51OracleDriver)
@@ -744,9 +754,10 @@ func quoteLuaString(text string) string {
 }
 
 // The differential cases need a few base-library primitives that the base
-// library does not implement yet: metamethod installation, multiple-result
-// counting, and Lua-level error raising. installTestPrelude supplies exactly
-// those four, and only for tests. They are deliberate throwaway scaffolding
+// library does not implement yet: metamethod access and installation,
+// multiple-result counting, type naming, and Lua-level error raising.
+// installTestPrelude supplies exactly those six, and only for tests. They are
+// deliberate throwaway scaffolding
 // with no claim to being the eventual base-library implementations; delete
 // them once library_base.go provides the real ones.
 func installTestPrelude(t *testing.T, state *State) {
@@ -756,9 +767,11 @@ func installTestPrelude(t *testing.T, state *State) {
 		entry NativeFunc
 	}{
 		{name: "error", entry: testPreludeError},
+		{name: "getmetatable", entry: testPreludeGetMetatable},
 		{name: "select", entry: testPreludeSelect},
 		{name: "setmetatable", entry: testPreludeSetMetatable},
 		{name: "tostring", entry: testPreludeToString},
+		{name: "type", entry: testPreludeType},
 	}
 	for _, definition := range prelude {
 		function, err := state.NewNativeFunction(definition.entry)
@@ -772,6 +785,21 @@ func installTestPrelude(t *testing.T, state *State) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func testPreludeGetMetatable(frame Frame) Outcome {
+	value, present := frame.Argument(0)
+	if !present {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	metatable, err := frame.State().Metatable(value)
+	if err != nil {
+		return frame.RaiseString(err.Error())
+	}
+	if metatable == nil {
+		return frame.ReturnNil()
+	}
+	return frame.ReturnValue(metatable.Value())
 }
 
 func testPreludeError(frame Frame) Outcome {
@@ -840,4 +868,12 @@ func testPreludeToString(frame Frame) Outcome {
 		return baseArgumentError(frame, 0, "value expected")
 	}
 	return frame.ReturnString(value.owningValue().String())
+}
+
+func testPreludeType(frame Frame) Outcome {
+	kind := frame.Kind(0)
+	if kind == InvalidKind {
+		return baseArgumentError(frame, 0, "value expected")
+	}
+	return frame.ReturnString(kind.String())
 }
