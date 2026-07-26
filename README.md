@@ -53,8 +53,11 @@ registry-backed `require`, preload and Lua-file searchers, `module`, and
 `package.seeall`. Native C modules expose Lua 5.1's
 standard unavailable-platform result because the compact Go runtime does not
 pretend to implement the C `lua_State` ABI. Warmed scalar and sequence library
-calls and cached `require` calls allocate nothing. The remaining standard
-libraries are still under construction.
+calls and cached `require` calls allocate nothing. The explicit `io` library
+adds opaque managed files, State-local defaults, compact binary-safe reads,
+buffered writes, seeking, line iteration, and deterministic owned-resource
+cleanup. Process-backed `io.popen` and the remaining standard libraries are
+still under construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order. Adapted reference algorithms retain their original permissive license

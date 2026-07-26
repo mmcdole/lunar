@@ -1034,8 +1034,66 @@ As in Lua 5.1, a returned number or string is accepted, embedded NUL ends the
 written text, separators are emitted only after a successful conversion, and
 an error preserves output already written by earlier arguments. Writes are
 sequential and their errors are deliberately ignored, matching PUC's
-unchecked `fputs`; the later `io` library will report I/O failures through its
-own Lua-visible result convention.
+unchecked `fputs`; the `io` library reports failures through its own
+Lua-visible result convention.
+
+The IO library represents each file as one opaque managed userdata over one
+`fileHandle`; there is no public-value mirror or library-private side map.
+Regular files own their operating-system handle and close when Lua closes
+them, the Go object becomes unreachable, or the State closes. Standard files
+borrow the State endpoints and are never closed by Lua or by `State.Close`.
+Every opening of the library receives private default-input and default-output
+slots, while all openings still share the State's physical standard-stream
+cursors.
+
+Input and output endpoints jointly define one logical file cursor. Before a
+write or relative seek, the file compensates for bytes fetched by buffered
+read-ahead; before a read or seek, it flushes pending output. This keeps
+`read`, `write`, and `seek("cur")` coherent without publishing a second cursor
+or materializing values at the library boundary. Regular output is fully
+buffered by default, as a C `FILE` normally is. Caller-supplied standard Go
+writers remain unbuffered unless Lua explicitly selects buffering, making
+embedding behavior independent of whether the writer happens to be a
+terminal. `print`, `io.write`, and `io.flush` use the same standard-output
+endpoint and therefore preserve ordering.
+
+The read engine produces compact slots directly for line, fixed-count,
+whole-file, and numeric reads. It is binary-safe: NUL is ordinary input and a
+line ends only at LF, with CR preserved. Numeric input uses the runtime's
+deterministic number grammar rather than the host C locale. Fixed-count reads
+allocate according to bytes actually received, so an enormous requested count
+on a short stream does not reserve an enormous buffer. Constructed IO strings
+share the runtime's 1 GiB construction ceiling with `string.rep`; exceeding it
+is a catchable resource error rather than a host allocation attempt. Numeric
+tokens are independently limited to 64 KiB because they produce one scalar;
+this prevents a digit stream from building and then duplicating a
+string-sized allocation merely to return one float.
+
+File modes are the portable Lua set—`r`, `w`, or `a`, with at most one `+` and
+one ignored binary marker—instead of accepting platform-specific `fopen`
+extensions. Counts, offsets, and buffer sizes use the shared defined 64-bit
+conversion rather than C's undefined out-of-range floating-point casts. Seek
+positions are therefore 64-bit on every supported Go target. `setvbuf`
+reconfigures both readable and writable sides without losing prefetched input,
+and rejects buffers above 64 MiB before changing the prior policy.
+
+Context-aware input caps each underlying read at 64 KiB and polls both before
+and after it, independently of the buffer size selected by `setvbuf`.
+Consumption from bytes already buffered also polls every 64 KiB. Cancellation
+therefore reaches line, fixed, whole-file, numeric, and zero-length reads
+without becoming an IO failure tuple; it remains a host `ContextError`, and
+the prefix consumed before the safepoint remains consumed.
+
+The implemented Lua 5.1 surface includes default-file control, open, close,
+temporary files, type inspection, reads, writes, lines, flushing, seeking, and
+buffer selection. Temporary files are removed when their owned resource
+closes. `io.lines(filename)` owns and closes its file at EOF, while
+`file:lines()` and default-input iteration leave their file open. Process-backed
+`io.popen` remains absent until the IO and OS libraries can share one process
+ownership and wait-status design; no nonfunctional stub is published.
+Unlike an argument-stack bug in PUC Lua 5.1.5, explicit
+`io.lines(nil)` follows the documented optional-filename behavior and selects
+the default input just like an omitted argument.
 
 The remaining base entries are intentionally absent rather than partial
 stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate
