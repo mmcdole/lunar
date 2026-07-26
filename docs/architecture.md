@@ -126,6 +126,8 @@ Files are organized by substantial runtime concepts:
   suspension lifecycle, and State-wide execution ownership;
 - `context.go`: operation-scoped context ownership, polling budgets, and
   cancellation failures;
+- `resource.go`: exactly-once native resource cleanup, finalizer tokens, and
+  the State-close registry used by resource-owning libraries;
 - `pattern.go`: byte-oriented Lua 5.1 pattern matching with bounded recursion
   and cooperative context polling;
 - `library_base.go`, `library_load.go`, `library_coroutine.go`,
@@ -921,6 +923,33 @@ input and at bounded byte intervals, and never retain the context in the
 resulting Function. An ordinary non-binary `LoadString` instead charges the
 already-materialized source once and scans it through the direct fixed-string
 path.
+
+## Managed native resources
+
+Runtime libraries can attach a native resource to canonical userdata without
+exposing that resource through the public payload. Such userdata remains the
+single Lua object and compact slot identity; the lifecycle layer is not an
+adapter object model. Its public payload is read-only and reports nil, while
+the owning library borrows the native value through a scoped lease that keeps
+the finalizer token live for the complete host operation.
+
+One lazy registry per State retains lifecycle records for live runtime
+resources, but deliberately does not retain their userdata or finalizer tokens.
+Explicit close, Go reclamation, and `State.Close` converge on one `sync.Once`
+cleanup. The finalizer can therefore perform native cleanup when userdata
+becomes unreachable, while `State.Close` still deterministically closes every
+registered resource, continues after failures, and returns those failures
+joined together. Closing clears the record's native value and registry link,
+so resource bookkeeping cannot pin unrelated State roots. A userdata's
+ordinary Lua 5.1 environment remains an independent, observable reference.
+Borrowed standard streams use the same lifecycle record with a no-close
+release policy and are never closed.
+
+Finalizers in this layer may release only a private native resource; they
+never enter Lua. This is intentionally not an implementation of Lua
+`__gc`, weak tables, or `collectgarbage`. Those require a later State-local
+semantic collector that can identify host-retained owning handles, order Lua
+finalizers, and process resurrection synchronously.
 
 ## Standard libraries
 

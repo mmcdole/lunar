@@ -34,6 +34,12 @@ var ErrNegativeCapacity = errors.New("lua: capacity hint is negative")
 // allocation. Tables may still grow beyond this size incrementally.
 var ErrCapacity = errors.New("lua: capacity hint is too large")
 
+// ErrReadOnlyUserData reports an attempt to replace the payload of userdata
+// reserved for a runtime library's native resource.
+var ErrReadOnlyUserData = errors.New(
+	"lua: runtime-owned userdata payload is read-only",
+)
+
 // Options configures a State at construction.
 //
 // Options is copied by New. Mutating the caller's value after construction
@@ -122,6 +128,7 @@ type State struct {
 	main            *Thread
 	registry        *Table
 	packageSentinel *UserData
+	resources       *nativeResourceRegistry
 	execution       executionContext
 	typeMetatables  [TableKind + 1]*Table
 }
@@ -177,6 +184,13 @@ func New(options Options) (*State, error) {
 // mutation. Repeated serialized calls are idempotent. Close must not overlap
 // another operation on this State, including another call to Close.
 //
+// Every still-open runtime-owned native resource is closed exactly once.
+// Borrowed native handles are detached without closing their underlying
+// resources. Close continues through all records and returns owned-resource
+// cleanup failures joined together; the State is closed even when that error
+// is non-nil. Standard streams supplied through Options are borrowed and are
+// never closed.
+//
 // Previously returned owning Values and canonical object handles remain safe
 // to inspect after Close.
 func (state *State) Close() error {
@@ -188,6 +202,11 @@ func (state *State) Close() error {
 	}
 	if state.runtime.closed.Swap(true) {
 		return nil
+	}
+	var resourceErr error
+	if state.resources != nil {
+		resourceErr = state.resources.releaseAll()
+		state.resources = nil
 	}
 	state.runtime.strings.close()
 	if state.main != nil {
@@ -205,7 +224,7 @@ func (state *State) Close() error {
 	state.options.Stdout = nil
 	state.options.Stderr = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
-	return nil
+	return resourceErr
 }
 
 // MainThread returns the canonical main Thread.
@@ -589,6 +608,7 @@ type UserData struct {
 	payload     any
 	metatable   *Table
 	environment *Table
+	resource    *nativeResourceToken
 }
 
 // Value returns the owning Lua value for userdata.
@@ -600,7 +620,8 @@ func (data *UserData) Value() Value {
 }
 
 // Data returns the Go payload. Reading the payload remains safe after the
-// owning State closes.
+// owning State closes. Userdata reserved for a runtime library has no public
+// payload and returns nil.
 func (data *UserData) Data() any {
 	if data == nil {
 		return nil
@@ -608,10 +629,14 @@ func (data *UserData) Data() any {
 	return data.payload
 }
 
-// SetData replaces the Go payload.
+// SetData replaces the Go payload. Runtime-owned userdata returns
+// ErrReadOnlyUserData.
 func (data *UserData) SetData(payload any) error {
 	if data == nil || data.owner == nil || data.owner.closed.Load() {
 		return ErrClosed
+	}
+	if data.resource != nil {
+		return ErrReadOnlyUserData
 	}
 	data.payload = payload
 	return nil
