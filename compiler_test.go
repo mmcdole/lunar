@@ -98,8 +98,8 @@ func TestCompilerDeduplicatesCompactConstants(t *testing.T) {
 		slotFromValue(Number(42.5)),
 		slotFromValue(Number(0)),
 		slotFromValue(Number(math.Copysign(0, -1))),
-		prototypeStringSlot(newLuaString("field")),
-		prototypeStringSlot(newLuaString("field")),
+		prototypeStringSlot(newInternedText("field")),
+		prototypeStringSlot(newInternedText("field")),
 	}
 	wantIndexes := []int{0, 0, 1, 2, 3, 3, 4, 5, 6, 6}
 	for index, value := range constants {
@@ -130,8 +130,10 @@ func TestCompilerDeduplicatesCompactConstants(t *testing.T) {
 		t.Fatal("constant pool changed negative zero")
 	}
 	firstString := function.builder.constants[6]
-	if firstString.ref != unsafe.Pointer(unit.strings["field"]) {
-		t.Fatal("constant pool did not retain the canonical compiler string")
+	interned := unit.strings["field"]
+	if stringSlotText(firstString) != interned.text ||
+		firstString.ref != unsafe.Pointer(unsafe.StringData(interned.text)) {
+		t.Fatal("constant pool did not retain the interned text backing")
 	}
 
 	if _, err := function.constant(

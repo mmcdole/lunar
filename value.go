@@ -285,15 +285,15 @@ func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 	return slot{ref: pointer, bits: uint64(kind)}
 }
 
-func stringValue(pointer *luaString) Value {
-	return stringSlot(pointer).owningValue()
+func stringValue(value stringRef) Value {
+	return stringSlot(value).owningValue()
 }
 
-func stringSlot(pointer *luaString) slot {
-	if pointer == nil {
-		panic("lua: nil string object")
+func stringSlot(value stringRef) slot {
+	if !value.valid() {
+		panic("lua: invalid string reference")
 	}
-	return slot{ref: unsafe.Pointer(pointer), bits: uint64(StringKind)}
+	return slot{ref: value.ref, bits: value.bits}
 }
 
 func (value Value) owner() *runtimeState {
@@ -364,9 +364,7 @@ func rawEqual(left, right Value) bool {
 	case StringKind:
 		leftSlot := slotFromValue(left)
 		rightSlot := slotFromValue(right)
-		return left.ref == right.ref && left.bits == right.bits ||
-			stringSlotHash(leftSlot) == stringSlotHash(rightSlot) &&
-				stringSlotText(leftSlot) == stringSlotText(rightSlot)
+		return stringSlotsEqual(leftSlot, rightSlot)
 	default:
 		return left.ref == right.ref
 	}
@@ -387,8 +385,7 @@ func rawSlotEqual(left, right slot) bool {
 	}
 	switch kind {
 	case StringKind:
-		return stringSlotHash(left) == stringSlotHash(right) &&
-			stringSlotText(left) == stringSlotText(right)
+		return stringSlotsEqual(left, right)
 	case NilKind, BoolKind, FunctionKind, UserDataKind, ThreadKind, TableKind:
 		return left.ref == right.ref
 	default:

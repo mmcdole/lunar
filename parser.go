@@ -10,7 +10,7 @@ type sourceParser struct {
 	lexer        *lexer
 	current      token
 	function     *functionState
-	names        []*luaString
+	names        []*internedText
 	values       []compiledExpression
 	targets      []assignmentTarget
 	nesting      int
@@ -541,7 +541,7 @@ func (parser *sourceParser) parseReturn() *Error {
 }
 
 func (parser *sourceParser) resolveVariable(
-	name *luaString,
+	name *internedText,
 	line uint32,
 ) (compiledExpression, *Error) {
 	if register, ok := parser.function.localRegister(name); ok {

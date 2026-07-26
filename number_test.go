@@ -184,13 +184,13 @@ func TestSlotToNumber(t *testing.T) {
 		t.Fatalf("numeric slot = (%v, %v), want (-12.5, true)", got, ok)
 	}
 
-	numericString := prototypeStringSlot(newLuaString(" 0x20 "))
+	numericString := prototypeStringSlot(newInternedText(" 0x20 "))
 	if got, ok := slotToNumber(numericString); !ok || got != 32 {
 		t.Fatalf("numeric string = (%v, %v), want (32, true)", got, ok)
 	}
 
 	for _, value := range []slot{
-		prototypeStringSlot(newLuaString("12x")),
+		prototypeStringSlot(newInternedText("12x")),
 		nilSlot,
 		falseSlot,
 	} {
@@ -204,7 +204,7 @@ var (
 	parsedNumberSink    float64
 	parsedOKSink        bool
 	formattedNumberSink string
-	parsedSlot          = prototypeStringSlot(newLuaString(" +12345.625e-2 "))
+	parsedSlot          = prototypeStringSlot(newInternedText(" +12345.625e-2 "))
 )
 
 func TestParseLuaNumberDoesNotAllocate(t *testing.T) {

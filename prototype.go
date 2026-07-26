@@ -11,7 +11,7 @@ const (
 )
 
 type localInfo struct {
-	name    *luaString
+	name    *internedText
 	startPC uint32
 	endPC   uint32
 }
@@ -19,7 +19,7 @@ type localInfo struct {
 type prototypeDebug struct {
 	lines    []uint32
 	locals   []localInfo
-	upvalues []*luaString
+	upvalues []*internedText
 }
 
 // Prototype is immutable, verified Lua executable metadata.
@@ -28,7 +28,7 @@ type prototypeDebug struct {
 // States. Its executable arrays and constants are private. Strings retained by
 // constants are immutable and do not refer back to a State.
 type Prototype struct {
-	sourceName  *luaString
+	sourceName  *internedText
 	lineDefined uint32
 	lastLine    uint32
 	code        []instruction
@@ -160,7 +160,7 @@ func (prototype *Prototype) describeOperand(
 func (prototype *Prototype) localAt(
 	pc int,
 	register int,
-) *luaString {
+) *internedText {
 	if prototype.debug == nil {
 		return nil
 	}
@@ -288,7 +288,7 @@ func instructionWritesA(operation opcode) bool {
 // gives every retained slice exact capacity. Compiler slices are copied;
 // hostile-input loaders may transfer exact, exclusively owned vectors.
 type prototypeBuilder struct {
-	sourceName   *luaString
+	sourceName   *internedText
 	lineDefined  int
 	lastLine     int
 	parameters   int
@@ -306,18 +306,22 @@ type prototypeBuilder struct {
 type prototypeDebugBuilder struct {
 	lines    []int
 	locals   []prototypeLocalBuilder
-	upvalues []*luaString
+	upvalues []*internedText
 }
 
 type prototypeLocalBuilder struct {
-	name    *luaString
+	name    *internedText
 	startPC int
 	endPC   int
 }
 
 func (builder *prototypeBuilder) seal() (*Prototype, *Error) {
 	if builder == nil {
-		return nil, newPrototypeSyntaxError(nil, -1, "missing function prototype")
+		return nil, newPrototypeSyntaxError(
+			nil,
+			-1,
+			"missing function prototype",
+		)
 	}
 	if builder.consumed {
 		return nil, newPrototypeSyntaxError(
@@ -375,11 +379,14 @@ func exactSlice[Element any](values []Element) []Element {
 	return copied
 }
 
-func prototypeStringSlot(value *luaString) slot {
-	return stringSlot(value)
+func prototypeStringSlot(value *internedText) slot {
+	if value == nil {
+		panic("lua: nil compiler string")
+	}
+	return stringSlot(newHashedStringRef(value.text, value.hash))
 }
 
-func prototypeStringText(value *luaString) string {
+func prototypeStringText(value *internedText) string {
 	if value == nil {
 		return ""
 	}

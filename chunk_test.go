@@ -147,8 +147,8 @@ return first(), second(), -0.0
 		len(decoded.children[1].constants) != 1 {
 		t.Fatal("decoded nested constants have an unexpected shape")
 	}
-	firstString := (*luaString)(decoded.children[0].constants[0].ref)
-	secondString := (*luaString)(decoded.children[1].constants[0].ref)
+	firstString := decoded.children[0].constants[0]
+	secondString := decoded.children[1].constants[0]
 	if firstString != secondString {
 		t.Fatal("equal strings in separate functions were not interned together")
 	}
@@ -231,7 +231,7 @@ return value * 2, "puc\0chunk"
 			assertDecodedChunkResults(
 				t,
 				prototype,
-				[]Value{Number(38), stringValue(newLuaString("puc\000chunk"))},
+				[]Value{Number(38), stringValue(newStringRef("puc\000chunk"))},
 			)
 			if stripped && prototype.SourceName() != "=?" {
 				t.Fatalf(
@@ -648,7 +648,7 @@ func TestChunkDecoderDoesNotChargeRepeatedStrings(t *testing.T) {
 		order:    nativeByteOrder(),
 		wordSize: int(unsafe.Sizeof(uintptr(0))),
 	}
-	value := newLuaString(text)
+	value := newInternedText(text)
 	writer.writeString(value)
 	writer.writeString(value)
 	if writer.err != nil {
@@ -1002,7 +1002,7 @@ func writeNestedTestFunction(
 	root bool,
 ) {
 	if root {
-		writer.writeString(newLuaString("@depth.lua"))
+		writer.writeString(newInternedText("@depth.lua"))
 	} else {
 		writer.writeString(nil)
 	}

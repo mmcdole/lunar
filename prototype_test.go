@@ -6,10 +6,10 @@ import (
 )
 
 func TestPrototypeSealOwnsCompactMetadata(t *testing.T) {
-	source := newLuaString("module.lua")
-	localName := newLuaString("result")
-	upvalueName := newLuaString("outer")
-	constantString := newLuaString("shared")
+	source := newInternedText("module.lua")
+	localName := newInternedText("result")
+	upvalueName := newInternedText("outer")
+	constantString := newInternedText("shared")
 
 	childBuilder := testPrototypeBuilder(
 		makeABC(opReturn, 0, 1, 0),
@@ -38,7 +38,7 @@ func TestPrototypeSealOwnsCompactMetadata(t *testing.T) {
 	locals := []prototypeLocalBuilder{
 		{name: localName, startPC: 0, endPC: 4},
 	}
-	upvalueNames := []*luaString{upvalueName}
+	upvalueNames := []*internedText{upvalueName}
 	builder := &prototypeBuilder{
 		sourceName:  source,
 		lineDefined: 2,
@@ -99,17 +99,21 @@ func TestPrototypeSealOwnsCompactMetadata(t *testing.T) {
 	}
 	if prototype.sourceName != source ||
 		prototype.debug.locals[0].name != localName ||
-		prototype.debug.upvalues[0] != upvalueName ||
-		prototype.constants[3].ref != unsafe.Pointer(constantString) {
+		prototype.debug.upvalues[0] != upvalueName {
 		t.Fatal("prototype did not retain compilation-shared strings")
+	}
+	constant := prototype.constants[3]
+	if stringSlotText(constant) != constantString.text ||
+		constant.ref != unsafe.Pointer(unsafe.StringData(constantString.text)) {
+		t.Fatal("prototype constant did not cross into flat string storage")
 	}
 
 	code[0] = makeABC(opReturn, 0, 1, 0)
 	constants[0] = slotFromValue(Number(99))
 	children[0] = nil
 	lines[0] = 99
-	locals[0].name = newLuaString("changed")
-	upvalueNames[0] = newLuaString("changed")
+	locals[0].name = newInternedText("changed")
+	upvalueNames[0] = newInternedText("changed")
 	if prototype.code[0].opcode() != opLoadK ||
 		!prototype.constants[0].owningValue().IsNil() ||
 		prototype.children[0] != child ||
@@ -145,7 +149,7 @@ func TestPrototypeVarargAndDebugValidation(t *testing.T) {
 	)
 	partialDebug.upvalues = 2
 	partialDebug.debug = &prototypeDebugBuilder{
-		upvalues: []*luaString{newLuaString("named")},
+		upvalues: []*internedText{newInternedText("named")},
 	}
 	if _, syntaxError := partialDebug.seal(); syntaxError != nil {
 		t.Fatalf("partial debug upvalue names: %v", syntaxError)
@@ -192,9 +196,9 @@ func TestPrototypeVarargAndDebugValidation(t *testing.T) {
 			change: func(builder *prototypeBuilder) {
 				builder.upvalues = 1
 				builder.debug = &prototypeDebugBuilder{
-					upvalues: []*luaString{
-						newLuaString("one"),
-						newLuaString("two"),
+					upvalues: []*internedText{
+						newInternedText("one"),
+						newInternedText("two"),
 					},
 				}
 			},
@@ -233,14 +237,14 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 
 	valid := []*prototypeBuilder{
 		{
-			sourceName: newLuaString("one-register-frame"),
+			sourceName: newInternedText("one-register-frame"),
 			registers:  1,
 			code: []instruction{
 				makeABC(opReturn, 0, 1, 0),
 			},
 		},
 		{
-			sourceName: newLuaString("setlist"),
+			sourceName: newInternedText("setlist"),
 			registers:  3,
 			code: []instruction{
 				makeABC(opNewTable, 0, 0, 0),
@@ -250,7 +254,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("closure"),
+			sourceName: newInternedText("closure"),
 			registers:  3,
 			upvalues:   1,
 			children:   []*Prototype{child},
@@ -262,7 +266,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("test"),
+			sourceName: newInternedText("test"),
 			registers:  2,
 			code: []instruction{
 				makeABC(opEqual, 0, 0, 1),
@@ -271,7 +275,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName:  newLuaString("open-results"),
+			sourceName:  newInternedText("open-results"),
 			registers:   2,
 			varargFlags: varargIsVararg,
 			code: []instruction{
@@ -280,7 +284,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("tail-call"),
+			sourceName: newInternedText("tail-call"),
 			registers:  2,
 			code: []instruction{
 				makeABC(opTailCall, 0, 1, 0),
@@ -288,14 +292,14 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("standalone-open-return"),
+			sourceName: newInternedText("standalone-open-return"),
 			registers:  2,
 			code: []instruction{
 				makeABC(opReturn, 0, 0, 0),
 			},
 		},
 		{
-			sourceName: newLuaString("jump-to-open-return"),
+			sourceName: newInternedText("jump-to-open-return"),
 			registers:  2,
 			code: []instruction{
 				makeAsBx(opJump, 0, 0),
@@ -303,7 +307,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 			},
 		},
 		{
-			sourceName: newLuaString("largest-setlist-block"),
+			sourceName: newInternedText("largest-setlist-block"),
 			registers:  2,
 			code: []instruction{
 				makeABC(opNewTable, 0, 0, 0),
@@ -604,7 +608,7 @@ func TestPrototypeInstructionVerification(t *testing.T) {
 
 func testPrototypeBuilder(code ...instruction) *prototypeBuilder {
 	return &prototypeBuilder{
-		sourceName: newLuaString("test.lua"),
+		sourceName: newInternedText("test.lua"),
 		registers:  2,
 		code:       code,
 	}

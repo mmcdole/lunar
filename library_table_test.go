@@ -959,8 +959,8 @@ end
 		}
 	})
 	// An 8 KiB result is intentionally too long for the short-string cache.
-	// Its representation minimum is one exact builder buffer and one
-	// luaString header, independent of the 1,000 input elements.
+	// Its representation minimum is one exact builder buffer, independent of
+	// the 1,000 input elements.
 	if allocations > 2 {
 		t.Fatalf("large concat allocated %v times per run; want at most 2", allocations)
 	}

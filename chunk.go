@@ -23,7 +23,7 @@ const (
 
 	// These deliberately overstate current 64-bit Go layouts. The base charge
 	// covers the map header and its first allocation group; each string charge
-	// covers luaString plus amortized map key, value, and growth metadata.
+	// covers internedText plus amortized map key, value, and growth metadata.
 	// String payload bytes are charged separately.
 	chunkStringTableBytes = 512
 	chunkStringIndexBytes = 64
@@ -79,7 +79,7 @@ func lua51NativeHeader() [lua51ChunkHeaderSize]byte {
 
 func (writer *chunkWriter) writeFunction(
 	prototype *Prototype,
-	parentSource *luaString,
+	parentSource *internedText,
 ) {
 	if writer.err != nil {
 		return
@@ -170,7 +170,7 @@ func (writer *chunkWriter) writeDebug(debug *prototypeDebug) {
 	}
 }
 
-func (writer *chunkWriter) writeString(value *luaString) {
+func (writer *chunkWriter) writeString(value *internedText) {
 	if value == nil {
 		writer.writeSize(0)
 		return
@@ -339,7 +339,7 @@ func (decoder *chunkDecoder) readHeader() error {
 }
 
 func (decoder *chunkDecoder) readFunction(
-	parentSource *luaString,
+	parentSource *internedText,
 	depth int,
 ) (*Prototype, error) {
 	if depth > maxChunkFunctionDepth {
@@ -514,7 +514,7 @@ func (decoder *chunkDecoder) readConstant() (slot, error) {
 }
 
 func (decoder *chunkDecoder) readChildren(
-	parentSource *luaString,
+	parentSource *internedText,
 	depth int,
 ) ([]*Prototype, error) {
 	count, err := decoder.readInteger()
@@ -618,11 +618,11 @@ func (decoder *chunkDecoder) readDebug(
 	}
 	if err := decoder.reserveVector(
 		upvalueNameCount,
-		2*uint64(unsafe.Sizeof((*luaString)(nil))),
+		2*uint64(unsafe.Sizeof((*internedText)(nil))),
 	); err != nil {
 		return nil, err
 	}
-	upvalues := make([]*luaString, upvalueNameCount)
+	upvalues := make([]*internedText, upvalueNameCount)
 	for index := range upvalues {
 		name, readErr := decoder.readString()
 		if readErr != nil {
@@ -653,7 +653,7 @@ func (decoder *chunkDecoder) readDebug(
 	}, nil
 }
 
-func (decoder *chunkDecoder) readString() (*luaString, error) {
+func (decoder *chunkDecoder) readString() (*internedText, error) {
 	size, err := decoder.readSize()
 	if err != nil {
 		return nil, err

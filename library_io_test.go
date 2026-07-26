@@ -1145,7 +1145,7 @@ func assertTableSurface(
 		if next.kind() != StringKind {
 			t.Fatalf("table surface contains non-string key %v", next.owningValue())
 		}
-		name := (*luaString)(next.ref).text
+		name := stringSlotText(next)
 		kind, expected := want[name]
 		if !expected {
 			t.Fatalf("table surface contains unexpected field %q", name)

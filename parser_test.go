@@ -82,23 +82,23 @@ func TestCompileSourceOwnsRetainedTokenText(t *testing.T) {
 		t.Fatal("debug local name retains the source buffer")
 	}
 
-	var retained *luaString
+	var retained string
 	for _, constant := range prototype.constants {
 		if constant.kind() == StringKind {
-			text := (*luaString)(constant.ref)
-			if text.text == "retained_value" {
+			text := stringSlotText(constant)
+			if text == "retained_value" {
 				retained = text
 				break
 			}
 		}
 	}
-	if retained == nil {
+	if retained == "" {
 		t.Fatal("compiled string constant is missing")
 	}
-	valueOffset := strings.Index(source, retained.text)
-	if unsafe.StringData(retained.text) ==
+	valueOffset := strings.Index(source, retained)
+	if unsafe.StringData(retained) ==
 		unsafe.StringData(
-			source[valueOffset:valueOffset+len(retained.text)],
+			source[valueOffset:valueOffset+len(retained)],
 		) {
 		t.Fatal("string constant retains the source buffer")
 	}

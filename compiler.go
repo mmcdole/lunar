@@ -8,12 +8,12 @@ import (
 // Its string table is temporary: sealed prototypes retain only the strings
 // they use, not this map or the source buffer from which tokens were sliced.
 type compileUnit struct {
-	sourceName *luaString
-	strings    map[string]*luaString
+	sourceName *internedText
+	strings    map[string]*internedText
 }
 
 type activeLocal struct {
-	name       *luaString
+	name       *internedText
 	register   int
 	debugIndex int
 	blockIndex int
@@ -38,7 +38,7 @@ type upvalueBinding struct {
 }
 
 func newCompileUnit(sourceName string) *compileUnit {
-	unit := &compileUnit{strings: make(map[string]*luaString)}
+	unit := &compileUnit{strings: make(map[string]*internedText)}
 	unit.sourceName = unit.internBorrowed(sourceName)
 	return unit
 }
@@ -47,7 +47,7 @@ func newCompileUnit(sourceName string) *compileUnit {
 // compiler data. Source slices are cloned on the first occurrence. Decoded
 // strings already own their backing bytes and can be adopted without another
 // copy.
-func (unit *compileUnit) internToken(value token) *luaString {
+func (unit *compileUnit) internToken(value token) *internedText {
 	if value.kind != tokenName && value.kind != tokenString {
 		panic("lua: token has no internable text")
 	}
@@ -57,20 +57,20 @@ func (unit *compileUnit) internToken(value token) *luaString {
 	return unit.internBorrowed(value.text)
 }
 
-func (unit *compileUnit) internBorrowed(text string) *luaString {
+func (unit *compileUnit) internBorrowed(text string) *internedText {
 	if existing := unit.strings[text]; existing != nil {
 		return existing
 	}
-	value := newHashedString(strings.Clone(text), hashString(text))
+	value := newHashedInternedText(strings.Clone(text), hashString(text))
 	unit.strings[value.text] = value
 	return value
 }
 
-func (unit *compileUnit) internOwned(text string) *luaString {
+func (unit *compileUnit) internOwned(text string) *internedText {
 	if existing := unit.strings[text]; existing != nil {
 		return existing
 	}
-	value := newHashedString(text, hashString(text))
+	value := newHashedInternedText(text, hashString(text))
 	unit.strings[value.text] = value
 	return value
 }
@@ -364,7 +364,7 @@ func (function *functionState) leaveBlock(line uint32) {
 }
 
 func (function *functionState) activateLocals(
-	names []*luaString,
+	names []*internedText,
 	base int,
 ) {
 	if len(function.blocks) == 0 {
@@ -400,7 +400,7 @@ func (function *functionState) activateLocals(
 	function.registerTop = function.registerFloor
 }
 
-func (function *functionState) localRegister(name *luaString) (int, bool) {
+func (function *functionState) localRegister(name *internedText) (int, bool) {
 	index, ok := function.localIndex(name)
 	if !ok {
 		return 0, false
@@ -408,7 +408,7 @@ func (function *functionState) localRegister(name *luaString) (int, bool) {
 	return function.locals[index].register, true
 }
 
-func (function *functionState) localIndex(name *luaString) (int, bool) {
+func (function *functionState) localIndex(name *internedText) (int, bool) {
 	for index := len(function.locals) - 1; index >= 0; index-- {
 		local := function.locals[index]
 		if local.name == name {

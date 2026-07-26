@@ -752,7 +752,7 @@ return branch
 		}
 		constant := prototype.constants[code.bx()]
 		if constant.kind() == StringKind &&
-			(*luaString)(constant.ref).text == "branch" {
+			stringSlotText(constant) == "branch" {
 			branchGlobals++
 		}
 	}

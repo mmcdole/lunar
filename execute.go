@@ -501,7 +501,7 @@ dispatch:
 			case StringKind:
 				writeSlot(
 					&values[base+current.a()],
-					numberSlot(float64(len(stringSlotText(source)))),
+					numberSlot(float64(stringSlotLen(source))),
 				)
 			case TableKind:
 				writeTableLength(

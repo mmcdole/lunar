@@ -278,7 +278,7 @@ func packageNameArgument(
 	}
 	text = luaCString(text)
 	if value.kind() == StringKind &&
-		len(text) == len(stringSlotText(value)) {
+		len(text) == stringSlotLen(value) {
 		return text, value, Outcome{}, false
 	}
 	key := stringSlot(frame.thread.owner.strings.make(text))

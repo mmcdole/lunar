@@ -877,7 +877,7 @@ func (store *tableStore) findString(text string, hash uint64) (int, bool) {
 			if entry.hash != hash || entry.key.kind() != StringKind {
 				continue
 			}
-			if stringSlotText(entry.key) == text {
+			if stringSlotMatchesText(entry.key, text, hash) {
 				return index, true
 			}
 		}

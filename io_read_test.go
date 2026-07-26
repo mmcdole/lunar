@@ -653,7 +653,7 @@ func TestIOReadWarmScalarPathsDoNotAllocate(t *testing.T) {
 			name:            "long uncached block",
 			text:            strings.Repeat("x", longBlockBytes),
 			count:           longBlockBytes,
-			wantAllocations: 2,
+			wantAllocations: 1,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1437,7 +1437,7 @@ func ioReadSlotText(t testing.TB, value slot) string {
 	if value.kind() != StringKind {
 		t.Fatalf("slot kind = %s; want string", value.kind())
 	}
-	return (*luaString)(value.ref).text
+	return stringSlotText(value)
 }
 
 type fragmentedIOReader struct {

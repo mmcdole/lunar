@@ -1,7 +1,7 @@
 package lua
 
 func (function *functionState) resolveUpvalue(
-	name *luaString,
+	name *internedText,
 	line uint32,
 ) (int, bool, *Error) {
 	parent := function.parent
@@ -33,7 +33,7 @@ func (function *functionState) resolveUpvalue(
 }
 
 func (function *functionState) addUpvalue(
-	name *luaString,
+	name *internedText,
 	source upvalueSource,
 	index int,
 	line uint32,
@@ -169,7 +169,7 @@ func (parser *sourceParser) parseLocalFunction(line uint32) *Error {
 	}
 	localIndex := len(emitter.locals)
 	emitter.activateLocals(
-		[]*luaString{parser.unit.internToken(nameToken)},
+		[]*internedText{parser.unit.internToken(nameToken)},
 		register,
 	)
 

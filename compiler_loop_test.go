@@ -219,7 +219,7 @@ until item
 		if code.opcode() != opGetGlobal {
 			continue
 		}
-		name := (*luaString)(visible.constants[code.bx()].ref).text
+		name := stringSlotText(visible.constants[code.bx()])
 		if name == "item" {
 			t.Fatal("repeat body local was not visible in its until condition")
 		}

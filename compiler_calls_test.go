@@ -449,7 +449,7 @@ func TestCompileSourceProtectsMethodCallWindowFromKeySpills(t *testing.T) {
 	methodIndex := -1
 	for index, constant := range prototype.constants {
 		if constant.kind() == StringKind &&
-			(*luaString)(constant.ref).text == "method" {
+			stringSlotText(constant) == "method" {
 			methodIndex = index
 			break
 		}

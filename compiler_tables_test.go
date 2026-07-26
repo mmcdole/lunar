@@ -154,7 +154,7 @@ func TestCompileSourceSpillsLargeFieldKeyWithoutLosingTable(t *testing.T) {
 	fieldIndex := -1
 	for index, constant := range prototype.constants {
 		if constant.kind() == StringKind &&
-			(*luaString)(constant.ref).text == "field" {
+			stringSlotText(constant) == "field" {
 			fieldIndex = index
 			break
 		}
@@ -614,7 +614,7 @@ func TestCompileSourceSpillsConstructorKeyAndValueAboveTable(t *testing.T) {
 	for index, constant := range prototype.constants {
 		switch {
 		case constant.kind() == StringKind &&
-			(*luaString)(constant.ref).text == "field":
+			stringSlotText(constant) == "field":
 			fieldIndex = index
 		case constant.kind() == NumberKind &&
 			constant.bits == slotFromValue(Number(999)).bits:

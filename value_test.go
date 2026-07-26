@@ -24,8 +24,11 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(tableEntry{}); size != 40 {
 			t.Fatalf("table entry size = %d, want 40", size)
 		}
-		if size := unsafe.Sizeof(luaString{}); size != 24 {
-			t.Fatalf("luaString size = %d, want 24", size)
+		if size := unsafe.Sizeof(stringRef{}); size != 16 {
+			t.Fatalf("stringRef size = %d, want 16", size)
+		}
+		if size := unsafe.Sizeof((*internedText)(nil)); size != 8 {
+			t.Fatalf("compiler text reference size = %d, want 8", size)
 		}
 		if size := unsafe.Sizeof(stringPool{}); size > 224 {
 			t.Fatalf("stringPool header size = %d, want at most 224", size)
@@ -87,6 +90,86 @@ func TestValueRepresentation(t *testing.T) {
 	zero, ok := slot{}.owningValue().AsNumber()
 	if !ok || zero != 0 {
 		t.Fatalf("zero slot = (%v, %v), want numeric zero", zero, ok)
+	}
+}
+
+func TestFlatStringRepresentation(t *testing.T) {
+	const collisionHash stringHash = 7
+
+	backing := strings.Clone("prefix")
+	short := stringSlot(newHashedStringRef(backing[:3], collisionHash))
+	longer := stringSlot(newHashedStringRef(backing[:4], collisionHash))
+	if short.ref != longer.ref {
+		t.Fatal("test strings do not share their data pointer")
+	}
+	if rawSlotEqual(short, longer) {
+		t.Fatal("one data pointer with different lengths compared equal")
+	}
+
+	collision := stringSlot(newHashedStringRef("other", collisionHash))
+	if rawSlotEqual(short, collision) {
+		t.Fatal("different strings with one hash compared equal")
+	}
+	equal := stringSlot(newHashedStringRef(
+		strings.Clone("pre"),
+		collisionHash,
+	))
+	if !rawSlotEqual(short, equal) {
+		t.Fatal("equal strings with different backing storage compared unequal")
+	}
+
+	hugeText := strings.Repeat("x", stringLengthSentinel)
+	huge := newStringRef(hugeText)
+	if encoded := int(
+		huge.bits >> stringLengthShift & stringLengthSentinel,
+	); encoded != stringLengthSentinel {
+		t.Fatalf("long string length tag = %d; want sentinel", encoded)
+	}
+	if huge.len() != len(hugeText) || huge.text() != hugeText {
+		t.Fatal("long string fallback did not preserve its contents")
+	}
+	runtime.KeepAlive(backing)
+	runtime.KeepAlive(hugeText)
+}
+
+func TestFlatStringSurvivesGCStateCloseAndCrossState(t *testing.T) {
+	origin, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Clone(strings.Repeat("retained-", 128))
+	value := origin.String(text)
+	text = ""
+	if err := origin.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 3 {
+		runtime.GC()
+	}
+	want := strings.Repeat("retained-", 128)
+	if got, ok := value.AsString(); !ok || got != want {
+		t.Fatalf("retained string = (%q, %v)", got, ok)
+	}
+
+	consumer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if err := consumer.SetGlobal("shared", value); err != nil {
+		t.Fatalf("cross-State string: %v", err)
+	}
+	got, err := consumer.Global("shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if equal, err := consumer.RawEqual(got, consumer.String(want)); err != nil ||
+		!equal {
+		t.Fatalf("cross-State equality = (%v, %v)", equal, err)
+	}
+	if origin.String("").ref != consumer.String("").ref {
+		t.Fatal("empty string is not canonical across States")
 	}
 }
 

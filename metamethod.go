@@ -49,7 +49,7 @@ var metamethodNames = [...]string{
 
 var metamethodNameHashes = func() (hashes [metamethodCount]uint64) {
 	for event, name := range metamethodNames {
-		hashes[event] = hashString(name)
+		hashes[event] = uint64(hashString(name))
 	}
 	return hashes
 }()

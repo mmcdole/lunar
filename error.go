@@ -217,7 +217,7 @@ func (err *Error) positionExecutionFailure(
 }
 
 func errorStringValue(message string) Value {
-	return stringValue(newLuaString(message))
+	return stringValue(newStringRef(message))
 }
 
 const maxSourceID = 59

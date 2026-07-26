@@ -29,7 +29,7 @@ func slowLength(
 	case StringKind:
 		writeSlot(
 			&thread.values[base+code.a()],
-			numberSlot(float64(len(stringSlotText(source)))),
+			numberSlot(float64(stringSlotLen(source))),
 		)
 		return nil
 	case TableKind:
@@ -180,7 +180,7 @@ func concatDirectValues(
 			allStrings = false
 			break
 		}
-		if len(stringSlotText(value)) != 0 {
+		if stringSlotLen(value) != 0 {
 			if onlyText >= 0 {
 				allStrings = false
 				break
@@ -206,7 +206,7 @@ func concatDirectValues(
 			)
 			length = len(formatted)
 		} else {
-			length = len(stringSlotText(value))
+			length = stringSlotLen(value)
 		}
 		if length > int(^uint(0)>>1)-total {
 			return nilSlot, true

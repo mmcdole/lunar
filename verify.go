@@ -118,7 +118,7 @@ func verifyPrototypeHeader(
 }
 
 func sealPrototypeDebug(
-	sourceName *luaString,
+	sourceName *internedText,
 	codeLength int,
 	upvalues int,
 	builder *prototypeDebugBuilder,
@@ -292,7 +292,8 @@ func validPrototypeConstant(value slot) bool {
 	case falseMarkerPointer, trueMarkerPointer:
 		return value.bits == uint64(BoolKind)
 	default:
-		return value.bits == uint64(StringKind)
+		return Kind(value.bits&0xff) == StringKind &&
+			stringHash(value.bits>>stringHashShift) != 0
 	}
 }
 
@@ -982,7 +983,7 @@ func (prototype *Prototype) syntaxError(
 	format string,
 	arguments ...any,
 ) *Error {
-	var sourceName *luaString
+	var sourceName *internedText
 	if prototype != nil {
 		sourceName = prototype.sourceName
 	}
@@ -990,7 +991,7 @@ func (prototype *Prototype) syntaxError(
 }
 
 func newPrototypeSyntaxError(
-	sourceName *luaString,
+	sourceName *internedText,
 	pc int,
 	format string,
 	arguments ...any,

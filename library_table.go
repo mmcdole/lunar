@@ -131,7 +131,7 @@ func tableConcat(frame Frame) Outcome {
 		length := 0
 		switch element.kind() {
 		case StringKind:
-			length = len(stringSlotText(element))
+			length = stringSlotLen(element)
 		case NumberKind:
 			length = len(appendLuaNumber(
 				numberBuffer[:0],

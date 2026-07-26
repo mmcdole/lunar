@@ -577,10 +577,10 @@ func TestNativeFrameSkipsDiscardedStringConstruction(t *testing.T) {
 		t.Fatal(failure)
 	}
 	hash := hashString(text)
-	if found := state.runtime.strings.lookupProtected(text, hash); found != nil {
+	if found := state.runtime.strings.lookupProtected(text, hash); found.valid() {
 		t.Fatal("discarded result entered the protected string cache")
 	}
-	if found, _, _ := state.runtime.strings.lookupProbation(text, hash); found != nil {
+	if found, _, _ := state.runtime.strings.lookupProbation(text, hash); found.valid() {
 		t.Fatal("discarded result entered the probationary string cache")
 	}
 }

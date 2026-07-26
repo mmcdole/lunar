@@ -1804,5 +1804,5 @@ func assertExecutionValues(t *testing.T, thread *Thread, expected ...Value) {
 }
 
 func stateNeutralString(text string) Value {
-	return stringValue(newLuaString(text))
+	return stringValue(newStringRef(text))
 }

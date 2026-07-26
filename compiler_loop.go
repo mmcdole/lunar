@@ -256,7 +256,7 @@ func (parser *sourceParser) parseFor() *Error {
 }
 
 func (parser *sourceParser) parseNumericFor(
-	name *luaString,
+	name *internedText,
 	line uint32,
 ) (token, *Error) {
 	emitter := parser.function
@@ -334,7 +334,7 @@ func (parser *sourceParser) parseNumericFor(
 		}
 	}
 
-	controls := []*luaString{
+	controls := []*internedText{
 		parser.unit.internBorrowed("(for index)"),
 		parser.unit.internBorrowed("(for limit)"),
 		parser.unit.internBorrowed("(for step)"),
@@ -354,7 +354,7 @@ func (parser *sourceParser) parseNumericFor(
 	if variableBase != base+3 {
 		panic("lua: compiler lost numeric-for variable register")
 	}
-	emitter.activateLocals([]*luaString{name}, variableBase)
+	emitter.activateLocals([]*internedText{name}, variableBase)
 	bodyStart := emitter.currentPC()
 	if _, syntaxError = parser.parseBlock(); syntaxError != nil {
 		return token{}, syntaxError
@@ -379,7 +379,7 @@ func (parser *sourceParser) parseNumericFor(
 }
 
 func (parser *sourceParser) parseGenericFor(
-	firstName *luaString,
+	firstName *internedText,
 	line uint32,
 ) (token, *Error) {
 	nameBase := len(parser.names)
@@ -422,7 +422,7 @@ func (parser *sourceParser) parseGenericFor(
 	if syntaxError != nil {
 		return token{}, syntaxError
 	}
-	controls := []*luaString{
+	controls := []*internedText{
 		parser.unit.internBorrowed("(for generator)"),
 		parser.unit.internBorrowed("(for state)"),
 		parser.unit.internBorrowed("(for control)"),

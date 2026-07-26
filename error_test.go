@@ -367,8 +367,8 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 }
 
 func TestOperandDescriptionFollowsBytecodeStructure(t *testing.T) {
-	kept := prototypeStringSlot(newLuaString("kept"))
-	skipped := prototypeStringSlot(newLuaString("skipped"))
+	kept := prototypeStringSlot(newInternedText("kept"))
+	skipped := prototypeStringSlot(newInternedText("skipped"))
 	child := &Prototype{upvalues: 1}
 
 	tests := []struct {
@@ -510,7 +510,7 @@ func TestOperandDescriptionFollowsBytecodeStructure(t *testing.T) {
 				constants: []slot{kept},
 				debug: &prototypeDebug{
 					locals: []localInfo{{
-						name:    newLuaString("localValue"),
+						name:    newInternedText("localValue"),
 						startPC: 0,
 						endPC:   2,
 					}},
@@ -551,7 +551,7 @@ func TestOperandDescriptionFollowsBytecodeStructure(t *testing.T) {
 					makeABC(opCall, 0, 1, 1),
 				},
 				constants: []slot{
-					prototypeStringSlot(newLuaString("field\x00suffix")),
+					prototypeStringSlot(newInternedText("field\x00suffix")),
 				},
 				registers: 2,
 			},
