@@ -303,7 +303,14 @@ func decodeBinaryChunk(
 	if err := decoder.readHeader(); err != nil {
 		return nil, err
 	}
-	return decoder.readFunction(decoder.unit.sourceName, 1)
+	prototype, err := decoder.readFunction(decoder.unit.sourceName, 1)
+	if err != nil {
+		return nil, err
+	}
+	if failure := control.check(); failure != nil {
+		return nil, failure
+	}
+	return prototype, nil
 }
 
 type chunkDecoder struct {

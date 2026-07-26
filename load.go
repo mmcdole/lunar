@@ -412,11 +412,35 @@ func (state *State) LoadString(
 	sourceName string,
 	source string,
 ) (*Function, error) {
+	return state.loadString(nil, sourceName, source)
+}
+
+// LoadStringContext loads source like LoadString while observing ctx during
+// compilation or binary decoding.
+//
+// A nil context returns ErrNilContext. Cancellation is returned as a *Error
+// categorized ContextError. The resulting Function does not retain ctx.
+func (state *State) LoadStringContext(
+	ctx context.Context,
+	sourceName string,
+	source string,
+) (*Function, error) {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+	return state.loadString(ctx, sourceName, source)
+}
+
+func (state *State) loadString(
+	ctx context.Context,
+	sourceName string,
+	source string,
+) (*Function, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
 	control, failure := newLoadControl(
-		nil,
+		ctx,
 		state.options.MaxLoadBytes,
 	)
 	if failure != nil {
@@ -438,6 +462,22 @@ func loadStringPrototype(
 	source string,
 	control *loadControl,
 ) (*Prototype, error) {
+	if len(source) == 0 || source[0] != 0x1b {
+		// An ordinary fixed string has already been materialized by its
+		// caller. Charge it once, then use the lexer's direct window instead
+		// of routing every byte through the refillable cursor. A cancellable
+		// context retains bounded polling through chunkInput.
+		if control.done == nil {
+			if failure := control.consume(uint64(len(source))); failure != nil {
+				return nil, failure
+			}
+			prototype, syntaxError := compileSource(sourceName, source)
+			if syntaxError != nil {
+				return nil, syntaxError
+			}
+			return prototype, nil
+		}
+	}
 	return loadInputPrototype(
 		sourceName,
 		newStringChunkInput(source, control),

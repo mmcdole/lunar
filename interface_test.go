@@ -1,6 +1,9 @@
 package lua_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	lua "github.com/mmcdole/badger-lua"
@@ -87,5 +90,53 @@ return ok, value
 	number, ok := results[1].AsNumber()
 	if !ok || number != 42 {
 		t.Fatalf("pcall value = (%v, %v); want 42", number, ok)
+	}
+}
+
+func TestPublicReaderAndFileLoading(t *testing.T) {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	fromReader, err := state.Load(
+		"@reader.lua",
+		strings.NewReader(`return 41`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(fromReader.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Reader results = %v", results)
+	}
+	number, ok := results[0].AsNumber()
+	if !ok || number != 41 {
+		t.Fatalf("Reader value = (%v, %v); want 41", number, ok)
+	}
+
+	path := filepath.Join(t.TempDir(), "public.lua")
+	if err := os.WriteFile(
+		path,
+		[]byte("#!/usr/bin/env lua\nreturn 42"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	fromFile, err := state.LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err = state.Call(fromFile.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	number, ok = results[0].AsNumber()
+	if !ok || number != 42 {
+		t.Fatalf("file value = (%v, %v); want 42", number, ok)
 	}
 }
