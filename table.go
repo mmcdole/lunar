@@ -1,7 +1,9 @@
 package lua
 
 import (
+	"cmp"
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -42,6 +44,11 @@ const (
 type tableLocation struct {
 	index int
 	lane  tableLane
+}
+
+type integerTableValue struct {
+	key   int
+	value slot
 }
 
 // Table is the canonical representation of a Lua table.
@@ -485,6 +492,87 @@ func (table *Table) rawSetIntegerSlot(key int, value slot) {
 	structural, _ := table.setInteger(key, value)
 	if structural {
 		table.structuralVersion++
+	}
+}
+
+// shiftSparseIntegerRangeUp moves every raw integer field in [first, last] to
+// the following integer key. It is the storage-aware counterpart to a
+// descending field-by-field shift: holes delete their destination, while
+// numeric keys that are not exact integers are left alone.
+//
+// Callers use this only when the integer range is much wider than the table's
+// physical storage. The common dense case stays on the allocation-free raw
+// loop. A small stack buffer also keeps sparse pathological ranges
+// allocation-free.
+func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
+	if first > last {
+		return
+	}
+
+	const inlineValues = 32
+	var inline [inlineValues]integerTableValue
+	values := inline[:0]
+
+	arrayFirst := first
+	if arrayFirst < 1 {
+		arrayFirst = 1
+	}
+	arrayLast := last
+	if arrayLast > len(table.array) {
+		arrayLast = len(table.array)
+	}
+	for key := arrayFirst; key <= arrayLast; key++ {
+		value := table.array[key-1]
+		if value.kind() != NilKind {
+			values = append(values, integerTableValue{
+				key:   key,
+				value: value,
+			})
+		}
+	}
+
+	for index := range table.store.entries {
+		entry := &table.store.entries[index]
+		if entry.hash == entryHashEmpty ||
+			entry.value.kind() == NilKind {
+			continue
+		}
+		key, ok := exactIntegerTableKey(entry.key)
+		if !ok {
+			continue
+		}
+		if key > 0 && key <= len(table.array) {
+			// growArray maintains the single-lane invariant. Be defensive
+			// against malformed internal state without treating a masked
+			// hash entry as a visible source.
+			continue
+		}
+		if key < first || key > last {
+			continue
+		}
+		values = append(values, integerTableValue{
+			key:   key,
+			value: entry.value,
+		})
+	}
+
+	slices.SortFunc(values, func(left, right integerTableValue) int {
+		return cmp.Compare(left.key, right.key)
+	})
+
+	// The descending raw loop writes last+1 first. Preserve that mutation
+	// order so array promotion and the structural generation behave the same.
+	if _, occupied := table.rawIntSlot(last + 1); occupied &&
+		(len(values) == 0 || values[len(values)-1].key != last) {
+		table.rawSetIntegerSlot(last+1, nilSlot)
+	}
+	for index := len(values) - 1; index >= 0; index-- {
+		current := values[index]
+		table.rawSetIntegerSlot(current.key+1, current.value)
+		if current.key > first &&
+			(index == 0 || values[index-1].key != current.key-1) {
+			table.rawSetIntegerSlot(current.key, nilSlot)
+		}
 	}
 }
 
@@ -949,6 +1037,27 @@ func positiveIntegerIndex(number float64) (int, bool) {
 	}
 	index := int(number)
 	return index, index > 0 && float64(index) == number
+}
+
+func exactIntegerTableKey(key slot) (int, bool) {
+	if key.kind() != NumberKind {
+		return 0, false
+	}
+	number := math.Float64frombits(key.bits)
+	maxInt := int(^uint(0) >> 1)
+	minimum := float64(-maxInt - 1)
+	maximum := float64(maxInt)
+	const largestExactFloatInteger = 1 << 53
+	if maxInt > largestExactFloatInteger {
+		minimum = -largestExactFloatInteger
+		maximum = largestExactFloatInteger
+	}
+	if number < minimum || number > maximum ||
+		math.Trunc(number) != number {
+		return 0, false
+	}
+	index := int(number)
+	return index, float64(index) == number
 }
 
 func hashTableKey(key slot) (uint64, error) {

@@ -2,7 +2,9 @@ package lua
 
 import (
 	"errors"
+	"math/rand"
 	"testing"
+	"time"
 )
 
 func TestTableLibraryInstallationAndSurface(t *testing.T) {
@@ -468,6 +470,402 @@ end
 				t.Fatalf("warm calls allocated %v times per run", allocations)
 			}
 		})
+	}
+}
+
+func TestSparseTableInsertShiftMatchesTheRawLoop(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	const (
+		firstKey = -3
+		lastKey  = 5
+		keyCount = lastKey - firstKey + 1
+	)
+	for mask := 0; mask < 1<<keyCount; mask++ {
+		for position := firstKey - 1; position <= lastKey+2; position++ {
+			reference := newTable(state.runtime, 0, 0)
+			sparse := newTable(state.runtime, 0, 0)
+			for offset := 0; offset < keyCount; offset++ {
+				if mask&(1<<offset) == 0 {
+					continue
+				}
+				key := firstKey + offset
+				value := numberSlot(float64(100 + key))
+				reference.rawSetIntegerSlot(key, value)
+				sparse.rawSetIntegerSlot(key, value)
+			}
+			installTableInsertSentinels(state, reference)
+			installTableInsertSentinels(state, sparse)
+
+			inserted := numberSlot(float64(-mask - 1))
+			referenceTableInsert(reference, position, inserted)
+			sparseTableInsert(sparse, position, inserted)
+			assertEquivalentTableInsertResult(
+				t,
+				reference,
+				sparse,
+				firstKey-2,
+				lastKey+4,
+				mask,
+				position,
+			)
+		}
+	}
+
+	random := rand.New(rand.NewSource(0x51))
+	for caseIndex := 0; caseIndex < 1_000; caseIndex++ {
+		reference := newTable(state.runtime, 0, 0)
+		sparse := newTable(state.runtime, 0, 0)
+		for mutation := 0; mutation < 100; mutation++ {
+			key := random.Intn(97) - 32
+			value := nilSlot
+			if random.Intn(4) != 0 {
+				value = numberSlot(float64(caseIndex*100 + mutation + 1))
+			}
+			reference.rawSetIntegerSlot(key, value)
+			sparse.rawSetIntegerSlot(key, value)
+		}
+		installTableInsertSentinels(state, reference)
+		installTableInsertSentinels(state, sparse)
+
+		position := random.Intn(121) - 48
+		inserted := numberSlot(float64(-caseIndex - 1))
+		referenceTableInsert(reference, position, inserted)
+		sparseTableInsert(sparse, position, inserted)
+		assertEquivalentTableInsertResult(
+			t,
+			reference,
+			sparse,
+			-52,
+			92,
+			caseIndex,
+			position,
+		)
+	}
+}
+
+func TestTableInsertAtMinimumIntegerCompletesWithLua51Mapping(t *testing.T) {
+	state := newStateWithTable(t)
+	defer state.Close()
+
+	const minimumPosition = -1 << 31
+	probe := newTable(state.runtime, 0, 0)
+	for index := 1; index <= 3; index++ {
+		probe.rawSetIntegerSlot(index, numberSlot(float64(index)))
+	}
+	if !useSparseTableInsertShift(
+		probe,
+		minimumPosition,
+		probe.RawLen(),
+	) {
+		t.Fatal("minimum integer position did not select the sparse shift")
+	}
+
+	chunk := mustLoadString(t, state, "@large-negative-insert.lua", `
+local t = {
+	[-2147483648] = "minimum",
+	[-2147483647] = "next",
+	[-7] = "negative",
+	[0] = "zero",
+	[1.5] = "fraction",
+	marker = "record",
+}
+t[1], t[2], t[3] = "one", "two", "three"
+table.insert(t, -2147483648, "new")
+return t[-2147483648], t[-2147483647], t[-2147483646],
+	t[-7] == nil, t[-6], t[0] == nil,
+	t[1], t[2], t[3], t[4], t[1.5], t.marker
+`)
+	started := time.Now()
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("sparse insert took %s", elapsed)
+	}
+	assertTestValues(
+		t,
+		results,
+		state.String("new"),
+		state.String("minimum"),
+		state.String("next"),
+		Bool(true),
+		state.String("negative"),
+		Bool(true),
+		state.String("zero"),
+		state.String("one"),
+		state.String("two"),
+		state.String("three"),
+		state.String("fraction"),
+		state.String("record"),
+	)
+}
+
+func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	const minimumPosition = -1 << 31
+	baseline := newTable(state.runtime, 8, 64)
+	for key, value := range map[int]float64{
+		minimumPosition:     1,
+		minimumPosition + 1: 2,
+		-7:                  3,
+		0:                   4,
+		1:                   5,
+		2:                   6,
+		3:                   7,
+	} {
+		baseline.rawSetIntegerSlot(key, numberSlot(value))
+	}
+
+	array := make([]slot, len(baseline.array), cap(baseline.array))
+	entries := make([]tableEntry, len(baseline.store.entries))
+	var working Table
+	restore := func() {
+		working.objectHeader.owner = baseline.owner
+		working.array = array[:len(baseline.array)]
+		copy(working.array, baseline.array)
+		working.arrayUsed = baseline.arrayUsed
+		working.store.entries = entries
+		copy(working.store.entries, baseline.store.entries)
+		working.store.count = baseline.store.count
+		working.store.deleted = baseline.store.deleted
+		working.store.integerKeys = baseline.store.integerKeys
+		working.metatable = baseline.metatable
+		working.structuralVersion = baseline.structuralVersion
+		working.absentMetamethods = baseline.absentMetamethods
+	}
+	restore()
+	working.shiftSparseIntegerRangeUp(minimumPosition, 3)
+
+	if allocations := testing.AllocsPerRun(100, func() {
+		restore()
+		working.shiftSparseIntegerRangeUp(minimumPosition, 3)
+	}); allocations != 0 {
+		t.Fatalf("sparse insert shift allocated %v times", allocations)
+	}
+}
+
+func BenchmarkTableLibraryDenseInsert(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenTable(); err != nil {
+		b.Fatal(err)
+	}
+	chunk := mustLoadString(b, state, "@dense-table-insert.lua", `
+local insert, remove = table.insert, table.remove
+local t = {}
+for index = 1, 128 do t[index] = index end
+return function()
+	insert(t, 2, 0)
+	remove(t, 2)
+end
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		b.Fatal(err)
+	}
+	function, ok := results[0].Function()
+	if !ok {
+		b.Fatal("loader did not return a function")
+	}
+	callable := function.Value()
+	if _, err := state.CallInto(callable, nil, nil); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := state.CallInto(callable, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTableInsertSparseShift(b *testing.B) {
+	const position = -64 * 1024
+	for _, benchmark := range []struct {
+		name  string
+		shift func(*Table, int, slot)
+	}{
+		{name: "raw loop", shift: referenceTableInsert},
+		{name: "sparse storage", shift: sparseTableInsert},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			state, err := New(Options{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer state.Close()
+			b.ReportAllocs()
+			for range b.N {
+				table := newTable(state.runtime, 8, 16)
+				for key := 1; key <= 3; key++ {
+					table.rawSetIntegerSlot(
+						key,
+						numberSlot(float64(key)),
+					)
+				}
+				table.rawSetIntegerSlot(-7, numberSlot(7))
+				table.rawSetIntegerSlot(0, numberSlot(8))
+				benchmark.shift(
+					table,
+					position,
+					numberSlot(9),
+				)
+			}
+		})
+	}
+}
+
+func installTableInsertSentinels(state *State, table *Table) {
+	for key, value := range map[float64]float64{
+		-9.5:  901,
+		-0.5:  902,
+		0.5:   903,
+		2.25:  904,
+		100.5: 905,
+	} {
+		table.rawSetSlot(numberSlot(key), numberSlot(value))
+	}
+	table.rawSetSlot(
+		slotFromValue(state.String("record")),
+		numberSlot(906),
+	)
+	table.rawSetSlot(trueSlot, numberSlot(907))
+}
+
+func referenceTableInsert(table *Table, position int, value slot) {
+	end := table.RawLen() + 1
+	if position > end {
+		end = position
+	}
+	for index := end; index > position; index-- {
+		previous, _ := table.rawIntSlot(index - 1)
+		table.rawSetIntegerSlot(index, previous)
+	}
+	table.rawSetIntegerSlot(position, value)
+}
+
+func sparseTableInsert(table *Table, position int, value slot) {
+	end := table.RawLen() + 1
+	if position > end {
+		end = position
+	}
+	table.shiftSparseIntegerRangeUp(position, end-1)
+	table.rawSetIntegerSlot(position, value)
+}
+
+func assertEquivalentTableInsertResult(
+	t *testing.T,
+	reference, sparse *Table,
+	first, last int,
+	caseIndex, position int,
+) {
+	t.Helper()
+	for key := first; key <= last; key++ {
+		want, _ := reference.rawIntSlot(key)
+		got, _ := sparse.rawIntSlot(key)
+		if !rawSlotEqual(got, want) {
+			t.Fatalf(
+				"case %d position %d: integer key %d = %v; want %v",
+				caseIndex,
+				position,
+				key,
+				got.owningValue(),
+				want.owningValue(),
+			)
+		}
+	}
+	for _, key := range []slot{
+		numberSlot(-9.5),
+		numberSlot(-0.5),
+		numberSlot(0.5),
+		numberSlot(2.25),
+		numberSlot(100.5),
+		trueSlot,
+	} {
+		want, _ := reference.rawSlot(key)
+		got, _ := sparse.rawSlot(key)
+		if !rawSlotEqual(got, want) {
+			t.Fatalf(
+				"noninteger key %v = %v; want %v",
+				key.owningValue(),
+				got.owningValue(),
+				want.owningValue(),
+			)
+		}
+	}
+	if reference.RawLen() != sparse.RawLen() {
+		t.Fatalf(
+			"RawLen = %d; want %d",
+			sparse.RawLen(),
+			reference.RawLen(),
+		)
+	}
+	if reference.structuralVersion != sparse.structuralVersion {
+		t.Fatalf(
+			"structural version = %d; want %d",
+			sparse.structuralVersion,
+			reference.structuralVersion,
+		)
+	}
+	assertTableStorageAccounting(t, reference)
+	assertTableStorageAccounting(t, sparse)
+}
+
+func assertTableStorageAccounting(t *testing.T, table *Table) {
+	t.Helper()
+	arrayUsed := 0
+	for _, value := range table.array {
+		if value.kind() != NilKind {
+			arrayUsed++
+		}
+	}
+	if arrayUsed != table.arrayUsed {
+		t.Fatalf("arrayUsed = %d; counted %d", table.arrayUsed, arrayUsed)
+	}
+
+	count, deleted, integerKeys := 0, 0, 0
+	for _, entry := range table.store.entries {
+		if entry.hash == entryHashEmpty {
+			continue
+		}
+		if entry.value.kind() == NilKind {
+			deleted++
+			continue
+		}
+		count++
+		if isPositiveIntegerKey(entry.key) {
+			integerKeys++
+		}
+	}
+	if count != table.store.count ||
+		deleted != table.store.deleted ||
+		integerKeys != table.store.integerKeys {
+		t.Fatalf(
+			"store accounting = count:%d deleted:%d integers:%d; "+
+				"counted %d/%d/%d",
+			table.store.count,
+			table.store.deleted,
+			table.store.integerKeys,
+			count,
+			deleted,
+			integerKeys,
+		)
 	}
 }
 

@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+const (
+	// The sparse mover scans compact storage once and sorts only the integer
+	// fields it finds. Keep the ordinary descending loop until the numeric
+	// range is both substantial and decisively wider than that scan.
+	tableInsertSparseShiftMinimum = 4 * 1024
+	tableInsertSparseScanRatio    = 8
+)
+
 var tableLibraryFunctions = [...]struct {
 	name  string
 	entry NativeFunc
@@ -260,9 +268,14 @@ func tableInsert(frame Frame) Outcome {
 		if position > end {
 			end = position
 		}
-		for index := end; index > position; index-- {
-			previous, _ := target.rawIntSlot(index - 1)
-			target.rawSetIntegerSlot(index, previous)
+		if position <= end-tableInsertSparseShiftMinimum &&
+			useSparseTableInsertShift(target, position, end-1) {
+			target.shiftSparseIntegerRangeUp(position, end-1)
+		} else {
+			for index := end; index > position; index-- {
+				previous, _ := target.rawIntSlot(index - 1)
+				target.rawSetIntegerSlot(index, previous)
+			}
 		}
 	default:
 		return libraryError(
@@ -273,6 +286,22 @@ func tableInsert(frame Frame) Outcome {
 	value, _ := frame.argument(count - 1)
 	target.rawSetIntegerSlot(position, value)
 	return frame.Return()
+}
+
+func useSparseTableInsertShift(
+	target *Table,
+	first, last int,
+) bool {
+	if first > last {
+		return false
+	}
+	width := uint64(last) - uint64(first) + 1
+	if width < tableInsertSparseShiftMinimum {
+		return false
+	}
+	scanSlots := uint64(len(target.array)) +
+		uint64(len(target.store.entries)) + 1
+	return width/tableInsertSparseScanRatio > scanSlots
 }
 
 // tableMaxN returns the largest positive numeric key, or zero when the table
