@@ -20,10 +20,10 @@ but are not release qualification evidence.
 | Mode and runtime | Median elapsed | Allocated bytes | Mallocs |
 | --- | ---: | ---: | ---: |
 | Load, Badger Lua | 1.734 s | 174.3 MB | 1.046 M |
-| Load, frozen Badger predecessor | 1.511 s | 80.6 MB | 0.504 M |
+| Load, Badger predecessor `169b37d` | 1.511 s | 80.6 MB | 0.504 M |
 | Load, stock GopherLua | 1.876 s | 784.6 MB | 12.734 M |
 | Save, Badger Lua | 1.056 s | 253.9 MB | 5.412 M |
-| Save, frozen Badger predecessor | 0.854 s | 234.9 MB | 3.080 M |
+| Save, Badger predecessor `169b37d` | 0.854 s | 234.9 MB | 3.080 M |
 | Save, stock GopherLua | 1.226 s | 502.9 MB | 9.352 M |
 
 Badger therefore already removes most of stock GopherLua's allocation volume
@@ -33,14 +33,23 @@ in 2.08 times as many allocations. Save is about 24% slower, allocates 8% more
 bytes, and performs 76% more allocations. Those are active defects to close,
 not acceptable costs of the new interface.
 
+The predecessor evidence is pinned by revision as well as workload. An earlier
+51.15 MiB retained-heap headline came from revision `48ca60b` with Go's default
+sampling, while the timing and allocation rows above came from the later
+`169b37d` engine. Exact rate-one post-GC profiles put those revisions at
+49.76 MiB and 44.27 MiB respectively. The latter is the current predecessor
+memory comparator; mixing the earlier retained number with the later timing
+rows would weaken every subsequent gate.
+
 A separate native runner measured PUC Lua 5.1.5 on the same host and corpus.
 Its five-sample median load wall time was 0.803 seconds, with 0.757 seconds of
-Lua operation CPU and a 60.7 MB decoded-graph heap delta. Save operation CPU
-was 0.701 seconds; its parent wall time also includes constructing the source
-graph and is not comparable to the Go workers' save-only interval. These
-native numbers are directional until the full pinned protocol is run, but
-they show that matching the predecessor is an intermediate gate rather than
-the final objective.
+Lua operation CPU and a 60,680,814-byte decoded-graph heap delta
+(57.870 MiB). Save operation CPU was 0.701 seconds; its parent wall time also
+includes constructing the source graph and is not comparable to the Go
+workers' save-only interval. PUC reports allocator request sizes while Go
+profiles report size-class charges, so the memory comparison is directional.
+These native numbers nevertheless show that matching the predecessor is an
+intermediate gate rather than the final objective.
 
 ## Evidence
 
@@ -320,9 +329,9 @@ allocation counts and no timing cell moved by 2%.
 
 The forced-GC decoded graph remained about 67.3 MiB, as expected: canonical
 byte backing is process-wide and does not change the graph's table layout.
-The frozen predecessor's corresponding profile is 51.15 MiB. Closing that
-live-memory gap therefore remains table-layout work rather than a reason to
-add broader string retention.
+The matched `169b37d` predecessor's exact post-GC profile is 44.27 MiB. Closing
+that live-memory gap therefore remains table-layout work rather than a reason
+to add broader string retention.
 
 A general 64-byte stack scratch path for multi-byte `string.char` results was
 also tested. Go's escape analysis placed the scratch on the heap across the
@@ -410,10 +419,11 @@ cell remains allocation-free.
 Packing length and capacity into one 64-bit field was also measured. It saved
 no object bytes and did not improve point access or combined length/capacity
 reads, so the clearer two-field descriptor remains canonical. The loaded
-graph is now about 3.8 MiB above the measured PUC Lua 5.1 graph, while the
-frozen mature predecessor remains leaner at 51.15 MiB. Shared recurring
-record layouts, if justified independently, are the next table-memory
-question; the descriptor does not pre-commit to them.
+graph itself is 61.595 MiB after removing non-graph allocations from the exact
+profile, about 3.73 MiB above the measured PUC Lua 5.1 graph. The `169b37d`
+predecessor remains leaner at 44.27 MiB. Shared recurring record layouts, if
+justified independently, are the next table-memory question; the descriptor
+does not pre-commit to them.
 
 ### 7. Re-profile execution
 
