@@ -135,6 +135,12 @@ func (endpoint *inputEndpoint) Peek(size int) ([]byte, error) {
 		return nil, err
 	}
 	text, err := reader.Peek(size)
+	if _, recorded := err.(*recordedReadFailure); recorded &&
+		len(text) != 0 {
+		// exposeError resets the bufio.Reader to discard its copy of the
+		// deferred error. Preserve Peek's borrowed result across that reset.
+		text = bytes.Clone(text)
+	}
 	return text, endpoint.exposeError(err)
 }
 
@@ -145,13 +151,48 @@ func (endpoint *inputEndpoint) failure() error {
 	return endpoint.source.pendingFailure()
 }
 
+// unreadBytes reports all input fetched from the underlying stream but not
+// consumed through this endpoint. Replay bytes sit outside bufio after a
+// deferred error is taken, so cursor correction must include both stores.
+func (endpoint *inputEndpoint) unreadBytes() int {
+	if endpoint == nil {
+		return 0
+	}
+	unread := endpoint.source.replayBytes()
+	if endpoint.buffered != nil {
+		unread += endpoint.buffered.Buffered()
+	}
+	return unread
+}
+
+// takeFailure transfers ownership of a deferred Reader error to one logical
+// consumer. Any bytes bufio prefetched with the error are replayed before the
+// underlying stream, while Reset removes bufio's private copy of the error.
+func (endpoint *inputEndpoint) takeFailure() error {
+	if endpoint == nil || endpoint.source.pending == nil {
+		return nil
+	}
+	failure := endpoint.source.pending
+	endpoint.source.pending = nil
+
+	if endpoint.buffered != nil {
+		count := endpoint.buffered.Buffered()
+		if count != 0 {
+			unread, _ := endpoint.buffered.Peek(count)
+			endpoint.source.prependReplay(unread)
+		}
+		endpoint.buffered.Reset(&endpoint.source)
+	}
+	return failure.cause
+}
+
 func (endpoint *inputEndpoint) exposeError(err error) error {
 	failure, ok := err.(*recordedReadFailure)
 	if !ok {
 		return err
 	}
 	if endpoint.source.pending == failure {
-		endpoint.source.pending = nil
+		return endpoint.takeFailure()
 	}
 	return failure.cause
 }
@@ -163,6 +204,7 @@ func (endpoint *inputEndpoint) detach() {
 	endpoint.buffered = nil
 	endpoint.source.reader = nil
 	endpoint.source.pending = nil
+	endpoint.source.replay = nil
 }
 
 // outputEndpoint applies one buffering policy to every writer of a logical
@@ -369,6 +411,7 @@ func joinStreamErrors(first, second error) error {
 type readFailureRecorder struct {
 	reader  io.Reader
 	pending *recordedReadFailure
+	replay  []byte
 }
 
 type recordedReadFailure struct {
@@ -382,6 +425,23 @@ func (recorder *readFailureRecorder) pendingFailure() error {
 	return recorder.pending.cause
 }
 
+func (recorder *readFailureRecorder) replayBytes() int {
+	if recorder == nil {
+		return 0
+	}
+	return len(recorder.replay)
+}
+
+func (recorder *readFailureRecorder) prependReplay(text []byte) {
+	if recorder == nil || len(text) == 0 {
+		return
+	}
+	replay := make([]byte, len(text)+len(recorder.replay))
+	copy(replay, text)
+	copy(replay[len(text):], recorder.replay)
+	recorder.replay = replay
+}
+
 func (failure *recordedReadFailure) Error() string {
 	return failure.cause.Error()
 }
@@ -393,6 +453,14 @@ func (failure *recordedReadFailure) Unwrap() error {
 func (recorder *readFailureRecorder) Read(
 	buffer []byte,
 ) (int, error) {
+	if len(recorder.replay) != 0 {
+		count := copy(buffer, recorder.replay)
+		recorder.replay = recorder.replay[count:]
+		if len(recorder.replay) == 0 {
+			recorder.replay = nil
+		}
+		return count, nil
+	}
 	count, err := recorder.reader.Read(buffer)
 	if err != nil && err != io.EOF {
 		failure := &recordedReadFailure{cause: err}

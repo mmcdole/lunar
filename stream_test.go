@@ -316,6 +316,134 @@ func TestDeliveredInputFailureDoesNotPoisonLaterConsumer(t *testing.T) {
 	}
 }
 
+func TestLoaderConsumesDeferredInputFailureOnce(t *testing.T) {
+	sentinel := errors.New("deferred input failure")
+	endpoint := newInputEndpoint(&stagedStreamReader{
+		steps: []struct {
+			text string
+			err  error
+		}{
+			{text: "local = trailing", err: sentinel},
+			{text: "return 42", err: io.EOF},
+		},
+	})
+	control, failure := newLoadControl(nil, 1<<20)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	_, err := loadFileEndpointPrototype(
+		"=stdin",
+		"stdin",
+		&endpoint,
+		&control,
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("first loader error = %v; want deferred failure", err)
+	}
+	if endpoint.failure() != nil {
+		t.Fatalf(
+			"loader left its reported failure pending: %v",
+			endpoint.failure(),
+		)
+	}
+
+	control, failure = newLoadControl(nil, 1<<20)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	prototype, err := loadFileEndpointPrototype(
+		"=stdin",
+		"stdin",
+		&endpoint,
+		&control,
+	)
+	if err != nil {
+		t.Fatalf("later loader inherited the old failure: %v", err)
+	}
+	if prototype == nil {
+		t.Fatal("later loader returned a nil prototype")
+	}
+}
+
+func TestTakingInputFailurePreservesPrefetchedBytes(t *testing.T) {
+	sentinel := errors.New("deferred input failure")
+	endpoint := newInputEndpoint(&stagedStreamReader{
+		steps: []struct {
+			text string
+			err  error
+		}{
+			{text: "prefetched", err: sentinel},
+			{text: " tail", err: io.EOF},
+		},
+	})
+	first, err := endpoint.Peek(1)
+	if err != nil || string(first) != "p" {
+		t.Fatalf("Peek = (%q, %v)", first, err)
+	}
+	if got := endpoint.unreadBytes(); got != len("prefetched") {
+		t.Fatalf("unread bytes = %d; want %d", got, len("prefetched"))
+	}
+
+	if err := endpoint.takeFailure(); err != sentinel {
+		t.Fatalf("takeFailure = %v; want exact sentinel", err)
+	}
+	if endpoint.failure() != nil {
+		t.Fatalf("taken failure remained pending: %v", endpoint.failure())
+	}
+	if got := endpoint.unreadBytes(); got != len("prefetched") {
+		t.Fatalf(
+			"replayed unread bytes = %d; want %d",
+			got,
+			len("prefetched"),
+		)
+	}
+	if err := endpoint.takeFailure(); err != nil {
+		t.Fatalf("failure was delivered twice: %v", err)
+	}
+
+	text, err := io.ReadAll(&endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(text) != "prefetched tail" {
+		t.Fatalf("replayed input = %q", text)
+	}
+	if got := endpoint.unreadBytes(); got != 0 {
+		t.Fatalf("unread bytes after replay = %d; want 0", got)
+	}
+}
+
+func TestExposingInputFailurePreservesPeekedBytes(t *testing.T) {
+	sentinel := errors.New("peek input failure")
+	endpoint := newInputEndpoint(&stagedStreamReader{
+		steps: []struct {
+			text string
+			err  error
+		}{
+			{text: "peeked", err: sentinel},
+			{text: " remainder", err: io.EOF},
+		},
+	})
+	text, err := endpoint.Peek(len("peeked") + 1)
+	if string(text) != "peeked" || err != sentinel {
+		t.Fatalf("Peek = (%q, %v); want bytes and exact sentinel", text, err)
+	}
+	if endpoint.failure() != nil {
+		t.Fatalf("exposed failure remained pending: %v", endpoint.failure())
+	}
+	if got := endpoint.unreadBytes(); got != len("peeked") {
+		t.Fatalf("unread bytes = %d; want %d", got, len("peeked"))
+	}
+
+	remaining, err := io.ReadAll(&endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(remaining) != "peeked remainder" {
+		t.Fatalf("input after Peek = %q", remaining)
+	}
+}
+
 func TestPrintSharesTheBufferedStandardOutputEndpoint(t *testing.T) {
 	var output bytes.Buffer
 	state := newStateWithBase(t, Options{Stdout: &output})

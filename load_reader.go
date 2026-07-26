@@ -118,7 +118,7 @@ func (state *State) loadFile(
 type readerChunkSource struct {
 	reader      io.Reader
 	control     *loadControl
-	upstream    *readFailureRecorder
+	upstream    *inputEndpoint
 	buffer      []byte
 	readFailure error
 }
@@ -194,10 +194,12 @@ func (source *readerChunkSource) refill() (string, error) {
 
 func (source *readerChunkSource) failure() error {
 	if source.readFailure != nil {
-		return source.readFailure
+		failure := source.readFailure
+		source.readFailure = nil
+		return failure
 	}
 	if source.upstream != nil {
-		return source.upstream.pendingFailure()
+		return source.upstream.takeFailure()
 	}
 	return nil
 }
@@ -269,6 +271,9 @@ func loadFileEndpointPrototype(
 ) (*Prototype, error) {
 	input, source, err := newLuaFileInput(endpoint, control)
 	if err != nil {
+		if readFailure := endpoint.takeFailure(); readFailure != nil {
+			err = readFailure
+		}
 		if _, luaFailure := err.(*Error); luaFailure {
 			return nil, err
 		}
@@ -303,7 +308,7 @@ func newLuaFileInput(
 	first, err := endpoint.ReadByte()
 	if err == io.EOF {
 		input, source := newReaderChunkInput(endpoint, control, "")
-		source.upstream = &endpoint.source
+		source.upstream = endpoint
 		return input, source, nil
 	}
 	if err != nil {
@@ -314,7 +319,7 @@ func newLuaFileInput(
 			panic("lua: failed to restore file lookahead")
 		}
 		input, source := newReaderChunkInput(endpoint, control, "")
-		source.upstream = &endpoint.source
+		source.upstream = endpoint
 		return input, source, nil
 	}
 
@@ -363,6 +368,6 @@ lineComplete:
 		prefix = ""
 	}
 	input, source := newReaderChunkInput(endpoint, control, prefix)
-	source.upstream = &endpoint.source
+	source.upstream = endpoint
 	return input, source, nil
 }
