@@ -181,6 +181,15 @@ func normalizeStringHash(hash uint64) stringHash {
 	return normalized
 }
 
+// finalizeStringHash distributes the sampled hash's high bits before
+// power-of-two table and cache indexing. The multiplication is bijective over
+// 32-bit values; equality remains the authority for collisions.
+func finalizeStringHash(hash stringHash) stringHash {
+	hash *= 0x9e3779b1
+	hash ^= hash >> 16
+	return normalizeStringHash(uint64(hash))
+}
+
 func newInternedText(text string) *internedText {
 	return newHashedInternedText(text, hashString(text))
 }
@@ -453,27 +462,24 @@ func stringSetLocation(hash stringHash, shardCount int) (shard, set int) {
 	return location / stringSetsPerShard, location % stringSetsPerShard
 }
 
-// hashString follows Lua's useful locality tradeoff: short strings are hashed
-// completely, while long strings sample a bounded number of bytes. Equality
-// always checks length and contents after the hash.
+// hashString uses Lua 5.1's bounded sampling policy: short strings are hashed
+// completely, while long strings sample a fixed number of bytes. A small
+// finalizer supplies the low-bit distribution required by Badger's
+// power-of-two table and cache indexing. Equality always checks contents.
 func hashString(text string) stringHash {
-	hash := uint64(len(text))
+	hash := stringHash(len(text))
 	step := len(text)>>5 + 1
 	for index := len(text); index >= step; index -= step {
-		hash ^= hash<<5 + hash>>2 + uint64(text[index-1])
+		hash ^= hash<<5 + hash>>2 + stringHash(text[index-1])
 	}
-	return normalizeStringHash(
-		mixHash(hash ^ 0x517cc1b727220a95),
-	)
+	return finalizeStringHash(hash)
 }
 
 func hashBytes(bytes []byte) stringHash {
-	hash := uint64(len(bytes))
+	hash := stringHash(len(bytes))
 	step := len(bytes)>>5 + 1
 	for index := len(bytes); index >= step; index -= step {
-		hash ^= hash<<5 + hash>>2 + uint64(bytes[index-1])
+		hash ^= hash<<5 + hash>>2 + stringHash(bytes[index-1])
 	}
-	return normalizeStringHash(
-		mixHash(hash ^ 0x517cc1b727220a95),
-	)
+	return finalizeStringHash(hash)
 }
