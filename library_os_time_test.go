@@ -2,6 +2,7 @@ package lua
 
 import (
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -515,6 +516,9 @@ func TestDateTimeHelpersCoverSignedLimits(t *testing.T) {
 	}
 }
 
+// Go's Windows environment lookup allocates while converting the name and
+// value between UTF-8 and UTF-16. Keep its zero-allocation regression on other
+// platforms while measuring every other scalar operation on Windows too.
 func TestWarmOSScalarOperationsDoNotAllocate(t *testing.T) {
 	requireStableAllocationAccounting(t)
 	t.Setenv("LUGO_LUA_OS_ALLOC", "value")
@@ -527,11 +531,14 @@ local getenv = os.getenv
 local setlocale = os.setlocale
 local ostime = os.time
 local date = { year = 1970, month = 1, day = 2 }
+local checkEnvironment = `+strconv.FormatBool(runtime.GOOS != "windows")+`
 return function()
   local total = 0
   for index = 1, 20 do
     total = total + clock() + difftime(index, 1) + ostime(date)
-    if getenv("LUGO_LUA_OS_ALLOC") ~= "value" then error("environment") end
+    if checkEnvironment and getenv("LUGO_LUA_OS_ALLOC") ~= "value" then
+      error("environment")
+    end
     if setlocale() ~= "C" then error("locale") end
   end
   return total

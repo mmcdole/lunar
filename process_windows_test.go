@@ -3,11 +3,34 @@
 package lua
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+const (
+	windowsPopenCopyHelperEnv = "LUGO_TEST_WINDOWS_POPEN_COPY"
+	windowsPopenCopyOutputEnv = "LUGO_TEST_WINDOWS_POPEN_COPY_OUTPUT"
+)
+
+func TestIOPopenWindowsCopyHelper(t *testing.T) {
+	if os.Getenv(windowsPopenCopyHelperEnv) != "1" {
+		return
+	}
+	output, err := os.Create(os.Getenv(windowsPopenCopyOutputEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(output, os.Stdin); err != nil {
+		_ = output.Close()
+		t.Fatal(err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestOSExecuteWindowsStatusAndShellFallback(t *testing.T) {
 	state := newStateWithOS(t)
@@ -65,8 +88,15 @@ return text,readClose,exitClose
 }
 
 func TestIOPopenWindowsWriteClosesBeforeWaiting(t *testing.T) {
-	path := t.TempDir() + `\popen-output`
-	command := `more > "` + path + `"`
+	path := filepath.Join(t.TempDir(), "popen-output")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(windowsPopenCopyHelperEnv, "1")
+	t.Setenv(windowsPopenCopyOutputEnv, path)
+	command := `"` + executable +
+		`" -test.run=TestIOPopenWindowsCopyHelper`
 	state := newStateWithIO(t, Options{})
 	defer state.Close()
 
@@ -81,8 +111,7 @@ return written,closed
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := strings.ReplaceAll(string(content), "\r\n", "\n")
-	if text != "first\nsecond\n" {
+	if string(content) != "first\nsecond\n" {
 		t.Fatalf("Windows popen input = %q", content)
 	}
 }
