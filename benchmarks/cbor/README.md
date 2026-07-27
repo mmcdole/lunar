@@ -13,6 +13,9 @@ worker is selected with the `gopherlua_reference` build tag and uses the pinned
 dependency in `stock.mod`; both builds otherwise compile the same generator,
 workload, validation, and reporting code.
 
+Published paired retained-memory records and summaries are in the
+[`2026-07-27 Apple M3 Pro archive`](../results/2026-07-27-darwin-arm64-m3-pro/).
+
 ## Deterministic synthetic fixtures
 
 `testdata/cbor.lua` is lua-cbor 1.0.0 with one documented patch. Its license and

@@ -102,6 +102,37 @@ Performance is measured in separate groups:
 - a deterministic 9,208,046-byte CBOR graph for fresh-process allocation and
   retained-memory measurements.
 
+### Results
+
+The following medians come from 15 samples on an Apple M3 Pro with Go 1.25.1
+at source revision `1a50139`. Lower is better.
+
+| Established Lua program | Lugo | GopherLua | go-lua |
+| --- | ---: | ---: | ---: |
+| binary-trees | 172.9 ms | 176.5 ms | 186.0 ms |
+| fannkuch-redux | 24.25 ms | 33.67 ms | 41.33 ms |
+| n-body | 61.30 ms | 195.59 ms | 204.94 ms |
+| spectral-norm | 55.63 ms | 166.21 ms | 157.80 ms |
+
+| Embedding operation | Lugo | GopherLua | go-lua |
+| --- | ---: | ---: | ---: |
+| Go to Lua, scalars | 64.25 ns | 63.00 ns | 153.90 ns |
+| Lua to Go callback, 1,000 calls | 63.65 µs | 103.13 µs | 86.96 µs |
+| Go string echo, 128 bytes | 89.04 ns | 85.51 ns | 148.50 ns |
+| Go-built table, 16 array and 4 record fields | 2.327 µs | 1.434 µs | 1.679 µs |
+
+| CBOR load memory | Lugo | GopherLua |
+| --- | ---: | ---: |
+| Allocation traffic | 107.5 MB | 784.6 MB |
+| Baseline-subtracted retained heap increase | 72.24 MiB | 542.26 MiB |
+| Absolute live Go heap after forced GC | 72.53 MiB | 543.83 MiB |
+
+The [result archive](benchmarks/results/2026-07-27-darwin-arm64-m3-pro/)
+contains confidence intervals, allocation counts, interpreter microbenchmarks,
+raw Go benchmark output, and paired CBOR JSONL records. Shopify go-lua is not
+in the CBOR table because its pinned standard IO library does not implement
+`file:read("*a")`.
+
 The program inputs are scaled local inputs, not official Benchmarks Game
 scores. Compilation, library setup, warmup, and result validation are outside
 the timed region. Every comparison uses protected calls and identical Lua

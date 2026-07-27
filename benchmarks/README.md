@@ -13,6 +13,9 @@ The large synthetic CBOR graph has a separate fresh-process harness under
 [`cbor/`](cbor/README.md). Retained memory from that harness is not combined
 with the Go benchmark allocation counters.
 
+Published raw output and summaries are under
+[`results/2026-07-27-darwin-arm64-m3-pro/`](results/2026-07-27-darwin-arm64-m3-pro/).
+
 ## Runtime versions
 
 The module pins:
