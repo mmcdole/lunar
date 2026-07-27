@@ -566,6 +566,31 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 	}
 }
 
+func TestExecutorLogicalExpressionClosesCallResults(t *testing.T) {
+	const source = `
+local function produce()
+	return 1, 2, 3
+end
+local first, second = true and produce()
+local function select(...)
+	local third, fourth = false or ...
+	return third, fourth
+end
+return first, second, select(4, 5)
+`
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := mustLoadString(t, state, "@logical-results.lua", source)
+	results, err := state.Call(function.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(1), Nil(), Number(4), Nil())
+}
+
 func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
 	compiled, syntaxError := compileSource(
 		"@testset.lua",

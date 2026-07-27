@@ -190,6 +190,15 @@ func (parser *sourceParser) parseSubexpression(
 			if syntaxError != nil {
 				return compiledExpression{}, syntaxError
 			}
+			if right.kind == expressionCall ||
+				right.kind == expressionVararg {
+				if _, syntaxError = parser.expressionToTemporary(
+					&right,
+					right.line,
+				); syntaxError != nil {
+					return compiledExpression{}, syntaxError
+				}
+			}
 			if operation == binaryAnd {
 				right.falseExits, syntaxError =
 					parser.function.joinJumps(

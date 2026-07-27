@@ -153,6 +153,66 @@ func TestCompileSourceLogicalExpressionsCloseMultipleResults(t *testing.T) {
 	}
 }
 
+func TestCompileSourceLogicalReturnsCloseMultipleResults(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		operand opcode
+	}{
+		{
+			name:    "and call",
+			source:  "return true and inner()",
+			operand: opCall,
+		},
+		{
+			name:    "or call",
+			source:  "return false or inner()",
+			operand: opCall,
+		},
+		{
+			name:    "and vararg",
+			source:  "return true and ...",
+			operand: opVararg,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			prototype, syntaxError := compileSource(
+				"@calls.lua",
+				test.source,
+			)
+			if syntaxError != nil {
+				t.Fatal(syntaxError)
+			}
+
+			var operand instruction
+			var result instruction
+			for _, code := range prototype.code {
+				switch code.opcode() {
+				case test.operand:
+					operand = code
+				case opTailCall:
+					t.Fatal("logical return compiled to a tail call")
+				case opReturn:
+					result = code
+				}
+			}
+			if operand.opcode() != test.operand {
+				t.Fatalf("logical operand opcode = %v, want %v", operand.opcode(), test.operand)
+			}
+			if test.operand == opCall && operand.c() != 2 {
+				t.Fatalf("logical CALL C = %d, want one result", operand.c())
+			}
+			if test.operand == opVararg && operand.b() != 2 {
+				t.Fatalf("logical VARARG B = %d, want one result", operand.b())
+			}
+			if result.opcode() != opReturn || result.b() != 2 {
+				t.Fatalf("logical RETURN B = %d, want one result", result.b())
+			}
+		})
+	}
+}
+
 func TestCompileSourceAdjustsCallResultsForLocals(t *testing.T) {
 	prototype, syntaxError := compileSource(
 		"@calls.lua",
