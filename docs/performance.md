@@ -542,12 +542,88 @@ canonical chunks, then specializes eligible instructions internally.
 `SETLIST` extended block words are never interpreted or rewritten as opcodes.
 Round-trip and real PUC Lua 5.1 execution tests cover that contract.
 
-### 10. Re-profile execution
+### 10. Typed compact-value predicates — complete
 
-The next profile decides between integer table access, native-library call
-state, and remaining call/return bookkeeping. Builtins, inline caches, or
-further opcode specialization still require a generic profile and shared
-semantic kernel. They are not used to conceal an allocation design problem.
+The re-profile found a representation tax below several otherwise unrelated
+operations. A one-type question such as "is this slot nil?" or "is this slot
+a table?" called the complete `Kind` decoder. That decoder must distinguish
+all scalar sentinels and validate the object tag; PUC's equivalent `ttis*`
+operation is one typed tag test.
+
+Private runtime slots now expose direct nil, number, string, function,
+userdata, thread, and table predicates. The predicates do not change the
+representation. They use facts already established at checked public
+boundaries and prototype verification, and mask the low object tag so private
+high flags such as the native-function bit remain valid. Full type dispatch
+and diagnostics continue to use `Kind`.
+
+Ten-sample medians against the constant-string-instruction revision showed:
+
+| Executor workload | Movement | Allocations |
+| --- | ---: | ---: |
+| Dense dynamic integer table | 9% faster | unchanged at zero |
+| Sparse dynamic integer table | 3% faster | unchanged at zero |
+| Dynamic string-key table | 6% faster | unchanged at zero |
+| Constant field read | 17% faster | unchanged at zero |
+| Constant field write | 12% faster | unchanged at zero |
+| Combined constant field | 20% faster | unchanged at zero |
+| Global read/write | 18% faster | unchanged at zero |
+| Polymorphic field | 10% faster | unchanged at zero |
+| Missing field | 7% faster | unchanged at zero |
+| Method lookup and call | 7% faster | unchanged at zero |
+| `__index` function | 8% faster | unchanged at zero |
+
+Unrelated numeric loops, fixed Lua calls, upvalue access, native calls, and
+vararg calls remained within 1.5%. String-only concatenation and primitive
+length also improved about 6%; mixed-number concatenation was neutral.
+Allocation counts did not move.
+
+The arm64 `runInstructions` frame remains 160 bytes while its code shrinks
+from 5,952 to 5,664 bytes. The generic and constant-string table read and
+write helpers each shrink by 96 bytes. This is a removal of repeated type
+decoding, not a cache, alternative representation, or workload-specific
+lane.
+
+### 11. Deferred execution work
+
+Feature-completion work resumes at this checkpoint. The next performance
+sequence, when profiling work resumes, is:
+
+1. recognize an exact positive numeric key once at the executor boundary and
+   enter the existing integer table lane directly, matching PUC 5.1's
+   `luaH_getnum` structure without inventing a constant-integer opcode;
+2. evaluate PUC-style reusable concatenation scratch storage, with retained
+   capacity and concurrent-State behavior explicitly bounded; and
+3. measure capacity-proven fast admission for vararg Lua calls, native
+   callbacks, and Lua tail calls separately. Fixed Lua calls are already at
+   PUC parity and are not a redesign target.
+
+Five alternating process pairs against the preceding revision improved the
+same 11-cell pure-Lua matrix by 10.8% in direct A/B measurement. A separate
+absolute run used five independent processes per engine and cell, with nine
+timed samples per process, and placed the typed-predicate revision at 1.206
+times PUC Lua 5.1.5:
+
+| Workload | Badger / PUC |
+| --- | ---: |
+| Arithmetic and numeric `for` | 1.17x |
+| Dynamic integer table read/write | 1.49x |
+| Fixed Lua call | 0.87x |
+| Ordinary recursion | 1.16x |
+| Tail call | 1.58x |
+| Eight-string concatenation | 1.85x |
+| Constant field read | 1.04x |
+| Constant field write | 1.56x |
+| Global read | 0.98x |
+| Global write | 0.89x |
+| Method lookup and fixed call | 1.08x |
+
+Fixed calls and both global cells now beat PUC in this matrix; field reads are
+near parity. Concatenation, tail calls, field writes, and dynamic integer
+tables remain the largest measured execution gaps and motivate the deferred
+sequence above. The direct A/B is the causal tranche evidence; the absolute
+PUC run is the standing destination rather than a claim that host timing
+between separate days is perfectly stationary.
 
 ## Gates
 

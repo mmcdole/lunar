@@ -766,6 +766,15 @@ still comparing bytes when two equal strings have different backing. The
 generic helper remains unchanged for register, numeric, reference, and spilled
 keys. No table shape, cached location, or object-schema assumption is involved.
 
+Private slots provide type-specific predicates for the common case where an
+operation asks one type question. Nil and numbers are identified by their
+compact pointer word; strings and reference objects compare the low type tag
+directly. High private flags, such as the native-function flag, remain
+orthogonal. These predicates are valid because slots have already crossed a
+checked construction or prototype-verification seam. Code that needs a
+complete type for dispatch or diagnostics still decodes `Kind`; ordinary
+nil, string, function, userdata, thread, and table tests do not.
+
 Raw non-nil hits bypass metamethods. Missing reads and writes follow at most
 100 `__index` or `__newindex` targets; only a Function-valued event is called,
 while every other event value is the next target. Getter continuations retain
