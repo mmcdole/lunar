@@ -861,13 +861,28 @@ const (
 func (thread *threadObject) logicalFrame(
 	level int,
 ) (*activation, logicalFrameStatus) {
+	index, status := thread.logicalFrameIndex(level)
+	if status != logicalFramePhysical {
+		return nil, status
+	}
+	return &thread.frames[index], status
+}
+
+// logicalFrameIndex is the cold stack-walking primitive shared by the
+// Lua-facing debug library and runtime diagnostics. For a replaced tail call
+// it returns the surviving physical frame's index together with
+// logicalFrameTail; callers must not treat that activation as the replaced
+// function.
+func (thread *threadObject) logicalFrameIndex(
+	level int,
+) (int, logicalFrameStatus) {
 	if level < 0 {
-		return nil, logicalFrameMissing
+		return -1, logicalFrameMissing
 	}
 	remaining := level
 	for index := len(thread.frames) - 1; index >= 0; index-- {
 		if remaining == 0 {
-			return &thread.frames[index], logicalFramePhysical
+			return index, logicalFramePhysical
 		}
 		remaining--
 		frame := &thread.frames[index]
@@ -876,9 +891,9 @@ func (thread *threadObject) logicalFrame(
 		}
 		tailCalls := uint64(frame.tailCalls)
 		if uint64(remaining) < tailCalls {
-			return nil, logicalFrameTail
+			return index, logicalFrameTail
 		}
 		remaining -= int(tailCalls)
 	}
-	return nil, logicalFrameMissing
+	return -1, logicalFrameMissing
 }
