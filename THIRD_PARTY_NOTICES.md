@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Go gopher
+
+The Lugo astronaut logo is an adaptation of the
+[Go gopher designed by Renée French](https://go.dev/blog/gopher). The original
+Go gopher is licensed under the
+[Creative Commons Attribution 4.0 license](https://creativecommons.org/licenses/by/4.0/).
+
 ## Lua 5.1
 
 The pattern matcher, parts of the string, table, and debug libraries, and the
@@ -28,3 +35,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+## Computer Language Benchmarks Game
+
+The Lua program corpus under `benchmarks/programs` comes from the Computer
+Language Benchmarks Game. The files retain their contributor notices and are
+distributed under the adjacent
+[`benchmarks/programs/LICENSE`](benchmarks/programs/LICENSE).
+
+## lua-cbor
+
+`benchmarks/cbor/testdata/cbor.lua` is derived from lua-cbor 1.0.0 by Kim
+Alvefur. Its source record, patch, and MIT license are in
+[`benchmarks/cbor/testdata/PROVENANCE.md`](benchmarks/cbor/testdata/PROVENANCE.md)
+and
+[`benchmarks/cbor/testdata/LICENSE.lua-cbor`](benchmarks/cbor/testdata/LICENSE.lua-cbor).

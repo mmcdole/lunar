@@ -861,7 +861,7 @@ return total
 		b,
 		state,
 		function,
-		state.String("badger"),
+		state.String("lugo"),
 		table.Value(),
 	)
 }

@@ -1431,7 +1431,7 @@ func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
 }
 
 // Lua 5.1 delegates decimal conversion to the platform strtod, whose handling
-// of embedded NUL and named non-finite values varies. Badger's decimal grammar
+// of embedded NUL and named non-finite values varies. Lugo's decimal grammar
 // is deliberately byte-complete and deterministic. Explicit nondecimal bases
 // retain strtoul's C-string boundary for Lua 5.1 compatibility.
 func TestBaseToNumberUsesTheDeterministicDecimalGrammar(t *testing.T) {
@@ -1809,9 +1809,9 @@ func newStateWithBase(t testing.TB, options Options) *State {
 // Recorded expectations are verified against a real interpreter by
 // TestLua51OracleMatchesLibraryCases. Regenerate or re-verify with:
 //
-//	BADGER_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
+//	LUGO_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
 //
-// and record new cases with BADGER_LUA51_RECORD=1 set as well.
+// and record new cases with LUGO_LUA51_RECORD=1 set as well.
 type lua51Case struct {
 	name   string
 	source string
@@ -1919,12 +1919,12 @@ func runLua51Cases(t *testing.T, cases []lua51Case) {
 }
 
 // TestLua51OracleMatchesLibraryCases re-derives every recorded expectation
-// from a real Lua 5.1 interpreter. It is skipped unless BADGER_LUA51 names one,
+// from a real Lua 5.1 interpreter. It is skipped unless LUGO_LUA51 names one,
 // because the reference binary is deliberately not carried in this repository.
 func TestLua51OracleMatchesLibraryCases(t *testing.T) {
-	binary := os.Getenv("BADGER_LUA51")
+	binary := os.Getenv("LUGO_LUA51")
 	if binary == "" {
-		t.Skip("set BADGER_LUA51 to a Lua 5.1 interpreter to verify")
+		t.Skip("set LUGO_LUA51 to a Lua 5.1 interpreter to verify")
 	}
 	cases := make(
 		[]lua51Case,
@@ -1968,7 +1968,7 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	if len(lines) != len(cases) {
 		t.Fatalf("oracle produced %d lines; want %d", len(lines), len(cases))
 	}
-	record := os.Getenv("BADGER_LUA51_RECORD") != ""
+	record := os.Getenv("LUGO_LUA51_RECORD") != ""
 	for index, test := range cases {
 		if record {
 			t.Logf("{\n\tname:   %q,\n\tsource: %q,\n\twant:   %q,\n},", test.name, test.source, lines[index])

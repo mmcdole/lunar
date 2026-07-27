@@ -1,3 +1,3 @@
-module github.com/mmcdole/badger-lua
+module github.com/mmcdole/lugo
 
 go 1.24

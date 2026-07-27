@@ -22,7 +22,7 @@ return os.execute(""),
   os.execute("exit 0"),
   os.execute("exit 7"),
   os.execute("kill -TERM $$"),
-  os.execute("command_that_does_not_exist_badger 2>/dev/null"),
+  os.execute("command_that_does_not_exist_lugo 2>/dev/null"),
   os.execute("exit 0\000exit 9", "ignored")
 `)
 	results, err := state.Call(chunk.Value())
@@ -42,7 +42,7 @@ return os.execute(""),
 }
 
 func TestOSExecuteUsesTheRawShellAndProcessEnvironment(t *testing.T) {
-	const environmentName = "BADGER_LUA_EXECUTE_VALUE"
+	const environmentName = "LUGO_LUA_EXECUTE_VALUE"
 	const environmentValue = "value with spaces"
 	t.Setenv(environmentName, environmentValue)
 

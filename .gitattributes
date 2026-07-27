@@ -1,0 +1,2 @@
+# Preserve the byte-for-byte upstream benchmark corpus license.
+benchmarks/programs/LICENSE -text whitespace=-trailing-space

@@ -517,7 +517,7 @@ func TestDateTimeHelpersCoverSignedLimits(t *testing.T) {
 
 func TestWarmOSScalarOperationsDoNotAllocate(t *testing.T) {
 	requireStableAllocationAccounting(t)
-	t.Setenv("BADGER_LUA_OS_ALLOC", "value")
+	t.Setenv("LUGO_LUA_OS_ALLOC", "value")
 	state := newStateWithOS(t)
 	defer state.Close()
 	loader := mustLoadString(t, state, "@os-alloc.lua", `
@@ -531,7 +531,7 @@ return function()
   local total = 0
   for index = 1, 20 do
     total = total + clock() + difftime(index, 1) + ostime(date)
-    if getenv("BADGER_LUA_OS_ALLOC") ~= "value" then error("environment") end
+    if getenv("LUGO_LUA_OS_ALLOC") ~= "value" then error("environment") end
     if setlocale() ~= "C" then error("locale") end
   end
   return total

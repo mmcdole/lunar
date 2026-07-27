@@ -1,0 +1,44 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.mod
+            benchmarks/go.mod
+            benchmarks/go.sum
+            benchmarks/cbor/go.mod
+            benchmarks/cbor/stock.mod
+            benchmarks/cbor/stock.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+      - working-directory: benchmarks
+        run: go vet ./...
+      - working-directory: benchmarks
+        run: go test ./...
+      - working-directory: benchmarks
+        run: >-
+          GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1
+          go test -run '^$'
+          -bench '^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkEmbedding)$'
+          -benchtime=1x -count=1 -cpu=1
+      - working-directory: benchmarks/cbor
+        run: go vet ./...
+      - working-directory: benchmarks/cbor
+        run: go test ./...
+      - working-directory: benchmarks/cbor
+        run: go vet -tags gopherlua_reference -modfile=stock.mod ./...
+      - working-directory: benchmarks/cbor
+        run: go test -tags gopherlua_reference -modfile=stock.mod ./...

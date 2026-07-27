@@ -1291,9 +1291,9 @@ func FuzzDecodeBinaryChunk(f *testing.F) {
 
 func lua51ChunkTestExecutable(t *testing.T) string {
 	t.Helper()
-	if configured := strings.TrimSpace(os.Getenv("BADGER_LUA51")); configured != "" {
+	if configured := strings.TrimSpace(os.Getenv("LUGO_LUA51")); configured != "" {
 		if _, err := os.Stat(configured); err != nil {
-			t.Fatalf("BADGER_LUA51=%q is unavailable: %v", configured, err)
+			t.Fatalf("LUGO_LUA51=%q is unavailable: %v", configured, err)
 		}
 		return configured
 	}

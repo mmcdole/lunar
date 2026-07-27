@@ -204,7 +204,7 @@ func TestMathLibraryIntegerArgumentsAreDefinedEverywhere(t *testing.T) {
 
 // TestMathLibraryRandomIsPerLibraryAndReproducible covers what a differential
 // case cannot: Lua 5.1 delegates math.random to C rand(), so only the
-// interface is portable. The generator itself is Badger's, and it must be
+// interface is portable. The generator itself is Lugo's, and it must be
 // deterministic from a seed, private to each opened library, and shared by
 // random and randomseed.
 func TestMathLibraryRandomIsPerLibraryAndReproducible(t *testing.T) {

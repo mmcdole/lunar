@@ -94,15 +94,15 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 }
 
 func TestOSLibraryEnvironmentAndFilesystemOperations(t *testing.T) {
-	const environmentName = "BADGER_LUA_OS_TEST_VALUE"
+	const environmentName = "LUGO_LUA_OS_TEST_VALUE"
 	t.Setenv(environmentName, "")
 
 	state := newStateWithOS(t)
 	defer state.Close()
 	chunk := mustLoadString(t, state, "@environment.lua", `
-local empty = os.getenv("BADGER_LUA_OS_TEST_VALUE")
-local missing = os.getenv("BADGER_LUA_OS_TEST_MISSING")
-local truncated = os.getenv("BADGER_LUA_OS_TEST_VALUE\000ignored")
+local empty = os.getenv("LUGO_LUA_OS_TEST_VALUE")
+local missing = os.getenv("LUGO_LUA_OS_TEST_MISSING")
+local truncated = os.getenv("LUGO_LUA_OS_TEST_VALUE\000ignored")
 return empty, missing, truncated
 `)
 	results, err := state.Call(chunk.Value())
@@ -749,9 +749,9 @@ return t.sec, t.min, t.hour, t.day, t.month, t.year,
 	},
 	{
 		name:   "setlocale rejects an unknown category",
-		source: `return os.setlocale(nil, "badger")`,
+		source: `return os.setlocale(nil, "lugo")`,
 		want: "error 'case:1: bad argument #2 to 'setlocale' " +
-			"(invalid option 'badger')'",
+			"(invalid option 'lugo')'",
 	},
 	{
 		name:   "setlocale exposes the C locale",

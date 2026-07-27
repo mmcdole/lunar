@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	lua "github.com/mmcdole/badger-lua"
+	lua "github.com/mmcdole/lugo"
 )
 
 func TestFriendlyObjectInterface(t *testing.T) {
