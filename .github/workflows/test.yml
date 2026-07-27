@@ -8,22 +8,39 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  root:
+    name: root (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-15
+          - windows-2025
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - if: runner.os == 'Linux'
+        run: go test -race ./...
+
+  benchmark-smoke:
+    name: benchmark smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: benchmarks/go.mod
           cache-dependency-path: |
             go.mod
             benchmarks/go.mod
             benchmarks/go.sum
-            benchmarks/cbor/go.mod
-            benchmarks/cbor/stock.mod
-            benchmarks/cbor/stock.sum
-      - run: go vet ./...
-      - run: go test -race ./...
       - working-directory: benchmarks
         run: go vet ./...
       - working-directory: benchmarks
@@ -34,6 +51,20 @@ jobs:
           go test -run '^$'
           -bench '^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkEmbedding)$'
           -benchtime=1x -count=1 -cpu=1
+
+  cbor-smoke:
+    name: CBOR smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: benchmarks/cbor/go.mod
+          cache-dependency-path: |
+            go.mod
+            benchmarks/cbor/go.mod
+            benchmarks/cbor/stock.mod
+            benchmarks/cbor/stock.sum
       - working-directory: benchmarks/cbor
         run: go vet ./...
       - working-directory: benchmarks/cbor
