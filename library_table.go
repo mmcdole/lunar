@@ -50,13 +50,16 @@ func (state *State) OpenTable() error {
 	}
 	library := newTable(state.runtime, 0, len(tableLibraryFunctions))
 	for _, definition := range tableLibraryFunctions {
-		function, functionErr := state.NewNativeFunction(definition.entry)
+		function, functionErr := state.newNativeFunctionObject(
+			definition.entry,
+			nil,
+		)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}

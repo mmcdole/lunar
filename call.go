@@ -8,7 +8,7 @@ const allResults = -1
 // keeps its hot program counter, base, code, and constants in local variables
 // and publishes them here only at call, return, yield, and error seams.
 type activation struct {
-	function      *Function
+	function      *functionObject
 	base          uint32
 	resultBase    uint32
 	pc            uint32
@@ -34,7 +34,7 @@ type callLayout struct {
 }
 
 func (thread *Thread) pushFunctionCall(
-	function *Function,
+	function *functionObject,
 	resultBase int,
 	argumentCount int,
 	wantedResults int,
@@ -86,7 +86,7 @@ func (thread *Thread) tryEnterFixedLuaCall(
 	if callable.ref == nil || callable.bits != uint64(FunctionKind) {
 		return false
 	}
-	function := (*Function)(callable.ref)
+	function := functionObjectFromSlot(callable)
 	argumentCount := argumentField - 1
 	wantedResults := resultField - 1
 	prototype := function.prototype
@@ -123,7 +123,7 @@ func (thread *Thread) tryEnterFixedLuaCall(
 }
 
 func (thread *Thread) pushFunctionMetamethodCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 	wantedResults int,
@@ -159,7 +159,7 @@ func (thread *Thread) pushFunctionMetamethodCall(
 }
 
 func (thread *Thread) commitFunctionCall(
-	function *Function,
+	function *functionObject,
 	layout callLayout,
 	oldExtent int,
 ) {
@@ -175,7 +175,7 @@ func (thread *Thread) commitFunctionCall(
 }
 
 func (thread *Thread) publishFunctionCall(
-	function *Function,
+	function *functionObject,
 	base int,
 	resultBase int,
 	frameEnd int,
@@ -197,7 +197,7 @@ func (thread *Thread) publishFunctionCall(
 }
 
 func (thread *Thread) replaceFunctionCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 ) *Error {
@@ -230,7 +230,7 @@ func (thread *Thread) replaceFunctionCall(
 }
 
 func (thread *Thread) replaceFunctionMetamethodCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 ) *Error {
@@ -271,7 +271,7 @@ func (thread *Thread) replaceFunctionMetamethodCall(
 }
 
 func (thread *Thread) commitTailCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 	layout callLayout,
@@ -495,7 +495,7 @@ func (thread *Thread) unwindCalls(stopDepth int) {
 }
 
 func (thread *Thread) planFunctionCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	resultBase int,
 	argumentCount int,
@@ -511,7 +511,7 @@ func (thread *Thread) planFunctionCall(
 }
 
 func (thread *Thread) planFunctionCallLayout(
-	function *Function,
+	function *functionObject,
 	resultBase int,
 	argumentCount int,
 	wantedResults int,
@@ -572,7 +572,7 @@ func (thread *Thread) planFunctionCallLayout(
 }
 
 func (thread *Thread) checkFunctionCall(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 	wantedResults int,
@@ -585,13 +585,13 @@ func (thread *Thread) checkFunctionCall(
 	)
 	stackFunction := thread.values[callBase]
 	if !stackFunction.isFunction() ||
-		(*Function)(stackFunction.ref) != function {
+		functionObjectFromSlot(stackFunction) != function {
 		panic("lua: call slot does not contain the requested function")
 	}
 }
 
 func (thread *Thread) checkFunctionCallWindow(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 	wantedResults int,
@@ -620,7 +620,7 @@ func (thread *Thread) checkFunctionCallWindow(
 }
 
 func (thread *Thread) insertCallMetamethod(
-	function *Function,
+	function *functionObject,
 	callBase int,
 	argumentCount int,
 ) {
@@ -630,12 +630,12 @@ func (thread *Thread) insertCallMetamethod(
 	)
 	writeSlot(
 		&thread.values[callBase],
-		slotFromFunction(function),
+		slotFromFunctionObject(function),
 	)
 }
 
 func (thread *Thread) setupFunctionCall(
-	function *Function,
+	function *functionObject,
 	layout callLayout,
 ) {
 	if function.prototype == nil {

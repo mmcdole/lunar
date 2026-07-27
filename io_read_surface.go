@@ -347,7 +347,7 @@ func newFileLineIterator(
 	data *userDataObject,
 	autoClose bool,
 ) Outcome {
-	function, err := frame.State().newNativeFunctionCompact(
+	function, err := frame.State().newNativeFunctionObject(
 		fileLineIterator,
 		[]slot{
 			slotFromUserDataObject(data),
@@ -363,7 +363,7 @@ func newFileLineIterator(
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromFunction(function),
+		slotFromFunctionObject(function),
 	)
 }
 

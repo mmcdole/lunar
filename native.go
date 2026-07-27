@@ -101,18 +101,19 @@ func (state *State) NewNativeFunction(
 			compact[index] = slotFromValue(capture)
 		}
 	}
-	return newNativeFunctionOwned(
+	function := newNativeFunctionOwned(
 		state.runtime,
 		state.constructionEnvironment(),
 		entry,
 		compact,
-	), nil
+	)
+	return function.owningHandle(), nil
 }
 
-func (state *State) newNativeFunctionCompact(
+func (state *State) newNativeFunctionObject(
 	entry NativeFunc,
 	captures []slot,
-) (*Function, error) {
+) (*functionObject, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -216,7 +217,15 @@ func (frame Frame) Function(index int) (*Function, bool) {
 	if !present || !value.isFunction() {
 		return nil, false
 	}
-	return (*Function)(value.ref), true
+	return functionHandleFromSlot(value), true
+}
+
+func (frame Frame) functionObject(index int) (*functionObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isFunction() {
+		return nil, false
+	}
+	return functionObjectFromSlot(value), true
 }
 
 // UserData returns argument index and whether it is exactly Lua userdata.
@@ -682,7 +691,7 @@ func (frame Frame) activation() *activation {
 	return call
 }
 
-func (frame Frame) checkCaptureIndex(function *Function, index int) {
+func (frame Frame) checkCaptureIndex(function *functionObject, index int) {
 	if index < 0 ||
 		index >= len(function.nativeBodyUnchecked().captures) {
 		panic("lua: native capture index out of range")

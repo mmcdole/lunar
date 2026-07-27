@@ -1653,12 +1653,19 @@ func TestValueSlotConversionDoesNotAllocate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	function, err := state.NewNativeFunction(
+		func(Frame) Outcome { return Outcome{} },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	values := []Value{
 		Nil(),
 		Bool(false),
 		Bool(true),
 		Number(1.25),
 		state.String("cached"),
+		function.Value(),
 		table.Value(),
 	}
 

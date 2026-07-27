@@ -454,7 +454,7 @@ func (state *State) loadString(
 	if err != nil {
 		return nil, err
 	}
-	return state.loadPrototype(prototype), nil
+	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
 func loadStringPrototype(
@@ -527,10 +527,12 @@ func (state *State) LoadPrototype(
 	if prototype == nil || !prototype.sealed {
 		return nil, ErrInvalidPrototype
 	}
-	return state.loadPrototype(prototype), nil
+	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
-func (state *State) loadPrototype(prototype *Prototype) *Function {
+func (state *State) loadPrototypeObject(
+	prototype *Prototype,
+) *functionObject {
 	count := int(prototype.upvalues)
 	upvalues := make([]*upvalue, count)
 	if count != 0 {

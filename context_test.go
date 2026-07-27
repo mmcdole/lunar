@@ -1403,7 +1403,7 @@ after_context_limit = true`)
 }
 
 type contextLifetimeMarker struct {
-	_ byte
+	_ *byte
 }
 
 func TestExecutionContextDoesNotRetainContextGraphs(t *testing.T) {
@@ -1830,6 +1830,7 @@ func BenchmarkContextDispatch256Moves(b *testing.B) {
 		_ = state.Close()
 	})
 	target := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
+	targetValue := target.owningValue()
 	destination := make([]Value, 1)
 	active, cancel := context.WithCancel(context.Background())
 	b.Cleanup(cancel)
@@ -1849,14 +1850,14 @@ func BenchmarkContextDispatch256Moves(b *testing.B) {
 				var callErr error
 				if test.ctx == nil {
 					_, callErr = state.CallInto(
-						target.Value(),
+						targetValue,
 						nil,
 						destination,
 					)
 				} else {
 					_, callErr = state.CallIntoContext(
 						test.ctx,
-						target.Value(),
+						targetValue,
 						nil,
 						destination,
 					)

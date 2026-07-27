@@ -357,10 +357,13 @@ return require("empty"),failed
 	}
 	assertTestValues(t, results, Bool(true), Bool(false))
 
-	entries, keys, stale := hostDirectoryCounts(&state.runtime.hosts)
+	entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		UserDataKind,
+	)
 	if entries != 0 || keys != 0 || stale != 0 {
 		t.Fatalf(
-			"Lua-only require published host tokens: entries=%d keys=%d stale=%d",
+			"Lua-only require published userdata handles: entries=%d keys=%d stale=%d",
 			entries,
 			keys,
 			stale,

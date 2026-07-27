@@ -3,6 +3,7 @@ package lua
 import (
 	"errors"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"unsafe"
@@ -47,10 +48,11 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	if function.UpvalueCount() != 2 {
 		t.Fatalf("capture count = %d; want 2", function.UpvalueCount())
 	}
-	if function.nativeBody() == nil {
+	object := function.runtimeObject()
+	if object.nativeBody() == nil {
 		t.Fatal("native Function did not retain its immutable executable kind")
 	}
-	body := function.nativeBody()
+	body := object.nativeBody()
 	if got := body.captures[0].owningValue(); !rawEqual(got, Number(7)) {
 		t.Fatalf("capture 0 = %v; want 7", got)
 	}
@@ -347,7 +349,9 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 		t.Fatal(failure)
 	}
 	assertNativeTestResults(t, thread, Number(17), state.String("new"))
-	if value, ok := function.nativeBody().captures[1].owningValue().AsString(); !ok || value != "new" {
+	if value, ok := function.runtimeObject().
+		nativeBody().captures[1].owningValue().AsString(); !ok ||
+		value != "new" {
 		t.Fatalf("updated capture = (%q, %v)", value, ok)
 	}
 }
@@ -1045,7 +1049,7 @@ func TestNativeFramePreflightsResultsAndLimits(t *testing.T) {
 		caller := compileTestFunction(t, state, "@caller.lua", `return 0`)
 		thread := state.MainThread()
 		thread.reserveValues(int(caller.prototype.registers))
-		thread.values[0] = slotFromFunction(caller)
+		thread.values[0] = slotFromFunctionObject(caller)
 		thread.top = 1
 		if failure := thread.pushFunctionCall(
 			caller,
@@ -1056,10 +1060,14 @@ func TestNativeFramePreflightsResultsAndLimits(t *testing.T) {
 			t.Fatal(failure)
 		}
 		callBase := int(thread.frames[0].base)
-		writeSlot(&thread.values[callBase], slotFromFunction(function))
+		functionObject := function.runtimeObject()
+		writeSlot(
+			&thread.values[callBase],
+			slotFromFunctionObject(functionObject),
+		)
 		writeSlot(&thread.values[callBase+1], numberSlot(8))
 		if failure := thread.pushFunctionCall(
-			function,
+			functionObject,
 			callBase,
 			1,
 			allResults,
@@ -1206,7 +1214,7 @@ return result
 			)
 			thread := state.MainThread()
 			thread.reserveValues(int(caller.prototype.registers))
-			thread.values[0] = slotFromFunction(caller)
+			thread.values[0] = slotFromFunctionObject(caller)
 			thread.top = 1
 			if failure := thread.pushFunctionCall(
 				caller,
@@ -1529,16 +1537,17 @@ func TestWarmNativeFrameCallDoesNotAllocate(t *testing.T) {
 	thread := state.MainThread()
 	thread.reserveValues(16)
 	thread.reserveFrames(8)
+	functionObject := function.runtimeObject()
 
 	run := func() {
 		oldExtent := thread.liveValueExtent()
 		thread.top = 2
 		thread.frameExtent = 0
 		thread.clearInactive(0, oldExtent)
-		thread.values[0] = slotFromFunction(function)
+		thread.values[0] = slotFromFunctionObject(functionObject)
 		thread.values[1] = numberSlot(41)
 		if failure := thread.pushFunctionCall(
-			function,
+			functionObject,
 			0,
 			1,
 			2,
@@ -1599,10 +1608,10 @@ return value
 
 	for _, test := range []struct {
 		name   string
-		target *Function
+		target Value
 	}{
-		{name: "native", target: native},
-		{name: "lua control", target: luaFunction},
+		{name: "native", target: native.Value()},
+		{name: "lua control", target: luaFunction.owningValue()},
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			b.ReportMetric(iterations, "calls/op")
@@ -1610,7 +1619,7 @@ return value
 				b,
 				state,
 				caller,
-				test.target.Value(),
+				test.target,
 				Number(iterations),
 			)
 		})
@@ -1673,15 +1682,16 @@ func BenchmarkNativeFrameOutcomes(b *testing.B) {
 			thread := state.MainThread()
 			thread.reserveValues(16)
 			thread.reserveFrames(8)
+			functionObject := function.runtimeObject()
 
 			run := func() {
 				oldExtent := thread.liveValueExtent()
 				thread.top = 1
 				thread.frameExtent = 0
 				thread.clearInactive(0, oldExtent)
-				thread.values[0] = slotFromFunction(function)
+				thread.values[0] = slotFromFunctionObject(functionObject)
 				if failure := thread.pushFunctionCall(
-					function,
+					functionObject,
 					0,
 					0,
 					allResults,
@@ -1724,19 +1734,21 @@ func stageNativeTestCall(
 
 	required := 1 + len(arguments)
 	thread.reserveValues(required)
-	thread.values[0] = slotFromFunction(function)
+	object := function.runtimeObject()
+	thread.values[0] = slotFromFunctionObject(object)
 	for index, argument := range arguments {
 		thread.values[index+1] = slotFromValue(argument)
 	}
 	thread.top = required
 	if failure := thread.pushFunctionCall(
-		function,
+		object,
 		0,
 		len(arguments),
 		wantedResults,
 	); failure != nil {
 		t.Fatal(failure)
 	}
+	runtime.KeepAlive(function)
 	return thread
 }
 

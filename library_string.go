@@ -54,13 +54,16 @@ func (state *State) OpenString() error {
 		len(stringLibraryFunctions)+aliasCount,
 	)
 	for _, definition := range stringLibraryFunctions {
-		function, functionErr := state.NewNativeFunction(definition.entry)
+		function, functionErr := state.newNativeFunctionObject(
+			definition.entry,
+			nil,
+		)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -68,10 +71,11 @@ func (state *State) OpenString() error {
 	// The standard Lua 5.1 distribution defines LUA_COMPAT_GFIND, which
 	// publishes string.gmatch a second time under its former name. It aliases
 	// the same canonical Function rather than registering a second one.
-	if err := library.rawSetStringValue(
-		"gfind",
-		library.rawGetStringValue("gmatch"),
-	); err != nil {
+	gmatch, found := library.rawStringSlot("gmatch")
+	if !found {
+		panic("lua: string.gmatch was not installed")
+	}
+	if err := library.rawSetStringSlot("gfind", gmatch); err != nil {
 		return err
 	}
 
@@ -304,7 +308,7 @@ func stringChar(frame Frame) Outcome {
 }
 
 func stringDump(frame Frame) Outcome {
-	function, ok := frame.Function(0)
+	function, ok := frame.functionObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "function")
 	}
@@ -452,17 +456,21 @@ func stringGMatch(frame Frame) Outcome {
 	// tail before constructing the iterator so unrelated values are not kept
 	// live through the native allocation.
 	frame.discardArgumentsAfter(2)
-	state := frame.State()
-	iterator, err := state.NewNativeFunction(
+	iterator, err := frame.thread.state.newNativeFunctionObject(
 		gmatchStep,
-		state.String(subject),
-		state.String(pattern),
-		Number(0),
+		[]slot{
+			stringSlot(frame.thread.owner.strings.make(subject)),
+			stringSlot(frame.thread.owner.strings.make(pattern)),
+			numberSlot(0),
+		},
 	)
 	if err != nil {
 		return frame.RaiseString(err.Error())
 	}
-	return frame.ReturnValue(iterator.Value())
+	return frame.returnOne(
+		frame.activation(),
+		slotFromFunctionObject(iterator),
+	)
 }
 
 // gmatchStep resumes the iteration. '^' is an ordinary character here because

@@ -288,7 +288,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 	thread.values[retainedIndex] = slotFromValue(retained)
 
 	callBase := int(callerFrame.base) + 2
-	thread.values[callBase] = slotFromValue(callee.Value())
+	thread.values[callBase] = slotFromFunctionObject(callee)
 	thread.values[callBase+1] = slotFromValue(Number(7))
 	if callErr := thread.pushFunctionCall(callee, callBase, 1, 1); callErr != nil {
 		t.Fatal(callErr)
@@ -306,7 +306,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 	assertTestSlot(t, thread.values[retainedIndex], retained)
 
 	openBase := int(callerFrame.base) + 3
-	thread.values[openBase] = slotFromValue(callee.Value())
+	thread.values[openBase] = slotFromFunctionObject(callee)
 	thread.values[openBase+1] = slotFromValue(Number(11))
 	if callErr := thread.pushFunctionCall(callee, openBase, 1, allResults); callErr != nil {
 		t.Fatal(callErr)
@@ -362,7 +362,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	captured := thread.captureUpvalue(capturedIndex)
 
 	callBase := int(frame.base) + 3
-	thread.values[callBase] = slotFromValue(second.Value())
+	thread.values[callBase] = slotFromFunctionObject(second)
 	thread.values[callBase+1] = slotFromValue(Number(10))
 	thread.values[callBase+2] = slotFromValue(Number(20))
 	if callErr := thread.replaceFunctionCall(second, callBase, 2); callErr != nil {
@@ -378,7 +378,9 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 		thread.top != 5 {
 		t.Fatalf("first tail replacement = %+v, frames %d, top %d", frame, len(thread.frames), thread.top)
 	}
-	assertTestSlot(t, thread.values[0], second.Value())
+	if thread.values[0] != slotFromFunctionObject(second) {
+		t.Fatal("tail call did not retain the second function")
+	}
 	assertTestSlot(t, thread.values[1], Number(10))
 	assertTestSlot(t, thread.values[2], Number(20))
 	if testUpvalueIsOpen(captured) {
@@ -387,7 +389,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	assertTestSlot(t, captured.read(), capturedValue)
 
 	callBase = int(frame.base) + 2
-	thread.values[callBase] = slotFromValue(third.Value())
+	thread.values[callBase] = slotFromFunctionObject(third)
 	thread.values[callBase+1] = slotFromValue(Number(30))
 	if callErr := thread.replaceFunctionCall(third, callBase, 1); callErr != nil {
 		t.Fatal(callErr)
@@ -401,7 +403,9 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 		thread.top != 7 {
 		t.Fatalf("second tail replacement = %+v, top %d", frame, thread.top)
 	}
-	assertTestSlot(t, thread.values[0], third.Value())
+	if thread.values[0] != slotFromFunctionObject(third) {
+		t.Fatal("tail call did not retain the third function")
+	}
 	assertTestSlot(t, thread.values[1], Nil())
 	assertTestSlot(t, thread.values[2], Nil())
 	assertTestSlot(t, thread.values[3], Number(30))
@@ -430,7 +434,7 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 	oldCapacity := cap(thread.values)
 
 	callBase := int(frame.base) + 1
-	thread.values[callBase] = slotFromValue(large.Value())
+	thread.values[callBase] = slotFromFunctionObject(large)
 	if callErr := thread.pushFunctionCall(large, callBase, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
@@ -515,7 +519,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 	rootUpvalue := thread.captureUpvalue(rootIndex)
 
 	callBase := int(root.base) + 2
-	thread.values[callBase] = slotFromValue(function.Value())
+	thread.values[callBase] = slotFromFunctionObject(function)
 	if callErr := thread.pushFunctionCall(function, callBase, 0, 0); callErr != nil {
 		t.Fatal(callErr)
 	}
@@ -603,7 +607,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		t *testing.T,
 		options Options,
 		calleeRegisters int,
-	) (*State, *Thread, *Function, int, instruction) {
+	) (*State, *Thread, *functionObject, int, instruction) {
 		t.Helper()
 		state, err := New(options)
 		if err != nil {
@@ -618,7 +622,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 			t.Fatal(callErr)
 		}
 		callBase := int(thread.frames[0].base) + 1
-		thread.values[callBase] = slotFromFunction(callee)
+		thread.values[callBase] = slotFromFunctionObject(callee)
 		return state, thread, callee, callBase, makeABC(opCall, 1, 1, 1)
 	}
 
@@ -814,7 +818,7 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 					thread.values[index] = slotFromValue(dirty.Value())
 				}
 				callBase := int(callerFrame.base) + test.callRegister
-				thread.values[callBase] = slotFromFunction(callee)
+				thread.values[callBase] = slotFromFunctionObject(callee)
 				for index := 0; index < test.argumentCount; index++ {
 					thread.values[callBase+1+index] = slotFromValue(
 						Number(float64(index + 1)),
@@ -923,7 +927,7 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 				}
 				callerFrame := thread.frames[0]
 				callBase := int(callerFrame.base) + 2
-				thread.values[callBase] = slotFromFunction(callee)
+				thread.values[callBase] = slotFromFunctionObject(callee)
 				if callErr := thread.pushFunctionCall(
 					callee,
 					callBase,
@@ -1033,7 +1037,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(callErr)
 		}
 		callBase := int(thread.frames[0].base) + 1
-		thread.values[callBase] = slotFromValue(callee.Value())
+		thread.values[callBase] = slotFromFunctionObject(callee)
 		beforeValues := slices.Clone(thread.values)
 		beforeFrames := slices.Clone(thread.frames)
 		beforeTop := thread.top
@@ -1094,7 +1098,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		}
 		frame := thread.frames[0]
 		callBase := int(frame.base) + 1
-		thread.values[callBase] = slotFromValue(tooLarge.Value())
+		thread.values[callBase] = slotFromFunctionObject(tooLarge)
 		captured := thread.captureUpvalue(int(frame.base))
 		beforeValues := slices.Clone(thread.values)
 		beforeFrames := slices.Clone(thread.frames)
@@ -1163,7 +1167,7 @@ func TestLuaCallTracksDeepFrameExtentExactly(t *testing.T) {
 		callBase := 0
 		if index != 0 {
 			callBase = int(thread.frames[len(thread.frames)-1].base)
-			thread.values[callBase] = slotFromValue(function.Value())
+			thread.values[callBase] = slotFromFunctionObject(function)
 		}
 		if callErr := thread.pushFunctionCall(function, callBase, 0, 0); callErr != nil {
 			t.Fatalf("depth %d: %v", index, callErr)
@@ -1207,7 +1211,7 @@ func TestLuaCallFoundationStaysCompactAndAllocationFreeWhenWarm(t *testing.T) {
 	thread.reserveFrames(1)
 
 	run := func() {
-		thread.values[0] = slotFromValue(first.Value())
+		thread.values[0] = slotFromFunctionObject(first)
 		thread.values[1] = slotFromValue(Number(10))
 		thread.values[2] = slotFromValue(Number(20))
 		thread.top = 3
@@ -1215,7 +1219,7 @@ func TestLuaCallFoundationStaysCompactAndAllocationFreeWhenWarm(t *testing.T) {
 			panic(callErr)
 		}
 		callBase := int(thread.frames[0].base) + 2
-		thread.values[callBase] = slotFromValue(tail.Value())
+		thread.values[callBase] = slotFromFunctionObject(tail)
 		thread.values[callBase+1] = slotFromValue(Number(30))
 		if callErr := thread.replaceFunctionCall(tail, callBase, 1); callErr != nil {
 			panic(callErr)
@@ -1235,7 +1239,7 @@ func newTestLuaFunction(
 	registers int,
 	varargFlags int,
 	upvalueCount int,
-) *Function {
+) *functionObject {
 	t.Helper()
 	builder := testPrototypeBuilder(makeABC(opReturn, 0, 1, 0))
 	builder.parameters = parameters
@@ -1261,12 +1265,12 @@ func newTestLuaFunction(
 func setTestCall(
 	thread *Thread,
 	callBase int,
-	function *Function,
+	function *functionObject,
 	arguments ...Value,
 ) {
 	end := callBase + 1 + len(arguments)
 	thread.reserveValues(end)
-	thread.values[callBase] = slotFromValue(function.Value())
+	thread.values[callBase] = slotFromFunctionObject(function)
 	for index, argument := range arguments {
 		thread.values[callBase+1+index] = slotFromValue(argument)
 	}

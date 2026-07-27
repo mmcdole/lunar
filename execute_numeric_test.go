@@ -123,8 +123,8 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 			"@right.lua",
 			`return "right"`,
 		)
-		left := metamethodTestTable(t, state, "__add", leftHandler.Value())
-		right := metamethodTestTable(t, state, "__add", rightHandler.Value())
+		left := metamethodTestTable(t, state, "__add", leftHandler.owningValue())
+		right := metamethodTestTable(t, state, "__add", rightHandler.owningValue())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -170,7 +170,7 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 			`return "right"`,
 		)
 		left := metamethodTestTable(t, state, "__add", Bool(false))
-		right := metamethodTestTable(t, state, "__add", rightHandler.Value())
+		right := metamethodTestTable(t, state, "__add", rightHandler.owningValue())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -211,7 +211,7 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__add", trap.Value()); err != nil {
+		if err := metatable.RawSetString("__add", trap.owningValue()); err != nil {
 			t.Fatal(err)
 		}
 		if err := state.SetMetatable(state.String(""), metatable); err != nil {
@@ -266,7 +266,7 @@ func TestExecutorArithmeticMetamethodEvents(t *testing.T) {
 				t,
 				state,
 				test.event,
-				handler.Value(),
+				handler.owningValue(),
 			)
 			right, err := state.NewTable(0, 0)
 			if err != nil {
@@ -305,7 +305,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@call.lua",
 			`local callable, left, right = ...; return right`,
 		)
-		callable := metamethodTestTable(t, state, "__call", callHandler.Value())
+		callable := metamethodTestTable(t, state, "__call", callHandler.owningValue())
 		left := metamethodTestTable(t, state, "__add", callable.Value())
 		right, err := state.NewTable(0, 0)
 		if err != nil {
@@ -341,7 +341,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@unary.lua",
 			`local left, right = ...; return left == right`,
 		)
-		value := metamethodTestTable(t, state, "__unm", handler.Value())
+		value := metamethodTestTable(t, state, "__unm", handler.owningValue())
 		caller := compileTestFunction(
 			t,
 			state,
@@ -382,7 +382,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@multiple.lua",
 			`return 1, 2`,
 		)
-		left := metamethodTestTable(t, state, "__add", multiple.Value())
+		left := metamethodTestTable(t, state, "__add", multiple.owningValue())
 		thread, result := executeTestFunction(
 			t,
 			state,
@@ -394,7 +394,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 		assertExecutionValues(t, thread, Number(1))
 
 		empty := compileTestFunction(t, state, "@empty.lua", `return`)
-		left = metamethodTestTable(t, state, "__add", empty.Value())
+		left = metamethodTestTable(t, state, "__add", empty.owningValue())
 		thread, result = executeTestFunction(
 			t,
 			state,
@@ -441,7 +441,7 @@ return result
 			)
 		}
 
-		left := metamethodTestTable(t, state, "__add", handler.Value())
+		left := metamethodTestTable(t, state, "__add", handler.owningValue())
 		right, err := state.NewTable(0, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -482,7 +482,7 @@ return finish(right)
 		if !prototypeContainsOpcode(handler.prototype, opTailCall) {
 			t.Fatal("handler did not compile a tail call")
 		}
-		left := metamethodTestTable(t, state, "__add", handler.Value())
+		left := metamethodTestTable(t, state, "__add", handler.owningValue())
 		right, err := state.NewTable(0, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -577,10 +577,10 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__add", add.Value()); err != nil {
+		if err := metatable.RawSetString("__add", add.owningValue()); err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__sub", sub.Value()); err != nil {
+		if err := metatable.RawSetString("__sub", sub.owningValue()); err != nil {
 			t.Fatal(err)
 		}
 		value, err := state.NewTable(0, 0)
@@ -630,10 +630,10 @@ func TestExecutorNestedArithmeticContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__add", addHandler.Value()); err != nil {
+	if err := metatable.RawSetString("__add", addHandler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__eq", equalHandler.Value()); err != nil {
+	if err := metatable.RawSetString("__eq", equalHandler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	left, err := state.NewTable(0, 0)
@@ -719,8 +719,8 @@ return left == right, left ~= right
 		"@equal-handler.lua",
 		`return "truthy"`,
 	)
-	left := metamethodTestTable(t, state, "__eq", handler.Value())
-	right := metamethodTestTable(t, state, "__eq", handler.Value())
+	left := metamethodTestTable(t, state, "__eq", handler.owningValue())
+	right := metamethodTestTable(t, state, "__eq", handler.owningValue())
 	thread, result := executeTestFunction(
 		t,
 		state,
@@ -737,7 +737,7 @@ return left == right, left ~= right
 		"@other.lua",
 		`return true`,
 	)
-	right = metamethodTestTable(t, state, "__eq", other.Value())
+	right = metamethodTestTable(t, state, "__eq", other.owningValue())
 	thread, result = executeTestFunction(
 		t,
 		state,
@@ -754,8 +754,8 @@ return left == right, left ~= right
 		"@false.lua",
 		`return false`,
 	)
-	first := metamethodTestTable(t, state, "__eq", falseHandler.Value())
-	second := metamethodTestTable(t, state, "__eq", falseHandler.Value())
+	first := metamethodTestTable(t, state, "__eq", falseHandler.owningValue())
+	second := metamethodTestTable(t, state, "__eq", falseHandler.owningValue())
 	thread, result = executeTestFunction(
 		t,
 		state,
@@ -782,7 +782,7 @@ return left == right, left ~= right
 	}
 	if err := metatable.RawSetString(
 		"__eq",
-		handler.Value(),
+		handler.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -881,8 +881,8 @@ local left, right = ...
 return left < right, left <= right
 `)
 	less := compileTestFunction(t, state, "@less.lua", `return true`)
-	left := metamethodTestTable(t, state, "__lt", less.Value())
-	right := metamethodTestTable(t, state, "__lt", less.Value())
+	left := metamethodTestTable(t, state, "__lt", less.owningValue())
+	right := metamethodTestTable(t, state, "__lt", less.owningValue())
 
 	thread, result := executeTestFunction(
 		t,
@@ -897,13 +897,13 @@ return left < right, left <= right
 	lessEqual := compileTestFunction(t, state, "@less-equal.lua", `return false`)
 	if err := left.runtimeObject().metatable.rawSetStringValue(
 		"__le",
-		lessEqual.Value(),
+		lessEqual.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
 	if err := right.runtimeObject().metatable.rawSetStringValue(
 		"__le",
-		lessEqual.Value(),
+		lessEqual.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -920,7 +920,7 @@ return left < right, left <= right
 	different := compileTestFunction(t, state, "@different.lua", `return true`)
 	if err := right.runtimeObject().metatable.rawSetStringValue(
 		"__lt",
-		different.Value(),
+		different.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1072,7 +1072,7 @@ func TestExecutorMetamethodFailureClearsContinuations(t *testing.T) {
 local invalid = 1
 return invalid()
 `)
-	left := metamethodTestTable(t, state, "__add", handler.Value())
+	left := metamethodTestTable(t, state, "__add", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1164,7 +1164,7 @@ func TestExecutorMetamethodLimitFailuresAreAtomic(t *testing.T) {
 				thread,
 				0,
 				0,
-				slotFromValue(handler.Value()),
+				slotFromValue(handler.owningValue()),
 				numberSlot(1),
 				numberSlot(2),
 				numberSlot(3),
@@ -1207,7 +1207,7 @@ return invalid()
 		thread,
 		0,
 		0,
-		slotFromValue(handler.Value()),
+		slotFromValue(handler.owningValue()),
 		numberSlot(1),
 		numberSlot(2),
 		nilSlot,
@@ -1285,7 +1285,7 @@ func TestExecutorWarmMetamethodContinuationDoesNotAllocate(t *testing.T) {
 		"@handler.lua",
 		`return 42`,
 	)
-	left := metamethodTestTable(t, state, "__add", handler.Value())
+	left := metamethodTestTable(t, state, "__add", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 )
 
 // ErrMainThread reports an attempt to resume a State's main Thread through
@@ -26,13 +27,24 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 	if err := state.runtime.accept(callable); err != nil {
 		return nil, err
 	}
+	thread, err := state.newThread(slotFromValue(callable))
+	runtime.KeepAlive(callable)
+	return thread, err
+}
+
+func (state *State) newThread(callable slot) (*Thread, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := state.runtime.acceptSlot(callable); err != nil {
+		return nil, err
+	}
 	parent := state.currentThread()
-	compact := slotFromValue(callable)
-	if _, direct := functionSlot(compact); !direct &&
-		callMetamethodFunction(parent, compact) == nil {
+	if _, direct := functionSlot(callable); !direct &&
+		callMetamethodFunction(parent, callable) == nil {
 		message := fmt.Sprintf(
 			"attempt to call a %s value",
-			compact.kind(),
+			callable.kind(),
 		)
 		return nil, newCoroutineFailure(state, message)
 	}
@@ -49,7 +61,7 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 		top:          1,
 		status:       ThreadSuspended,
 	}
-	writeSlot(&thread.values[0], compact)
+	writeSlot(&thread.values[0], callable)
 	return thread, nil
 }
 

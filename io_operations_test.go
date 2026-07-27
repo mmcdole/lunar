@@ -884,7 +884,7 @@ func ioOperationFunction(
 	if err != nil {
 		t.Fatal(err)
 	}
-	return function
+	return function.owningHandle()
 }
 
 func newIOOperationFile(

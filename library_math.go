@@ -83,13 +83,16 @@ func (state *State) OpenMath() error {
 			constantCount,
 	)
 	for _, definition := range mathLibraryFunctions {
-		function, functionErr := state.NewNativeFunction(definition.entry)
+		function, functionErr := state.newNativeFunctionObject(
+			definition.entry,
+			nil,
+		)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -98,15 +101,16 @@ func (state *State) OpenMath() error {
 	source := &randomSource{}
 	source.seed(defaultRandomSeed)
 	for _, definition := range mathLibraryRandomFunctions {
-		function, functionErr := state.NewNativeFunction(
+		function, functionErr := state.newNativeFunctionObject(
 			definition.bind(source),
+			nil,
 		)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -115,10 +119,11 @@ func (state *State) OpenMath() error {
 	// The standard Lua 5.1 distribution defines LUA_COMPAT_MOD, which
 	// publishes math.fmod a second time as math.mod. It aliases the same
 	// canonical Function rather than registering a second one.
-	if err := library.rawSetStringValue(
-		"mod",
-		library.rawGetStringValue("fmod"),
-	); err != nil {
+	fmod, found := library.rawStringSlot("fmod")
+	if !found {
+		panic("lua: math.fmod was not installed")
+	}
+	if err := library.rawSetStringSlot("mod", fmod); err != nil {
 		return err
 	}
 	if err := library.rawSetStringValue("pi", Number(mathPi)); err != nil {

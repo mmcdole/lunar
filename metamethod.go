@@ -136,7 +136,7 @@ func matchingMetamethod(
 	return leftMethod, true
 }
 
-func callMetamethodFunction(thread *Thread, value slot) *Function {
+func callMetamethodFunction(thread *Thread, value slot) *functionObject {
 	method, found := metamethodSlot(thread, value, metaCall)
 	if !found {
 		return nil

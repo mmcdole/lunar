@@ -171,8 +171,9 @@ func TestIOLuaOnlyExecutionDoesNotPublishUserDataHandles(t *testing.T) {
 	state := newStateWithIO(t, Options{})
 	defer state.Close()
 
-	if entries, keys, _ := hostDirectoryCounts(
+	if entries, keys, _ := hostDirectoryKindCounts(
 		&state.runtime.hosts,
+		UserDataKind,
 	); entries != 0 || keys != 0 {
 		t.Fatalf(
 			"opening io published userdata handles: entries=%d keys=%d",
@@ -204,8 +205,9 @@ assert(raised:close())
 return true
 `)
 	assertTestValues(t, results, Bool(true))
-	if entries, keys, _ := hostDirectoryCounts(
+	if entries, keys, _ := hostDirectoryKindCounts(
 		&state.runtime.hosts,
+		UserDataKind,
 	); entries != 0 || keys != 0 {
 		t.Fatalf(
 			"Lua-only io published userdata handles: entries=%d keys=%d",

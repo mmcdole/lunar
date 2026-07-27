@@ -628,11 +628,11 @@ between separate days is perfectly stationary.
 ### 12. Host ownership checkpoints
 
 The semantic-collection boundary separates public handles from compact
-userdata and table objects. Lua slots, tables, native captures, and the
-standard libraries retain the 48-byte compact userdata or 80-byte compact
-table directly. A State-local weak directory canonicalizes a public handle
-only when an object actually crosses into Go; it adds no field to every
-compact object.
+userdata, table, and function objects. Lua slots, tables, native captures,
+activations, and the standard libraries retain the 48-byte compact userdata,
+80-byte compact table, or 32-byte compact function directly. A State-local
+weak directory canonicalizes a public handle only when an object actually
+crosses into Go; it adds no field to every compact object.
 
 On the same Apple M3 Pro, first publication through `State.NewUserData`
 measures four allocations per object, compared with one allocation for the
@@ -657,15 +657,28 @@ The table checkpoint makes that trade more explicit:
 - opening and exercising every standard library without returning a table to
   Go creates no table handle.
 
+Functions now use the same boundary rule. `State.NewNativeFunction`, which
+publishes immediately, moves from about 17.5 ns, 64 bytes, and one allocation
+to about 0.8 microseconds, 106 bytes, and four allocations. Repeated publication
+of an existing function is allocation-free at about 27 ns. Opening and
+exercising every standard library creates no function handle: roughly 122
+native library functions, dynamically created iterators, coroutine wrappers,
+and internal protected calls stay compact. A private Lua function object
+remains 32 bytes; the 24-byte public token is paid only by functions observed
+from Go. Native capture backing is copied to exact length so unused Go slice
+capacity cannot hide untraced Lua ownership edges. Paired internal-call
+measurements remain neutral within low-single-digit variation and
+allocation-free.
+
 This is an explicit trade: boundary-created objects pay more so every Lua-only
-table avoids a permanent handle-cache word and its allocator size-class cost.
-Function and thread publication should use the same rule because their
-boundary frequency is lower and their internal paths remain compact. Bulk
-Go-side graph construction needs the planned low-level builder rather than
-thousands of friendly owning publications. If representative embedding
-workloads show that first-publication cost dominates despite that interface,
-change canonicalization as one coherent representation decision rather than
-adding per-kind shortcuts.
+table or function avoids a permanent handle-cache word and its allocator
+size-class cost. Threads should use the same rule because their boundary
+frequency is lower and their internal paths remain compact. Bulk Go-side graph
+construction needs the planned low-level builder rather than thousands of
+friendly owning publications. If representative embedding workloads show that
+first-publication cost dominates despite that interface, change
+canonicalization as one coherent representation decision rather than adding
+per-kind shortcuts.
 
 ## Gates
 

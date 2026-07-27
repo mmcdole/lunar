@@ -97,7 +97,7 @@ func TestExecutorTableWriteRejectsInvalidKeysBeforeMetamethods(t *testing.T) {
 			}
 			if err := metatable.RawSetString(
 				"__newindex",
-				handler.Value(),
+				handler.owningValue(),
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +174,7 @@ return target.missing
 	getter := compileTestFunction(t, state, "@index.lua", `return 41`)
 	if err := getterMetatable.RawSetString(
 		"__index",
-		getter.Value(),
+		getter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ return target.missing
 	}
 	if err := replacementMetatable.RawSetString(
 		"__index",
-		replacementGetter.Value(),
+		replacementGetter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ target.recorded = 23
 `)
 	if err := setterMetatable.RawSetString(
 		"__newindex",
-		setter.Value(),
+		setter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ return key, target
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__index", getter.Value()); err != nil {
+	if err := metatable.RawSetString("__index", getter.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	target, err := state.NewTable(0, 0)
@@ -316,7 +316,7 @@ return target[key]
 	noResult := compileTestFunction(t, state, "@empty.lua", `return`)
 	if err := metatable.RawSetString(
 		"__index",
-		noResult.Value(),
+		noResult.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ return target[key]
 local invalid = 1
 return invalid()
 `)
-	if err := metatable.RawSetString("__index", trap.Value()); err != nil {
+	if err := metatable.RawSetString("__index", trap.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	thread, result = executeTestFunction(
@@ -363,7 +363,7 @@ return invalid()
 	}
 	if err := callableMetatable.RawSetString(
 		"__call",
-		trap.Value(),
+		trap.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +398,7 @@ return invalid()
 	)
 	if err := proxyMetatable.RawSetString(
 		"__index",
-		receiverGetter.Value(),
+		receiverGetter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ return invalid()
 	}
 	if err := scalarMetatable.RawSetString(
 		"__index",
-		getter.Value(),
+		getter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +448,7 @@ return invalid()
 	}
 	if err := parentMetatable.RawSetString(
 		"__index",
-		getter.Value(),
+		getter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ return "ignored", "also ignored"
 	}
 	if err := metatable.RawSetString(
 		"__newindex",
-		setter.Value(),
+		setter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -622,7 +622,7 @@ return invalid()
 	}
 	if err := proxyMetatable.RawSetString(
 		"__call",
-		trap.Value(),
+		trap.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +654,7 @@ return invalid()
 
 	if err := proxyMetatable.RawSetString(
 		"__newindex",
-		setter.Value(),
+		setter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -811,7 +811,7 @@ return invalid()
 	}
 	if err := metatable.RawSetString(
 		"__newindex",
-		handler.Value(),
+		handler.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -878,7 +878,7 @@ sink[2] = value
 	}
 	if err := innerMetatable.RawSetString(
 		"__newindex",
-		inner.Value(),
+		inner.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -905,7 +905,7 @@ nested.forwarded = value
 	}
 	if err := outerMetatable.RawSetString(
 		"__newindex",
-		outer.Value(),
+		outer.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -953,7 +953,7 @@ return relay(...)
 `)
 	if err := outerMetatable.RawSetString(
 		"__newindex",
-		tailHandler.Value(),
+		tailHandler.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -990,7 +990,7 @@ return answer
 		t.Fatal(err)
 	}
 	if err := state.SetFunctionEnvironment(
-		function,
+		function.owningHandle(),
 		environment,
 	); err != nil {
 		t.Fatal(err)
@@ -1043,7 +1043,7 @@ return answer
 		`return provided`,
 	)
 	if err := state.SetFunctionEnvironment(
-		getter,
+		getter.owningHandle(),
 		environment,
 	); err != nil {
 		t.Fatal(err)
@@ -1085,7 +1085,7 @@ return answer
 		`forwarded = ...; return forwarded`,
 	)
 	if err := state.SetFunctionEnvironment(
-		forwardingFunction,
+		forwardingFunction.owningHandle(),
 		forwardingEnvironment,
 	); err != nil {
 		t.Fatal(err)
@@ -1118,7 +1118,7 @@ return self, argument
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := target.RawSetString("method", method.Value()); err != nil {
+	if err := target.RawSetString("method", method.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@caller.lua", `
@@ -1143,7 +1143,7 @@ return target:method(7)
 	}
 	if err := indexEnvironment.RawSetString(
 		"method",
-		method.Value(),
+		method.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1154,7 +1154,7 @@ return target:method(7)
 		`return method`,
 	)
 	if err := state.SetFunctionEnvironment(
-		indexMethod,
+		indexMethod.owningHandle(),
 		indexEnvironment,
 	); err != nil {
 		t.Fatal(err)
@@ -1165,7 +1165,7 @@ return target:method(7)
 	}
 	if err := methodMetatable.RawSetString(
 		"__index",
-		indexMethod.Value(),
+		indexMethod.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1219,7 +1219,7 @@ return target:method(7)
 	assertExecutionValues(
 		t,
 		thread,
-		method.Value(),
+		method.owningValue(),
 		target.Value(),
 	)
 
@@ -1271,7 +1271,7 @@ return key
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__index", index.Value()); err != nil {
+	if err := metatable.RawSetString("__index", index.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(target.Value(), metatable); err != nil {
@@ -1462,7 +1462,7 @@ return invalid()
 	}
 	if err := metatable.RawSetString(
 		"__newindex",
-		trap.Value(),
+		trap.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1623,7 +1623,7 @@ return key
 	}
 	if err := getterMetatable.RawSetString(
 		"__index",
-		getter.Value(),
+		getter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1645,7 +1645,7 @@ return key
 	}
 	if err := setterMetatable.RawSetString(
 		"__newindex",
-		setter.Value(),
+		setter.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1662,7 +1662,7 @@ return key
 
 	tests := []struct {
 		name      string
-		function  *Function
+		function  *functionObject
 		arguments []slot
 	}{
 		{
@@ -1945,7 +1945,7 @@ func BenchmarkExecutorIndexMetamethodLoop(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := metatable.RawSetString("__index", getter.Value()); err != nil {
+	if err := metatable.RawSetString("__index", getter.owningValue()); err != nil {
 		b.Fatal(err)
 	}
 	table, err := state.NewTable(0, 0)
@@ -2015,7 +2015,7 @@ return value
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := table.RawSetString("method", method.Value()); err != nil {
+	if err := table.RawSetString("method", method.owningValue()); err != nil {
 		b.Fatal(err)
 	}
 	function := compileTestFunction(b, state, "@method-loop.lua", `

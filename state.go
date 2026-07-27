@@ -575,22 +575,27 @@ func (state *State) SetMetatable(value Value, metatable *Table) error {
 
 // FunctionEnvironment returns function's Lua 5.1 environment.
 func (state *State) FunctionEnvironment(function *Function) (*Table, error) {
-	if err := state.checkFunction(function); err != nil {
+	object, err := state.acceptFunction(function)
+	if err != nil {
 		return nil, err
 	}
-	return function.environment.owningHandle(), nil
+	environment := object.environment.owningHandle()
+	runtime.KeepAlive(function)
+	return environment, nil
 }
 
 // SetFunctionEnvironment replaces function's Lua 5.1 environment.
 func (state *State) SetFunctionEnvironment(function *Function, environment *Table) error {
-	if err := state.checkFunction(function); err != nil {
+	object, err := state.acceptFunction(function)
+	if err != nil {
 		return err
 	}
 	compactEnvironment, err := state.acceptTable(environment)
 	if err != nil {
 		return err
 	}
-	function.environment = compactEnvironment
+	object.environment = compactEnvironment
+	runtime.KeepAlive(function)
 	runtime.KeepAlive(environment)
 	return nil
 }
@@ -674,17 +679,25 @@ func (state *State) acceptTable(table *Table) (*tableObject, error) {
 	return object, nil
 }
 
-func (state *State) checkFunction(function *Function) error {
+func (state *State) acceptFunction(
+	function *Function,
+) (*functionObject, error) {
 	if err := state.checkOpen(); err != nil {
-		return err
+		return nil, err
 	}
-	if function == nil || function.owner == nil {
-		return ErrInvalidValue
+	token := function.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.kind != FunctionKind ||
+		token.object == nil {
+		return nil, ErrInvalidValue
 	}
-	if function.owner != state.runtime {
-		return ErrForeignValue
+	if token.owner != state.runtime {
+		return nil, ErrForeignValue
 	}
-	return nil
+	object := (*functionObject)(token.object)
+	runtime.KeepAlive(function)
+	return object, nil
 }
 
 func (state *State) checkThread(thread *Thread) error {
@@ -786,7 +799,21 @@ func (thread *Thread) Value() Value {
 	if thread == nil || thread.owner == nil {
 		return Value{}
 	}
-	return objectValue(ThreadKind, unsafe.Pointer(thread))
+	return slotFromThread(thread).owningValue()
+}
+
+func slotFromThread(thread *Thread) slot {
+	if thread == nil || thread.owner == nil {
+		panic("lua: invalid canonical thread")
+	}
+	return objectSlot(ThreadKind, unsafe.Pointer(thread))
+}
+
+func threadFromSlot(value slot) *Thread {
+	if !value.isThread() {
+		panic("lua: slot is not a thread")
+	}
+	return (*Thread)(value.ref)
 }
 
 // State returns the State that owns thread.

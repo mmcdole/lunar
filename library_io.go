@@ -107,15 +107,15 @@ func (state *State) OpenIO() error {
 	if err != nil {
 		return err
 	}
-	if err := environment.rawSetStringValue(
+	if err := environment.rawSetStringSlot(
 		"__close",
-		closeFunction.Value(),
+		slotFromFunctionObject(closeFunction),
 	); err != nil {
 		return err
 	}
-	if err := standardEnvironment.rawSetStringValue(
+	if err := standardEnvironment.rawSetStringSlot(
 		"__close",
-		noCloseFunction.Value(),
+		slotFromFunctionObject(noCloseFunction),
 	); err != nil {
 		return err
 	}
@@ -128,9 +128,9 @@ func (state *State) OpenIO() error {
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -143,9 +143,9 @@ func (state *State) OpenIO() error {
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := metatable.rawSetStringValue(
+		if setErr := metatable.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -243,8 +243,8 @@ func (state *State) ensureFileMetatable() (*tableObject, error) {
 func (state *State) newIOFunction(
 	environment *tableObject,
 	entry NativeFunc,
-) (*Function, error) {
-	function, err := state.NewNativeFunction(entry)
+) (*functionObject, error) {
+	function, err := state.newNativeFunctionObject(entry, nil)
 	if err != nil {
 		return nil, err
 	}

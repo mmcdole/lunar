@@ -308,8 +308,8 @@ end
 	if thread.top != 1 {
 		t.Fatalf("closure result count = %d; want 1", thread.top)
 	}
-	closure, ok := thread.values[0].owningValue().Function()
-	if !ok || closure.UpvalueCount() != 1 {
+	closure, ok := functionSlot(thread.values[0])
+	if !ok || closure.prototype.upvalues != 1 {
 		t.Fatalf("closure result = %v", thread.values[0].owningValue())
 	}
 	if testUpvalueIsOpen(testFunctionUpvalue(closure, 0)) ||
@@ -428,7 +428,7 @@ end
 	result := execute(thread, 0)
 	assertExecutionReturned(t, result)
 
-	middle, ok := thread.values[0].owningValue().Function()
+	middle, ok := functionSlot(thread.values[0])
 	if !ok {
 		t.Fatalf(
 			"root result = %v; want middle closure",
@@ -441,7 +441,7 @@ end
 	result = execute(thread, 0)
 	assertExecutionReturned(t, result)
 
-	inner, ok := thread.values[0].owningValue().Function()
+	inner, ok := functionSlot(thread.values[0])
 	if !ok {
 		t.Fatalf(
 			"middle result = %v; want inner closure",
@@ -721,7 +721,7 @@ func TestExecutorHonorsLuaCallMetamethods(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__call", handler.Value()); err != nil {
+		if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 			t.Fatal(err)
 		}
 		target, err := state.NewTable(0, 0)
@@ -760,7 +760,7 @@ return a, b, c, d
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__call", handler.Value()); err != nil {
+		if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 			t.Fatal(err)
 		}
 		if err := state.SetMetatable(Number(0), metatable); err != nil {
@@ -803,10 +803,10 @@ return target("value")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := metatable.RawSetString("__call", trap.Value()); err != nil {
+		if err := metatable.RawSetString("__call", trap.owningValue()); err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetMetatable(direct.Value(), metatable); err != nil {
+		if err := state.SetMetatable(direct.owningValue(), metatable); err != nil {
 			t.Fatal(err)
 		}
 		caller := compileTestFunction(t, state, "@caller.lua", `
@@ -814,7 +814,7 @@ local target = ...
 return target()
 `)
 
-		thread, result := executeTestFunction(t, state, caller, direct.Value())
+		thread, result := executeTestFunction(t, state, caller, direct.owningValue())
 		assertExecutionReturned(t, result)
 		assertExecutionValues(t, thread, state.String("direct"))
 	})
@@ -830,7 +830,7 @@ return target()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := numberMetatable.RawSetString("__call", handler.Value()); err != nil {
+		if err := numberMetatable.RawSetString("__call", handler.owningValue()); err != nil {
 			t.Fatal(err)
 		}
 		if err := state.SetMetatable(Number(0), numberMetatable); err != nil {
@@ -886,7 +886,7 @@ return target(value)
 		t,
 		state,
 		caller,
-		failing.Value(),
+		failing.owningValue(),
 		Number(42),
 	)
 	if result.kind != executionFailed || result.err == nil {
@@ -918,7 +918,7 @@ return value()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__call", handler.Value()); err != nil {
+	if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	target, err := state.NewTable(0, 0)
@@ -972,7 +972,7 @@ return result
 		t,
 		state,
 		caller,
-		failing.Value(),
+		failing.owningValue(),
 		Number(42),
 	)
 	if result.kind != executionFailed || result.err == nil {
@@ -1068,7 +1068,7 @@ return value()
 	retained := state.String("caller")
 	thread.values[retainedIndex] = slotFromValue(retained)
 	callBase := retainedIndex + 1
-	thread.values[callBase] = slotFromValue(failing.Value())
+	thread.values[callBase] = slotFromValue(failing.owningValue())
 	thread.values[callBase+1] = slotFromValue(Number(9))
 	if callErr := thread.pushFunctionCall(failing, callBase, 1, 0); callErr != nil {
 		t.Fatal(callErr)
@@ -1154,7 +1154,7 @@ return result`
 	retained := state.String("suspended caller")
 	thread.values[retainedIndex] = slotFromValue(retained)
 	callBase := int(callerFrame.base) + 1
-	thread.values[callBase] = slotFromValue(child.Value())
+	thread.values[callBase] = slotFromValue(child.owningValue())
 	thread.values[callBase+1] = numberSlot(42)
 	if callErr := thread.pushFunctionCall(child, callBase, 1, 1); callErr != nil {
 		t.Fatal(callErr)
@@ -1205,12 +1205,12 @@ return get, set
 		state.String("before"),
 	)
 	assertExecutionReturned(t, result)
-	getter, getOK := thread.values[0].owningValue().Function()
-	setter, setOK := thread.values[1].owningValue().Function()
+	getter, getOK := functionSlot(thread.values[0])
+	setter, setOK := functionSlot(thread.values[1])
 	if !getOK ||
 		!setOK ||
-		getter.UpvalueCount() != 1 ||
-		setter.UpvalueCount() != 1 ||
+		getter.prototype.upvalues != 1 ||
+		setter.prototype.upvalues != 1 ||
 		testFunctionUpvalue(getter, 0) != testFunctionUpvalue(setter, 0) ||
 		testUpvalueIsOpen(testFunctionUpvalue(getter, 0)) {
 		t.Fatal("sibling closures do not share one closed upvalue")
@@ -1237,8 +1237,8 @@ return recurse
 `)
 	defer state.Close()
 	assertExecutionReturned(t, result)
-	function, ok := thread.values[0].owningValue().Function()
-	if !ok || function.UpvalueCount() != 1 {
+	function, ok := functionSlot(thread.values[0])
+	if !ok || function.prototype.upvalues != 1 {
 		t.Fatal("recursive closure did not capture itself")
 	}
 	if testUpvalueIsOpen(testFunctionUpvalue(function, 0)) {
@@ -1248,7 +1248,7 @@ return recurse
 	runtime.GC()
 	thread, result = executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
-	returned, ok := thread.values[0].owningValue().Function()
+	returned, ok := functionSlot(thread.values[0])
 	if !ok || returned != function {
 		t.Fatal("recursive closure lost its identity across collection")
 	}
@@ -1292,9 +1292,9 @@ return getter
 		state.String("block"),
 	)
 	assertExecutionReturned(t, result)
-	getter, ok := thread.values[0].owningValue().Function()
+	getter, ok := functionSlot(thread.values[0])
 	if !ok ||
-		getter.UpvalueCount() != 1 ||
+		getter.prototype.upvalues != 1 ||
 		testUpvalueIsOpen(testFunctionUpvalue(getter, 0)) {
 		t.Fatal("block closure retained an open stack value")
 	}
@@ -1326,7 +1326,7 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 	thread.reserveFrames(1)
 
 	run := func() {
-		thread.values[0] = slotFromValue(function.Value())
+		thread.values[0] = slotFromFunctionObject(function)
 		thread.values[1] = slotFromValue(Number(17))
 		thread.top = 2
 		if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
@@ -1399,7 +1399,7 @@ end`
 	if thread.top != 1 {
 		t.Fatalf("warm-call initializer returned %d values; want 1", thread.top)
 	}
-	kernel, ok := thread.values[0].owningValue().Function()
+	kernel, ok := functionSlot(thread.values[0])
 	if !ok {
 		t.Fatal("warm-call initializer did not return a function")
 	}
@@ -1464,7 +1464,7 @@ return result
 		b,
 		state,
 		caller,
-		callee.Value(),
+		callee.owningValue(),
 		Number(17),
 	)
 }
@@ -1616,7 +1616,7 @@ end
 		factory,
 		[]slot{slotFromValue(Number(17))},
 	)
-	closure, ok := thread.values[0].owningValue().Function()
+	closure, ok := functionSlot(thread.values[0])
 	if !ok {
 		b.Fatal("factory did not return a closure")
 	}
@@ -1663,7 +1663,7 @@ func compileTestFunction(
 	state *State,
 	sourceName string,
 	source string,
-) *Function {
+) *functionObject {
 	t.Helper()
 	prototype, syntaxError := compileSource(sourceName, source)
 	if syntaxError != nil {
@@ -1675,7 +1675,7 @@ func compileTestFunction(
 func executeTestFunction(
 	t testing.TB,
 	state *State,
-	function *Function,
+	function *functionObject,
 	arguments ...Value,
 ) (*Thread, executionResult) {
 	t.Helper()
@@ -1702,7 +1702,7 @@ func executeTestFunction(
 func benchmarkExecutorFunction(
 	b *testing.B,
 	state *State,
-	function *Function,
+	function *functionObject,
 	arguments ...Value,
 ) {
 	b.Helper()
@@ -1755,19 +1755,24 @@ func benchmarkExecutorSource(
 		b.Fatal("benchmark did not publish benchmark_kernel")
 	}
 	b.ReportMetric(float64(operations), metric)
-	benchmarkExecutorFunction(b, state, function, arguments...)
+	benchmarkExecutorFunction(
+		b,
+		state,
+		function.runtimeObject(),
+		arguments...,
+	)
 }
 
 func benchmarkRunExecutor(
 	thread *Thread,
-	function *Function,
+	function *functionObject,
 	arguments []slot,
 ) {
 	oldExtent := thread.liveValueExtent()
 	thread.top = 0
 	thread.frameExtent = 0
 	thread.clearInactive(0, oldExtent)
-	thread.values[0] = slotFromValue(function.Value())
+	thread.values[0] = slotFromFunctionObject(function)
 	copy(thread.values[1:], arguments)
 	thread.top = 1 + len(arguments)
 	if callErr := thread.pushFunctionCall(

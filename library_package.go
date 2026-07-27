@@ -112,20 +112,20 @@ func (state *State) OpenPackage() error {
 		return err
 	}
 
-	for index, loader := range [...]*Function{
+	for index, loader := range [...]*functionObject{
 		preloadLoader,
 		luaLoader,
 		cLoader,
 		cRootLoader,
 	} {
-		loaders.rawSetIntegerSlot(index+1, slotFromFunction(loader))
+		loaders.rawSetIntegerSlot(index+1, slotFromFunctionObject(loader))
 	}
 	for _, field := range []struct {
 		name  string
 		value slot
 	}{
-		{name: "loadlib", value: slotFromFunction(loadlib)},
-		{name: "seeall", value: slotFromFunction(seeall)},
+		{name: "loadlib", value: slotFromFunctionObject(loadlib)},
+		{name: "seeall", value: slotFromFunctionObject(seeall)},
 		{name: "loaders", value: slotFromTableObject(loaders)},
 		{name: "path", value: stringSlot(state.runtime.strings.make(path))},
 		{name: "cpath", value: stringSlot(state.runtime.strings.make(cpath))},
@@ -150,10 +150,16 @@ func (state *State) OpenPackage() error {
 	); err != nil {
 		return err
 	}
-	if err := globals.rawSetStringValue("require", require.Value()); err != nil {
+	if err := globals.rawSetStringSlot(
+		"require",
+		slotFromFunctionObject(require),
+	); err != nil {
 		return err
 	}
-	if err := globals.rawSetStringValue("module", module.Value()); err != nil {
+	if err := globals.rawSetStringSlot(
+		"module",
+		slotFromFunctionObject(module),
+	); err != nil {
 		return err
 	}
 	state.setLoadedModule(loaded, "package", slotFromTableObject(library))
@@ -164,8 +170,8 @@ func (state *State) newPackageFunction(
 	environment *tableObject,
 	entry NativeFunc,
 	captures ...slot,
-) (*Function, error) {
-	function, err := state.newNativeFunctionCompact(entry, captures)
+) (*functionObject, error) {
+	function, err := state.newNativeFunctionObject(entry, captures)
 	if err != nil {
 		return nil, err
 	}
@@ -480,10 +486,10 @@ func packageLuaLoader(frame Frame) Outcome {
 			err.Error(),
 		)
 	}
-	function := frame.thread.state.loadPrototype(prototype)
+	function := frame.thread.state.loadPrototypeObject(prototype)
 	return frame.returnOne(
 		frame.activation(),
-		slotFromFunction(function),
+		slotFromFunctionObject(function),
 	)
 }
 

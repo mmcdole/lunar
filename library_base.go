@@ -49,32 +49,38 @@ func (state *State) OpenBase() error {
 		return err
 	}
 	globals := state.globalEnvironment()
-	functions := make([]*Function, len(baseLibraryFunctions))
+	functions := make([]*functionObject, len(baseLibraryFunctions))
 	for index, definition := range baseLibraryFunctions {
-		function, functionErr := state.NewNativeFunction(definition.entry)
+		function, functionErr := state.newNativeFunctionObject(
+			definition.entry,
+			nil,
+		)
 		if functionErr != nil {
 			return functionErr
 		}
 		functions[index] = function
 	}
-	ipairsIterator, err := state.NewNativeFunction(baseIPairsIterator)
-	if err != nil {
-		return err
-	}
-	pairsIterator, err := state.NewNativeFunction(baseNext)
-	if err != nil {
-		return err
-	}
-	pairs, err := state.NewNativeFunction(
-		basePairs,
-		pairsIterator.Value(),
+	ipairsIterator, err := state.newNativeFunctionObject(
+		baseIPairsIterator,
+		nil,
 	)
 	if err != nil {
 		return err
 	}
-	ipairs, err := state.NewNativeFunction(
+	pairsIterator, err := state.newNativeFunctionObject(baseNext, nil)
+	if err != nil {
+		return err
+	}
+	pairs, err := state.newNativeFunctionObject(
+		basePairs,
+		[]slot{slotFromFunctionObject(pairsIterator)},
+	)
+	if err != nil {
+		return err
+	}
+	ipairs, err := state.newNativeFunctionObject(
 		baseIPairs,
-		ipairsIterator.Value(),
+		[]slot{slotFromFunctionObject(ipairsIterator)},
 	)
 	if err != nil {
 		return err
@@ -90,17 +96,23 @@ func (state *State) OpenBase() error {
 		return err
 	}
 	for index, definition := range baseLibraryFunctions {
-		if err := globals.rawSetStringValue(
+		if err := globals.rawSetStringSlot(
 			definition.name,
-			functions[index].Value(),
+			slotFromFunctionObject(functions[index]),
 		); err != nil {
 			return err
 		}
 	}
-	if err := globals.rawSetStringValue("pairs", pairs.Value()); err != nil {
+	if err := globals.rawSetStringSlot(
+		"pairs",
+		slotFromFunctionObject(pairs),
+	); err != nil {
 		return err
 	}
-	if err := globals.rawSetStringValue("ipairs", ipairs.Value()); err != nil {
+	if err := globals.rawSetStringSlot(
+		"ipairs",
+		slotFromFunctionObject(ipairs),
+	); err != nil {
 		return err
 	}
 	state.setLoadedModule(loaded, "_G", slotFromTableObject(globals))
@@ -195,7 +207,7 @@ func basePrint(frame Frame) Outcome {
 }
 
 type baseEnvironmentTarget struct {
-	function       *Function
+	function       *functionObject
 	number         float64
 	numberArgument bool
 }
@@ -207,7 +219,7 @@ func resolveBaseEnvironmentTarget(
 	value, present := frame.argument(0)
 	if present && value.isFunction() {
 		return baseEnvironmentTarget{
-			function: (*Function)(value.ref),
+			function: functionObjectFromSlot(value),
 		}, Outcome{}, false
 	}
 
@@ -296,7 +308,7 @@ func baseSetEnvironment(frame Frame) Outcome {
 	target.function.environment = environment
 	return frame.returnOne(
 		frame.activation(),
-		slotFromFunction(target.function),
+		slotFromFunctionObject(target.function),
 	)
 }
 

@@ -71,7 +71,7 @@ func (state *State) loadReader(
 	if loadErr != nil {
 		return nil, loadErr
 	}
-	return state.loadPrototype(prototype), nil
+	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
 // LoadFile reads and loads a Lua 5.1 source or native binary file. The source
@@ -112,7 +112,7 @@ func (state *State) loadFile(
 	if err != nil {
 		return nil, err
 	}
-	return state.loadPrototype(prototype), nil
+	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
 type readerChunkSource struct {

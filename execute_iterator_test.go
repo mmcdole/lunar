@@ -116,7 +116,7 @@ return control, control * 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__call", handler.Value()); err != nil {
+	if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	generator, err := state.NewTable(0, 0)
@@ -324,8 +324,8 @@ func TestExecutorGenericForNestsWithOtherContinuations(t *testing.T) {
 local left, right = ...
 return left.value + right.value
 `)
-		left := metamethodTestTable(t, state, "__add", add.Value())
-		right := metamethodTestTable(t, state, "__add", add.Value())
+		left := metamethodTestTable(t, state, "__add", add.owningValue())
+		right := metamethodTestTable(t, state, "__add", add.owningValue())
 		if err := left.RawSetString("value", Number(3)); err != nil {
 			t.Fatal(err)
 		}
@@ -361,7 +361,7 @@ return sum
 			t,
 			state,
 			caller,
-			iterator.Value(),
+			iterator.owningValue(),
 			iteratorState.Value(),
 		)
 		assertExecutionReturned(t, result)
@@ -393,11 +393,11 @@ for value in left.iterator, 3, 0 do
 end
 return sum
 `)
-		left := metamethodTestTable(t, state, "__add", add.Value())
-		right := metamethodTestTable(t, state, "__add", add.Value())
+		left := metamethodTestTable(t, state, "__add", add.owningValue())
+		right := metamethodTestTable(t, state, "__add", add.owningValue())
 		if err := left.RawSetString(
 			"iterator",
-			iterator.Value(),
+			iterator.owningValue(),
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -441,7 +441,7 @@ return nil
 		t,
 		state,
 		caller,
-		iterator.Value(),
+		iterator.owningValue(),
 	)
 	if result.kind != executionFailed ||
 		result.err == nil ||
@@ -500,7 +500,7 @@ func TestExecutorIteratorLimitFailuresDoNotStageCallWindow(t *testing.T) {
 				3,
 				0,
 				0,
-			).Value()
+			).owningValue()
 			if test.callable {
 				handler := newTestLuaFunction(
 					t,
@@ -516,7 +516,7 @@ func TestExecutorIteratorLimitFailuresDoNotStageCallWindow(t *testing.T) {
 				}
 				if tableErr = metatable.RawSetString(
 					"__call",
-					handler.Value(),
+					handler.owningValue(),
 				); tableErr != nil {
 					t.Fatal(tableErr)
 				}
@@ -612,7 +612,7 @@ end
 return sum
 `)
 	arguments := []slot{
-		slotFromFunction(iterator),
+		slotFromFunctionObject(iterator),
 		numberSlot(100),
 	}
 	thread := state.MainThread()
@@ -708,7 +708,7 @@ return nil
 				"@caller.lua",
 				test.callerSource,
 			)
-			arguments := []Value{iterator.Value()}
+			arguments := []Value{iterator.owningValue()}
 			if test.name != "empty" {
 				arguments = append(arguments, Number(100))
 			}

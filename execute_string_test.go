@@ -18,7 +18,7 @@ func TestExecutorLengthUsesLua51PrimitiveSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__len", trap.Value()); err != nil {
+	if err := metatable.RawSetString("__len", trap.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	table, err := state.NewTable(3, 0)
@@ -70,7 +70,7 @@ return marker
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__len", handler.Value()); err != nil {
+	if err := metatable.RawSetString("__len", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	data, err := state.NewUserData("payload")
@@ -130,7 +130,7 @@ return count(...)
 	}
 	if err := countMetatable.RawSetString(
 		"__len",
-		countHandler.Value(),
+		countHandler.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ return count(...)
 		"@nil-length.lua",
 		`return 31`,
 	)
-	if err := metatable.RawSetString("__len", fallback.Value()); err != nil {
+	if err := metatable.RawSetString("__len", fallback.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(Nil(), metatable); err != nil {
@@ -282,7 +282,7 @@ return "bad"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__concat", handler.Value()); err != nil {
+	if err := metatable.RawSetString("__concat", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	values := make([]*Table, 4)
@@ -339,8 +339,8 @@ func TestExecutorConcatSelectsLeftThenRightMetamethod(t *testing.T) {
 	defer state.Close()
 	leftHandler := compileTestFunction(t, state, "@left.lua", `return "left"`)
 	rightHandler := compileTestFunction(t, state, "@right.lua", `return "right"`)
-	left := metamethodTestTable(t, state, "__concat", leftHandler.Value())
-	right := metamethodTestTable(t, state, "__concat", rightHandler.Value())
+	left := metamethodTestTable(t, state, "__concat", leftHandler.owningValue())
+	right := metamethodTestTable(t, state, "__concat", rightHandler.owningValue())
 	plain, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ return joined
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__concat", first.Value()); err != nil {
+	if err := metatable.RawSetString("__concat", first.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	values := make([]*Table, 4)
@@ -407,7 +407,10 @@ return joined
 	if err := state.SetGlobal("meta", metatable.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("replacement", replacement.Value()); err != nil {
+	if err := state.SetGlobal(
+		"replacement",
+		replacement.owningValue(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetGlobal("joined", values[3].Value()); err != nil {
@@ -442,7 +445,7 @@ if right == "2x" then
 end
 return "bad"
 `)
-	middle := metamethodTestTable(t, state, "__concat", handler.Value())
+	middle := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	caller := compileTestFunction(t, state, "@concat.lua", `
 local prefix, middle, number, suffix = ...
 return prefix .. middle .. number .. suffix
@@ -470,7 +473,7 @@ func TestExecutorConcatMayFailAfterEarlierMetamethod(t *testing.T) {
 phase = 1
 return replacement
 `)
-	right := metamethodTestTable(t, state, "__concat", handler.Value())
+	right := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	last, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -526,7 +529,7 @@ func TestExecutorPrimitiveConcatIgnoresMetamethods(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := metatable.RawSetString("__concat", trap.Value()); err != nil {
+	if err := metatable.RawSetString("__concat", trap.owningValue()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(Number(0), metatable); err != nil {
@@ -557,7 +560,7 @@ func TestExecutorConcatMetamethodMayReturnNil(t *testing.T) {
 	}
 	defer state.Close()
 	handler := compileTestFunction(t, state, "@concat.lua", `return`)
-	left := metamethodTestTable(t, state, "__concat", handler.Value())
+	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -670,7 +673,7 @@ func TestExecutorConcatFailuresClearContinuationState(t *testing.T) {
 local invalid = 1
 return invalid()
 `)
-	left := metamethodTestTable(t, state, "__concat", handler.Value())
+	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -704,7 +707,7 @@ func TestExecutorConcatFrameLimitFailureIsAtomic(t *testing.T) {
 	}
 	defer state.Close()
 	handler := compileTestFunction(t, state, "@handler.lua", `return "joined"`)
-	left := metamethodTestTable(t, state, "__concat", handler.Value())
+	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -758,7 +761,7 @@ local a, b, c, d = ...
 return a .. b .. c .. d
 `)
 	handler := compileTestFunction(t, state, "@handler.lua", `return "joined"`)
-	left := metamethodTestTable(t, state, "__concat", handler.Value())
+	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
 	right, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -773,7 +776,7 @@ return left .. right
 	thread.reserveFrames(8)
 	tests := []struct {
 		name      string
-		function  *Function
+		function  *functionObject
 		arguments []slot
 		maxAllocs float64
 	}{

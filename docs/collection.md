@@ -35,8 +35,8 @@ metadata rather than a second table, function, thread, or userdata
 representation. Scalars and strings remain direct values.
 
 For migrated reference kinds, a public `Value` points at the host token rather
-than the compact object. The current implementation covers `*UserData` and
-`*Table`; functions and threads follow before the object ledger is enabled.
+than the compact object. The current implementation covers `*UserData`,
+`*Table`, and `*Function`; threads follow before the object ledger is enabled.
 Each public handle is an opaque named view of the common token representation,
 and its methods unwrap the compact object at the boundary. The weak directory
 returns the same live Go pointer on repeated publication without repeated

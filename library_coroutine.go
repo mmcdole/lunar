@@ -32,13 +32,16 @@ func (state *State) OpenCoroutine() error {
 		len(coroutineLibraryFunctions),
 	)
 	for _, definition := range coroutineLibraryFunctions {
-		function, functionErr := state.NewNativeFunction(definition.entry)
+		function, functionErr := state.newNativeFunctionObject(
+			definition.entry,
+			nil,
+		)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.rawSetStringValue(
+		if setErr := library.rawSetStringSlot(
 			definition.name,
-			function.Value(),
+			slotFromFunctionObject(function),
 		); setErr != nil {
 			return setErr
 		}
@@ -54,7 +57,7 @@ func (state *State) OpenCoroutine() error {
 }
 
 func coroutineCreate(frame Frame) Outcome {
-	function, ok := frame.Function(0)
+	function, ok := frame.functionObject(0)
 	if !ok || function.prototype == nil {
 		return baseArgumentError(
 			frame,
@@ -62,11 +65,13 @@ func coroutineCreate(frame Frame) Outcome {
 			"Lua function expected",
 		)
 	}
-	thread, err := frame.State().NewThread(function.Value())
+	thread, err := frame.thread.state.newThread(
+		slotFromFunctionObject(function),
+	)
 	if err != nil {
 		return frame.RaiseString(err.Error())
 	}
-	return frame.ReturnValue(thread.Value())
+	return frame.returnOne(frame.activation(), slotFromThread(thread))
 }
 
 func coroutineResume(frame Frame) Outcome {
@@ -112,7 +117,10 @@ func coroutineRunning(frame Frame) Outcome {
 	if frame.Thread().main {
 		return frame.ReturnNil()
 	}
-	return frame.ReturnValue(frame.Thread().Value())
+	return frame.returnOne(
+		frame.activation(),
+		slotFromThread(frame.Thread()),
+	)
 }
 
 func coroutineStatus(frame Frame) Outcome {
@@ -130,7 +138,7 @@ func coroutineStatus(frame Frame) Outcome {
 }
 
 func coroutineWrap(frame Frame) Outcome {
-	function, ok := frame.Function(0)
+	function, ok := frame.functionObject(0)
 	if !ok || function.prototype == nil {
 		return baseArgumentError(
 			frame,
@@ -138,18 +146,23 @@ func coroutineWrap(frame Frame) Outcome {
 			"Lua function expected",
 		)
 	}
-	thread, err := frame.State().NewThread(function.Value())
-	if err != nil {
-		return frame.RaiseString(err.Error())
-	}
-	wrapper, err := frame.State().NewNativeFunction(
-		coroutineWrappedResume,
-		thread.Value(),
+	thread, err := frame.thread.state.newThread(
+		slotFromFunctionObject(function),
 	)
 	if err != nil {
 		return frame.RaiseString(err.Error())
 	}
-	return frame.ReturnValue(wrapper.Value())
+	wrapper, err := frame.thread.state.newNativeFunctionObject(
+		coroutineWrappedResume,
+		[]slot{slotFromThread(thread)},
+	)
+	if err != nil {
+		return frame.RaiseString(err.Error())
+	}
+	return frame.returnOne(
+		frame.activation(),
+		slotFromFunctionObject(wrapper),
+	)
 }
 
 func coroutineYield(frame Frame) Outcome {
@@ -157,11 +170,11 @@ func coroutineYield(frame Frame) Outcome {
 }
 
 func coroutineWrappedResume(frame Frame) Outcome {
-	threadValue := frame.Capture(0)
-	thread, ok := threadValue.Thread()
-	if !ok {
+	threadValue := frame.nativeCapture(0)
+	if !threadValue.isThread() {
 		panic("lua: coroutine wrapper lost its thread")
 	}
+	thread := threadFromSlot(threadValue)
 	call := frame.activation()
 	base := int(call.base)
 	parent := frame.thread

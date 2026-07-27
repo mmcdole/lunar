@@ -1,17 +1,22 @@
 package lua
 
-import "unsafe"
+import (
+	"runtime"
+	"unsafe"
+)
 
 const nativeFunctionSlotFlag = uint64(1) << 8
 
-// Function is the canonical representation of a Lua or native function.
+// Function is an opaque owning handle for a Lua or native function.
 //
-// Its executable kind and capture shape are private and fixed at
-// construction. Lua 5.1 environments and captured values remain mutable
-// through controlled operations.
+// Repeated publication of the same live Lua function returns the same handle
+// pointer. Execution slots retain the compact function directly and do not
+// pass through this handle.
 //
-// A Function must not be copied after first use. Retain and pass its pointer.
-type Function struct {
+// Function must not be copied after first use. Retain and pass its pointer.
+type Function hostToken
+
+type functionObject struct {
 	objectHeader
 	prototype   *Prototype
 	environment *tableObject
@@ -23,11 +28,11 @@ type nativeFunctionData struct {
 	captures []slot
 }
 
-// nativeFunctionAllocation keeps the public Function and its native-only data
-// in one allocation. Function.body points at data directly; nativeBody never
-// derives the larger allocation from a Function pointer.
+// nativeFunctionAllocation keeps the compact function and its native-only
+// data in one allocation. functionObject.body points at data directly;
+// nativeBody never derives the larger allocation from a function pointer.
 type nativeFunctionAllocation struct {
-	Function
+	functionObject
 	data nativeFunctionData
 }
 
@@ -36,7 +41,7 @@ func newLuaFunction(
 	prototype *Prototype,
 	environment *tableObject,
 	upvalues []*upvalue,
-) *Function {
+) *functionObject {
 	return newLuaFunctionOwned(
 		owner,
 		prototype,
@@ -50,7 +55,7 @@ func newLuaFunctionOwned(
 	prototype *Prototype,
 	environment *tableObject,
 	upvalues []*upvalue,
-) *Function {
+) *functionObject {
 	if owner == nil || prototype == nil || !prototype.sealed {
 		panic("lua: invalid Lua function")
 	}
@@ -65,7 +70,7 @@ func newLuaFunctionOwned(
 			panic("lua: Lua function has an invalid upvalue")
 		}
 	}
-	created := &Function{
+	created := &functionObject{
 		objectHeader: objectHeader{owner: owner},
 		prototype:    prototype,
 		environment:  environment,
@@ -81,7 +86,7 @@ func newNativeFunctionOwned(
 	environment *tableObject,
 	entry NativeFunc,
 	captures []slot,
-) *Function {
+) *functionObject {
 	if owner == nil || entry == nil {
 		panic("lua: invalid native function")
 	}
@@ -96,8 +101,11 @@ func newNativeFunctionOwned(
 			panic("lua: invalid native function capture")
 		}
 	}
+	if len(captures) != cap(captures) {
+		captures = exactSlice(captures)
+	}
 	allocation := &nativeFunctionAllocation{
-		Function: Function{
+		functionObject: functionObject{
 			objectHeader: objectHeader{owner: owner},
 			environment:  environment,
 		},
@@ -106,26 +114,62 @@ func newNativeFunctionOwned(
 			captures: captures,
 		},
 	}
-	allocation.Function.body = unsafe.Pointer(&allocation.data)
-	return &allocation.Function
+	allocation.functionObject.body = unsafe.Pointer(&allocation.data)
+	return &allocation.functionObject
 }
 
 // Value returns the owning Lua value for function.
 func (function *Function) Value() Value {
-	if function == nil || function.owner == nil {
+	token := function.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.object == nil ||
+		token.kind != FunctionKind {
 		return Value{}
 	}
-	return canonicalFunctionSlot(function).owningValue()
+	value := Value{ref: unsafe.Pointer(token), bits: uint64(FunctionKind)}
+	runtime.KeepAlive(function)
+	return value
 }
 
-func slotFromFunction(function *Function) slot {
+func (function *Function) token() *hostToken {
+	return (*hostToken)(function)
+}
+
+func (function *Function) runtimeObject() *functionObject {
+	token := function.token()
+	if token == nil ||
+		token.kind != FunctionKind ||
+		token.object == nil {
+		return nil
+	}
+	return (*functionObject)(token.object)
+}
+
+func (function *functionObject) owningHandle() *Function {
+	if function == nil {
+		return nil
+	}
+	token := function.objectHeader.owningToken(
+		FunctionKind,
+		unsafe.Pointer(function),
+	)
+	return (*Function)(token)
+}
+
+func (function *functionObject) owningValue() Value {
+	handle := function.owningHandle()
+	return handle.Value()
+}
+
+func slotFromFunctionObject(function *functionObject) slot {
 	if function == nil || function.owner == nil {
 		panic("lua: invalid canonical function")
 	}
 	return canonicalFunctionSlot(function)
 }
 
-func canonicalFunctionSlot(function *Function) slot {
+func canonicalFunctionSlot(function *functionObject) slot {
 	bits := uint64(FunctionKind)
 	if function.prototype == nil {
 		bits |= nativeFunctionSlotFlag
@@ -136,29 +180,45 @@ func canonicalFunctionSlot(function *Function) slot {
 	}
 }
 
+func functionObjectFromSlot(value slot) *functionObject {
+	if !value.isFunction() {
+		panic("lua: slot is not a function")
+	}
+	return (*functionObject)(value.ref)
+}
+
+func functionHandleFromSlot(value slot) *Function {
+	return functionObjectFromSlot(value).owningHandle()
+}
+
 // Prototype returns function's immutable Prototype.
 func (function *Function) Prototype() *Prototype {
-	if function == nil {
+	object := function.runtimeObject()
+	if object == nil {
 		return nil
 	}
-	return function.prototype
+	prototype := object.prototype
+	runtime.KeepAlive(function)
+	return prototype
 }
 
 // UpvalueCount returns the fixed Lua upvalue or native capture count.
 func (function *Function) UpvalueCount() int {
-	if function == nil {
+	object := function.runtimeObject()
+	if object == nil {
 		return 0
 	}
-	if function.prototype != nil {
-		return int(function.prototype.upvalues)
+	var count int
+	if object.prototype != nil {
+		count = int(object.prototype.upvalues)
+	} else if native := object.nativeBody(); native != nil {
+		count = len(native.captures)
 	}
-	if native := function.nativeBody(); native != nil {
-		return len(native.captures)
-	}
-	return 0
+	runtime.KeepAlive(function)
+	return count
 }
 
-func (function *Function) nativeBody() *nativeFunctionData {
+func (function *functionObject) nativeBody() *nativeFunctionData {
 	if function == nil ||
 		function.owner == nil ||
 		function.prototype != nil ||
@@ -170,11 +230,11 @@ func (function *Function) nativeBody() *nativeFunctionData {
 
 // nativeBodyUnchecked returns the body of a canonical native Function.
 // Executor and Frame seams establish both invariants before using it.
-func (function *Function) nativeBodyUnchecked() *nativeFunctionData {
+func (function *functionObject) nativeBodyUnchecked() *nativeFunctionData {
 	return (*nativeFunctionData)(function.body)
 }
 
-func (function *Function) luaUpvalueUnchecked(index int) *upvalue {
+func (function *functionObject) luaUpvalueUnchecked(index int) *upvalue {
 	address := unsafe.Add(
 		function.body,
 		uintptr(index)*unsafe.Sizeof((*upvalue)(nil)),

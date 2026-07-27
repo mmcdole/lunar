@@ -260,7 +260,7 @@ func runProtectedCall(
 	handlerArguments := [1]slot{errorValue}
 	handlerBase, handlerFailure := startNestedCall(
 		thread,
-		slotFromFunction(handlerFunction),
+		slotFromFunctionObject(handlerFunction),
 		callArguments{compact: handlerArguments[:]},
 		1,
 	)

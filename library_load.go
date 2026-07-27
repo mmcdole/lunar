@@ -114,9 +114,9 @@ func baseDoFile(frame Frame) Outcome {
 	if err != nil {
 		return raiseDoFileError(frame, err)
 	}
-	function := frame.thread.state.loadPrototype(prototype)
+	function := frame.thread.state.loadPrototypeObject(prototype)
 	return frame.callCompactAllAndReturn(
-		slotFromFunction(function),
+		slotFromFunctionObject(function),
 		nil,
 	)
 }
@@ -179,10 +179,10 @@ func returnLoadResult(
 	err error,
 ) Outcome {
 	if err == nil {
-		function := frame.thread.state.loadPrototype(prototype)
+		function := frame.thread.state.loadPrototypeObject(prototype)
 		return frame.returnOne(
 			frame.activation(),
-			slotFromFunction(function),
+			slotFromFunctionObject(function),
 		)
 	}
 

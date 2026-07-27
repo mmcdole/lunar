@@ -778,7 +778,7 @@ func installClosure(
 	)
 	writeSlot(
 		&thread.values[int(frame.base)+code.a()],
-		slotFromFunction(closure),
+		slotFromFunctionObject(closure),
 	)
 	return bindingPC + count
 }
@@ -853,11 +853,11 @@ func executeVararg(
 	return nil
 }
 
-func functionSlot(value slot) (*Function, bool) {
+func functionSlot(value slot) (*functionObject, bool) {
 	if !value.isFunction() {
 		return nil, false
 	}
-	return (*Function)(value.ref), true
+	return functionObjectFromSlot(value), true
 }
 
 // Keep call-metamethod lookup and call-window insertion off direct calls.

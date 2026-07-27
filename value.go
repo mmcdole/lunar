@@ -223,7 +223,13 @@ func (value Value) Function() (*Function, bool) {
 	if value.Kind() != FunctionKind {
 		return nil, false
 	}
-	return (*Function)(value.ref), true
+	token := (*hostToken)(value.ref)
+	if token.kind != FunctionKind || token.object == nil {
+		return nil, false
+	}
+	function := (*Function)(token)
+	runtime.KeepAlive(value)
+	return function, true
 }
 
 // UserData returns the canonical userdata and whether value is userdata.
@@ -327,7 +333,7 @@ func slotFromUserDataObject(data *userDataObject) slot {
 
 func (value Value) objectIdentity() unsafe.Pointer {
 	switch value.Kind() {
-	case UserDataKind, TableKind:
+	case FunctionKind, UserDataKind, TableKind:
 		token := (*hostToken)(value.ref)
 		if token.kind != value.Kind() {
 			return nil
@@ -352,7 +358,7 @@ func stringSlot(value stringRef) slot {
 func (value Value) owner() *runtimeState {
 	switch value.Kind() {
 	case FunctionKind:
-		return (*Function)(value.ref).owner
+		return (*hostToken)(value.ref).owner
 	case UserDataKind:
 		return (*hostToken)(value.ref).owner
 	case ThreadKind:
@@ -372,6 +378,14 @@ func slotFromValue(value Value) slot {
 		return slot{bits: value.bits}
 	}
 	switch value.Kind() {
+	case FunctionKind:
+		token := (*hostToken)(value.ref)
+		if token.kind != FunctionKind || token.object == nil {
+			panic("lua: invalid reference host token")
+		}
+		result := slotFromFunctionObject((*functionObject)(token.object))
+		runtime.KeepAlive(value)
+		return result
 	case UserDataKind, TableKind:
 		token := (*hostToken)(value.ref)
 		if token.kind != value.Kind() || token.object == nil {
@@ -394,6 +408,9 @@ func (value slot) owningValue() Value {
 	}
 	if value.isTable() {
 		return tableObjectFromSlot(value).owningValue()
+	}
+	if value.isFunction() {
+		return functionObjectFromSlot(value).owningValue()
 	}
 	return Value{ref: value.ref, bits: value.bits}
 }
@@ -449,7 +466,7 @@ func (value slot) isTable() bool {
 func (value slot) owner() *runtimeState {
 	switch value.kind() {
 	case FunctionKind:
-		return (*Function)(value.ref).owner
+		return (*functionObject)(value.ref).owner
 	case UserDataKind:
 		return (*userDataObject)(value.ref).owner
 	case ThreadKind:

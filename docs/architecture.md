@@ -256,15 +256,16 @@ use the current vararg expression.
 ## Calls and activations
 
 Every Thread owns one contiguous compact-slot stack shared by all active Lua
-calls. An activation stores only a canonical Function, register base, result
-destination, published program counter, compressed eliminated-tail-call
-count, the caller's saved frame high-water mark, and requested result count.
-On 64-bit systems it is 32 bytes. Register windows are ranges in the shared
-stack; they are not slices retained by the activation, so stack growth cannot
-invalidate a frame. Open upvalues use typed pointers into the value stack;
-the one operation that replaces its backing array retargets every open cell
-before execution resumes. The saved high-water mark makes dead-suffix cleanup
-constant-time even when nested frame ends are not monotonic.
+calls. An activation stores only a pointer to the private function object,
+register base, result destination, published program counter, compressed
+eliminated-tail-call count, the caller's saved frame high-water mark, and
+requested result count. On 64-bit systems it is 32 bytes. Register windows are
+ranges in the shared stack; they are not slices retained by the activation, so
+stack growth cannot invalidate a frame. Open upvalues use typed pointers into
+the value stack; the one operation that replaces its backing array retargets
+every open cell before execution resumes. The saved high-water mark makes
+dead-suffix cleanup constant-time even when nested frame ends are not
+monotonic.
 
 Fixed-argument functions reuse the call's argument area as register zero.
 Vararg functions leave their original arguments below the activation and copy
@@ -493,9 +494,9 @@ the permanent cell.
 ## Execution
 
 Execution is split into one iterative dense instruction switch and one cold
-driver. The switch retains the current Function, Prototype, register base,
-program counter, code, constants, upvalues, and value stack in locals. It
-directly executes control flow, moves, loads, upvalue access, number-only
+driver. The switch retains the current private function object, Prototype,
+register base, program counter, code, constants, upvalues, and value stack in
+locals. It directly executes control flow, moves, loads, upvalue access, number-only
 arithmetic except exponentiation, comparisons, and prepared numeric loops.
 Ordinary instructions neither publish frame state nor reread the activation.
 
@@ -516,11 +517,11 @@ for each switch arm.
 Direct fixed Lua calls and their fixed-result nested returns are the deliberate
 exception. When existing value and activation capacity is sufficient, trusted
 helpers commit the transition and jump to one executor reload label. The
-reload refreshes the Function, Prototype, bases, PC, code, and value slice
-after frame depth or slice length changes. A failed fast admission changes
-nothing and returns to the checked driver, which grows capacity or reports the
-resource failure. The design therefore keeps one dispatch implementation
-without routing ordinary Lua calls through the outer driver.
+reload refreshes the private function object, Prototype, bases, PC, code, and
+value slice after frame depth or slice length changes. A failed fast admission
+changes nothing and returns to the checked driver, which grows capacity or
+reports the resource failure. The design therefore keeps one dispatch
+implementation without routing ordinary Lua calls through the outer driver.
 
 While the switch is active, execution-stack backing arrays cannot be replaced
 and cached frame state remains valid. Calls, returns, errors, and yield
@@ -568,8 +569,10 @@ root.
 Compact function slots retain Lua's single public `function` kind while one
 private high tag bit distinguishes a Go callback from a Lua closure. Direct
 Lua-call admission can therefore reject Go functions from the slot tag,
-without first chasing the Function to inspect its body. This mirrors PUC's
-private closure subtypes without exposing another public value kind.
+without first chasing the private function object to inspect its body. Public
+`Value` tags deliberately omit this private bit; compact ingress reconstructs
+it from the function object. This mirrors PUC's private closure subtypes
+without exposing another public value kind.
 
 Frames become invalid as soon as they produce a return, error, or yield
 outcome.
@@ -665,8 +668,10 @@ An executor benchmark making 1,000 calls from Lua measures the Go callback
 and an equivalent tiny Lua closure at roughly 49–50 microseconds each; recent
 samples put the Go callback about 3% ahead, but the defensible conclusion is
 parity within low-single-digit measurement variation. Both paths allocate
-zero bytes. A Lua Function is 32 bytes, and a native Function plus its entry
-and capture-slice header is 64 bytes before capture backing storage.
+zero bytes. The private Lua function object is 32 bytes, and its native
+allocation plus the entry and capture-slice header is 64 bytes before capture
+backing storage. A public `Function` is a separate 24-byte canonical owning
+token, created only when the function crosses into Go.
 
 ### Public-call checkpoint
 
