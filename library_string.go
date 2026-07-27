@@ -609,7 +609,7 @@ func stringGSub(frame Frame) Outcome {
 		result = stringSlot(
 			frame.thread.owner.strings.make(built.String()),
 		)
-	} else if result.kind() != StringKind {
+	} else if !result.isString() {
 		result = stringSlot(frame.thread.owner.strings.make(subject))
 	}
 

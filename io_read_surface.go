@@ -270,7 +270,7 @@ func ioReadFailure(frame Frame, failure error) Outcome {
 
 func ioLines(frame Frame) Outcome {
 	argument, present := frame.argument(0)
-	if !present || argument.kind() == NilKind {
+	if !present || argument.isNil() {
 		data, ok := currentIOFile(
 			frame,
 			ioDefaultInput,
@@ -367,7 +367,7 @@ func newFileLineIterator(
 
 func fileLineIterator(frame Frame) Outcome {
 	captured := frame.nativeCapture(0)
-	if captured.kind() != UserDataKind {
+	if !captured.isUserData() {
 		return libraryError(frame, "file is already closed")
 	}
 	data := (*UserData)(captured.ref)
@@ -490,7 +490,7 @@ func currentIOFile(
 	index int,
 ) (*UserData, bool) {
 	current, found := frame.Environment().rawIntSlot(index)
-	if !found || current.kind() != UserDataKind {
+	if !found || !current.isUserData() {
 		return nil, false
 	}
 	data := (*UserData)(current.ref)

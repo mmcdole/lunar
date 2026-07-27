@@ -166,7 +166,7 @@ func slowConcat(
 }
 
 func isDirectConcatValue(value slot) bool {
-	return value.ref == nil || value.kind() == StringKind
+	return value.ref == nil || value.isString()
 }
 
 func concatDirectValues(
@@ -176,7 +176,7 @@ func concatDirectValues(
 	onlyText := -1
 	allStrings := true
 	for index, value := range values {
-		if value.kind() != StringKind {
+		if !value.isString() {
 			allStrings = false
 			break
 		}

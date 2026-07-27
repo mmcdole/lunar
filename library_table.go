@@ -84,7 +84,7 @@ func tableConcat(frame Frame) Outcome {
 	var separatorNumber [32]byte
 	var separatorBytes []byte
 	if value, present := frame.argument(1); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		switch value.kind() {
 		case StringKind:
 			separatorString = stringSlotText(value)
@@ -103,7 +103,7 @@ func tableConcat(frame Frame) Outcome {
 	}
 	first := 1
 	if value, present := frame.argument(2); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		first, ok = frame.integerArgument(2)
 		if !ok {
 			return numberArgumentError(frame, 2)
@@ -111,7 +111,7 @@ func tableConcat(frame Frame) Outcome {
 	}
 	last := target.RawLen()
 	if value, present := frame.argument(3); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		last, ok = frame.integerArgument(3)
 		if !ok {
 			return numberArgumentError(frame, 3)
@@ -169,7 +169,7 @@ func tableConcat(frame Frame) Outcome {
 	builder.Grow(total)
 	for index := first; ; index++ {
 		element, _ := target.rawIntSlot(index)
-		if element.kind() == StringKind {
+		if element.isString() {
 			builder.WriteString(stringSlotText(element))
 		} else {
 			formatted := appendLuaNumber(
@@ -198,7 +198,7 @@ func tableForEach(frame Frame) Outcome {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	callback, present := frame.argument(1)
-	if !present || callback.kind() != FunctionKind {
+	if !present || !callback.isFunction() {
 		return baseArgumentTypeError(frame, 1, "function")
 	}
 
@@ -215,7 +215,7 @@ func tableForEach(frame Frame) Outcome {
 		if failure != nil {
 			return frame.sealError(failure)
 		}
-		if result.kind() != NilKind {
+		if !result.isNil() {
 			return frame.returnCompactValues([2]slot{result}, 1, nil)
 		}
 		key = nextKey
@@ -232,7 +232,7 @@ func tableForEachI(frame Frame) Outcome {
 	}
 	length := target.RawLen()
 	callback, present := frame.argument(1)
-	if !present || callback.kind() != FunctionKind {
+	if !present || !callback.isFunction() {
 		return baseArgumentTypeError(frame, 1, "function")
 	}
 
@@ -246,7 +246,7 @@ func tableForEachI(frame Frame) Outcome {
 		if failure != nil {
 			return frame.sealError(failure)
 		}
-		if result.kind() != NilKind {
+		if !result.isNil() {
 			return frame.returnCompactValues([2]slot{result}, 1, nil)
 		}
 	}
@@ -335,7 +335,7 @@ func tableMaxN(frame Frame) Outcome {
 		if !found {
 			return frame.ReturnNumber(largest)
 		}
-		if nextKey.kind() == NumberKind {
+		if nextKey.isNumber() {
 			if number := math.Float64frombits(
 				nextKey.bits,
 			); number > largest {
@@ -356,7 +356,7 @@ func tableRemove(frame Frame) Outcome {
 	end := target.RawLen()
 	position := end
 	if value, present := frame.argument(1); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		position, ok = frame.integerArgument(1)
 		if !ok {
 			return numberArgumentError(frame, 1)
@@ -393,8 +393,8 @@ func tableSort(frame Frame) Outcome {
 	length := target.RawLen()
 	comparator := nilSlot
 	if value, present := frame.argument(1); present &&
-		value.kind() != NilKind {
-		if value.kind() != FunctionKind {
+		!value.isNil() {
+		if !value.isFunction() {
 			return baseArgumentTypeError(frame, 1, "function")
 		}
 		comparator = value
@@ -584,7 +584,7 @@ func sortLess(
 	left slot,
 	right slot,
 ) (bool, *Error) {
-	if comparator.kind() == NilKind {
+	if comparator.isNil() {
 		return frame.lessThan(left, right)
 	}
 	result, failure := frame.callBinary(comparator, left, right)

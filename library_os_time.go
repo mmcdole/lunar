@@ -36,7 +36,7 @@ func osDifferenceTime(frame Frame) Outcome {
 	}
 	earlier := float64(0)
 	if argument, present := frame.argument(1); present &&
-		argument.kind() != NilKind {
+		!argument.isNil() {
 		earlier, ok = frame.numberArgument(1)
 		if !ok {
 			return numberArgumentError(frame, 1)
@@ -54,7 +54,7 @@ func osDifferenceTime(frame Frame) Outcome {
 func osDate(frame Frame) Outcome {
 	format := "%c"
 	if argument, present := frame.argument(0); present &&
-		argument.kind() != NilKind {
+		!argument.isNil() {
 		var ok bool
 		format, ok = frame.textArgument(0)
 		if !ok {
@@ -65,7 +65,7 @@ func osDate(frame Frame) Outcome {
 
 	var seconds int64
 	if argument, present := frame.argument(1); present &&
-		argument.kind() != NilKind {
+		!argument.isNil() {
 		number, ok := frame.numberArgument(1)
 		if !ok {
 			return numberArgumentError(frame, 1)
@@ -126,12 +126,12 @@ func returnDateTable(frame Frame, date time.Time) Outcome {
 
 func osTime(frame Frame) Outcome {
 	value, present := frame.argument(0)
-	if !present || value.kind() == NilKind {
+	if !present || value.isNil() {
 		return frame.ReturnNumber(
 			float64(frame.thread.state.now().Unix()),
 		)
 	}
-	if value.kind() != TableKind {
+	if !value.isTable() {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	frame.discardArgumentsAfter(1)
@@ -248,7 +248,7 @@ func dateTableDaylight(frame Frame, table slot) (int, *Error) {
 	if failure != nil {
 		return 0, failure
 	}
-	if value.kind() == NilKind {
+	if value.isNil() {
 		return -1, nil
 	}
 	if truthySlot(value) {

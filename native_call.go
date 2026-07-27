@@ -213,10 +213,10 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 	for step := 0; step < maxTableMetamethodChain; step++ {
 		var handler slot
 		var found bool
-		if target.kind() == TableKind {
+		if target.isTable() {
 			table := (*Table)(target.ref)
 			if result, hit := table.rawSlot(key); hit &&
-				result.kind() != NilKind {
+				!result.isNil() {
 				return result, nil
 			}
 			handler, found = metamethodSlot(frame.thread, target, metaIndex)
@@ -282,7 +282,7 @@ func (frame Frame) setIndexCompact(
 	for range maxTableMetamethodChain {
 		var handler slot
 		var found bool
-		if target.kind() == TableKind {
+		if target.isTable() {
 			table := (*Table)(target.ref)
 			normalized, index, arrayKey, hash, status :=
 				normalizeTableKey(key)

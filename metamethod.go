@@ -100,7 +100,7 @@ func metamethodSlot(
 		event.name(),
 		metamethodNameHashes[event],
 	)
-	if !found || result.kind() == NilKind {
+	if !found || result.isNil() {
 		metatable.absentMetamethods |= bit
 		return nilSlot, false
 	}

@@ -220,7 +220,7 @@ func (state *State) ensureFileMetatable() (*Table, error) {
 	if existing, found := state.registry.rawStringSlot(
 		luaFileHandleRegistryKey,
 	); found {
-		if existing.kind() != TableKind {
+		if !existing.isTable() {
 			return nil, fmt.Errorf(
 				"lua: registry %s must be a table",
 				luaFileHandleRegistryKey,
@@ -390,7 +390,7 @@ func ioOpen(frame Frame) Outcome {
 
 	mode := "r"
 	if supplied, present := frame.argument(1); present &&
-		supplied.kind() != NilKind {
+		!supplied.isNil() {
 		mode, ok = frame.textArgument(1)
 		if !ok {
 			return baseArgumentTypeError(frame, 1, "string")
@@ -516,7 +516,7 @@ func ioClose(frame Frame) Outcome {
 	data, present := frame.UserData(0)
 	if !present && frame.Kind(0) == InvalidKind {
 		current, _ := frame.Environment().rawIntSlot(ioDefaultOutput)
-		if current.kind() == UserDataKind {
+		if current.isUserData() {
 			data = (*UserData)(current.ref)
 			present = true
 		}
@@ -648,10 +648,10 @@ func ioDefaultFile(
 	mode string,
 ) Outcome {
 	argument, present := frame.argument(0)
-	if present && argument.kind() != NilKind {
+	if present && !argument.isNil() {
 		var data *UserData
-		if argument.kind() == StringKind ||
-			argument.kind() == NumberKind {
+		if argument.isString() ||
+			argument.isNumber() {
 			filename, _ := compactText(argument)
 			filename = luaCString(filename)
 			flags, _ := fileOpenFlags(mode)
@@ -678,7 +678,7 @@ func ioDefaultFile(
 				return libraryError(frame, "%s", err)
 			}
 		} else {
-			if argument.kind() == UserDataKind {
+			if argument.isUserData() {
 				data = (*UserData)(argument.ref)
 			}
 			if !isFileUserData(frame.thread.state, data) {
@@ -716,7 +716,7 @@ func isFileUserData(state *State, data *UserData) bool {
 		luaFileHandleRegistryKey,
 	)
 	return found &&
-		current.kind() == TableKind &&
+		current.isTable() &&
 		data.metatable == (*Table)(current.ref)
 }
 

@@ -28,7 +28,7 @@ func baseLoadString(frame Frame) Outcome {
 
 func baseLoad(frame Frame) Outcome {
 	reader, present := frame.argument(0)
-	if !present || reader.kind() != FunctionKind {
+	if !present || !reader.isFunction() {
 		return baseArgumentTypeError(frame, 0, "function")
 	}
 	name, outcome, failed := optionalLoadName(frame, 1, "=(load)")
@@ -45,7 +45,7 @@ func baseLoad(frame Frame) Outcome {
 		if callFailure != nil {
 			return "", callFailure
 		}
-		if value.kind() == NilKind {
+		if value.isNil() {
 			return "", io.EOF
 		}
 		text, stringLike := compactText(value)
@@ -140,7 +140,7 @@ func optionalLoadName(
 	fallback string,
 ) (string, Outcome, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() == NilKind {
+	if !present || value.isNil() {
 		return fallback, Outcome{}, false
 	}
 	text, ok := compactText(value)
@@ -154,7 +154,7 @@ func loadFilename(
 	frame Frame,
 ) (filename string, standardInput bool, outcome Outcome, failed bool) {
 	value, present := frame.argument(0)
-	if !present || value.kind() == NilKind {
+	if !present || value.isNil() {
 		return "", true, Outcome{}, false
 	}
 	text, ok := compactText(value)

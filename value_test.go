@@ -102,6 +102,86 @@ func TestValueRepresentation(t *testing.T) {
 	}
 }
 
+func TestSlotTypedPredicatesMatchCanonicalKinds(t *testing.T) {
+	marker := new(byte)
+	reference := unsafe.Pointer(marker)
+	tests := []struct {
+		name  string
+		value slot
+		want  Kind
+	}{
+		{name: "nil", value: nilSlot, want: NilKind},
+		{name: "false", value: falseSlot, want: BoolKind},
+		{name: "true", value: trueSlot, want: BoolKind},
+		{name: "number", value: numberSlot(17), want: NumberKind},
+		{
+			name:  "number with table kind bits",
+			value: slot{bits: uint64(TableKind)},
+			want:  NumberKind,
+		},
+		{
+			name:  "string",
+			value: slot{ref: reference, bits: uint64(StringKind)},
+			want:  StringKind,
+		},
+		{
+			name:  "function",
+			value: objectSlot(FunctionKind, reference),
+			want:  FunctionKind,
+		},
+		{
+			name: "native function flag",
+			value: slot{
+				ref:  reference,
+				bits: uint64(FunctionKind) | nativeFunctionSlotFlag,
+			},
+			want: FunctionKind,
+		},
+		{
+			name:  "userdata",
+			value: objectSlot(UserDataKind, reference),
+			want:  UserDataKind,
+		},
+		{
+			name:  "thread",
+			value: objectSlot(ThreadKind, reference),
+			want:  ThreadKind,
+		},
+		{
+			name:  "table",
+			value: objectSlot(TableKind, reference),
+			want:  TableKind,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.value.kind(); got != test.want {
+				t.Fatalf("kind = %s; want %s", got, test.want)
+			}
+			got := map[Kind]bool{
+				NilKind:      test.value.isNil(),
+				NumberKind:   test.value.isNumber(),
+				StringKind:   test.value.isString(),
+				FunctionKind: test.value.isFunction(),
+				UserDataKind: test.value.isUserData(),
+				ThreadKind:   test.value.isThread(),
+				TableKind:    test.value.isTable(),
+			}
+			for kind, match := range got {
+				if match != (test.want == kind) {
+					t.Fatalf(
+						"is%s = %v for %s",
+						kind,
+						match,
+						test.want,
+					)
+				}
+			}
+		})
+	}
+}
+
 func TestTableVectorDescriptor(t *testing.T) {
 	vector := makeTableVector[int](2, 5)
 	if vector.len() != 2 || vector.cap() != 5 || vector.data == nil {

@@ -175,7 +175,7 @@ func (state *State) newPackageFunction(
 func (state *State) ensureLoadedModules() (*Table, error) {
 	key := stringSlot(state.runtime.strings.make(loadedModulesRegistryKey))
 	if value, found := state.registry.rawSlot(key); found {
-		if value.kind() != TableKind {
+		if !value.isTable() {
 			return nil, fmt.Errorf(
 				"lua: registry %s must be a table",
 				loadedModulesRegistryKey,
@@ -277,7 +277,7 @@ func packageNameArgument(
 			true
 	}
 	text = luaCString(text)
-	if value.kind() == StringKind &&
+	if value.isString() &&
 		len(text) == stringSlotLen(value) {
 		return text, value, Outcome{}, false
 	}
@@ -320,7 +320,7 @@ func packageRequire(frame Frame) Outcome {
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if loaders.kind() != TableKind {
+	if !loaders.isTable() {
 		return libraryError(frame, "'package.loaders' must be a table")
 	}
 
@@ -330,7 +330,7 @@ func packageRequire(frame Frame) Outcome {
 	)
 	for index := 1; ; index++ {
 		loader, found := (*Table)(loaders.ref).rawIntSlot(index)
-		if !found || loader.kind() == NilKind {
+		if !found || loader.isNil() {
 			return libraryError(
 				frame,
 				"module '%s' not found:%s",
@@ -346,7 +346,7 @@ func packageRequire(frame Frame) Outcome {
 		if callFailure != nil {
 			return frame.sealError(callFailure)
 		}
-		if result.kind() == FunctionKind {
+		if result.isFunction() {
 			module = result
 			break
 		}
@@ -367,7 +367,7 @@ func packageRequire(frame Frame) Outcome {
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if result.kind() != NilKind {
+	if !result.isNil() {
 		if failure := frame.setIndexCompact(
 			loaded,
 			nameKey,
@@ -403,8 +403,8 @@ func packageLoadedTarget(frame Frame) (slot, *Error) {
 }
 
 func isPackageLoadSentinel(value, sentinel slot) bool {
-	return value.kind() == UserDataKind &&
-		sentinel.kind() == UserDataKind &&
+	return value.isUserData() &&
+		sentinel.isUserData() &&
 		value.ref == sentinel.ref
 }
 
@@ -420,14 +420,14 @@ func packagePreloadLoader(frame Frame) Outcome {
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if preload.kind() != TableKind {
+	if !preload.isTable() {
 		return libraryError(frame, "'package.preload' must be a table")
 	}
 	loader, failure := frame.indexCompact(preload, nameKey)
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if loader.kind() != NilKind {
+	if !loader.isNil() {
 		return frame.returnOne(frame.activation(), loader)
 	}
 	return frame.ReturnString(
@@ -653,7 +653,7 @@ func packageModule(frame Frame) Outcome {
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if module.kind() != TableKind {
+	if !module.isTable() {
 		var conflict bool
 		module, conflict, failure = packageModuleTable(frame, name)
 		if failure != nil {
@@ -680,7 +680,7 @@ func packageModule(frame Frame) Outcome {
 	if failure != nil {
 		return frame.sealError(failure)
 	}
-	if initialized.kind() == NilKind {
+	if initialized.isNil() {
 		lastDot := strings.LastIndexByte(name, '.')
 		packageName := ""
 		if lastDot >= 0 {
@@ -756,7 +756,7 @@ func packageModuleTable(
 		)
 		table := (*Table)(current.ref)
 		next, found := table.rawSlot(key)
-		if !found || next.kind() == NilKind {
+		if !found || next.isNil() {
 			next = slotFromTable(newTable(frame.thread.owner, 0, 1))
 			if failure := frame.setIndexCompact(
 				current,
@@ -765,7 +765,7 @@ func packageModuleTable(
 			); failure != nil {
 				return nilSlot, false, failure
 			}
-		} else if next.kind() != TableKind {
+		} else if !next.isTable() {
 			return nilSlot, true, nil
 		}
 		current = next

@@ -287,7 +287,7 @@ func resumeIteratorContinuation(
 	followerPC := int(continuation.nextPC)
 	nextPC := followerPC + 1
 	first := thread.values[base+3]
-	if first.kind() != NilKind {
+	if !first.isNil() {
 		writeSlot(&thread.values[base+2], first)
 		follower := frame.function.prototype.code[followerPC]
 		if follower.opcode() != opJump {

@@ -345,6 +345,37 @@ func (value slot) kind() Kind {
 	}
 }
 
+// Typed predicates are the compact counterpart to Lua's ttis* tests. Slots
+// inside the runtime are already verified values, so a caller asking one
+// specific type question need not decode the complete Kind.
+func (value slot) isNil() bool {
+	return value.ref == nilMarkerPointer
+}
+
+func (value slot) isNumber() bool {
+	return value.ref == nil
+}
+
+func (value slot) isString() bool {
+	return value.ref != nil && Kind(value.bits&0xff) == StringKind
+}
+
+func (value slot) isFunction() bool {
+	return value.ref != nil && Kind(value.bits&0xff) == FunctionKind
+}
+
+func (value slot) isUserData() bool {
+	return value.ref != nil && Kind(value.bits&0xff) == UserDataKind
+}
+
+func (value slot) isThread() bool {
+	return value.ref != nil && Kind(value.bits&0xff) == ThreadKind
+}
+
+func (value slot) isTable() bool {
+	return value.ref != nil && Kind(value.bits&0xff) == TableKind
+}
+
 func rawEqual(left, right Value) bool {
 	kind := left.Kind()
 	if kind != right.Kind() {

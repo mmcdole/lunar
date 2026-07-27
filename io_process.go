@@ -179,7 +179,7 @@ func ioPopen(frame Frame) Outcome {
 
 	mode := "r"
 	if supplied, present := frame.argument(1); present &&
-		supplied.kind() != NilKind {
+		!supplied.isNil() {
 		mode, ok = frame.textArgument(1)
 		if !ok {
 			return baseArgumentTypeError(frame, 1, "string")

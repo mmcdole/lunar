@@ -71,7 +71,7 @@ func osGetEnvironment(frame Frame) Outcome {
 
 func osExecute(frame Frame) Outcome {
 	value, present := frame.argument(0)
-	if !present || value.kind() == NilKind {
+	if !present || value.isNil() {
 		if hostShellAvailable() {
 			return frame.ReturnNumber(1)
 		}
@@ -136,7 +136,7 @@ func osSetLocale(frame Frame) Outcome {
 	locale := ""
 	query := true
 	if argument, present := frame.argument(0); present &&
-		argument.kind() != NilKind {
+		!argument.isNil() {
 		var ok bool
 		locale, ok = frame.textArgument(0)
 		if !ok {
@@ -148,7 +148,7 @@ func osSetLocale(frame Frame) Outcome {
 
 	category := "all"
 	if argument, present := frame.argument(1); present &&
-		argument.kind() != NilKind {
+		!argument.isNil() {
 		var ok bool
 		category, ok = frame.textArgument(1)
 		if !ok {

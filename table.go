@@ -237,16 +237,16 @@ func (table *Table) RawSetString(key string, value Value) error {
 	changed := false
 	switch {
 	case stored &&
-		entry.value.kind() != NilKind &&
-		valueSlot.kind() == NilKind:
+		!entry.value.isNil() &&
+		valueSlot.isNil():
 		table.store.deleteAt(index)
 		changed = true
 	case stored &&
-		entry.value.kind() != NilKind:
+		!entry.value.isNil():
 		if replaceTableValue(&entry.value, valueSlot) {
 			changed = true
 		}
-	case stored && valueSlot.kind() != NilKind:
+	case stored && !valueSlot.isNil():
 		if table.store.shouldCompact() {
 			storedKey := entry.key
 			table.store.rehash(table.store.entries.len())
@@ -255,7 +255,7 @@ func (table *Table) RawSetString(key string, value Value) error {
 			table.store.reviveAt(index, valueSlot)
 		}
 		changed = true
-	case valueSlot.kind() != NilKind:
+	case !valueSlot.isNil():
 		keySlot := stringSlot(
 			table.owner.strings.makeKnownHash(
 				key,
@@ -282,12 +282,12 @@ func (table *Table) RawLen() int {
 
 	arrayLength := table.array.len()
 	if arrayLength > 0 &&
-		table.array.at(arrayLength-1).kind() == NilKind {
+		table.array.at(arrayLength-1).isNil() {
 		array := table.array.values()
 		low, high := 0, arrayLength
 		for high-low > 1 {
 			middle := low + (high-low)/2
-			if array[middle-1].kind() == NilKind {
+			if array[middle-1].isNil() {
 				high = middle
 			} else {
 				low = middle
@@ -336,7 +336,7 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 	storeLength := table.store.entries.len()
 	arrayStart := 0
 	storeStart := 0
-	if previous.kind() != NilKind {
+	if !previous.isNil() {
 		// PUC Lua 5.1 treats an exact positive integer within the allocated
 		// array part as a traversal position even when its slot is nil. This
 		// permits next to continue after deletion of the current array field.
@@ -358,7 +358,7 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 
 	for index := arrayStart; index < arrayLength; index++ {
 		candidate := *table.array.at(index)
-		if candidate.kind() == NilKind {
+		if candidate.isNil() {
 			continue
 		}
 		return slot{bits: math.Float64bits(float64(index + 1))},
@@ -368,7 +368,7 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 	}
 	for index := storeStart; index < storeLength; index++ {
 		entry := table.store.entries.at(index)
-		if entry.hash == entryHashEmpty || entry.value.kind() == NilKind {
+		if entry.hash == entryHashEmpty || entry.value.isNil() {
 			continue
 		}
 		return entry.key, entry.value, true, nil
@@ -476,7 +476,7 @@ func (table *Table) resolveNormalizedSlot(
 					index: index - 1,
 					lane:  tableArrayLane,
 				},
-				value.kind() != NilKind
+				!value.isNil()
 		}
 		number := float64(index)
 		key = slot{bits: math.Float64bits(number)}
@@ -523,11 +523,11 @@ func (table *Table) replaceResolvedSlot(
 	default:
 		panic("lua: invalid table storage lane")
 	}
-	if current.kind() == NilKind {
+	if current.isNil() {
 		panic("lua: stale table location")
 	}
 
-	if value.kind() == NilKind {
+	if value.isNil() {
 		switch location.lane {
 		case tableArrayLane:
 			*current = nilSlot
@@ -614,7 +614,7 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 	}
 	for key := arrayFirst; key <= arrayLast; key++ {
 		value := array[key-1]
-		if value.kind() != NilKind {
+		if !value.isNil() {
 			values = append(values, integerTableValue{
 				key:   key,
 				value: value,
@@ -626,7 +626,7 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 	for index := range entries {
 		entry := &entries[index]
 		if entry.hash == entryHashEmpty ||
-			entry.value.kind() == NilKind {
+			entry.value.isNil() {
 			continue
 		}
 		key, ok := exactIntegerTableKey(entry.key)
@@ -674,7 +674,7 @@ func (table *Table) rawSetList(first int, values []slot) {
 	}
 	if first == table.array.len()+1 && table.store.integerKeys == 0 {
 		last := len(values)
-		for last > 0 && values[last-1].kind() == NilKind {
+		for last > 0 && values[last-1].isNil() {
 			last--
 		}
 		if last == 0 {
@@ -694,7 +694,7 @@ func (table *Table) rawSetList(first int, values []slot) {
 			inserted := 0
 			for index, value := range values[:last] {
 				writeSlot(&array[oldLength+index], value)
-				if value.kind() != NilKind {
+				if !value.isNil() {
 					inserted++
 				}
 			}
@@ -724,7 +724,7 @@ func (table *Table) set(
 	if storeIndex, stored := table.store.findStored(key, hash); stored {
 		return table.setStoredRecord(storeIndex, value)
 	}
-	if value.kind() == NilKind {
+	if value.isNil() {
 		return false
 	}
 	table.insertNewField(key, value, hash, 0)
@@ -737,7 +737,7 @@ func (table *Table) setStoredRecord(
 ) bool {
 	entry := table.store.entries.at(index)
 	current := entry.value
-	if current.kind() != NilKind && value.kind() != NilKind {
+	if !current.isNil() && !value.isNil() {
 		return replaceTableValue(&entry.value, value)
 	}
 	return table.setStoredRecordSlow(index, value)
@@ -749,8 +749,8 @@ func (table *Table) setStoredRecordSlow(
 ) bool {
 	entry := table.store.entries.at(index)
 	current := entry.value
-	if current.kind() == NilKind {
-		if value.kind() == NilKind {
+	if current.isNil() {
+		if value.isNil() {
 			return false
 		}
 		if table.store.shouldCompact() {
@@ -768,7 +768,7 @@ func (table *Table) setStoredRecordSlow(
 		}
 		return true
 	}
-	if value.kind() == NilKind {
+	if value.isNil() {
 		table.store.deleteAt(index)
 		table.recordIntegerDeleted()
 		return true
@@ -781,7 +781,7 @@ func (table *Table) insertNewField(
 	hash uint32,
 	integerClass uint8,
 ) {
-	if value.kind() == NilKind {
+	if value.isNil() {
 		panic("lua: inserting a nil table record")
 	}
 	if table.store.entries.len() != 0 {
@@ -888,8 +888,8 @@ func integerRecordClass(integer int) uint8 {
 func (table *Table) setInteger(index int, value slot) bool {
 	if index > 0 &&
 		index <= table.array.len() &&
-		(value.kind() == NilKind ||
-			table.array.at(index-1).kind() != NilKind) {
+		(value.isNil() ||
+			!table.array.at(index-1).isNil()) {
 		// Existing array fields and absent nil writes cannot release record
 		// tombstones. Keep the dense update path out of insertion policy.
 		return table.setArray(index, value)
@@ -906,7 +906,7 @@ func (table *Table) setInteger(index int, value slot) bool {
 			hashNumber(number),
 		); found {
 			entry := table.store.entries.at(storedIndex)
-			if value.kind() == NilKind {
+			if value.isNil() {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
 				return true
@@ -922,7 +922,7 @@ func (table *Table) setIntegerUnresolved(
 	value slot,
 ) bool {
 	arrayLength := table.array.len()
-	if value.kind() != NilKind &&
+	if !value.isNil() &&
 		index > 0 &&
 		(index <= arrayLength ||
 			table.store.integerKeys == 0) {
@@ -952,7 +952,7 @@ func (table *Table) setIntegerUnresolved(
 	if index <= 0 && table.store.entries.len() != 0 {
 		if storedIndex, found := table.store.find(key, hash); found {
 			entry := table.store.entries.at(storedIndex)
-			if value.kind() == NilKind {
+			if value.isNil() {
 				table.store.deleteAt(storedIndex)
 				table.recordIntegerDeleted()
 				return true
@@ -961,7 +961,7 @@ func (table *Table) setIntegerUnresolved(
 		}
 	}
 
-	if value.kind() == NilKind {
+	if value.isNil() {
 		return false
 	}
 	if (index <= 0 || index > arrayLength) &&
@@ -1111,7 +1111,7 @@ func (table *Table) redistributeForInsert(
 		installedArray = table.arrayUsed
 	} else {
 		for index, current := range oldArray {
-			if current.kind() == NilKind {
+			if current.isNil() {
 				continue
 			}
 			integer := index + 1
@@ -1135,12 +1135,12 @@ func (table *Table) redistributeForInsert(
 		for index := range oldEntries {
 			entry := &oldEntries[index]
 			if entry.hash == entryHashEmpty ||
-				entry.value.kind() == NilKind {
+				entry.value.isNil() {
 				continue
 			}
 			if integer, ok := arrayIndex(entry.key); ok &&
 				integer <= arraySize {
-				if array[integer-1].kind() != NilKind {
+				if !array[integer-1].isNil() {
 					panic("lua: duplicate integer table field")
 				}
 				writeSlot(&array[integer-1], entry.value)
@@ -1157,7 +1157,7 @@ func (table *Table) redistributeForInsert(
 		}
 	}
 	if integer, ok := arrayIndex(key); ok && integer <= arraySize {
-		if array[integer-1].kind() != NilKind {
+		if !array[integer-1].isNil() {
 			panic("lua: redistributing an existing table field")
 		}
 		writeSlot(&array[integer-1], value)
@@ -1201,7 +1201,7 @@ func (table *Table) densityForInsert(
 	for index := range entries {
 		entry := &entries[index]
 		if entry.hash == entryHashEmpty ||
-			entry.value.kind() == NilKind {
+			entry.value.isNil() {
 			continue
 		}
 		if integer, ok := arrayIndex(entry.key); ok {
@@ -1232,7 +1232,7 @@ func (table *Table) countArrayDensity(
 		return
 	}
 	for index, value := range table.array.values() {
-		if value.kind() != NilKind {
+		if !value.isNil() {
 			countArrayDensityIndex(counts, index+1)
 		}
 	}
@@ -1290,8 +1290,8 @@ func (table *Table) setArray(index int, value slot) bool {
 	}
 	target := table.array.at(index - 1)
 	current := *target
-	currentNil := current.kind() == NilKind
-	valueNil := value.kind() == NilKind
+	currentNil := current.isNil()
+	valueNil := value.isNil()
 
 	switch {
 	case currentNil && valueNil:
@@ -1387,7 +1387,7 @@ func (table *Table) rawIntSlot(key int) (slot, bool) {
 	}
 	if key <= table.array.len() {
 		value := *table.array.at(key - 1)
-		return value, value.kind() != NilKind
+		return value, !value.isNil()
 	}
 	number := float64(key)
 	return table.store.get(
@@ -1397,7 +1397,7 @@ func (table *Table) rawIntSlot(key int) (slot, bool) {
 }
 
 func isPositiveIntegerKey(key slot) bool {
-	if key.kind() != NumberKind {
+	if !key.isNumber() {
 		return false
 	}
 	_, ok := positiveIntegerIndex(math.Float64frombits(key.bits))
@@ -1405,7 +1405,7 @@ func isPositiveIntegerKey(key slot) bool {
 }
 
 func arrayIndex(key slot) (int, bool) {
-	if key.kind() != NumberKind {
+	if !key.isNumber() {
 		return 0, false
 	}
 	return positiveIntegerIndex(math.Float64frombits(key.bits))
@@ -1425,7 +1425,7 @@ func positiveIntegerIndex(number float64) (int, bool) {
 }
 
 func exactIntegerTableKey(key slot) (int, bool) {
-	if key.kind() != NumberKind {
+	if !key.isNumber() {
 		return 0, false
 	}
 	number := math.Float64frombits(key.bits)

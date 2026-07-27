@@ -87,7 +87,7 @@ func executeRawTableGet(
 		panic("lua: invalid raw table read opcode")
 	}
 
-	if target.kind() != TableKind {
+	if !target.isTable() {
 		return code
 	}
 	table := (*Table)(target.ref)
@@ -132,7 +132,7 @@ func executeRawStringTableGet(
 		panic("lua: invalid constant-string table read opcode")
 	}
 
-	if target.kind() != TableKind {
+	if !target.isTable() {
 		return code
 	}
 	table := (*Table)(target.ref)
@@ -183,7 +183,7 @@ func executeRawTableSet(
 		panic("lua: invalid raw table write opcode")
 	}
 
-	if target.kind() != TableKind {
+	if !target.isTable() {
 		return code
 	}
 	table := (*Table)(target.ref)
@@ -246,7 +246,7 @@ func executeRawStringTableSet(
 		panic("lua: invalid constant-string table write opcode")
 	}
 
-	if target.kind() != TableKind {
+	if !target.isTable() {
 		return code
 	}
 	table := (*Table)(target.ref)
@@ -332,7 +332,7 @@ func slowTableGet(
 	for range maxTableMetamethodChain {
 		var method slot
 		var found bool
-		if target.kind() == TableKind {
+		if target.isTable() {
 			table := (*Table)(target.ref)
 			if !skipInitialRaw || !firstTarget {
 				var result slot
@@ -459,7 +459,7 @@ func slowTableSet(
 	for range maxTableMetamethodChain {
 		var method slot
 		var found bool
-		if target.kind() == TableKind {
+		if target.isTable() {
 			table := (*Table)(target.ref)
 			normalized := key
 			index := 0
@@ -626,7 +626,7 @@ func executeSetList(
 	frame := thread.frames[frameIndex]
 	base := int(frame.base)
 	tableSlot := thread.values[base+code.a()]
-	if tableSlot.kind() != TableKind {
+	if !tableSlot.isTable() {
 		return newExecutionTypeError(
 			thread,
 			frameIndex,

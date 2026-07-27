@@ -357,7 +357,7 @@ func seekFile(
 ) Outcome {
 	mode := "cur"
 	if value, present := frame.argument(1); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		var ok bool
 		mode, ok = frame.textArgument(1)
 		if !ok {
@@ -376,7 +376,7 @@ func seekFile(
 
 	offset := int64(0)
 	if value, present := frame.argument(2); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		offset, ok = frame.positionArgument(2)
 		if !ok {
 			return numberArgumentError(frame, 2)
@@ -459,7 +459,7 @@ func setFileBuffering(
 
 	size := int64(defaultStreamBufferBytes)
 	if value, present := frame.argument(2); present &&
-		value.kind() != NilKind {
+		!value.isNil() {
 		size, ok = frame.positionArgument(2)
 		if !ok {
 			return numberArgumentError(frame, 2)
@@ -524,7 +524,7 @@ func acquireDefaultOutputFile(
 	bool,
 ) {
 	current, found := frame.Environment().rawIntSlot(ioDefaultOutput)
-	if !found || current.kind() != UserDataKind {
+	if !found || !current.isUserData() {
 		return nativeResourceLease{}, nil,
 			libraryError(frame, "standard output file is closed"),
 			true

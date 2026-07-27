@@ -564,9 +564,9 @@ dispatch:
 				equal = true
 			case left.kind() != right.kind():
 				equal = false
-			case left.kind() == StringKind ||
-				left.kind() == TableKind ||
-				left.kind() == UserDataKind:
+			case left.isString() ||
+				left.isTable() ||
+				left.isUserData():
 				thread.frames[len(thread.frames)-1].pc = uint32(pc)
 				return current
 			default:
@@ -854,7 +854,7 @@ func executeVararg(
 }
 
 func functionSlot(value slot) (*Function, bool) {
-	if value.kind() != FunctionKind {
+	if !value.isFunction() {
 		return nil, false
 	}
 	return (*Function)(value.ref), true

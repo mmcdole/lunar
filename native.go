@@ -161,7 +161,7 @@ func (frame Frame) Number(index int) (float64, bool) {
 // String returns argument index and whether it is exactly a Lua string.
 func (frame Frame) String(index int) (string, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() != StringKind {
+	if !present || !value.isString() {
 		return "", false
 	}
 	return stringSlotText(value), true
@@ -170,7 +170,7 @@ func (frame Frame) String(index int) (string, bool) {
 // Table returns argument index and whether it is exactly a Lua table.
 func (frame Frame) Table(index int) (*Table, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() != TableKind {
+	if !present || !value.isTable() {
 		return nil, false
 	}
 	return (*Table)(value.ref), true
@@ -179,7 +179,7 @@ func (frame Frame) Table(index int) (*Table, bool) {
 // Function returns argument index and whether it is exactly a function.
 func (frame Frame) Function(index int) (*Function, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() != FunctionKind {
+	if !present || !value.isFunction() {
 		return nil, false
 	}
 	return (*Function)(value.ref), true
@@ -188,7 +188,7 @@ func (frame Frame) Function(index int) (*Function, bool) {
 // UserData returns argument index and whether it is exactly Lua userdata.
 func (frame Frame) UserData(index int) (*UserData, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() != UserDataKind {
+	if !present || !value.isUserData() {
 		return nil, false
 	}
 	return (*UserData)(value.ref), true
@@ -200,7 +200,7 @@ func (frame Frame) UserData(index int) (*UserData, bool) {
 // returns the Thread executing this callback.
 func (frame Frame) LuaThread(index int) (*Thread, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() != ThreadKind {
+	if !present || !value.isThread() {
 		return nil, false
 	}
 	return (*Thread)(value.ref), true

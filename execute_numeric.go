@@ -153,7 +153,7 @@ func slowEquality(
 		return nil
 	}
 	if left.kind() != right.kind() ||
-		(left.kind() != TableKind && left.kind() != UserDataKind) {
+		(!left.isTable() && !left.isUserData()) {
 		setComparisonPC(thread, frameIndex, nextPC, code, false)
 		return nil
 	}

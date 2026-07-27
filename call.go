@@ -584,7 +584,7 @@ func (thread *Thread) checkFunctionCall(
 		wantedResults,
 	)
 	stackFunction := thread.values[callBase]
-	if stackFunction.kind() != FunctionKind ||
+	if !stackFunction.isFunction() ||
 		(*Function)(stackFunction.ref) != function {
 		panic("lua: call slot does not contain the requested function")
 	}

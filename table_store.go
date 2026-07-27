@@ -62,7 +62,7 @@ func (store *tableStore) get(key slot, hash uint32) (slot, bool) {
 		if entry.hash == entryHashEmpty {
 			return nilSlot, false
 		}
-		if entry.hash == hash && entry.value.kind() != NilKind {
+		if entry.hash == hash && !entry.value.isNil() {
 			if entry.key.ref == nil && key.ref == nil {
 				if tableNumberBitsEqual(entry.key.bits, key.bits) {
 					return entry.value, true
@@ -89,10 +89,10 @@ func (store *tableStore) getString(text string, hash uint32) (slot, bool) {
 			return nilSlot, false
 		}
 		if entry.hash == hash &&
-			entry.key.kind() == StringKind &&
+			entry.key.isString() &&
 			stringSlotText(entry.key) == text {
 			value := entry.value
-			return value, value.kind() != NilKind
+			return value, !value.isNil()
 		}
 		if entry.next == 0 {
 			return nilSlot, false
@@ -116,10 +116,10 @@ func (store *tableStore) getStringSlot(key slot, hash uint32) (slot, bool) {
 			return nilSlot, false
 		}
 		if entry.hash == hash &&
-			entry.key.kind() == StringKind &&
+			entry.key.isString() &&
 			stringSlotsEqual(entry.key, key) {
 			value := entry.value
-			return value, value.kind() != NilKind
+			return value, !value.isNil()
 		}
 		if entry.next == 0 {
 			return nilSlot, false
@@ -142,7 +142,7 @@ func (store *tableStore) findStoredString(
 			return 0, false
 		}
 		if entry.hash == hash &&
-			entry.key.kind() == StringKind &&
+			entry.key.isString() &&
 			stringSlotText(entry.key) == text {
 			return index, true
 		}
@@ -169,8 +169,8 @@ func (store *tableStore) findStringSlot(
 			return 0, false
 		}
 		if entry.hash == hash &&
-			entry.value.kind() != NilKind &&
-			entry.key.kind() == StringKind &&
+			!entry.value.isNil() &&
+			entry.key.isString() &&
 			stringSlotsEqual(entry.key, key) {
 			return index, true
 		}
@@ -183,7 +183,7 @@ func (store *tableStore) findStringSlot(
 
 func (store *tableStore) reviveAt(index int, value slot) {
 	entry := store.entries.at(index)
-	if entry.value.kind() != NilKind || value.kind() == NilKind {
+	if !entry.value.isNil() || value.isNil() {
 		panic("lua: invalid table tombstone revival")
 	}
 	writeSlot(&entry.value, value)
@@ -204,7 +204,7 @@ func growTableStoreCapacity(capacity int) int {
 
 func (store *tableStore) deleteAt(index int) {
 	entry := store.entries.at(index)
-	if entry.value.kind() == NilKind {
+	if entry.value.isNil() {
 		panic("lua: deleting an absent table entry")
 	}
 	if isPositiveIntegerKey(entry.key) {
@@ -229,7 +229,7 @@ func (store *tableStore) find(key slot, hash uint32) (index int, found bool) {
 		if entry.hash == entryHashEmpty {
 			return 0, false
 		}
-		if entry.hash == hash && entry.value.kind() != NilKind {
+		if entry.hash == hash && !entry.value.isNil() {
 			if entry.key.ref == nil && key.ref == nil {
 				if tableNumberBitsEqual(entry.key.bits, key.bits) {
 					return index, true
@@ -309,7 +309,7 @@ func (store *tableStore) rehash(capacity int) {
 	}
 	for index := range previous {
 		entry := previous[index]
-		if entry.hash == entryHashEmpty || entry.value.kind() == NilKind {
+		if entry.hash == entryHashEmpty || entry.value.isNil() {
 			continue
 		}
 		if !store.insertAbsent(entry.key, entry.value, entry.hash) {
@@ -337,7 +337,7 @@ func (store *tableStore) insertAbsent(
 		store.recordInsert(key)
 		return true
 	}
-	if mainEntry.value.kind() == NilKind {
+	if mainEntry.value.isNil() {
 		// Insertion invalidates next order, so the dead node can be removed
 		// from its old chain. A native chain head is overwritten in place to
 		// retain its successors; a displaced node is first unlinked.
@@ -441,11 +441,11 @@ func (store *tableStore) takeFreeDownTo(limit uint32) (int, bool) {
 		if entries[index].hash == entryHashEmpty {
 			return index, true
 		}
-		if entries[index].value.kind() == NilKind {
+		if entries[index].value.isNil() {
 			free := store.reclaimDeadAt(index)
 			remaining := &entries[index]
 			if remaining.hash != entryHashEmpty &&
-				remaining.value.kind() == NilKind {
+				remaining.value.isNil() {
 				// Reclaiming a dead chain head may promote another dead
 				// successor. Keep that position eligible for the next
 				// insertion instead of skipping it below the cursor.
@@ -460,7 +460,7 @@ func (store *tableStore) takeFreeDownTo(limit uint32) (int, bool) {
 func (store *tableStore) reclaimDeadAt(index int) int {
 	entries := store.entries.values()
 	entry := entries[index]
-	if entry.hash == entryHashEmpty || entry.value.kind() != NilKind {
+	if entry.hash == entryHashEmpty || !entry.value.isNil() {
 		panic("lua: reclaiming a live table entry")
 	}
 	main := store.mainIndex(entry.hash)

@@ -118,7 +118,7 @@ func baseAssert(frame Frame) Outcome {
 
 	message := "assertion failed!"
 	if supplied, present := frame.argument(1); present &&
-		supplied.kind() != NilKind {
+		!supplied.isNil() {
 		var ok bool
 		message, ok = frame.textArgument(1)
 		if !ok {
@@ -138,7 +138,7 @@ func baseError(frame Frame) Outcome {
 	}
 	level := 1
 	if supplied, present := frame.argument(1); present &&
-		supplied.kind() != NilKind {
+		!supplied.isNil() {
 		var ok bool
 		level, ok = frame.integerArgument(1)
 		if !ok {
@@ -148,7 +148,7 @@ func baseError(frame Frame) Outcome {
 	frame.discardArgumentsAfter(1)
 
 	if level > 0 &&
-		(value.kind() == StringKind || value.kind() == NumberKind) {
+		(value.isString() || value.isNumber()) {
 		text, _ := compactText(value)
 		if prototype, pc, found := luaCallerAtLevel(frame, level); found {
 			text = executionErrorDescription(prototype, pc, text)
@@ -205,7 +205,7 @@ func resolveBaseEnvironmentTarget(
 	optional bool,
 ) (baseEnvironmentTarget, Outcome, bool) {
 	value, present := frame.argument(0)
-	if present && value.kind() == FunctionKind {
+	if present && value.isFunction() {
 		return baseEnvironmentTarget{
 			function: (*Function)(value.ref),
 		}, Outcome{}, false
@@ -213,7 +213,7 @@ func resolveBaseEnvironmentTarget(
 
 	number := float64(1)
 	numberArgument := false
-	if (present && value.kind() != NilKind) || !optional {
+	if (present && !value.isNil()) || !optional {
 		var ok bool
 		number, ok = slotToNumber(value)
 		if !ok {
@@ -329,7 +329,7 @@ func baseSetMetatable(frame Frame) Outcome {
 	}
 	value, present := frame.argument(1)
 	if !present ||
-		value.kind() != NilKind && value.kind() != TableKind {
+		!value.isNil() && !value.isTable() {
 		return baseArgumentError(frame, 1, "nil or table expected")
 	}
 	if _, protected := metamethodSlot(
@@ -341,7 +341,7 @@ func baseSetMetatable(frame Frame) Outcome {
 	}
 
 	var metatable *Table
-	if value.kind() == TableKind {
+	if value.isTable() {
 		metatable = (*Table)(value.ref)
 	}
 	frame.discardArgumentsAfter(2)
@@ -473,7 +473,7 @@ func baseIPairsIterator(frame Frame) Outcome {
 		index++
 	}
 	value, _ := table.rawIntSlot(index)
-	if value.kind() == NilKind {
+	if value.isNil() {
 		return frame.Return()
 	}
 	return frame.returnCompactValues(
@@ -486,7 +486,7 @@ func baseIPairsIterator(frame Frame) Outcome {
 func baseSelect(frame Frame) Outcome {
 	count := frame.ArgumentCount()
 	selector, present := frame.argument(0)
-	if selector.kind() == StringKind {
+	if selector.isString() {
 		text := stringSlotText(selector)
 		if len(text) != 0 && text[0] == '#' {
 			return frame.ReturnNumber(float64(count - 1))
@@ -762,7 +762,7 @@ func optionalLibraryInteger(
 	fallback int,
 ) (int, Outcome, bool) {
 	value, present := frame.argument(index)
-	if !present || value.kind() == NilKind {
+	if !present || value.isNil() {
 		return fallback, Outcome{}, false
 	}
 	number, ok := slotToNumber(value)
