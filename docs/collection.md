@@ -5,15 +5,17 @@ which Lua objects are reachable. These are separate responsibilities.
 
 The State-local collector owns Lua 5.1 weak-table behavior, userdata
 finalization, memory accounting, and the `collectgarbage` and `gcinfo`
-interfaces. It will also support `newproxy`. Go finalizers remain limited to
-private native resources and never execute Lua.
+interfaces. The base library's `newproxy` uses those same weak-table and
+finalization rules. Go finalizers remain limited to private native resources
+and never execute Lua.
 
 The ownership boundary, State-owned object ledger, centralized tracer,
 logical accounting, close detachment, synchronous sweep, Lua 5.1 weak-table
 classification and clearing, userdata `__gc`, explicit Lua controls, and host
 collection and measurement methods are implemented. Retained-allocation debt
 now schedules automatic full cycles at graph-stable executor safe points.
-Incremental collection is not yet implemented.
+`newproxy` completes the Lua 5.1 base surface. Incremental collection is not
+yet implemented.
 
 ## Ownership boundary
 
@@ -382,9 +384,14 @@ collection after success, and publish an arbitrary finalizer error before
 returning it to Go, so the error's Lua reference remains an owning value.
 Neither API exposes sweep counters or a second collector command model.
 
-`newproxy` follows after weak tables and userdata finalization. Its private
-validity table is weak in both directions, and a true argument creates a
-fresh registered metatable while a valid proxy shares its exact metatable.
+Each `OpenBase` call gives `newproxy` one private self-metatabled `kv` weak
+table. A false or nil argument creates payload-free userdata without a
+metatable. True creates and registers a fresh metatable. Any other argument is
+accepted only when its actual metatable is present in that private table, in
+which case the new proxy shares the exact metatable. Looking up the actual
+metatable deliberately bypasses `__metatable`, as Lua 5.1 does. The weak
+registry validates live proxy families without keeping an otherwise
+unreachable metatable alive.
 
 ## Delivery order
 
@@ -408,7 +415,8 @@ fresh registered metatable while a valid proxy shares its exact metatable.
    mutation barrier or per-instruction collector check. Step multiplier,
    incremental step behavior, and write barriers belong together and follow
    only if latency measurements justify the additional state machine.
-7. Add `newproxy` and complete the base-library surface.
+7. **Complete.** Add `newproxy` over the weak-table and userdata-finalization
+   machinery, completing the base-library surface.
 
 The current ledger suite covers registration, every object-edge kind, State
 and host roots, cycles, execution safe points, escaped upvalues, State
@@ -424,6 +432,8 @@ policy, panic cleanup, bounded finalizer queues, the complete explicit Lua
 control surface, argument coercion and validation, return types, exact logical
 count reporting, State isolation, arbitrary finalizer errors, queue
 resumption, and the high- and low-level host collection methods.
+The base suite additionally covers plain, fresh, shared, protected, invalid,
+reopened, weakly retired, and finalized `newproxy` families.
 
 Automatic coverage additionally pins debt saturation and reset, capacity and
 string-cache charging, Prototype attribution, rooted results, host mutation

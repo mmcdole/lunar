@@ -36,12 +36,11 @@ var baseLibraryFunctions = [...]struct {
 	{name: "xpcall", entry: baseXPCall},
 }
 
-// OpenBase installs the implemented Lua 5.1 base-library globals.
+// OpenBase installs the Lua 5.1 base-library globals.
 //
-// The newproxy entry is still under construction. Opening is explicit: New
-// returns an empty State. Calling OpenBase again replaces every installed
-// function and the coroutine table with fresh canonical objects and restores
-// _G and _VERSION.
+// Opening is explicit: New returns an empty State. Calling OpenBase again
+// replaces every installed function and the coroutine table with fresh
+// canonical objects and restores _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
@@ -87,6 +86,21 @@ func (state *State) OpenBase() error {
 	if err != nil {
 		return err
 	}
+	proxyMetatables := newTable(state, 0, 1)
+	proxyMetatables.metatable = proxyMetatables
+	if err := proxyMetatables.rawSetStringSlot(
+		metaMode.name(),
+		stringSlot(state.runtime.strings.make("kv")),
+	); err != nil {
+		return err
+	}
+	newProxy, err := state.newNativeFunctionObject(
+		baseNewProxy,
+		[]slot{slotFromTableObject(proxyMetatables)},
+	)
+	if err != nil {
+		return err
+	}
 
 	if err := globals.rawSetStringSlot("_G", slotFromTableObject(globals)); err != nil {
 		return err
@@ -114,6 +128,12 @@ func (state *State) OpenBase() error {
 	if err := globals.rawSetStringSlot(
 		"ipairs",
 		slotFromFunctionObject(ipairs),
+	); err != nil {
+		return err
+	}
+	if err := globals.rawSetStringSlot(
+		"newproxy",
+		slotFromFunctionObject(newProxy),
 	); err != nil {
 		return err
 	}
@@ -523,6 +543,59 @@ func baseNext(frame Frame) Outcome {
 		[2]slot{key, value},
 		2,
 		nil,
+	)
+}
+
+func baseNewProxy(frame Frame) Outcome {
+	argument, present := frame.argument(0)
+	if !present {
+		argument = nilSlot
+	}
+	frame.discardArgumentsAfter(1)
+
+	validMetatables := tableObjectFromSlot(frame.nativeCapture(0))
+	var metatable *tableObject
+	switch argument.ref {
+	case nilMarkerPointer, falseMarkerPointer:
+	case trueMarkerPointer:
+		metatable = newTable(frame.thread.state, 0, 0)
+		if status := validMetatables.rawSetSlot(
+			slotFromTableObject(metatable),
+			trueSlot,
+		); status != tableKeyValid {
+			panic("lua: proxy metatable is not a valid table key")
+		}
+	default:
+		metatable = metatableForSlot(frame.thread, argument)
+		if metatable == nil {
+			return baseArgumentError(
+				frame,
+				0,
+				"boolean or proxy expected",
+			)
+		}
+		valid, found := validMetatables.rawSlot(
+			slotFromTableObject(metatable),
+		)
+		if !found || !truthySlot(valid) {
+			return baseArgumentError(
+				frame,
+				0,
+				"boolean or proxy expected",
+			)
+		}
+	}
+
+	proxy := newUserDataObject(
+		frame.thread.state,
+		nil,
+		frame.activation().function.environment,
+		nil,
+	)
+	proxy.metatable = metatable
+	return frame.returnOne(
+		frame.activation(),
+		slotFromUserDataObject(proxy),
 	)
 }
 

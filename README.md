@@ -28,9 +28,11 @@ iterator continuations. Go can compile State-neutral Prototypes, load them
 into distinct States, and invoke Lua or callable objects through protected
 `Call` and caller-buffer `CallInto` boundaries. Warmed nonallocating calls
 through `CallInto` add no boundary allocation. The explicitly opened base
-library now includes Lua 5.1 `pcall` and `xpcall` over the same executor;
-their warmed success paths allocate nothing. Canonical coroutines now suspend
-and resume the same compact activation stack, including the Lua 5.1
+library includes Lua 5.1 `pcall` and `xpcall` over the same executor; their
+warmed success paths allocate nothing. State-local collection controls and
+weakly registered `newproxy` userdata complete that surface. Canonical
+coroutines now suspend and resume the same compact activation stack, including
+the Lua 5.1
 `coroutine` library and exact native/metamethod yield barriers; warmed resume
 paths allocate nothing. A native callback can synchronously reenter Lua
 through protected `Frame.Call` or caller-buffer `Frame.CallInto` without a

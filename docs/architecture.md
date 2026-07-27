@@ -1150,8 +1150,9 @@ stored in the hot representation.
 The base surface currently includes `assert`, `dofile`, `error`, `getfenv`,
 `setfenv`, `getmetatable`, `setmetatable`, `load`, `loadfile`, `loadstring`,
 `rawequal`, `rawget`, `rawset`, `type`, `next`, `pairs`, `ipairs`, `select`,
-`unpack`, `tonumber`, `tostring`, `print`, `pcall`, and `xpcall`. Raw
-operations and iterators stay in compact slots and do not consult metamethods.
+`unpack`, `tonumber`, `tostring`, `print`, `pcall`, `xpcall`,
+`collectgarbage`, `gcinfo`, and `newproxy`. Raw operations and iterators stay
+in compact slots and do not consult metamethods.
 `pairs` and `ipairs` capture private canonical iterators, so replacing global
 `next` cannot change an existing iterator and the private `pairs` generator
 remains distinct from that global Function. `error`, `getfenv`, and `setfenv`
@@ -1370,12 +1371,14 @@ Two host differences are deliberate. Badger does not reproduce C
 dispositions. Windows commands use Go's Unicode process interface rather
 than the C runtime's locale-dependent narrow-character conversion.
 
-The remaining base entry is intentionally absent rather than a partial stub.
-State-local weak clearing, Lua finalizer ordering, logical heap accounting,
-`collectgarbage`, and `gcinfo` are complete. `newproxy` follows on those
-semantics. Automatic allocation-debt pacing uses the same collector and
-control values; it remains runtime policy rather than a second base-library
-surface. None is a process-wide Go GC shim.
+The Lua 5.1 base surface is complete. State-local weak clearing, Lua finalizer
+ordering, logical heap accounting, `collectgarbage`, and `gcinfo` provide the
+foundation for `newproxy`. Each opened base library gives it a private `kv`
+weak table that validates fresh metatables without rooting them; proxies are
+ordinary compact userdata and therefore use the same finalization path.
+Automatic allocation-debt pacing uses the same collector and control values;
+it remains runtime policy rather than a second base-library surface. None is a
+process-wide Go GC shim.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

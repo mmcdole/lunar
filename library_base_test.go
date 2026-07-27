@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+	"weak"
 )
 
 func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
@@ -49,6 +51,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		"load",
 		"loadfile",
 		"loadstring",
+		"newproxy",
 		"next",
 		"pairs",
 		"pcall",
@@ -134,6 +137,195 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	}
 	if err := state.OpenBase(); !errors.Is(err, ErrClosed) {
 		t.Fatalf("OpenBase after Close = %v; want ErrClosed", err)
+	}
+}
+
+func TestNewProxyConstructionAndRegistry(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	newProxy, err := state.Global("newproxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := functionObjectFromSlot(slotFromValue(newProxy))
+	body := function.nativeBodyUnchecked()
+	if len(body.captures) != 1 || !body.captures[0].isTable() {
+		t.Fatal("newproxy does not retain one private validity table")
+	}
+	validMetatables := tableObjectFromSlot(body.captures[0])
+	if validMetatables.metatable != validMetatables ||
+		tableWeakMode(validMetatables) != weakKeys|weakValues {
+		t.Fatal("newproxy validity table is not self-metatabled and weak in both directions")
+	}
+
+	plain, err := state.Call(newProxy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain) != 1 || plain[0].Kind() != UserDataKind {
+		t.Fatalf("newproxy() = %v; want one userdata", plain)
+	}
+	plainObject := userDataObjectFromSlot(slotFromValue(plain[0]))
+	if plainObject.payload != nil || plainObject.metatable != nil {
+		t.Fatal("plain proxy has a payload or metatable")
+	}
+
+	created, err := state.Call(newProxy, Bool(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdObject := userDataObjectFromSlot(slotFromValue(created[0]))
+	metatable := createdObject.metatable
+	if metatable == nil {
+		t.Fatal("newproxy(true) has no metatable")
+	}
+	valid, found := validMetatables.rawSlot(
+		slotFromTableObject(metatable),
+	)
+	if !found || !truthySlot(valid) {
+		t.Fatal("newproxy(true) did not register its metatable")
+	}
+
+	clone, err := state.Call(newProxy, created[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cloneObject := userDataObjectFromSlot(
+		slotFromValue(clone[0]),
+	); cloneObject.metatable != metatable {
+		t.Fatal("newproxy(proxy) did not share the registered metatable")
+	}
+
+	unregistered, err := state.NewUserData(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(newProxy, unregistered.Value()); err == nil {
+		t.Fatal("newproxy accepted unregistered userdata")
+	}
+
+	oldProxy := created[0]
+	oldFunction := newProxy
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := state.Global("newproxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(reopened, oldProxy); err == nil {
+		t.Fatal("reopened newproxy accepted an old registry's proxy")
+	}
+	freshProxy, err := state.Call(reopened, Bool(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(oldFunction, freshProxy[0]); err == nil {
+		t.Fatal("retained newproxy accepted a reopened registry's proxy")
+	}
+	oldClone, err := state.Call(oldFunction, oldProxy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oldCloneObject := userDataObjectFromSlot(
+		slotFromValue(oldClone[0]),
+	); oldCloneObject.metatable != metatable {
+		t.Fatal("retained newproxy lost its private registry after reopening")
+	}
+}
+
+func TestNewProxyRegistryDoesNotRootMetatables(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	newProxy, err := state.Global("newproxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := functionObjectFromSlot(slotFromValue(newProxy))
+	validMetatables := tableObjectFromSlot(
+		function.nativeBodyUnchecked().captures[0],
+	)
+
+	var (
+		proxy          *userDataObject
+		metatable      *tableObject
+		metatableKey   slot
+		publishedToken weak.Pointer[hostToken]
+	)
+	func() {
+		results, callErr := state.Call(newProxy, Bool(true))
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		proxy = userDataObjectFromSlot(slotFromValue(results[0]))
+		metatable = proxy.metatable
+		metatableKey = slotFromTableObject(metatable)
+		publishedToken = weak.Make((*hostToken)(results[0].ref))
+	}()
+
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for publishedToken.Value() != nil {
+		runtime.GC()
+		select {
+		case <-deadline.C:
+			t.Fatal("discarded proxy handle remained reachable")
+		case <-ticker.C:
+		}
+	}
+
+	state.collectUnreachable()
+	if proxy.owner != nil || metatable.owner != nil {
+		t.Fatal("weak validity registry retained a discarded proxy or metatable")
+	}
+	if value, found := validMetatables.rawSlot(
+		metatableKey,
+	); found || !value.isNil() {
+		t.Fatal("weak validity registry retained a dead metatable entry")
+	}
+}
+
+func TestNewProxySurvivesAutomaticCollectionAtReturn(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	newProxy, err := state.Global("newproxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := functionObjectFromSlot(slotFromValue(newProxy))
+	validMetatables := tableObjectFromSlot(
+		function.nativeBodyUnchecked().captures[0],
+	)
+	unreachable := newTable(state, 0, 0)
+
+	control := &state.runtime.collection
+	control.budget = 1
+	control.debt = 0
+	control.requested = false
+	control.refreshRunnable()
+
+	results, err := state.Call(newProxy, Bool(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unreachable.owner != nil {
+		t.Fatal("newproxy allocation did not trigger the due automatic cycle")
+	}
+	proxy := userDataObjectFromSlot(slotFromValue(results[0]))
+	if proxy.owner != state.runtime || proxy.metatable == nil ||
+		proxy.metatable.owner != state.runtime {
+		t.Fatal("automatic collection swept a returned proxy or its metatable")
+	}
+	valid, found := validMetatables.rawSlot(
+		slotFromTableObject(proxy.metatable),
+	)
+	if !found || !truthySlot(valid) {
+		t.Fatal("automatic collection cleared a returned proxy's registry entry")
 	}
 }
 
@@ -1396,6 +1588,36 @@ return type(a),a,type(b),b,type(c),c,d,e,f,g,type(h),h`,
 		name:   "collection_count_and_gcinfo_types",
 		source: `return type(collectgarbage("count")),type(gcinfo()),collectgarbage("count")>=gcinfo(),collectgarbage("count")<gcinfo()+1`,
 		want:   "ok 'number' 'number' true true",
+	},
+	{
+		name:   "newproxy_plain_fresh_and_shared_metatables",
+		source: `local a=newproxy(); local b=newproxy(false); local p=newproxy(true); local mt=getmetatable(p); local q=newproxy(p); local r=newproxy(true); return type(a),getmetatable(a)==nil,type(b),getmetatable(b)==nil,rawequal(getmetatable(q),mt),rawequal(getmetatable(r),mt)`,
+		want:   "ok 'userdata' true 'userdata' true true false",
+	},
+	{
+		name:   "newproxy_accepts_registered_metatables_and_bypasses_protection",
+		source: `local p=newproxy(true); local mt=getmetatable(p); local t=setmetatable({},mt); local q=newproxy(t); mt.__metatable="sealed"; local r=newproxy(p); local protected=getmetatable(r); mt.__metatable=nil; return type(q),rawequal(getmetatable(q),mt),protected,rawequal(getmetatable(r),mt)`,
+		want:   "ok 'userdata' true 'sealed' true",
+	},
+	{
+		name:   "newproxy_rejects_unregistered_truthy_values",
+		source: `local a,b=pcall(newproxy,1); local c,d=pcall(newproxy,{}); local e,f=pcall(newproxy,newproxy(false)); return a,b,c,d,e,f`,
+		want:   "ok false 'bad argument #1 to '?' (boolean or proxy expected)' false 'bad argument #1 to '?' (boolean or proxy expected)' false 'bad argument #1 to '?' (boolean or proxy expected)'",
+	},
+	{
+		name:   "newproxy_validates_the_arguments_actual_metatable",
+		source: `local proxy=newproxy(true); local mt=getmetatable(proxy); local a,b=pcall(newproxy,mt); mt.__metatable="sealed"; local fake=setmetatable({},{__metatable="sealed"}); local c,d=pcall(newproxy,fake); return a,b,c,d`,
+		want:   "ok false 'bad argument #1 to '?' (boolean or proxy expected)' false 'bad argument #1 to '?' (boolean or proxy expected)'",
+	},
+	{
+		name:   "newproxy_direct_and_method_argument_diagnostics",
+		source: `local a,b=pcall(function() return newproxy(1) end); local holder={make=newproxy}; local c,d=pcall(function() return holder:make() end); return a,b,c,d`,
+		want:   "ok false 'case:1: bad argument #1 to 'newproxy' (boolean or proxy expected)' false 'case:1: calling 'make' on bad self (boolean or proxy expected)'",
+	},
+	{
+		name:   "newproxy_registry_survives_finalizer_separation",
+		source: `local created,shared; do local proxy=newproxy(true); local mt=getmetatable(proxy); mt.__gc=function(self) mt.__gc=nil; created=newproxy(self); shared=rawequal(getmetatable(created),mt) end end; collectgarbage(); return type(created),shared`,
+		want:   "ok 'userdata' true",
 	},
 	{
 		name:   "assert_returns_every_argument",
