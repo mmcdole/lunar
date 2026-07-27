@@ -92,7 +92,7 @@ fi
   echo "# gopherlua: $gopherlua_version"
   echo "# golua: $golua_version"
   echo "# platform: $(go env GOOS)/$(go env GOARCH)"
-  echo "# system: $(uname -a)"
+  echo "# system: $(uname -srmv)"
   echo "# machine_model: $machine_model"
   echo "# cpu_model: $cpu_model"
   echo "# power_policy: $power_policy"
