@@ -74,6 +74,16 @@ type nativeResourceLease struct {
 	owned bool
 }
 
+type stateCloseContext struct {
+	failures []error
+}
+
+func (closing *stateCloseContext) record(failure error) {
+	if closing != nil && failure != nil {
+		closing.failures = append(closing.failures, failure)
+	}
+}
+
 var errBorrowedNativeResource = errors.New(
 	"lua: borrowed native resource cannot be closed",
 )
@@ -315,13 +325,10 @@ func closeManagedResourceContext(
 	if !token.resource.owned {
 		return false, errBorrowedNativeResource
 	}
-	runtime.SetFinalizer(token, nil)
-	first, err = token.resource.release(nativeRelease{
+	return releaseManagedResource(data, nativeRelease{
 		reason:  nativeReleaseExplicit,
 		context: ctx,
 	})
-	runtime.KeepAlive(data)
-	return first, err
 }
 
 func closeManagedLeaseContext(
@@ -343,17 +350,35 @@ func closeManagedLeaseContext(
 	return first, err
 }
 
-func collectManagedResource(
+// releaseCollectedResource applies the native lifecycle policy corresponding
+// to the current collection context. During State.Close it records a
+// deterministic-shutdown failure for the host while Lua __gc and recursive
+// semantic collection remain non-throwing.
+func releaseCollectedResource(
+	state *State,
 	data *userDataObject,
+) (first bool, err error) {
+	release := nativeRelease{reason: nativeReleaseCollected}
+	if state != nil && state.closeContext != nil {
+		release.reason = nativeReleaseStateClose
+	}
+	first, err = releaseManagedResource(data, release)
+	if first && state != nil && state.closeContext != nil {
+		state.closeContext.record(err)
+	}
+	return first, err
+}
+
+func releaseManagedResource(
+	data *userDataObject,
+	release nativeRelease,
 ) (first bool, err error) {
 	if data == nil || data.resource == nil {
 		return false, nil
 	}
 	token := data.resource
 	runtime.SetFinalizer(token, nil)
-	first, err = token.resource.release(nativeRelease{
-		reason: nativeReleaseCollected,
-	})
+	first, err = token.resource.release(release)
 	runtime.KeepAlive(data)
 	return first, err
 }

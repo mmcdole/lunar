@@ -3,6 +3,7 @@ package lua
 import (
 	"errors"
 	"io"
+	"reflect"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -94,7 +95,9 @@ func TestManagedNativeResourceExplicitCloseAndSealedPayload(t *testing.T) {
 	}
 }
 
-func TestManagedNativeResourceFinalizerClosesAndUnregisters(t *testing.T) {
+func TestManagedNativeResourceSemanticSweepClosesAndUnregisters(
+	t *testing.T,
+) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -106,22 +109,134 @@ func TestManagedNativeResourceFinalizerClosesAndUnregisters(t *testing.T) {
 	}
 
 	state.collectUnreachable()
-	waitForNativeCleanup(t, probe.done)
 	if probe.count.Load() != 1 {
-		t.Fatalf("finalizer cleanup count = %d; want 1", probe.count.Load())
+		t.Fatalf("semantic cleanup count = %d; want 1", probe.count.Load())
 	}
 	if reason := nativeReleaseReason(probe.release.Load()); reason !=
 		nativeReleaseCollected {
-		t.Fatalf("finalizer cleanup reason = %d", reason)
+		t.Fatalf("semantic cleanup reason = %d", reason)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for nativeResourceCount(state.resources) != 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("finalized resource remained registered")
-		}
-		runtime.Gosched()
+	if nativeResourceCount(state.resources) != 0 {
+		t.Fatal("semantically collected resource remained registered")
 	}
 	runtime.KeepAlive(state)
+}
+
+func TestCloseFinalizerUsesDeterministicNativeResourcePolicy(
+	t *testing.T,
+) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupFailure := errors.New("close cleanup failed")
+	probe := &nativeCleanupProbe{err: cleanupFailure}
+	var resourceData *userDataObject
+	var order []string
+
+	observer := newFinalizerFunction(state, func(frame Frame) Outcome {
+		order = append(order, "observer")
+		if _, open := acquireManagedResource(resourceData); open {
+			t.Fatal("later close finalizer observed an open resource")
+		}
+		return frame.Return()
+	})
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(
+			t,
+			state,
+			slotFromFunctionObject(observer),
+		),
+		nil,
+	)
+
+	resourceData, err = state.newManagedUserData(probe, cleanNativeProbe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaser := newFinalizerFunction(state, func(frame Frame) Outcome {
+		order = append(order, "release")
+		data, present := frame.userDataObject(0)
+		if !present || data != resourceData {
+			t.Fatal("resource finalizer received the wrong userdata")
+		}
+		_, _ = releaseCollectedResource(state, data)
+		return frame.Return()
+	})
+	resourceData.metatable = newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(releaser),
+	)
+
+	closeErr := state.Close()
+	if !errors.Is(closeErr, cleanupFailure) {
+		t.Fatalf(
+			"State.Close error = %v; want cleanup failure",
+			closeErr,
+		)
+	}
+	if !reflect.DeepEqual(order, []string{"release", "observer"}) {
+		t.Fatalf(
+			"resource close finalizer order = %v; want [release observer]",
+			order,
+		)
+	}
+	if probe.count.Load() != 1 {
+		t.Fatalf("resource cleanup count = %d; want 1", probe.count.Load())
+	}
+	if reason := nativeReleaseReason(probe.release.Load()); reason !=
+		nativeReleaseStateClose {
+		t.Fatalf("close-finalizer release reason = %d", reason)
+	}
+}
+
+func TestRecursiveCollectionDuringCloseUsesShutdownResourcePolicy(
+	t *testing.T,
+) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupFailure := errors.New("recursive close cleanup failed")
+	probe := &nativeCleanupProbe{err: cleanupFailure}
+	if _, err := state.newManagedUserData(probe, cleanNativeProbe); err != nil {
+		t.Fatal(err)
+	}
+	collector := newFinalizerFunction(state, func(frame Frame) Outcome {
+		if _, failure := frame.collectAndFinalize(); failure != nil {
+			return frame.RaiseError(failure)
+		}
+		return frame.Return()
+	})
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(
+			t,
+			state,
+			slotFromFunctionObject(collector),
+		),
+		nil,
+	)
+
+	closeErr := state.Close()
+	if !errors.Is(closeErr, cleanupFailure) {
+		t.Fatalf(
+			"recursive State.Close error = %v; want cleanup failure",
+			closeErr,
+		)
+	}
+	if probe.count.Load() != 1 {
+		t.Fatalf(
+			"recursive close cleanup count = %d; want 1",
+			probe.count.Load(),
+		)
+	}
+	if reason := nativeReleaseReason(probe.release.Load()); reason !=
+		nativeReleaseStateClose {
+		t.Fatalf("recursive close release reason = %d", reason)
+	}
 }
 
 func allocateAbandonedNativeResource(

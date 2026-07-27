@@ -9,10 +9,10 @@ finalization, memory accounting, and the `collectgarbage`, `gcinfo`, and
 resources and never execute Lua.
 
 The ownership boundary, State-owned object ledger, centralized tracer,
-logical accounting, close detachment, internal synchronous sweep, and
-Lua 5.1 weak-table classification and clearing are implemented. Lua `__gc`,
-automatic or incremental policy, and the public collection functions are not
-yet implemented or exposed.
+logical accounting, close detachment, internal synchronous sweep, Lua 5.1
+weak-table classification and clearing, and userdata `__gc` lifecycle are
+implemented. Automatic or incremental policy and the public collection
+functions are not yet implemented or exposed.
 
 ## Ownership boundary
 
@@ -99,15 +99,17 @@ common header. Four State-owned typed pointer vectors make both kind and
 membership implicit without adding a peer link to every object. This matters
 for ownership: retaining an ordinary table must not retain its State or older
 ledger peers. One transient mark bit lives in padding in each concrete object.
-Thread stores it beside its main-thread flag; userdata alone will carry
-finalization state.
+Thread stores it beside its main-thread flag; userdata carries one persistent
+finalized bit in existing alignment padding.
 
 Current mark work uses four reusable State-owned typed slices. Oversized work
 frontiers are discarded after a pass, and object vectors release excess slack
 after sweeping. Weak tables use a State-owned queue of table/mode pairs that
 is cleared after every pass and discarded after an oversized frontier.
-Pending finalizers will likewise use State-owned queues. Objects do not carry
-gray links, cached weak modes, per-object reference counts, or host-handle
+Pending finalizers use a persistent State-owned FIFO with a head cursor;
+consumed entries are cleared, partial work survives Lua errors, and oversized
+backing is discarded after the queue drains. Objects do not carry gray links,
+cached weak modes, per-object reference counts, queue links, or host-handle
 cache fields. Host metadata is paid only by objects that cross the Go
 boundary.
 
@@ -120,18 +122,19 @@ collector-scratch backing allocation while preserving documented post-close
 observations of owning handles. Thread execution backing is deliberately
 released.
 
-The internal collector remains unexposed while Lua finalization is incomplete.
-Incremental barriers are added only with the incremental collector; the
-synchronous collector does not burden every table write with an unfinished
-tri-color protocol.
+The internal collector remains unexposed only until the public Lua 5.1
+collection-control contract lands. Incremental barriers are added only with
+the incremental collector; the synchronous collector does not burden every
+table write with an unfinished tri-color protocol.
 
 Logical accounting counts one pointer-sized ledger entry per registered object
 plus retained subordinate backing capacities, including deduplicated
 upvalues and installed dead-reference-key holders. It deliberately excludes
-unused ledger-vector capacity, collector scratch, Go's private weak-pointer
-metadata, opaque userdata payloads, public host tokens, immutable Prototypes,
-strings, and Go allocator size-class rounding. The public Lua count surface
-will define and test its final accounting boundary before exposure.
+unused ledger-vector capacity, collector scratch and pending-queue storage,
+Go's private weak-pointer metadata, opaque userdata payloads, public host
+tokens, immutable Prototypes, strings, and Go allocator size-class rounding.
+The public Lua count surface will define and test its final accounting boundary
+before exposure.
 
 ## Roots and graph traversal
 
@@ -146,8 +149,11 @@ Tables trace their metatable and the strong portions of their array and
 record storage. Functions trace their environment and Lua upvalues or native
 captures. Reachable threads trace their globals, live register extent,
 activations, and open upvalues. Userdata trace their environment and
-metatable. Pending and currently executing finalizers become additional roots
-when finalization lands.
+metatable. Existing pending finalizers are intentionally not initial roots:
+Lua 5.1 first separates newly dead userdata, then marks the complete pending
+queue and drains its graph. This allows userdata reachable only through old
+pending work to become eligible in the current cycle. A currently executing
+finalizer is rooted by its compact call argument on the active thread.
 
 Go callback closures and userdata payloads are opaque. If they retain Lua
 objects, they do so through ordinary owning handles, which appear in the host
@@ -231,19 +237,29 @@ are discarded. Resurrection is allowed, but a userdata is finalized at most
 once.
 
 An explicit collection propagates a finalizer error and leaves the remaining
-queue for a later collection. `State.Close` instead attempts every eligible
-finalizer, including those on reachable userdata, ignores Lua finalizer
-errors, and only then tears down Lua roots and native resources.
+queue for a later collection. Recursive explicit collection from `__gc` is
+legal because callbacks run only after the collector returns to its idle
+phase. The current userdata has already left the queue and is an argument
+root; later pending work remains ordered ahead of anything newly separated.
+
+`State.Close` instead separates every still-unfinalized userdata once,
+including reachable userdata, attempts every queued handler, ignores Lua
+finalizer errors, and only then tears down Lua roots and native resources.
+Userdata created by a close-time handler are not added by that Close. A native
+callback panic does not abandon later finalizers or native cleanup: Close
+remembers the first panic, completes teardown, and then re-panics.
 
 Runtime-owned userdata keep their private native-resource token distinct from
 Lua finalization. The resource is released exactly once when the userdata is
 truly dead after finalization and possible resurrection, or during
-deterministic State shutdown.
+deterministic State shutdown. A collection nested inside close still uses the
+shutdown release policy. Close-time cleanup errors are returned to the host
+without becoming Lua `__gc` errors.
 
 ## Collection controls
 
-Once weak clearing and finalization are complete, the base library will
-expose the Lua 5.1 operations:
+With weak clearing and finalization complete, the next base-library tranche
+will expose the Lua 5.1 operations:
 
 - `collectgarbage("stop")`
 - `collectgarbage("restart")`
@@ -281,8 +297,8 @@ fresh registered metatable while a valid proxy shares its exact metatable.
 3. **Complete.** Add non-owning deleted reference keys, raw `__mode`
    classification, Lua 5.1 strong-side marking, post-mark clearing, and
    traversal-safe tombstones.
-4. Add userdata separation, finalizer execution, resurrection, errors, and
-   close-time draining.
+4. **Complete.** Add userdata separation, finalizer execution, resurrection,
+   errors, and close-time draining.
 5. Expose synchronous collection and count controls after the weak and
    finalizer rules they can observe are complete.
 6. Add automatic debt policy and incremental step behavior. Add write
@@ -295,8 +311,10 @@ isolation, close detachment, logical accounting, warm collection, the
 `k`/`v`/`kv` matrix, strings and scalars in weak tables, Lua 5.1's
 value-to-weak-key cycles, every reference kind, sparse integer metadata,
 collision chains, host roots, traversal after collector deletion, retry and
-poison failure phases, and bounded scratch. The completed qualification suite
-will compare the public behavior with PUC Lua 5.1.5 and cover reverse
-finalization order, resurrection, dynamic handler replacement, finalizer
-errors, close-time draining, two-State isolation, and every collection-control
-return type.
+poison failure phases, bounded scratch, reverse finalization order, raw and
+dynamic handler lookup, callable handlers, at-most-once errors, arbitrary
+error values, resurrection, pending-graph separation, nested collection,
+finalized-userdata weak ordering, close-time draining, close-time resource
+policy, panic cleanup, and bounded finalizer queues. The public-control
+qualification suite will compare the complete Lua surface with PUC Lua 5.1.5
+and cover two-State isolation and every collection-control return type.

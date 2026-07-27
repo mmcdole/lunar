@@ -608,7 +608,11 @@ func fileCollect(frame Frame) Outcome {
 	owned := lease.owned
 	lease.release()
 	if owned {
-		_, _ = collectManagedResource(data)
+		// A process-backed file collected normally abandons its child, while
+		// deterministic State shutdown terminates and reaps it. The shared
+		// release seam records a close-time failure without turning __gc into
+		// a Lua error or leaving the file visible to later finalizers.
+		_, _ = releaseCollectedResource(frame.thread.state, data)
 	}
 	return frame.Return()
 }

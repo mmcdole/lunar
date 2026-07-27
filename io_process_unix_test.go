@@ -641,7 +641,9 @@ return true
 				baseline,
 			)
 		}
-		state.collectUnreachable()
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
 		runtime.GC()
 		runtime.Gosched()
 	}

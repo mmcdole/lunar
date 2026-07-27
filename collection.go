@@ -9,6 +9,10 @@ type objectMark uint8
 
 const objectMarked objectMark = 1
 
+type userDataFlags uint8
+
+const userDataFinalized userDataFlags = 1
+
 type weakMode uint8
 
 const (
@@ -49,12 +53,14 @@ type objectLedger struct {
 	threads   []*threadObject
 	userData  []*userDataObject
 
-	tableWork    []*tableObject
-	functionWork []*functionObject
-	threadWork   []*threadObject
-	userDataWork []*userDataObject
-	weakTables   []weakTable
-	upvalues     map[*upvalue]struct{}
+	tableWork     []*tableObject
+	functionWork  []*functionObject
+	threadWork    []*threadObject
+	userDataWork  []*userDataObject
+	weakTables    []weakTable
+	finalizers    []*userDataObject
+	finalizerHead int
+	upvalues      map[*upvalue]struct{}
 
 	phase collectionPhase
 }
@@ -184,9 +190,10 @@ func appendObjectVector[T any](objects []*T, object *T) []*T {
 	return append(grown, object)
 }
 
-// collectUnreachable performs one synchronous semantic mark/sweep pass.
-// It remains internal until weak tables and Lua finalization can be exposed
-// atomically with collectgarbage.
+// collectUnreachable performs one synchronous semantic mark/sweep pass. It
+// classifies and retains finalizable userdata but deliberately does not enter
+// Lua; collectAndFinalize invokes the persistent queue only after the
+// collector has returned to its idle phase.
 func (state *State) collectUnreachable() collectionResult {
 	if state == nil ||
 		state.runtime == nil ||
@@ -217,6 +224,9 @@ func (state *State) collectUnreachable() collectionResult {
 
 	state.validateCollectionLedger()
 	state.markCollectionRoots()
+	state.drainCollectionWork()
+	state.separateFinalizers(false)
+	state.markPendingFinalizers()
 	state.drainCollectionWork()
 
 	var result collectionResult
@@ -261,6 +271,23 @@ func (state *State) validateCollectionLedger() {
 			panic("lua: invalid userdata in object ledger")
 		}
 	}
+	ledger := &state.objects
+	if ledger.finalizerHead < 0 ||
+		ledger.finalizerHead > len(ledger.finalizers) {
+		panic("lua: invalid finalizer queue")
+	}
+	for _, data := range ledger.finalizers[:ledger.finalizerHead] {
+		if data != nil {
+			panic("lua: consumed finalizer retained its userdata")
+		}
+	}
+	for _, data := range ledger.finalizers[ledger.finalizerHead:] {
+		if data == nil ||
+			data.owner != state.runtime ||
+			data.flags&userDataFinalized == 0 {
+			panic("lua: invalid pending finalizer")
+		}
+	}
 }
 
 func (state *State) clearCollectionMarks() {
@@ -297,6 +324,144 @@ func (state *State) markCollectionRoots() {
 	state.markErrorValue(state.execution.failure)
 	state.markErrorValue(state.execution.pendingExit)
 	state.runtime.hosts.markCollectionRoots(state)
+}
+
+func (state *State) markPendingFinalizers() {
+	ledger := &state.objects
+	for _, data := range ledger.finalizers[ledger.finalizerHead:] {
+		state.markUserData(data)
+	}
+}
+
+// separateFinalizers classifies userdata in reverse creation order. A normal
+// collection considers only dead userdata after the ordinary root graph has
+// drained. Close considers every remaining userdata exactly once.
+//
+// Lua 5.1 marks each considered userdata finalized at this point. A current
+// raw __gc value, callable or not, moves it into the persistent call-order
+// queue. The handler itself is deliberately not captured: Lua looks it up
+// again immediately before the call.
+func (state *State) separateFinalizers(all bool) {
+	ledger := &state.objects
+	ledger.compactFinalizerQueue()
+	for index := len(ledger.userData) - 1; index >= 0; index-- {
+		data := ledger.userData[index]
+		if data.flags&userDataFinalized != 0 ||
+			!all && data.gcMark == objectMarked {
+			continue
+		}
+		data.flags |= userDataFinalized
+		if _, found := metatableEventSlot(data.metatable, metaGC); found {
+			ledger.appendFinalizer(data)
+		}
+	}
+}
+
+// collectAndFinalize performs a complete collection from an idle State and
+// runs its pending finalizers on the main thread. The current finalizer is
+// consumed before invocation, so an error leaves only later work queued.
+func (state *State) collectAndFinalize() (collectionResult, *Error) {
+	if state == nil ||
+		state.runtime == nil ||
+		state.runtime.closed.Load() {
+		return collectionResult{}, nil
+	}
+	if state.active != nil {
+		panic("lua: idle collection requested during execution")
+	}
+	result := state.collectUnreachable()
+	return result, state.runPendingFinalizers(nil)
+}
+
+// collectAndFinalize performs the same operation from a live native Frame.
+// Finalizers use the existing nested-call checkpoint and therefore cannot
+// yield across the collecting callback.
+func (frame Frame) collectAndFinalize() (collectionResult, *Error) {
+	frame.activation()
+	state := frame.thread.state
+	result := state.collectUnreachable()
+	return result, state.runPendingFinalizers(&frame)
+}
+
+func (state *State) runPendingFinalizers(frame *Frame) *Error {
+	for {
+		handler, argument, pending, invoke :=
+			state.nextPendingFinalizer()
+		if !pending {
+			return nil
+		}
+		if !invoke {
+			continue
+		}
+		arguments := [1]slot{argument}
+		var failure *Error
+		if frame != nil {
+			failure = frame.callCompactNone(handler, arguments[:])
+		} else {
+			failure = state.callMainCompactNone(handler, arguments[:])
+		}
+		if failure != nil {
+			return failure
+		}
+	}
+}
+
+func (state *State) nextPendingFinalizer() (
+	handler slot,
+	argument slot,
+	pending bool,
+	invoke bool,
+) {
+	data, found := state.objects.takeFinalizer()
+	if !found {
+		return nilSlot, nilSlot, false, false
+	}
+	if data == nil ||
+		data.owner != state.runtime ||
+		data.flags&userDataFinalized == 0 {
+		panic("lua: invalid dequeued finalizer")
+	}
+	handler, found = metatableEventSlot(data.metatable, metaGC)
+	if !found {
+		return nilSlot, nilSlot, true, false
+	}
+	return handler, slotFromUserDataObject(data), true, true
+}
+
+// finalizeForClose separates every remaining userdata once and invokes every
+// queued handler while the State is still fully usable. Lua failures are
+// ignored as required by lua_close. A panic from host code is remembered,
+// cleanup continues deterministically, and Close re-panics after teardown.
+func (state *State) finalizeForClose() (any, bool) {
+	state.separateFinalizers(true)
+	var firstPanic any
+	panicked := false
+	for {
+		handler, argument, pending, invoke :=
+			state.nextPendingFinalizer()
+		if !pending {
+			return firstPanic, panicked
+		}
+		if !invoke {
+			continue
+		}
+		func() {
+			completed := false
+			defer func() {
+				if completed {
+					return
+				}
+				current := recover()
+				if !panicked {
+					firstPanic = current
+					panicked = true
+				}
+			}()
+			arguments := [1]slot{argument}
+			_ = state.callMainCompactNone(handler, arguments[:])
+			completed = true
+		}()
+	}
 }
 
 func (state *State) markErrorValue(failure *Error) {
@@ -522,7 +687,7 @@ func (state *State) clearWeakTables() {
 			array := table.array.values()
 			for index := range array {
 				if array[index].isNil() ||
-					!state.unmarkedReference(array[index]) {
+					!state.weakSlotCleared(array[index], false) {
 					continue
 				}
 				writeSlot(&array[index], nilSlot)
@@ -538,8 +703,8 @@ func (state *State) clearWeakTables() {
 			// them as keys for one cycle.
 			if entry.hash == entryHashEmpty ||
 				entry.value.isNil() ||
-				!state.unmarkedReference(entry.key) &&
-					!state.unmarkedReference(entry.value) {
+				!state.weakSlotCleared(entry.key, true) &&
+					!state.weakSlotCleared(entry.value, false) {
 				continue
 			}
 			table.store.deleteAt(index)
@@ -549,7 +714,7 @@ func (state *State) clearWeakTables() {
 	}
 }
 
-func (state *State) unmarkedReference(value slot) bool {
+func (state *State) weakSlotCleared(value slot, key bool) bool {
 	switch value.kind() {
 	case TableKind:
 		table := (*tableObject)(value.ref)
@@ -574,7 +739,8 @@ func (state *State) unmarkedReference(value slot) bool {
 		if data.owner != state.runtime {
 			panic("lua: foreign userdata in weak table")
 		}
-		return data.gcMark != objectMarked
+		return data.gcMark != objectMarked ||
+			!key && data.flags&userDataFinalized != 0
 	default:
 		return false
 	}
@@ -681,6 +847,7 @@ func (state *State) sweepUserData() int {
 			data.gcMark = 0
 			live = append(live, data)
 		} else {
+			_, _ = releaseCollectedResource(state, data)
 			*data = userDataObject{}
 		}
 	}
@@ -746,6 +913,47 @@ func (ledger *objectLedger) clearWork() {
 	clearCollectionWork(&ledger.threadWork)
 	clearCollectionWork(&ledger.userDataWork)
 	clearCollectionWork(&ledger.weakTables)
+}
+
+func (ledger *objectLedger) appendFinalizer(data *userDataObject) {
+	if data == nil {
+		panic("lua: cannot queue a nil finalizer")
+	}
+	ledger.finalizers = appendObjectVector(ledger.finalizers, data)
+}
+
+func (ledger *objectLedger) compactFinalizerQueue() {
+	if ledger.finalizerHead == 0 {
+		return
+	}
+	remaining := len(ledger.finalizers) - ledger.finalizerHead
+	if remaining != 0 {
+		copy(
+			ledger.finalizers[:remaining],
+			ledger.finalizers[ledger.finalizerHead:],
+		)
+	}
+	clear(ledger.finalizers[remaining:])
+	ledger.finalizers = ledger.finalizers[:remaining]
+	ledger.finalizerHead = 0
+	if remaining == 0 &&
+		cap(ledger.finalizers) > maximumRetainedCollectionWork {
+		ledger.finalizers = nil
+	}
+}
+
+func (ledger *objectLedger) takeFinalizer() (*userDataObject, bool) {
+	if ledger.finalizerHead == len(ledger.finalizers) {
+		ledger.compactFinalizerQueue()
+		return nil, false
+	}
+	data := ledger.finalizers[ledger.finalizerHead]
+	ledger.finalizers[ledger.finalizerHead] = nil
+	ledger.finalizerHead++
+	if ledger.finalizerHead == len(ledger.finalizers) {
+		ledger.compactFinalizerQueue()
+	}
+	return data, true
 }
 
 const maximumRetainedCollectionWork = 1024

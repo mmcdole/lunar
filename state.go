@@ -279,6 +279,7 @@ type State struct {
 	streams         *standardStreams
 	location        *time.Location
 	now             func() time.Time
+	closeContext    *stateCloseContext
 	active          *threadObject
 	main            *threadObject
 	registry        *tableObject
@@ -354,11 +355,19 @@ func New(options Options) (*State, error) {
 //
 // Every still-open runtime-owned native resource is closed exactly once.
 // Borrowed native handles are detached without closing their underlying
-// resources. Close continues through all records and returns owned-resource
-// cleanup failures joined together. Buffered standard output is flushed and
-// any flush failures are included in the returned error. The State is closed
-// even when that error is non-nil. Standard streams supplied through Options
-// are borrowed and are never closed.
+// resources. Before native teardown, Close first drains previously pending
+// userdata __gc handlers, then runs newly eligible handlers in reverse
+// creation order, including handlers on reachable userdata. Lua errors from
+// those handlers are ignored. A panic from a native handler is remembered
+// while later handlers and native cleanup continue, then propagated after the
+// State has closed.
+//
+// Close continues through every native-resource record and returns cleanup
+// failures joined together, including failures produced by a resource's
+// close-time __gc handler. Buffered standard output is flushed and any flush
+// failures are included in the returned error. The State is closed even when
+// that error is non-nil. Standard streams supplied through Options are
+// borrowed and are never closed.
 //
 // Previously returned owning Values and canonical object handles remain safe
 // to inspect after Close.
@@ -369,10 +378,15 @@ func (state *State) Close() error {
 	if state.active != nil || state.runtime.nativeCallDepth != 0 {
 		return ErrRunning
 	}
-	if state.runtime.closed.Swap(true) {
+	if state.runtime.closed.Load() {
 		state.runtime.hosts.prune()
 		return nil
 	}
+	closeContext := stateCloseContext{}
+	state.closeContext = &closeContext
+	panicValue, panicked := state.finalizeForClose()
+	state.closeContext = nil
+	state.runtime.closed.Store(true)
 	var streamErr error
 	if state.streams != nil {
 		streamErr = state.streams.release()
@@ -396,7 +410,15 @@ func (state *State) Close() error {
 	state.options.Now = nil
 	state.typeMetatables = [TableKind + 1]*tableObject{}
 	state.runtime.hosts.prune()
-	return errors.Join(streamErr, resourceErr)
+	closeErr := errors.Join(
+		errors.Join(closeContext.failures...),
+		streamErr,
+		resourceErr,
+	)
+	if panicked {
+		panic(panicValue)
+	}
+	return closeErr
 }
 
 // MainThread returns the canonical main Thread.
@@ -926,6 +948,7 @@ type userDataObject struct {
 	environment *tableObject
 	resource    *nativeResourceToken
 	gcMark      objectMark
+	flags       userDataFlags
 }
 
 func newUserDataObject(

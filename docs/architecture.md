@@ -1086,14 +1086,15 @@ userdata's ordinary Lua 5.1 environment remains an independent, observable
 reference. Borrowed standard streams use the same lifecycle record with a
 no-close release policy and are never closed.
 
-Finalizers in this layer may release only a private native resource; they
-never enter Lua. The State-local semantic ledger and internal synchronous
-mark/sweep collector now identify host-retained owning handles, unlink
-semantically unreachable Lua graphs, and clear their storage so Go can reclaim
-the backing allocations. Lua `__gc`, weak-table clearing, resurrection,
-and the public `collectgarbage` controls remain deliberately unexposed until
-their ordering rules land together. The design and delivery state are
-specified in [collection.md](collection.md).
+Go finalizers in this layer may release only a private native resource; they
+never enter Lua. The State-local semantic ledger and synchronous mark/sweep
+collector identify host-retained owning handles, unlink semantically
+unreachable Lua graphs, clear Lua 5.1 weak tables, and run userdata `__gc`
+with resurrection, error-queue, and close-order semantics before Go reclaims
+backing allocations. The public `collectgarbage` controls remain deliberately
+unexposed until their return values, accounting, and automatic-debt policy
+land as one coherent surface. The design and delivery state are specified in
+[collection.md](collection.md).
 
 ## Standard libraries
 
@@ -1356,10 +1357,9 @@ dispositions. Windows commands use Go's Unicode process interface rather
 than the C runtime's locale-dependent narrow-character conversion.
 
 The remaining base entries are intentionally absent rather than partial
-stubs. The internal State-local mark/sweep foundation is present, but
-`collectgarbage`, `gcinfo`, and `newproxy` stay absent until weak-reference
-clearing and Lua finalizer ordering make every observable collection
-operation complete. None will be a process-wide Go GC shim.
+stubs. State-local weak clearing and Lua finalizer ordering are complete;
+`collectgarbage`, `gcinfo`, and `newproxy` now wait only for their accounting,
+control, and automatic-debt tranche. None will be a process-wide Go GC shim.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

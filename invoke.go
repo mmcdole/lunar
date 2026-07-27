@@ -214,10 +214,92 @@ func (state *State) callMain(
 	return nil, count, nil
 }
 
+// callMainCompactNone invokes one compact callable on an otherwise idle main
+// thread and discards its results. It is used by runtime lifecycle work such
+// as close-time finalization, where materializing public Values would add a
+// second representation to an entirely internal call.
+func (state *State) callMainCompactNone(
+	callable slot,
+	arguments []slot,
+) *Error {
+	thread, err := state.prepareReadyMainThread()
+	if err != nil {
+		panic("lua: compact main call entered an unavailable State")
+	}
+	if err := state.runtime.acceptSlot(callable); err != nil {
+		panic("lua: compact main call received an invalid callable")
+	}
+	for _, argument := range arguments {
+		if err := state.runtime.acceptSlot(argument); err != nil {
+			panic("lua: compact main call received an invalid argument")
+		}
+	}
+	if len(arguments) >= state.options.MaxValues ||
+		uint64(len(arguments))+1 > uint64(^uint32(0)) {
+		return newResourceError(
+			"value stack limit of %d exceeded",
+			state.options.MaxValues,
+		)
+	}
+
+	state.active = thread
+	thread.status = ThreadRunning
+	defer func() {
+		thread.resetMainCall()
+		state.active = nil
+		state.execution.pendingExit = nil
+	}()
+
+	required := 1 + len(arguments)
+	thread.reserveValues(required)
+	writeSlot(&thread.values[0], callable)
+	copy(thread.values[1:required], arguments)
+	thread.top = required
+
+	if failure := thread.startMainCallWithResults(0); failure != nil {
+		return failure
+	}
+	result := execute(thread, 0)
+	if result.kind == executionFailed {
+		return result.err
+	}
+	if result.kind != executionReturned ||
+		len(thread.frames) != 0 ||
+		len(thread.continuations) != 0 ||
+		thread.openUpvalues != nil ||
+		thread.frameExtent != 0 {
+		panic("lua: compact executor returned an invalid main-thread state")
+	}
+	return nil
+}
+
 func (state *State) prepareMainCall(
 	callable Value,
 	arguments []Value,
 ) (*threadObject, error) {
+	thread, err := state.prepareReadyMainThread()
+	if err != nil {
+		return nil, err
+	}
+	if err := state.runtime.accept(callable); err != nil {
+		return nil, err
+	}
+	for _, argument := range arguments {
+		if err := state.runtime.accept(argument); err != nil {
+			return nil, err
+		}
+	}
+	if len(arguments) >= state.options.MaxValues ||
+		uint64(len(arguments))+1 > uint64(^uint32(0)) {
+		return nil, newResourceError(
+			"value stack limit of %d exceeded",
+			state.options.MaxValues,
+		)
+	}
+	return thread, nil
+}
+
+func (state *State) prepareReadyMainThread() (*threadObject, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -245,32 +327,23 @@ func (state *State) prepareMainCall(
 		state.limits.frames != state.options.MaxFrames {
 		panic("lua: ready main thread retains execution state")
 	}
-	if err := state.runtime.accept(callable); err != nil {
-		return nil, err
-	}
-	for _, argument := range arguments {
-		if err := state.runtime.accept(argument); err != nil {
-			return nil, err
-		}
-	}
-	if len(arguments) >= state.options.MaxValues ||
-		uint64(len(arguments))+1 > uint64(^uint32(0)) {
-		return nil, newResourceError(
-			"value stack limit of %d exceeded",
-			state.options.MaxValues,
-		)
-	}
 	return thread, nil
 }
 
 func (thread *threadObject) startMainCall() *Error {
+	return thread.startMainCallWithResults(allResults)
+}
+
+func (thread *threadObject) startMainCallWithResults(
+	wantedResults int,
+) *Error {
 	callable := thread.values[0]
 	if function, direct := functionSlot(callable); direct {
 		return thread.pushFunctionCall(
 			function,
 			0,
 			thread.top-1,
-			allResults,
+			wantedResults,
 		)
 	}
 	if function := callMetamethodFunction(thread, callable); function != nil {
@@ -278,7 +351,7 @@ func (thread *threadObject) startMainCall() *Error {
 			function,
 			0,
 			thread.top-1,
-			allResults,
+			wantedResults,
 		)
 	}
 	message := fmt.Sprintf(
