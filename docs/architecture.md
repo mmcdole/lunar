@@ -47,7 +47,9 @@ The low-level interface currently includes:
 - `CallInto` for caller-owned result storage; and
 - `Frame.Index` and `Frame.SetIndex` for ordinary Lua indexing and assignment,
   including bounded metamethod chains and synchronous Lua handlers, without a
-  second value representation.
+  second value representation; and
+- `Frame.Collect` and `Frame.HeapBytes` for safe-point collection and logical
+  heap measurement without a second collector interface.
 
 It will later add:
 
@@ -1091,10 +1093,11 @@ never enter Lua. The State-local semantic ledger and synchronous mark/sweep
 collector identify host-retained owning handles, unlink semantically
 unreachable Lua graphs, clear Lua 5.1 weak tables, and run userdata `__gc`
 with resurrection, error-queue, and close-order semantics before Go reclaims
-backing allocations. The public `collectgarbage` controls remain deliberately
-unexposed until their return values, accounting, and automatic-debt policy
-land as one coherent surface. The design and delivery state are specified in
-[collection.md](collection.md).
+backing allocations. `collectgarbage`, `gcinfo`, `State.Collect`,
+`Frame.Collect`, and their shared logical heap accounting are exposed over
+that one collector. Automatic allocation-debt pacing remains separate from
+the completed explicit control surface. The design and delivery state are
+specified in [collection.md](collection.md).
 
 ## Standard libraries
 
@@ -1356,10 +1359,11 @@ Two host differences are deliberate. Badger does not reproduce C
 dispositions. Windows commands use Go's Unicode process interface rather
 than the C runtime's locale-dependent narrow-character conversion.
 
-The remaining base entries are intentionally absent rather than partial
-stubs. State-local weak clearing and Lua finalizer ordering are complete;
-`collectgarbage`, `gcinfo`, and `newproxy` now wait only for their accounting,
-control, and automatic-debt tranche. None will be a process-wide Go GC shim.
+The remaining base entry is intentionally absent rather than a partial stub.
+State-local weak clearing, Lua finalizer ordering, logical heap accounting,
+`collectgarbage`, and `gcinfo` are complete. `newproxy` follows on those
+semantics; automatic allocation-debt pacing remains collector policy rather
+than part of its base-library surface. None is a process-wide Go GC shim.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

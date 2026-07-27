@@ -3,16 +3,16 @@
 Badger uses Go's collector to reclaim backing allocations, but Lua decides
 which Lua objects are reachable. These are separate responsibilities.
 
-The State-local collector will own Lua 5.1 weak-table behavior, userdata
-finalization, memory accounting, and the `collectgarbage`, `gcinfo`, and
-`newproxy` interfaces. Go finalizers remain limited to private native
-resources and never execute Lua.
+The State-local collector owns Lua 5.1 weak-table behavior, userdata
+finalization, memory accounting, and the `collectgarbage` and `gcinfo`
+interfaces. It will also support `newproxy`. Go finalizers remain limited to
+private native resources and never execute Lua.
 
 The ownership boundary, State-owned object ledger, centralized tracer,
-logical accounting, close detachment, internal synchronous sweep, Lua 5.1
-weak-table classification and clearing, and userdata `__gc` lifecycle are
-implemented. Automatic or incremental policy and the public collection
-functions are not yet implemented or exposed.
+logical accounting, close detachment, synchronous sweep, Lua 5.1 weak-table
+classification and clearing, userdata `__gc`, explicit Lua controls, and host
+collection and measurement methods are implemented. Automatic
+allocation-debt policy and incremental collection are not yet implemented.
 
 ## Ownership boundary
 
@@ -122,19 +122,31 @@ collector-scratch backing allocation while preserving documented post-close
 observations of owning handles. Thread execution backing is deliberately
 released.
 
-The internal collector remains unexposed only until the public Lua 5.1
-collection-control contract lands. Incremental barriers are added only with
-the incremental collector; the synchronous collector does not burden every
-table write with an unfinished tri-color protocol.
+The collector is exposed only at safe entry points. Incremental barriers are
+added only with the incremental collector; the synchronous collector does not
+burden every table write with an unfinished tri-color protocol.
 
-Logical accounting counts one pointer-sized ledger entry per registered object
-plus retained subordinate backing capacities, including deduplicated
-upvalues and installed dead-reference-key holders. It deliberately excludes
-unused ledger-vector capacity, collector scratch and pending-queue storage,
-Go's private weak-pointer metadata, opaque userdata payloads, public host
-tokens, immutable Prototypes, strings, and Go allocator size-class rounding.
-The public Lua count surface will define and test its final accounting boundary
-before exposure.
+Logical accounting counts one pointer-sized used ledger entry per registered
+object plus retained subordinate backing capacities, including deduplicated
+upvalues, installed dead-reference-key holders, unique retained string-backing
+views, string-cache shards, and each reachable immutable Prototype's code,
+constants, children, and debug metadata. State-neutral strings retained only
+by Go are not charged; a string becomes attributable when a State table,
+stack, capture, upvalue, Prototype, or runtime cache retains it. A Prototype
+shared by multiple States is charged once to each retaining State, matching
+the logical memory each State requires even when the physical allocation is
+shared.
+
+The boundary deliberately excludes unused ledger-vector capacity, collector
+scratch and pending-queue storage, Go's private weak-pointer metadata, opaque
+userdata payloads, public host tokens, State infrastructure, and Go allocator
+size-class rounding.
+
+`State.HeapBytes`, `Frame.HeapBytes`, `collectgarbage("count")`, and `gcinfo`
+all use this one target-architecture logical boundary. It is a Lua heap
+measure, not process RSS or physical Go allocator usage. Measurement currently
+scans the registered heap and retained metadata; automatic scheduling will use
+maintained allocation debt rather than placing this scan on allocation paths.
 
 ## Roots and graph traversal
 
@@ -173,8 +185,8 @@ their backing allocations and any unreachable cycles. Sweep does not
 destructively blank an object that a live host handle can observe, because
 such an object is a root.
 
-The following sections specify observable collection phases that remain to be
-implemented.
+The following sections define the observable weak-table and finalization
+phases implemented by the collector.
 
 ## Weak tables
 
@@ -258,8 +270,7 @@ without becoming Lua `__gc` errors.
 
 ## Collection controls
 
-With weak clearing and finalization complete, the next base-library tranche
-will expose the Lua 5.1 operations:
+The base library exposes the Lua 5.1 operations:
 
 - `collectgarbage("stop")`
 - `collectgarbage("restart")`
@@ -270,15 +281,31 @@ will expose the Lua 5.1 operations:
 - `collectgarbage("setstepmul", value)`
 - `gcinfo()`
 
-The default operation will be `collect`. Stop, restart, and collect will return
-numeric zero. Count will return State-local accounted bytes in KiB, including
-the fractional part; `gcinfo` will return the integer KiB value. Step will
-report whether it completed a cycle. Pause and step multiplier will default to
-200 and their setters will return the previous value.
+The default operation is `collect`. Stop, restart, and collect return numeric
+zero. Count returns State-local accounted bytes in KiB, including the
+fractional part; `gcinfo` returns the integer KiB value. Pause and step
+multiplier default to 200 and their setters return the previous value,
+including zero and negative values. The second argument is parsed for every
+operation as in Lua 5.1, even when that operation does not otherwise use it.
+Option comparison and diagnostics stop at an embedded NUL.
 
-Explicit collect and step will continue to work while automatic collection is
-stopped. No control will invoke process-wide `runtime.GC` as a substitute for
-State-local work.
+The current collector is synchronous. One `step` therefore completes one
+whole cycle and returns true; the amount is parsed but does not manufacture a
+fake partial phase. A later genuinely incremental collector may return false
+when a step does not complete its cycle.
+
+Explicit collect and step continue to work while automatic collection is
+stopped and, as in PUC's threshold-based implementation, either resumes
+automatic scheduling afterward. Stop and restart only control future
+automatic work. No control invokes process-wide `runtime.GC` as a substitute
+for State-local work.
+
+`State.Collect` provides the idle high-level host operation.
+`Frame.Collect` performs the same work safely from a live native callback.
+Both may execute arbitrary non-yielding Lua finalizers, resume automatic
+collection after success, and publish an arbitrary finalizer error before
+returning it to Go, so the error's Lua reference remains an owning value.
+Neither API exposes sweep counters or a second collector command model.
 
 `newproxy` follows after weak tables and userdata finalization. Its private
 validity table is weak in both directions, and a true argument creates a
@@ -299,10 +326,12 @@ fresh registered metatable while a valid proxy shares its exact metatable.
    traversal-safe tombstones.
 4. **Complete.** Add userdata separation, finalizer execution, resurrection,
    errors, and close-time draining.
-5. Expose synchronous collection and count controls after the weak and
-   finalizer rules they can observe are complete.
-6. Add automatic debt policy and incremental step behavior. Add write
-   barriers only when the incremental state machine exists.
+5. **Complete.** Expose synchronous collection and count controls after the
+   weak and finalizer rules they can observe are complete.
+6. Add automatic allocation-debt policy, making the stored stop, restart,
+   pause, and multiplier policy affect automatic execution. Incremental step
+   behavior and write barriers belong together and follow only if measurement
+   justifies the additional state machine.
 7. Add `newproxy` and complete the base-library surface.
 
 The current ledger suite covers registration, every object-edge kind, State
@@ -315,6 +344,7 @@ poison failure phases, bounded scratch, reverse finalization order, raw and
 dynamic handler lookup, callable handlers, at-most-once errors, arbitrary
 error values, resurrection, pending-graph separation, nested collection,
 finalized-userdata weak ordering, close-time draining, close-time resource
-policy, panic cleanup, and bounded finalizer queues. The public-control
-qualification suite will compare the complete Lua surface with PUC Lua 5.1.5
-and cover two-State isolation and every collection-control return type.
+policy, panic cleanup, bounded finalizer queues, the complete explicit Lua
+control surface, argument coercion and validation, return types, exact logical
+count reporting, State isolation, arbitrary finalizer errors, queue
+resumption, and the high- and low-level host collection methods.

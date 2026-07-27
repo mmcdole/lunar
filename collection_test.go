@@ -1,7 +1,9 @@
 package lua
 
 import (
+	"errors"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -937,7 +939,10 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 	if cap(state.objects.tableWork) == 0 ||
 		cap(state.objects.functionWork) == 0 ||
 		cap(state.objects.threadWork) == 0 ||
-		state.objects.upvalues == nil {
+		state.objects.upvalues == nil ||
+		state.objects.prototypes == nil ||
+		state.objects.names == nil ||
+		state.objects.stringBacking == nil {
 		t.Fatal("test did not populate collector scratch")
 	}
 
@@ -954,7 +959,12 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 		state.objects.functionWork != nil ||
 		state.objects.threadWork != nil ||
 		state.objects.userDataWork != nil ||
-		state.objects.upvalues != nil {
+		state.objects.upvalues != nil ||
+		state.objects.prototypes != nil ||
+		state.objects.names != nil ||
+		state.objects.longStrings != nil ||
+		state.objects.stringBacking != nil ||
+		state.objects.prototypeWork != nil {
 		t.Fatal("Close retained collector scratch")
 	}
 	if tableObject.gcMark != 0 ||
@@ -1040,6 +1050,234 @@ func TestSemanticHeapAccountingAndWarmCollection(t *testing.T) {
 	}
 	runtime.KeepAlive(data)
 	runtime.KeepAlive(payload)
+}
+
+func TestSemanticHeapAccountingBoundary(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	beforeNative := state.semanticHeap()
+	captures := []slot{numberSlot(1), trueSlot, nilSlot}
+	native := newNativeFunctionOwned(
+		state,
+		state.main.globals,
+		func(frame Frame) Outcome { return frame.Return() },
+		captures,
+	)
+	afterNative := state.semanticHeap()
+	wantNative := uint64(unsafe.Sizeof(nativeFunctionAllocation{})) +
+		uint64(unsafe.Sizeof((*functionObject)(nil))) +
+		uint64(len(captures))*uint64(unsafe.Sizeof(slot{}))
+	if delta := afterNative.bytes - beforeNative.bytes; delta != wantNative {
+		t.Fatalf("native function bytes = %d; want %d", delta, wantNative)
+	}
+
+	cell := newClosedUpvalue(numberSlot(7))
+	prototype := collectorPrototype(t, 1)
+	first := newLuaFunctionOwned(
+		state,
+		prototype,
+		state.main.globals,
+		[]*upvalue{cell},
+	)
+	afterFirst := state.semanticHeap()
+	wantLua := uint64(unsafe.Sizeof(functionObject{})) +
+		uint64(unsafe.Sizeof((*functionObject)(nil))) +
+		uint64(unsafe.Sizeof((*upvalue)(nil)))
+	wantPrototype := uint64(unsafe.Sizeof(*prototype)) +
+		uint64(cap(prototype.code))*uint64(unsafe.Sizeof(instruction(0))) +
+		uint64(cap(prototype.constants))*uint64(unsafe.Sizeof(slot{})) +
+		uint64(cap(prototype.children))*
+			uint64(unsafe.Sizeof((*Prototype)(nil)))
+	if prototype.sourceName != nil {
+		wantPrototype += uint64(unsafe.Sizeof(*prototype.sourceName)) +
+			uint64(len(prototype.sourceName.text))
+	}
+	wantFirst := wantLua +
+		uint64(unsafe.Sizeof(upvalue{})) +
+		wantPrototype
+	if delta := afterFirst.bytes - afterNative.bytes; delta != wantFirst {
+		t.Fatalf("first shared-upvalue function bytes = %d; want %d", delta, wantFirst)
+	}
+	second := newLuaFunctionOwned(
+		state,
+		prototype,
+		state.main.globals,
+		[]*upvalue{cell},
+	)
+	afterSecond := state.semanticHeap()
+	if delta := afterSecond.bytes - afterFirst.bytes; delta != wantLua {
+		t.Fatalf("second shared-upvalue function bytes = %d; want %d", delta, wantLua)
+	}
+	if afterSecond.upvalues != afterFirst.upvalues {
+		t.Fatal("one shared upvalue was counted more than once")
+	}
+
+	thread := &threadObject{
+		state:         state,
+		globals:       state.main.globals,
+		values:        make([]slot, 0, 7),
+		frames:        make([]activation, 0, 3),
+		continuations: make([]executionContinuation, 0, 2),
+		status:        ThreadSuspended,
+	}
+	state.registerThread(thread)
+	afterThread := state.semanticHeap()
+	wantThread := uint64(unsafe.Sizeof(threadObject{})) +
+		uint64(unsafe.Sizeof((*threadObject)(nil))) +
+		7*uint64(unsafe.Sizeof(slot{})) +
+		3*uint64(unsafe.Sizeof(activation{})) +
+		2*uint64(unsafe.Sizeof(executionContinuation{}))
+	if delta := afterThread.bytes - afterSecond.bytes; delta != wantThread {
+		t.Fatalf("thread backing bytes = %d; want %d", delta, wantThread)
+	}
+
+	table := newTable(state, 1, 0)
+	beforeContent := state.semanticHeap()
+	text := strings.Repeat("state-neutral-", 128)
+	longString := state.String(text)
+	table.rawSetIntegerSlot(1, slotFromValue(longString))
+	afterString := state.semanticHeap()
+	if delta := afterString.bytes - beforeContent.bytes; delta != uint64(len(text)) {
+		t.Fatalf("retained string bytes = %d; want %d", delta, len(text))
+	}
+	table.owningHandle()
+	afterContent := state.semanticHeap()
+	if afterContent.bytes != afterString.bytes {
+		t.Fatalf(
+			"host token changed heap bytes: %d -> %d",
+			afterString.bytes,
+			afterContent.bytes,
+		)
+	}
+
+	ledger := &state.objects
+	tables := make([]*tableObject, len(ledger.tables), cap(ledger.tables)+64)
+	copy(tables, ledger.tables)
+	ledger.tables = tables
+	ledger.tableWork = make([]*tableObject, 0, 64)
+	ledger.functionWork = make([]*functionObject, 0, 64)
+	ledger.finalizers = make([]*userDataObject, 0, 64)
+	afterScratch := state.semanticHeap()
+	if afterScratch.bytes != afterContent.bytes {
+		t.Fatalf(
+			"ledger slack or collector scratch changed heap bytes: %d -> %d",
+			afterContent.bytes,
+			afterScratch.bytes,
+		)
+	}
+	if allocations := testing.AllocsPerRun(1000, func() {
+		if state.semanticHeap().bytes != afterContent.bytes {
+			panic("stable semantic heap changed")
+		}
+	}); allocations != 0 {
+		t.Fatalf("warm HeapBytes accounting allocated %v times; want 0", allocations)
+	}
+
+	runtime.KeepAlive(native)
+	runtime.KeepAlive(first)
+	runtime.KeepAlive(second)
+	runtime.KeepAlive(thread)
+	runtime.KeepAlive(table)
+	runtime.KeepAlive(longString)
+}
+
+func TestSemanticHeapAttributesPrototypeTreeBeforeClosureCreation(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	root := mustLoadString(
+		t,
+		state,
+		"@prototype-accounting.lua",
+		`return function() return "child constant" end`,
+	)
+	before := state.semanticHeap()
+	if before.prototypes != 2 {
+		t.Fatalf(
+			"loaded prototype tree count = %d; want root and child",
+			before.prototypes,
+		)
+	}
+	if before.textBackings == 0 {
+		t.Fatal("prototype strings were not attributed")
+	}
+
+	results, err := state.Call(root.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := state.semanticHeap()
+	if after.prototypes != before.prototypes {
+		t.Fatalf(
+			"creating child closure changed prototype attribution: %d -> %d",
+			before.prototypes,
+			after.prototypes,
+		)
+	}
+	runtime.KeepAlive(results)
+}
+
+func TestCollectionHostSurfaceUsesTheSemanticCollector(t *testing.T) {
+	state := newCollectorTestState(t)
+
+	initial, err := state.HeapBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial == 0 || initial != state.semanticHeap().bytes {
+		t.Fatalf(
+			"initial HeapBytes = %d; semantic heap = %d",
+			initial,
+			state.semanticHeap().bytes,
+		)
+	}
+
+	var stateCollectError error
+	entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		before := frame.HeapBytes()
+		stateCollectError = state.Collect()
+		if err := frame.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		after := frame.HeapBytes()
+		return frame.ReturnValues(Number(float64(before)), Number(float64(after)))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(entry.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(stateCollectError, ErrRunning) {
+		t.Fatalf(
+			"State.Collect during callback = %v; want ErrRunning",
+			stateCollectError,
+		)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Frame collector returned %d observations; want 2", len(results))
+	}
+	for index, result := range results {
+		number, ok := result.AsNumber()
+		if !ok || number <= 0 {
+			t.Fatalf("Frame HeapBytes result %d = %v", index, result)
+		}
+	}
+
+	if err := state.Collect(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.HeapBytes(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("HeapBytes after Close = %v; want ErrClosed", err)
+	}
+	if err := state.Collect(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Collect after Close = %v; want ErrClosed", err)
+	}
 }
 
 func newCollectorTestState(t *testing.T) *State {

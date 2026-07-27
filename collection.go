@@ -41,6 +41,32 @@ const (
 	collectionBroken
 )
 
+const (
+	defaultCollectionPause          = 200
+	defaultCollectionStepMultiplier = 200
+)
+
+// collectionControl is scheduling policy, kept separate from the object
+// ledger and its transient mark/sweep state. A stopped collector still
+// accepts explicit collection.
+type collectionControl struct {
+	pause          int
+	stepMultiplier int
+	stopped        bool
+}
+
+type stringBacking struct {
+	data   unsafe.Pointer
+	length int
+}
+
+func defaultCollectionControl() collectionControl {
+	return collectionControl{
+		pause:          defaultCollectionPause,
+		stepMultiplier: defaultCollectionStepMultiplier,
+	}
+}
+
 // objectLedger is State-owned. Compact objects point only at runtimeState, so
 // retaining an ordinary object does not retain this ledger or its peers.
 //
@@ -61,6 +87,11 @@ type objectLedger struct {
 	finalizers    []*userDataObject
 	finalizerHead int
 	upvalues      map[*upvalue]struct{}
+	prototypes    map[*Prototype]struct{}
+	names         map[*internedText]struct{}
+	longStrings   map[*longString]struct{}
+	stringBacking map[stringBacking]struct{}
+	prototypeWork []*Prototype
 
 	phase collectionPhase
 }
@@ -80,12 +111,14 @@ func (result collectionResult) total() int {
 }
 
 type semanticHeapSummary struct {
-	bytes     uint64
-	tables    int
-	functions int
-	threads   int
-	userData  int
-	upvalues  int
+	bytes        uint64
+	tables       int
+	functions    int
+	threads      int
+	userData     int
+	upvalues     int
+	prototypes   int
+	textBackings int
 }
 
 func (summary semanticHeapSummary) objects() int {
@@ -373,6 +406,42 @@ func (state *State) collectAndFinalize() (collectionResult, *Error) {
 	return result, state.runPendingFinalizers(nil)
 }
 
+// Collect performs one complete semantic collection and runs pending userdata
+// finalizers. Finalizers may execute arbitrary non-yielding Lua. Collect
+// resumes automatic collection after success. It returns a finalizer's Lua
+// error when one occurs; later pending finalizers remain queued for another
+// collection.
+//
+// Collect requires an idle State. A NativeFunc can use Frame.Collect while Lua
+// is executing.
+func (state *State) Collect() error {
+	if _, err := state.prepareReadyMainThread(); err != nil {
+		return err
+	}
+	state.runtime.collection.stopped = false
+	_, failure := state.collectAndFinalize()
+	if failure != nil {
+		return failure.exposeValue()
+	}
+	state.runtime.collection.stopped = false
+	return nil
+}
+
+// HeapBytes reports the State's target-architecture logical Lua heap size.
+//
+// The count covers registered Lua objects and their owned execution and table
+// storage, unique retained string-backing views, and reachable immutable Prototypes.
+// It is not process RSS or Go allocator usage; opaque userdata payloads, host
+// ownership tokens, collector scratch, State infrastructure, and allocator
+// rounding are not attributed to it. HeapBytes scans the live object ledger;
+// it is a measurement operation rather than a cheap per-allocation counter.
+func (state *State) HeapBytes() (uint64, error) {
+	if err := state.checkOpen(); err != nil {
+		return 0, err
+	}
+	return state.semanticHeap().bytes, nil
+}
+
 // collectAndFinalize performs the same operation from a live native Frame.
 // Finalizers use the existing nested-call checkpoint and therefore cannot
 // yield across the collecting callback.
@@ -381,6 +450,29 @@ func (frame Frame) collectAndFinalize() (collectionResult, *Error) {
 	state := frame.thread.state
 	result := state.collectUnreachable()
 	return result, state.runPendingFinalizers(&frame)
+}
+
+// Collect performs one complete semantic collection from a NativeFunc and
+// runs pending userdata finalizers before returning. Finalizers may execute
+// arbitrary non-yielding Lua. Collect resumes automatic collection after
+// success. A finalizer's Lua error is returned as an *Error through the error
+// interface.
+func (frame Frame) Collect() error {
+	frame.activation()
+	frame.thread.owner.collection.stopped = false
+	_, failure := frame.collectAndFinalize()
+	if failure != nil {
+		return failure.exposeValue()
+	}
+	frame.thread.owner.collection.stopped = false
+	return nil
+}
+
+// HeapBytes reports the target-architecture logical Lua heap size of frame's
+// State. It has the same accounting boundary as State.HeapBytes.
+func (frame Frame) HeapBytes() uint64 {
+	frame.activation()
+	return frame.thread.state.semanticHeap().bytes
 }
 
 func (state *State) runPendingFinalizers(frame *Frame) *Error {
@@ -999,26 +1091,19 @@ func (state *State) detachObjectsForClose() {
 	state.objects = objectLedger{}
 }
 
-// semanticHeap reports deterministic logical storage owned by registered Lua
-// objects. Opaque userdata payloads, host tokens, strings, Prototypes, and Go
-// allocator size-class rounding are intentionally outside this first
-// accounting boundary.
+// semanticHeap reports the target-architecture logical storage retained by
+// this State's Lua graph. Strings and immutable Prototypes are State-neutral
+// representations, but each is attributed once when this State retains it.
+// Opaque userdata payloads, host tokens, and Go allocator size-class rounding
+// remain outside the accounting boundary.
 func (state *State) semanticHeap() semanticHeapSummary {
 	if state == nil {
 		return semanticHeapSummary{}
 	}
 	ledger := &state.objects
-	if ledger.upvalues != nil {
-		clear(ledger.upvalues)
-	}
+	ledger.resetSemanticHeapScratch()
 	var summary semanticHeapSummary
-	defer func() {
-		if summary.upvalues > maximumRetainedCollectionWork {
-			ledger.upvalues = nil
-		} else if ledger.upvalues != nil {
-			clear(ledger.upvalues)
-		}
-	}()
+	defer ledger.releaseSemanticHeapScratch()
 
 	ledgerEntryBytes := uint64(unsafe.Sizeof((*tableObject)(nil)))
 	for _, table := range ledger.tables {
@@ -1029,10 +1114,15 @@ func (state *State) semanticHeap() semanticHeapSummary {
 			uint64(unsafe.Sizeof(slot{}))
 		summary.bytes += uint64(table.store.entries.cap()) *
 			uint64(unsafe.Sizeof(tableEntry{}))
+		for _, value := range table.array.values() {
+			summary.addSlot(ledger, value)
+		}
 		for _, entry := range table.store.entries.values() {
 			if entry.key.isDeadReferenceKey() {
 				summary.bytes += uint64(unsafe.Sizeof(deadReferenceKey{}))
 			}
+			summary.addSlot(ledger, entry.key)
+			summary.addSlot(ledger, entry.value)
 		}
 	}
 	for _, function := range ledger.functions {
@@ -1044,9 +1134,13 @@ func (state *State) semanticHeap() semanticHeapSummary {
 			body := function.nativeBodyUnchecked()
 			summary.bytes += uint64(cap(body.captures)) *
 				uint64(unsafe.Sizeof(slot{}))
+			for _, capture := range body.captures {
+				summary.addSlot(ledger, capture)
+			}
 		} else {
 			summary.bytes += uint64(unsafe.Sizeof(*function)) +
 				ledgerEntryBytes
+			summary.addPrototype(ledger, function.prototype)
 			count := int(function.prototype.upvalues)
 			summary.bytes += uint64(count) *
 				uint64(unsafe.Sizeof((*upvalue)(nil)))
@@ -1068,6 +1162,13 @@ func (state *State) semanticHeap() semanticHeapSummary {
 			uint64(unsafe.Sizeof(activation{}))
 		summary.bytes += uint64(cap(thread.continuations)) *
 			uint64(unsafe.Sizeof(executionContinuation{}))
+		extent := thread.liveValueExtent()
+		if extent < 0 || extent > len(thread.values) {
+			panic("lua: invalid live thread extent")
+		}
+		for _, value := range thread.values[:extent] {
+			summary.addSlot(ledger, value)
+		}
 		for upvalue := thread.openUpvalues; upvalue != nil; upvalue = upvalue.next {
 			summary.addUpvalue(ledger, upvalue)
 		}
@@ -1077,7 +1178,47 @@ func (state *State) semanticHeap() semanticHeapSummary {
 		summary.bytes += uint64(unsafe.Sizeof(*data)) +
 			ledgerEntryBytes
 	}
+	summary.addError(ledger, state.execution.failure)
+	summary.addError(ledger, state.execution.pendingExit)
+	summary.addStringPool(ledger, &state.runtime.strings)
 	return summary
+}
+
+func (ledger *objectLedger) resetSemanticHeapScratch() {
+	clear(ledger.upvalues)
+	clear(ledger.prototypes)
+	clear(ledger.names)
+	clear(ledger.longStrings)
+	clear(ledger.stringBacking)
+	clear(ledger.prototypeWork)
+	ledger.prototypeWork = ledger.prototypeWork[:0]
+}
+
+func (ledger *objectLedger) releaseSemanticHeapScratch() {
+	visited := len(ledger.upvalues) +
+		len(ledger.prototypes) +
+		len(ledger.names) +
+		len(ledger.longStrings) +
+		len(ledger.stringBacking)
+	clear(ledger.prototypeWork)
+	if cap(ledger.prototypeWork) > maximumRetainedCollectionWork {
+		ledger.prototypeWork = nil
+	} else {
+		ledger.prototypeWork = ledger.prototypeWork[:0]
+	}
+	if visited > maximumRetainedCollectionWork {
+		ledger.upvalues = nil
+		ledger.prototypes = nil
+		ledger.names = nil
+		ledger.longStrings = nil
+		ledger.stringBacking = nil
+		return
+	}
+	clear(ledger.upvalues)
+	clear(ledger.prototypes)
+	clear(ledger.names)
+	clear(ledger.longStrings)
+	clear(ledger.stringBacking)
 }
 
 func (summary *semanticHeapSummary) addUpvalue(
@@ -1096,4 +1237,200 @@ func (summary *semanticHeapSummary) addUpvalue(
 	ledger.upvalues[cell] = struct{}{}
 	summary.upvalues++
 	summary.bytes += uint64(unsafe.Sizeof(*cell))
+	summary.addSlot(ledger, cell.read())
+}
+
+func (summary *semanticHeapSummary) addSlot(
+	ledger *objectLedger,
+	value slot,
+) {
+	if value.isString() {
+		summary.addStringRef(ledger, stringRef{
+			ref:  value.ref,
+			bits: value.bits,
+		})
+	}
+}
+
+func (summary *semanticHeapSummary) addError(
+	ledger *objectLedger,
+	failure *Error,
+) {
+	if value, found := failure.valueSlot(); found {
+		summary.addSlot(ledger, value)
+	}
+}
+
+func (summary *semanticHeapSummary) addStringRef(
+	ledger *objectLedger,
+	value stringRef,
+) {
+	length := stringLength(value.ref, value.bits)
+	encodedLength := int(
+		value.bits >> stringLengthShift & stringLengthSentinel,
+	)
+	if encodedLength == stringLengthSentinel {
+		long := (*longString)(value.ref)
+		if ledger.longStrings == nil {
+			ledger.longStrings = make(map[*longString]struct{})
+		}
+		if _, found := ledger.longStrings[long]; !found {
+			ledger.longStrings[long] = struct{}{}
+			summary.bytes += uint64(unsafe.Sizeof(*long))
+		}
+		summary.addTextBacking(ledger, long.text)
+		return
+	}
+
+	// Empty and single-byte runtime strings use process-wide static backing.
+	if length <= 1 {
+		return
+	}
+	summary.addStringBacking(
+		ledger,
+		stringBacking{data: value.ref, length: length},
+	)
+}
+
+func (summary *semanticHeapSummary) addTextBacking(
+	ledger *objectLedger,
+	text string,
+) {
+	if len(text) == 0 {
+		return
+	}
+	backing := stringBacking{
+		data:   unsafe.Pointer(unsafe.StringData(text)),
+		length: len(text),
+	}
+	summary.addStringBacking(ledger, backing)
+	runtime.KeepAlive(text)
+}
+
+func (summary *semanticHeapSummary) addStringBacking(
+	ledger *objectLedger,
+	backing stringBacking,
+) {
+	if backing.data == nil || backing.length <= 0 {
+		return
+	}
+	if ledger.stringBacking == nil {
+		ledger.stringBacking = make(map[stringBacking]struct{})
+	}
+	if _, found := ledger.stringBacking[backing]; found {
+		return
+	}
+	ledger.stringBacking[backing] = struct{}{}
+	summary.textBackings++
+	summary.bytes += uint64(backing.length)
+}
+
+func (summary *semanticHeapSummary) addName(
+	ledger *objectLedger,
+	name *internedText,
+) {
+	if name == nil {
+		return
+	}
+	if ledger.names == nil {
+		ledger.names = make(map[*internedText]struct{})
+	}
+	if _, found := ledger.names[name]; found {
+		return
+	}
+	ledger.names[name] = struct{}{}
+	summary.bytes += uint64(unsafe.Sizeof(*name))
+	summary.addTextBacking(ledger, name.text)
+}
+
+func (summary *semanticHeapSummary) addPrototype(
+	ledger *objectLedger,
+	root *Prototype,
+) {
+	if root == nil {
+		return
+	}
+	if ledger.prototypes == nil {
+		ledger.prototypes = make(map[*Prototype]struct{})
+	}
+	enqueue := func(prototype *Prototype) {
+		if prototype == nil {
+			return
+		}
+		if _, found := ledger.prototypes[prototype]; found {
+			return
+		}
+		ledger.prototypes[prototype] = struct{}{}
+		ledger.prototypeWork = append(ledger.prototypeWork, prototype)
+	}
+	enqueue(root)
+	for len(ledger.prototypeWork) != 0 {
+		last := len(ledger.prototypeWork) - 1
+		prototype := ledger.prototypeWork[last]
+		ledger.prototypeWork[last] = nil
+		ledger.prototypeWork = ledger.prototypeWork[:last]
+
+		summary.prototypes++
+		summary.bytes += uint64(unsafe.Sizeof(*prototype))
+		summary.bytes += uint64(cap(prototype.code)) *
+			uint64(unsafe.Sizeof(instruction(0)))
+		summary.bytes += uint64(cap(prototype.constants)) *
+			uint64(unsafe.Sizeof(slot{}))
+		summary.bytes += uint64(cap(prototype.children)) *
+			uint64(unsafe.Sizeof((*Prototype)(nil)))
+		summary.addName(ledger, prototype.sourceName)
+		for _, constant := range prototype.constants {
+			summary.addSlot(ledger, constant)
+		}
+		for _, child := range prototype.children {
+			enqueue(child)
+		}
+
+		debug := prototype.debug
+		if debug == nil {
+			continue
+		}
+		summary.bytes += uint64(unsafe.Sizeof(*debug))
+		summary.bytes += uint64(cap(debug.lines)) *
+			uint64(unsafe.Sizeof(uint32(0)))
+		summary.bytes += uint64(cap(debug.locals)) *
+			uint64(unsafe.Sizeof(localInfo{}))
+		summary.bytes += uint64(cap(debug.upvalues)) *
+			uint64(unsafe.Sizeof((*internedText)(nil)))
+		for _, local := range debug.locals {
+			summary.addName(ledger, local.name)
+		}
+		for _, name := range debug.upvalues {
+			summary.addName(ledger, name)
+		}
+	}
+}
+
+func (summary *semanticHeapSummary) addStringPool(
+	ledger *objectLedger,
+	pool *stringPool,
+) {
+	if pool == nil {
+		return
+	}
+	addShard := func(shard *stringSetShard) {
+		if shard == nil {
+			return
+		}
+		summary.bytes += uint64(unsafe.Sizeof(*shard))
+		for setIndex := range shard.sets {
+			set := &shard.sets[setIndex]
+			for _, value := range set.entries {
+				if value.valid() {
+					summary.addStringRef(ledger, value)
+				}
+			}
+		}
+	}
+	for _, shard := range pool.probation {
+		addShard(shard)
+	}
+	for _, shard := range pool.protected {
+		addShard(shard)
+	}
 }

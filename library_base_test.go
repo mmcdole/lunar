@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -38,8 +39,10 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 
 	baseFunctions := []string{
 		"assert",
+		"collectgarbage",
 		"dofile",
 		"error",
+		"gcinfo",
 		"getfenv",
 		"getmetatable",
 		"ipairs",
@@ -131,6 +134,256 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	}
 	if err := state.OpenBase(); !errors.Is(err, ErrClosed) {
 		t.Fatalf("OpenBase after Close = %v; want ErrClosed", err)
+	}
+}
+
+func TestBaseCollectionControlsShareTheSemanticHeap(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	collector, err := state.Global("collectgarbage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcinfo, err := state.Global("gcinfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	callCollector := func(option string, amount Value) Value {
+		t.Helper()
+		arguments := []Value{state.String(option)}
+		if amount.Valid() {
+			arguments = append(arguments, amount)
+		}
+		results, callErr := state.Call(collector, arguments...)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		if len(results) != 1 {
+			t.Fatalf(
+				"collectgarbage(%q) returned %d values; want 1",
+				option,
+				len(results),
+			)
+		}
+		return results[0]
+	}
+	requireNumber := func(value Value, want float64, operation string) {
+		t.Helper()
+		number, ok := value.AsNumber()
+		if !ok || number != want {
+			t.Fatalf("%s result = %v; want %v", operation, value, want)
+		}
+	}
+
+	requireNumber(
+		callCollector("setpause", Number(123)),
+		200,
+		"initial setpause",
+	)
+	requireNumber(
+		callCollector("setpause", Number(200)),
+		123,
+		"second setpause",
+	)
+	requireNumber(
+		callCollector("setstepmul", Number(-7)),
+		200,
+		"initial setstepmul",
+	)
+	requireNumber(
+		callCollector("setstepmul", Number(200)),
+		-7,
+		"second setstepmul",
+	)
+	stopped := callCollector("stop", Value{})
+	requireNumber(stopped, 0, "stop")
+	if !state.runtime.collection.stopped {
+		t.Fatal("stop left automatic collection running")
+	}
+	if result := callCollector("step", Number(1)); !result.Truth() ||
+		result.Kind() != BoolKind {
+		t.Fatalf("synchronous step result = %v; want true", result)
+	}
+	if state.runtime.collection.stopped {
+		t.Fatal("explicit step did not resume automatic collection")
+	}
+	requireNumber(callCollector("stop", Value{}), 0, "second stop")
+	restarted := callCollector("restart", Value{})
+	requireNumber(restarted, 0, "restart")
+	if state.runtime.collection.stopped {
+		t.Fatal("restart left automatic collection stopped")
+	}
+
+	count := callCollector("count", Value{})
+	countNumber, ok := count.AsNumber()
+	if !ok {
+		t.Fatalf("count result = %v; want number", count)
+	}
+	heapBytes, err := state.HeapBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := float64(heapBytes) / 1024; countNumber != want {
+		t.Fatalf("count = %v KiB; want %v", countNumber, want)
+	}
+
+	infoResults, err := state.Call(gcinfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, infoResults, Number(float64(heapBytes>>10)))
+}
+
+func TestBaseCollectionControlPolicyIsStateLocal(t *testing.T) {
+	first := newStateWithBase(t, Options{})
+	defer first.Close()
+	second := newStateWithBase(t, Options{})
+	defer second.Close()
+
+	firstCollector, _ := first.Global("collectgarbage")
+	secondCollector, _ := second.Global("collectgarbage")
+	firstPause, err := first.Call(
+		firstCollector,
+		first.String("setpause"),
+		Number(73),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPause, err := second.Call(
+		secondCollector,
+		second.String("setpause"),
+		Number(91),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, firstPause, Number(200))
+	assertTestValues(t, secondPause, Number(200))
+
+	if _, err := first.Call(firstCollector, first.String("stop")); err != nil {
+		t.Fatal(err)
+	}
+	if !first.runtime.collection.stopped ||
+		second.runtime.collection.stopped {
+		t.Fatal("collection stop policy crossed State ownership")
+	}
+	if first.runtime.collection.pause != 73 ||
+		second.runtime.collection.pause != 91 {
+		t.Fatal("collection tuning crossed State ownership")
+	}
+}
+
+func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+	collector, err := state.Global("collectgarbage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := func() float64 {
+		t.Helper()
+		results, callErr := state.Call(
+			collector,
+			state.String("count"),
+		)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		number, ok := results[0].AsNumber()
+		if !ok {
+			t.Fatalf("collection count = %v; want number", results)
+		}
+		return number
+	}
+
+	before := count()
+	text := strings.Repeat("retained string ", 1<<16)
+	value := state.String(text)
+	if err := state.SetGlobal("largeRetainedString", value); err != nil {
+		t.Fatal(err)
+	}
+	after := count()
+	if delta := uint64((after - before) * 1024); delta < uint64(len(text)) {
+		t.Fatalf(
+			"retained string count delta = %d bytes; want at least %d",
+			delta,
+			len(text),
+		)
+	}
+
+	if err := state.SetGlobal("largeRetainedString", Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Collect(); err != nil {
+		t.Fatal(err)
+	}
+	released := count()
+	if released >= after {
+		t.Fatalf(
+			"count after releasing string = %v; retained count %v",
+			released,
+			after,
+		)
+	}
+	runtime.KeepAlive(value)
+	runtime.KeepAlive(text)
+}
+
+func TestBaseCollectionControlsValidateEveryAmountBeforeAction(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	called := false
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		called = true
+		return frame.Return()
+	})
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(
+			t,
+			state,
+			slotFromFunctionObject(handler),
+		),
+		nil,
+	)
+	collector, err := state.Global("collectgarbage")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	options := []string{
+		"stop",
+		"restart",
+		"collect",
+		"count",
+		"step",
+		"setpause",
+		"setstepmul",
+	}
+	for _, option := range options {
+		_, err := state.Call(
+			collector,
+			state.String(option),
+			Bool(true),
+		)
+		if err == nil ||
+			!strings.Contains(err.Error(), "bad argument #2") ||
+			!strings.Contains(err.Error(), "number expected, got boolean") {
+			t.Fatalf("%s with invalid amount = %v", option, err)
+		}
+	}
+	if called {
+		t.Fatal("invalid collection amount ran a finalizer")
+	}
+	if state.runtime.collection.stopped ||
+		state.runtime.collection.pause != defaultCollectionPause ||
+		state.runtime.collection.stepMultiplier !=
+			defaultCollectionStepMultiplier {
+		t.Fatal("invalid collection amount changed control policy")
 	}
 }
 
@@ -1002,6 +1255,29 @@ func TestBaseLibraryCasesMatchLua51(t *testing.T) {
 }
 
 var baseLibraryLua51Cases = []lua51Case{
+	{
+		name: "collection_control_values_and_types",
+		source: `local a=collectgarbage("stop")
+local b=collectgarbage("restart")
+local c=collectgarbage()
+local d=collectgarbage("setpause",123.9)
+local e=collectgarbage("setpause",200)
+local f=collectgarbage("setstepmul","145.9")
+local g=collectgarbage("setstepmul",200)
+local h=collectgarbage("step",1000000)
+return type(a),a,type(b),b,type(c),c,d,e,f,g,type(h),h`,
+		want: "ok 'number' 0 'number' 0 'number' 0 200 123 200 145 'boolean' true",
+	},
+	{
+		name:   "collection_option_and_unconditional_amount_validation",
+		source: `local a,b=pcall(collectgarbage,"bogus"); local c,d=pcall(collectgarbage,1); local e,f=pcall(collectgarbage,"count",{}); local g,h=pcall(collectgarbage,"collect\000junk"); return a,b,c,d,e,f,g,h`,
+		want:   "ok false 'bad argument #1 to '?' (invalid option 'bogus')' false 'bad argument #1 to '?' (invalid option '1')' false 'bad argument #2 to '?' (number expected, got table)' true 0",
+	},
+	{
+		name:   "collection_count_and_gcinfo_types",
+		source: `return type(collectgarbage("count")),type(gcinfo()),collectgarbage("count")>=gcinfo(),collectgarbage("count")<gcinfo()+1`,
+		want:   "ok 'number' 'number' true true",
+	},
 	{
 		name:   "assert_returns_every_argument",
 		source: `local a,b,c=assert("yes",nil,3); return a,b,c,select("#",assert(true,nil,3))`,

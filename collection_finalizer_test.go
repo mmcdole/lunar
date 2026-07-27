@@ -502,6 +502,295 @@ func TestFinalizerPreservesAnArbitraryLuaErrorValue(t *testing.T) {
 	}
 }
 
+func TestPublicCollectionSurfacesOwnFinalizerErrors(t *testing.T) {
+	t.Run("idle State", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+
+		marker := newTable(state, 0, 0)
+		handler := newNativeFunctionOwned(
+			state,
+			state.main.globals,
+			func(frame Frame) Outcome {
+				return frame.raiseCompact(frame.nativeCapture(0))
+			},
+			[]slot{slotFromTableObject(marker)},
+		)
+		newFinalizerUserData(
+			state,
+			newFinalizerMetatable(
+				t,
+				state,
+				slotFromFunctionObject(handler),
+			),
+			nil,
+		)
+
+		err := state.Collect()
+		failure, ok := err.(*Error)
+		if !ok {
+			t.Fatalf("State.Collect error = %T %v; want *Error", err, err)
+		}
+		if !failure.value.Valid() || failure.hasCompactValue {
+			t.Fatal("State.Collect returned an unowned compact error value")
+		}
+		if got := tableObjectFromSlot(slotFromValue(failure.Value())); got != marker {
+			t.Fatal("State.Collect changed finalizer error identity")
+		}
+		if err := state.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		if got := tableObjectFromSlot(slotFromValue(failure.Value())); got != marker ||
+			marker.owner != state.runtime {
+			t.Fatal("later collection invalidated the exposed error value")
+		}
+	})
+
+	t.Run("live Frame", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+
+		marker := newTable(state, 0, 0)
+		handler := newNativeFunctionOwned(
+			state,
+			state.main.globals,
+			func(frame Frame) Outcome {
+				return frame.raiseCompact(frame.nativeCapture(0))
+			},
+			[]slot{slotFromTableObject(marker)},
+		)
+		newFinalizerUserData(
+			state,
+			newFinalizerMetatable(
+				t,
+				state,
+				slotFromFunctionObject(handler),
+			),
+			nil,
+		)
+
+		var collectionError error
+		collector, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			collectionError = frame.Collect()
+			return frame.Return()
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := state.Call(collector.Value()); err != nil {
+			t.Fatal(err)
+		}
+		failure, ok := collectionError.(*Error)
+		if !ok {
+			t.Fatalf(
+				"Frame.Collect error = %T %v; want *Error",
+				collectionError,
+				collectionError,
+			)
+		}
+		if !failure.value.Valid() || failure.hasCompactValue {
+			t.Fatal("Frame.Collect returned an unowned compact error value")
+		}
+		if err := state.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		if got := tableObjectFromSlot(slotFromValue(failure.Value())); got != marker ||
+			marker.owner != state.runtime {
+			t.Fatal("Frame.Collect did not preserve finalizer error identity")
+		}
+	})
+}
+
+func TestBaseCollectionControlsFinalizerQueue(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+
+	marker := newTable(state, 0, 0)
+	var order []string
+	good := newFinalizerFunction(state, func(frame Frame) Outcome {
+		order = append(order, "good")
+		return frame.Return()
+	})
+	bad := newNativeFunctionOwned(
+		state,
+		state.main.globals,
+		func(frame Frame) Outcome {
+			order = append(order, "bad")
+			return frame.raiseCompact(frame.nativeCapture(0))
+		},
+		[]slot{slotFromTableObject(marker)},
+	)
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(t, state, slotFromFunctionObject(good)),
+		nil,
+	)
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(t, state, slotFromFunctionObject(bad)),
+		nil,
+	)
+
+	collector, err := state.Global("collectgarbage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Call(collector, state.String("count")); err != nil {
+		t.Fatal(err)
+	}
+	if len(order) != 0 {
+		t.Fatalf("count invoked finalizers: %v", order)
+	}
+
+	_, err = state.Call(collector, state.String("collect"))
+	failure, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("collectgarbage error = %T %v; want *Error", err, err)
+	}
+	if got := tableObjectFromSlot(slotFromValue(failure.Value())); got != marker {
+		t.Fatal("collectgarbage changed the arbitrary finalizer error")
+	}
+	if !reflect.DeepEqual(order, []string{"bad"}) {
+		t.Fatalf("first collection order = %v; want [bad]", order)
+	}
+
+	results, err := state.Call(collector, state.String("collect"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := results[0].AsNumber(); !ok || number != 0 {
+		t.Fatalf("resumed collection result = %v; want 0", results)
+	}
+	if !reflect.DeepEqual(order, []string{"bad", "good"}) {
+		t.Fatalf(
+			"resumed collection order = %v; want [bad good]",
+			order,
+		)
+	}
+}
+
+func TestSuccessfulFinalizerCannotStopOuterCollection(t *testing.T) {
+	tests := []struct {
+		name   string
+		invoke func(*testing.T, *State) error
+	}{
+		{
+			name: "State Collect",
+			invoke: func(t *testing.T, state *State) error {
+				return state.Collect()
+			},
+		},
+		{
+			name: "Frame Collect",
+			invoke: func(t *testing.T, state *State) error {
+				entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
+					if err := frame.Collect(); err != nil {
+						t.Fatal(err)
+					}
+					return frame.Return()
+				})
+				if err != nil {
+					return err
+				}
+				_, err = state.Call(entry.Value())
+				return err
+			},
+		},
+		{
+			name: "base collect",
+			invoke: func(t *testing.T, state *State) error {
+				if err := state.OpenBase(); err != nil {
+					return err
+				}
+				collector, err := state.Global("collectgarbage")
+				if err != nil {
+					return err
+				}
+				_, err = state.Call(
+					collector,
+					state.String("collect"),
+				)
+				return err
+			},
+		},
+		{
+			name: "base step",
+			invoke: func(t *testing.T, state *State) error {
+				if err := state.OpenBase(); err != nil {
+					return err
+				}
+				collector, err := state.Global("collectgarbage")
+				if err != nil {
+					return err
+				}
+				_, err = state.Call(
+					collector,
+					state.String("step"),
+					Number(1),
+				)
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := newCollectorTestState(t)
+			defer state.Close()
+
+			handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+				frame.thread.owner.collection.stopped = true
+				return frame.Return()
+			})
+			newFinalizerUserData(
+				state,
+				newFinalizerMetatable(
+					t,
+					state,
+					slotFromFunctionObject(handler),
+				),
+				nil,
+			)
+
+			if err := test.invoke(t, state); err != nil {
+				t.Fatal(err)
+			}
+			if state.runtime.collection.stopped {
+				t.Fatal("successful finalizer stopped the outer collection")
+			}
+		})
+	}
+}
+
+func TestFailingFinalizerMayLeaveCollectionStopped(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		frame.thread.owner.collection.stopped = true
+		return frame.RaiseString("stopped")
+	})
+	newFinalizerUserData(
+		state,
+		newFinalizerMetatable(
+			t,
+			state,
+			slotFromFunctionObject(handler),
+		),
+		nil,
+	)
+
+	if err := state.Collect(); err == nil || err.Error() != "stopped" {
+		t.Fatalf("State.Collect error = %v; want stopped", err)
+	}
+	if !state.runtime.collection.stopped {
+		t.Fatal("failed finalizer did not preserve its stopped policy")
+	}
+}
+
 func TestPendingFinalizerGraphDoesNotDelayNewEligibility(t *testing.T) {
 	state := newCollectorTestState(t)
 	defer state.Close()

@@ -11,8 +11,10 @@ var baseLibraryFunctions = [...]struct {
 	entry NativeFunc
 }{
 	{name: "assert", entry: baseAssert},
+	{name: "collectgarbage", entry: baseCollectGarbage},
 	{name: "dofile", entry: baseDoFile},
 	{name: "error", entry: baseError},
+	{name: "gcinfo", entry: baseGCInfo},
 	{name: "getfenv", entry: baseGetEnvironment},
 	{name: "getmetatable", entry: baseGetMetatable},
 	{name: "load", entry: baseLoad},
@@ -36,10 +38,10 @@ var baseLibraryFunctions = [...]struct {
 
 // OpenBase installs the implemented Lua 5.1 base-library globals.
 //
-// The garbage-collection and newproxy entries are still under construction.
-// Opening is explicit: New returns an empty State. Calling OpenBase again
-// replaces every installed function and the coroutine table with fresh
-// canonical objects and restores _G and _VERSION.
+// The newproxy entry is still under construction. Opening is explicit: New
+// returns an empty State. Calling OpenBase again replaces every installed
+// function and the coroutine table with fresh canonical objects and restores
+// _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err
@@ -141,6 +143,86 @@ func baseAssert(frame Frame) Outcome {
 		message = message[:end]
 	}
 	return libraryError(frame, "%s", message)
+}
+
+func baseCollectGarbage(frame Frame) Outcome {
+	option := "collect"
+	if value, present := frame.argument(0); present && !value.isNil() {
+		var ok bool
+		option, ok = compactText(value)
+		if !ok {
+			return baseArgumentTypeError(frame, 0, "string")
+		}
+		option = luaCString(option)
+	}
+
+	switch option {
+	case "stop", "restart", "collect", "count", "step",
+		"setpause", "setstepmul":
+	default:
+		return baseArgumentError(
+			frame,
+			0,
+			"invalid option '"+option+"'",
+		)
+	}
+
+	amount, outcome, failed := optionalLibraryInteger(frame, 1, 0)
+	if failed {
+		return outcome
+	}
+
+	state := frame.thread.state
+	control := &state.runtime.collection
+	switch option {
+	case "stop":
+		control.stopped = true
+		return frame.ReturnNumber(0)
+	case "restart":
+		control.stopped = false
+		return frame.ReturnNumber(0)
+	case "collect":
+		// PUC encodes stop in its next-allocation threshold. A full
+		// collection installs a normal threshold again, so an explicit
+		// collection also resumes automatic scheduling.
+		control.stopped = false
+		if _, failure := frame.collectAndFinalize(); failure != nil {
+			return frame.sealError(failure)
+		}
+		control.stopped = false
+		return frame.ReturnNumber(0)
+	case "count":
+		return frame.ReturnNumber(
+			float64(state.semanticHeap().bytes) / 1024,
+		)
+	case "step":
+		// The current collector is synchronous. One explicit step
+		// therefore completes one whole cycle; amount is still parsed
+		// with Lua 5.1's unconditional second-argument contract.
+		_ = amount
+		control.stopped = false
+		if _, failure := frame.collectAndFinalize(); failure != nil {
+			return frame.sealError(failure)
+		}
+		control.stopped = false
+		return frame.ReturnBool(true)
+	case "setpause":
+		previous := control.pause
+		control.pause = amount
+		return frame.ReturnNumber(float64(previous))
+	case "setstepmul":
+		previous := control.stepMultiplier
+		control.stepMultiplier = amount
+		return frame.ReturnNumber(float64(previous))
+	default:
+		panic("lua: unreachable collection option")
+	}
+}
+
+func baseGCInfo(frame Frame) Outcome {
+	return frame.ReturnNumber(
+		float64(frame.thread.state.semanticHeap().bytes >> 10),
+	)
 }
 
 func baseError(frame Frame) Outcome {

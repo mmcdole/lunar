@@ -256,6 +256,7 @@ type runtimeState struct {
 	closed          atomic.Bool
 	strings         stringPool
 	hosts           hostDirectory
+	collection      collectionControl
 	nativeSequence  uint64
 	nativeCallDepth uint16
 }
@@ -321,7 +322,9 @@ func New(options Options) (*State, error) {
 		options.Now = time.Now
 	}
 
-	rt := &runtimeState{}
+	rt := &runtimeState{
+		collection: defaultCollectionControl(),
+	}
 	state := &State{
 		runtime: rt,
 		options: options,

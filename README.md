@@ -66,7 +66,11 @@ host.
 Its `os.execute` invokes the platform shell and returns Lua 5.1's single
 numeric status while inheriting the embedding process's environment, working
 directory, and actual standard descriptors. The debug library remains under
-construction.
+construction. A State-local semantic collector handles cycles, weak tables,
+userdata finalization, and explicit Lua 5.1 collection controls independently
+of Go's process-wide collector. Embedders use the same machinery through
+`State.Collect` and `State.HeapBytes`; native callbacks use the matching
+`Frame` methods.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order, [semantic collection](docs/collection.md) for the ownership and Lua GC
