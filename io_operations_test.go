@@ -675,7 +675,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 	data, err := state.newRegularFile(
 		file,
 		os.O_RDWR,
-		fileMetatable(t, state),
+		fileMetatable(t, state).runtimeObject(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -705,7 +705,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forged.runtimeObject().metatable = other
+	forged.runtimeObject().metatable = other.runtimeObject()
 	if _, err := state.Call(
 		write.Value(),
 		forged.Value(),
@@ -751,7 +751,7 @@ func TestIOSeekNativeArgumentsAndFailureTuple(t *testing.T) {
 	data, err := state.newRegularFile(
 		file,
 		os.O_RDWR,
-		fileMetatable(t, state),
+		fileMetatable(t, state).runtimeObject(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -877,7 +877,10 @@ func ioOperationFunction(
 	if err != nil {
 		t.Fatal(err)
 	}
-	function, err := state.newIOFunction(environment, entry)
+	function, err := state.newIOFunction(
+		environment.runtimeObject(),
+		entry,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -897,7 +900,7 @@ func newIOOperationFile(
 	classifyManagedUserData(
 		data,
 		&fileResourceClass,
-		fileMetatable(t, state),
+		fileMetatable(t, state).runtimeObject(),
 	)
 	return data.owningHandle()
 }

@@ -107,13 +107,13 @@ func (state *State) OpenIO() error {
 	if err != nil {
 		return err
 	}
-	if err := environment.RawSetString(
+	if err := environment.rawSetStringValue(
 		"__close",
 		closeFunction.Value(),
 	); err != nil {
 		return err
 	}
-	if err := standardEnvironment.RawSetString(
+	if err := standardEnvironment.rawSetStringValue(
 		"__close",
 		noCloseFunction.Value(),
 	); err != nil {
@@ -128,7 +128,7 @@ func (state *State) OpenIO() error {
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
@@ -143,16 +143,16 @@ func (state *State) OpenIO() error {
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := metatable.RawSetString(
+		if setErr := metatable.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
 			return setErr
 		}
 	}
-	if err := metatable.RawSetString(
+	if err := metatable.rawSetStringSlot(
 		"__index",
-		metatable.Value(),
+		slotFromTableObject(metatable),
 	); err != nil {
 		return err
 	}
@@ -204,17 +204,17 @@ func (state *State) OpenIO() error {
 		)
 	}
 
-	if err := state.globalEnvironment().RawSetString(
+	if err := state.globalEnvironment().rawSetStringSlot(
 		"io",
-		library.Value(),
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "io", slotFromTable(library))
+	state.setLoadedModule(loaded, "io", slotFromTableObject(library))
 	return nil
 }
 
-func (state *State) ensureFileMetatable() (*Table, error) {
+func (state *State) ensureFileMetatable() (*tableObject, error) {
 	if existing, found := state.registry.rawStringSlot(
 		luaFileHandleRegistryKey,
 	); found {
@@ -224,16 +224,16 @@ func (state *State) ensureFileMetatable() (*Table, error) {
 				luaFileHandleRegistryKey,
 			)
 		}
-		return (*Table)(existing.ref), nil
+		return (*tableObject)(existing.ref), nil
 	}
 	metatable := newTable(
 		state.runtime,
 		0,
 		len(fileLibraryFunctions)+1,
 	)
-	if err := state.registry.RawSetString(
+	if err := state.registry.rawSetStringSlot(
 		luaFileHandleRegistryKey,
-		metatable.Value(),
+		slotFromTableObject(metatable),
 	); err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (state *State) ensureFileMetatable() (*Table, error) {
 }
 
 func (state *State) newIOFunction(
-	environment *Table,
+	environment *tableObject,
 	entry NativeFunc,
 ) (*Function, error) {
 	function, err := state.NewNativeFunction(entry)
@@ -254,8 +254,8 @@ func (state *State) newIOFunction(
 
 func (state *State) newStandardFile(
 	handle *fileHandle,
-	metatable *Table,
-	environment *Table,
+	metatable *tableObject,
+	environment *tableObject,
 ) (*userDataObject, error) {
 	data, err := state.newBorrowedUserData(handle)
 	if err != nil {
@@ -269,7 +269,7 @@ func (state *State) newStandardFile(
 func (state *State) newRegularFile(
 	file *os.File,
 	flags int,
-	metatable *Table,
+	metatable *tableObject,
 ) (*userDataObject, error) {
 	return state.newOwnedFile(file, file, flags, metatable)
 }
@@ -278,7 +278,7 @@ func (state *State) newOwnedFile(
 	file *os.File,
 	closer io.Closer,
 	flags int,
-	metatable *Table,
+	metatable *tableObject,
 ) (*userDataObject, error) {
 	handle := &fileHandle{
 		seeker: file,
@@ -513,7 +513,7 @@ func fileOpenCapabilities(flags int) (readable, writable bool) {
 func ioClose(frame Frame) Outcome {
 	data, present := frame.userDataObject(0)
 	if !present && frame.Kind(0) == InvalidKind {
-		current, _ := frame.Environment().rawIntSlot(ioDefaultOutput)
+		current, _ := frame.environmentObject().rawIntSlot(ioDefaultOutput)
 		if current.isUserData() {
 			data = userDataObjectFromSlot(current)
 			present = true
@@ -695,12 +695,12 @@ func ioDefaultFile(
 			}
 			lease.release()
 		}
-		frame.Environment().rawSetIntegerSlot(
+		frame.environmentObject().rawSetIntegerSlot(
 			defaultIndex,
 			slotFromUserDataObject(data),
 		)
 	}
-	current, _ := frame.Environment().rawIntSlot(defaultIndex)
+	current, _ := frame.environmentObject().rawIntSlot(defaultIndex)
 	return frame.returnOne(frame.activation(), current)
 }
 
@@ -715,7 +715,7 @@ func isFileUserData(state *State, data *userDataObject) bool {
 	)
 	return found &&
 		current.isTable() &&
-		data.metatable == (*Table)(current.ref)
+		data.metatable == (*tableObject)(current.ref)
 }
 
 func ioFailureResult(

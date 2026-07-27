@@ -75,21 +75,19 @@ func (state *State) OpenMath() error {
 		return err
 	}
 	const constantCount = 3 // pi, huge, and the mod alias.
-	library, err := state.NewTable(
+	library := newTable(
+		state.runtime,
 		0,
 		len(mathLibraryFunctions)+
 			len(mathLibraryRandomFunctions)+
 			constantCount,
 	)
-	if err != nil {
-		return err
-	}
 	for _, definition := range mathLibraryFunctions {
 		function, functionErr := state.NewNativeFunction(definition.entry)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
@@ -106,7 +104,7 @@ func (state *State) OpenMath() error {
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
@@ -117,28 +115,28 @@ func (state *State) OpenMath() error {
 	// The standard Lua 5.1 distribution defines LUA_COMPAT_MOD, which
 	// publishes math.fmod a second time as math.mod. It aliases the same
 	// canonical Function rather than registering a second one.
-	if err := library.RawSetString(
+	if err := library.rawSetStringValue(
 		"mod",
-		library.RawGetString("fmod"),
+		library.rawGetStringValue("fmod"),
 	); err != nil {
 		return err
 	}
-	if err := library.RawSetString("pi", Number(mathPi)); err != nil {
+	if err := library.rawSetStringValue("pi", Number(mathPi)); err != nil {
 		return err
 	}
-	if err := library.RawSetString(
+	if err := library.rawSetStringValue(
 		"huge",
 		Number(math.Inf(1)),
 	); err != nil {
 		return err
 	}
-	if err := state.globalEnvironment().RawSetString(
+	if err := state.globalEnvironment().rawSetStringSlot(
 		"math",
-		library.Value(),
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "math", slotFromTable(library))
+	state.setLoadedModule(loaded, "math", slotFromTableObject(library))
 	return nil
 }
 

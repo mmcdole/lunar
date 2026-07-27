@@ -782,7 +782,7 @@ return left .. right
 			function: length,
 			arguments: []slot{
 				stringSlot(state.runtime.strings.make("length")),
-				slotFromTable(table),
+				slotFromValue(table.Value()),
 			},
 			maxAllocs: 0,
 		},
@@ -801,8 +801,8 @@ return left .. right
 			name:     "metamethod concat",
 			function: metamethod,
 			arguments: []slot{
-				slotFromTable(left),
-				slotFromTable(right),
+				slotFromValue(left.Value()),
+				slotFromValue(right.Value()),
 			},
 			maxAllocs: 0,
 		},

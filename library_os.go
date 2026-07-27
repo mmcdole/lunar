@@ -31,29 +31,26 @@ func (state *State) OpenOS() error {
 	if err != nil {
 		return err
 	}
-	library, err := state.NewTable(0, len(osLibraryFunctions))
-	if err != nil {
-		return err
-	}
+	library := newTable(state.runtime, 0, len(osLibraryFunctions))
 	for _, definition := range osLibraryFunctions {
 		function, functionErr := state.NewNativeFunction(definition.entry)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
 			return setErr
 		}
 	}
-	if err := state.globalEnvironment().RawSetString(
+	if err := state.globalEnvironment().rawSetStringSlot(
 		"os",
-		library.Value(),
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "os", slotFromTable(library))
+	state.setLoadedModule(loaded, "os", slotFromTableObject(library))
 	return nil
 }
 

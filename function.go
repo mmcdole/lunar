@@ -14,7 +14,7 @@ const nativeFunctionSlotFlag = uint64(1) << 8
 type Function struct {
 	objectHeader
 	prototype   *Prototype
-	environment *Table
+	environment *tableObject
 	body        unsafe.Pointer
 }
 
@@ -34,7 +34,7 @@ type nativeFunctionAllocation struct {
 func newLuaFunction(
 	owner *runtimeState,
 	prototype *Prototype,
-	environment *Table,
+	environment *tableObject,
 	upvalues []*upvalue,
 ) *Function {
 	return newLuaFunctionOwned(
@@ -48,7 +48,7 @@ func newLuaFunction(
 func newLuaFunctionOwned(
 	owner *runtimeState,
 	prototype *Prototype,
-	environment *Table,
+	environment *tableObject,
 	upvalues []*upvalue,
 ) *Function {
 	if owner == nil || prototype == nil || !prototype.sealed {
@@ -78,7 +78,7 @@ func newLuaFunctionOwned(
 
 func newNativeFunctionOwned(
 	owner *runtimeState,
-	environment *Table,
+	environment *tableObject,
 	entry NativeFunc,
 	captures []slot,
 ) *Function {

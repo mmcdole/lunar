@@ -53,7 +53,7 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 	}
 	found := 0
 	for key := nilSlot; ; {
-		nextKey, _, present, err := library.next(key)
+		nextKey, _, present, err := library.runtimeObject().next(key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,14 +245,14 @@ func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
 		t.Fatal(err)
 	}
 
-	target, err := state.NewTable(2, 0)
+	target, err := newTableObjectForTest(state, 2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := target.RawSetInt(1, Number(2)); err != nil {
+	if err := target.rawSetIntValue(1, Number(2)); err != nil {
 		t.Fatal(err)
 	}
-	if err := target.RawSetInt(2, Number(1)); err != nil {
+	if err := target.rawSetIntValue(2, Number(1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,7 +287,7 @@ func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
 	}
 	sort := library.RawGetString("sort")
 	arguments := []Value{
-		target.Value(),
+		target.owningValue(),
 		comparator.Value(),
 		Number(1),
 		Number(2),
@@ -559,7 +559,7 @@ func TestTableInsertAtMinimumIntegerCompletesWithLua51Mapping(t *testing.T) {
 	if !useSparseTableInsertShift(
 		probe,
 		minimumPosition,
-		probe.RawLen(),
+		probe.rawLen(),
 	) {
 		t.Fatal("minimum integer position did not select the sparse shift")
 	}
@@ -635,7 +635,7 @@ func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
 		baseline.store.entries.len(),
 		baseline.store.entries.cap(),
 	)
-	var working Table
+	var working tableObject
 	restore := func() {
 		working.objectHeader.owner = baseline.owner
 		working.array = array.withLength(baseline.array.len())
@@ -707,7 +707,7 @@ func BenchmarkTableInsertSparseShift(b *testing.B) {
 	const position = -64 * 1024
 	for _, benchmark := range []struct {
 		name  string
-		shift func(*Table, int, slot)
+		shift func(*tableObject, int, slot)
 	}{
 		{name: "raw loop", shift: referenceTableInsert},
 		{name: "sparse storage", shift: sparseTableInsert},
@@ -739,7 +739,7 @@ func BenchmarkTableInsertSparseShift(b *testing.B) {
 	}
 }
 
-func installTableInsertSentinels(state *State, table *Table) {
+func installTableInsertSentinels(state *State, table *tableObject) {
 	for key, value := range map[float64]float64{
 		-9.5:  901,
 		-0.5:  902,
@@ -756,8 +756,8 @@ func installTableInsertSentinels(state *State, table *Table) {
 	table.rawSetSlot(trueSlot, numberSlot(907))
 }
 
-func referenceTableInsert(table *Table, position int, value slot) {
-	end := table.RawLen() + 1
+func referenceTableInsert(table *tableObject, position int, value slot) {
+	end := table.rawLen() + 1
 	if position > end {
 		end = position
 	}
@@ -768,8 +768,8 @@ func referenceTableInsert(table *Table, position int, value slot) {
 	table.rawSetIntegerSlot(position, value)
 }
 
-func sparseTableInsert(table *Table, position int, value slot) {
-	end := table.RawLen() + 1
+func sparseTableInsert(table *tableObject, position int, value slot) {
+	end := table.rawLen() + 1
 	if position > end {
 		end = position
 	}
@@ -779,7 +779,7 @@ func sparseTableInsert(table *Table, position int, value slot) {
 
 func assertEquivalentTableInsertResult(
 	t *testing.T,
-	reference, sparse *Table,
+	reference, sparse *tableObject,
 	first, last int,
 	caseIndex, position int,
 ) {
@@ -817,18 +817,18 @@ func assertEquivalentTableInsertResult(
 			)
 		}
 	}
-	if reference.RawLen() != sparse.RawLen() {
+	if reference.rawLen() != sparse.rawLen() {
 		t.Fatalf(
 			"RawLen = %d; want %d",
-			sparse.RawLen(),
-			reference.RawLen(),
+			sparse.rawLen(),
+			reference.rawLen(),
 		)
 	}
 	assertTableStorageAccounting(t, reference)
 	assertTableStorageAccounting(t, sparse)
 }
 
-func assertTableStorageAccounting(t *testing.T, table *Table) {
+func assertTableStorageAccounting(t *testing.T, table *tableObject) {
 	t.Helper()
 	arrayUsed := 0
 	for _, value := range table.array.values() {

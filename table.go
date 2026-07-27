@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"math"
 	"math/bits"
+	"runtime"
 	"slices"
 	"unsafe"
 )
@@ -97,19 +98,24 @@ type integerTableValue struct {
 	value slot
 }
 
-// Table is the canonical representation of a Lua table.
+// Table is an opaque owning handle for a Lua table.
 //
-// Its storage, metatable, traversal state, and metamethod cache are private.
 // Table methods are raw: they never invoke Lua or consult metamethods.
 // Metamethod-aware operations belong to State and Frame.
 //
-// A Table must not be copied after first use. Retain and pass its pointer.
-type Table struct {
+// Repeated publication of the same live Lua object returns the same handle
+// pointer. Execution slots retain the compact table directly and do not pass
+// through this handle.
+//
+// Table must not be copied after first use. Retain and pass its pointer.
+type Table hostToken
+
+type tableObject struct {
 	objectHeader
 	array             tableVector[slot]
 	arrayUsed         int
 	store             tableStore
-	metatable         *Table
+	metatable         *tableObject
 	absentMetamethods uint32
 	// recordIntegerFloor is one plus the smallest power-of-two exponent
 	// containing a positive integer record key. The value above every array
@@ -118,8 +124,8 @@ type Table struct {
 	recordIntegerFloor uint8
 }
 
-func newTable(owner *runtimeState, arrayHint, recordHint int) *Table {
-	table := &Table{objectHeader: objectHeader{owner: owner}}
+func newTable(owner *runtimeState, arrayHint, recordHint int) *tableObject {
+	table := &tableObject{objectHeader: objectHeader{owner: owner}}
 	if arrayHint > 0 {
 		table.array = makeTableVector[slot](0, arrayHint)
 	}
@@ -129,19 +135,73 @@ func newTable(owner *runtimeState, arrayHint, recordHint int) *Table {
 
 // Value returns the owning Lua value for table.
 func (table *Table) Value() Value {
-	if table == nil || table.owner == nil {
+	token := table.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.object == nil ||
+		token.kind != TableKind {
 		return Value{}
 	}
-	return objectValue(TableKind, unsafe.Pointer(table))
+	value := Value{ref: unsafe.Pointer(token), bits: uint64(TableKind)}
+	runtime.KeepAlive(table)
+	return value
 }
 
-func slotFromTable(table *Table) slot {
+func (table *Table) token() *hostToken {
+	return (*hostToken)(table)
+}
+
+func (table *Table) runtimeObject() *tableObject {
+	token := table.token()
+	if token == nil ||
+		token.kind != TableKind ||
+		token.object == nil {
+		return nil
+	}
+	return (*tableObject)(token.object)
+}
+
+func (table *tableObject) owningHandle() *Table {
+	if table == nil {
+		return nil
+	}
+	token := table.objectHeader.owningToken(
+		TableKind,
+		unsafe.Pointer(table),
+	)
+	return (*Table)(token)
+}
+
+func (table *tableObject) owningValue() Value {
+	handle := table.owningHandle()
+	return handle.Value()
+}
+
+func slotFromTableObject(table *tableObject) slot {
 	return objectSlot(TableKind, unsafe.Pointer(table))
+}
+
+func tableObjectFromSlot(value slot) *tableObject {
+	if !value.isTable() {
+		panic("lua: slot is not a table")
+	}
+	return (*tableObject)(value.ref)
+}
+
+func tableHandleFromSlot(value slot) *Table {
+	return tableObjectFromSlot(value).owningHandle()
 }
 
 // RawGet returns the value associated with key without invoking metamethods.
 // A missing key returns Nil.
 func (table *Table) RawGet(key Value) (Value, error) {
+	object := table.runtimeObject()
+	result, err := object.rawGetValue(key)
+	runtime.KeepAlive(table)
+	return result, err
+}
+
+func (table *tableObject) rawGetValue(key Value) (Value, error) {
 	if table == nil || table.owner == nil {
 		return Value{}, ErrClosed
 	}
@@ -157,6 +217,13 @@ func (table *Table) RawGet(key Value) (Value, error) {
 // RawSet associates key with value without invoking metamethods. Assigning Nil
 // deletes the key.
 func (table *Table) RawSet(key, value Value) error {
+	object := table.runtimeObject()
+	err := object.rawSetValue(key, value)
+	runtime.KeepAlive(table)
+	return err
+}
+
+func (table *tableObject) rawSetValue(key, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
@@ -178,6 +245,13 @@ func (table *Table) RawSet(key, value Value) error {
 // RawGetInt returns the value associated with an integer key without invoking
 // metamethods. A missing key returns Nil.
 func (table *Table) RawGetInt(key int) Value {
+	object := table.runtimeObject()
+	result := object.rawGetIntValue(key)
+	runtime.KeepAlive(table)
+	return result
+}
+
+func (table *tableObject) rawGetIntValue(key int) Value {
 	if table == nil {
 		return nilValue
 	}
@@ -189,6 +263,13 @@ func (table *Table) RawGetInt(key int) Value {
 
 // RawSetInt associates an integer key with value without invoking metamethods.
 func (table *Table) RawSetInt(key int, value Value) error {
+	object := table.runtimeObject()
+	err := object.rawSetIntValue(key, value)
+	runtime.KeepAlive(table)
+	return err
+}
+
+func (table *tableObject) rawSetIntValue(key int, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
@@ -202,13 +283,20 @@ func (table *Table) RawSetInt(key int, value Value) error {
 // RawGetString returns the value associated with a string key without
 // constructing a temporary Value or invoking metamethods.
 func (table *Table) RawGetString(key string) Value {
+	object := table.runtimeObject()
+	result := object.rawGetStringValue(key)
+	runtime.KeepAlive(table)
+	return result
+}
+
+func (table *tableObject) rawGetStringValue(key string) Value {
 	if value, found := table.rawStringSlot(key); found {
 		return value.owningValue()
 	}
 	return nilValue
 }
 
-func (table *Table) rawStringSlot(key string) (slot, bool) {
+func (table *tableObject) rawStringSlot(key string) (slot, bool) {
 	if table == nil || table.owner == nil {
 		return nilSlot, false
 	}
@@ -221,14 +309,34 @@ func (table *Table) rawStringSlot(key string) (slot, bool) {
 // RawSetString associates a string key with value without invoking
 // metamethods.
 func (table *Table) RawSetString(key string, value Value) error {
+	object := table.runtimeObject()
+	err := object.rawSetStringValue(key, value)
+	runtime.KeepAlive(table)
+	return err
+}
+
+func (table *tableObject) rawSetStringValue(key string, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
 	if err := table.owner.accept(value); err != nil {
 		return err
 	}
+	return table.setStringSlot(key, slotFromValue(value))
+}
+
+func (table *tableObject) rawSetStringSlot(key string, value slot) error {
+	if err := table.checkMutable(); err != nil {
+		return err
+	}
+	if err := table.owner.acceptSlot(value); err != nil {
+		return err
+	}
+	return table.setStringSlot(key, value)
+}
+
+func (table *tableObject) setStringSlot(key string, value slot) error {
 	hash := uint32(table.owner.strings.hash(key))
-	valueSlot := slotFromValue(value)
 	index, stored := table.store.findStoredString(key, hash)
 	var entry *tableEntry
 	if stored {
@@ -238,31 +346,31 @@ func (table *Table) RawSetString(key string, value Value) error {
 	switch {
 	case stored &&
 		!entry.value.isNil() &&
-		valueSlot.isNil():
+		value.isNil():
 		table.store.deleteAt(index)
 		changed = true
 	case stored &&
 		!entry.value.isNil():
-		if replaceTableValue(&entry.value, valueSlot) {
+		if replaceTableValue(&entry.value, value) {
 			changed = true
 		}
-	case stored && !valueSlot.isNil():
+	case stored && !value.isNil():
 		if table.store.shouldCompact() {
 			storedKey := entry.key
 			table.store.rehash(table.store.entries.len())
-			table.insertNewField(storedKey, valueSlot, hash, 0)
+			table.insertNewField(storedKey, value, hash, 0)
 		} else {
-			table.store.reviveAt(index, valueSlot)
+			table.store.reviveAt(index, value)
 		}
 		changed = true
-	case !valueSlot.isNil():
+	case !value.isNil():
 		keySlot := stringSlot(
 			table.owner.strings.makeKnownHash(
 				key,
 				stringHash(hash),
 			),
 		)
-		table.insertNewField(keySlot, valueSlot, hash, 0)
+		table.insertNewField(keySlot, value, hash, 0)
 		changed = true
 	}
 	if changed {
@@ -276,6 +384,13 @@ func (table *Table) RawSetString(key string, value Value) error {
 // As in Lua 5.1, the result is undefined when a table has more than one
 // border.
 func (table *Table) RawLen() int {
+	object := table.runtimeObject()
+	result := object.rawLen()
+	runtime.KeepAlive(table)
+	return result
+}
+
+func (table *tableObject) rawLen() int {
 	if table == nil {
 		return 0
 	}
@@ -327,7 +442,7 @@ func (table *Table) RawLen() int {
 	return low
 }
 
-func (table *Table) next(previous slot) (key, value slot, found bool, err error) {
+func (table *tableObject) next(previous slot) (key, value slot, found bool, err error) {
 	if table == nil || table.owner == nil {
 		return nilSlot, nilSlot, false, ErrClosed
 	}
@@ -376,7 +491,7 @@ func (table *Table) next(previous slot) (key, value slot, found bool, err error)
 	return nilSlot, nilSlot, false, nil
 }
 
-func (table *Table) checkMutable() error {
+func (table *tableObject) checkMutable() error {
 	if table == nil || table.owner == nil || table.owner.closed.Load() {
 		return ErrClosed
 	}
@@ -429,7 +544,7 @@ func normalizeTableKey(
 	return
 }
 
-func (table *Table) rawSlot(key slot) (slot, bool) {
+func (table *tableObject) rawSlot(key slot) (slot, bool) {
 	normalized, index, arrayKey, hash, status :=
 		normalizeTableKey(key)
 	if status != tableKeyValid {
@@ -443,7 +558,7 @@ func (table *Table) rawSlot(key slot) (slot, bool) {
 	)
 }
 
-func (table *Table) rawNormalizedSlot(
+func (table *tableObject) rawNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
@@ -455,14 +570,14 @@ func (table *Table) rawNormalizedSlot(
 	return table.store.get(key, hash)
 }
 
-func (table *Table) rawStringKeySlot(
+func (table *tableObject) rawStringKeySlot(
 	key slot,
 	hash uint32,
 ) (slot, bool) {
 	return table.store.getStringSlot(key, hash)
 }
 
-func (table *Table) resolveNormalizedSlot(
+func (table *tableObject) resolveNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
@@ -494,7 +609,7 @@ func (table *Table) resolveNormalizedSlot(
 		true
 }
 
-func (table *Table) resolveStringKeySlot(
+func (table *tableObject) resolveStringKeySlot(
 	key slot,
 	hash uint32,
 ) (slot, tableLocation, bool) {
@@ -510,7 +625,7 @@ func (table *Table) resolveStringKeySlot(
 		true
 }
 
-func (table *Table) replaceResolvedSlot(
+func (table *tableObject) replaceResolvedSlot(
 	location tableLocation,
 	value slot,
 ) {
@@ -545,7 +660,7 @@ func (table *Table) replaceResolvedSlot(
 	table.absentMetamethods = 0
 }
 
-func (table *Table) rawSetSlot(key, value slot) tableKeyStatus {
+func (table *tableObject) rawSetSlot(key, value slot) tableKeyStatus {
 	normalized, index, arrayKey, hash, status :=
 		normalizeTableKey(key)
 	if status != tableKeyValid {
@@ -561,7 +676,7 @@ func (table *Table) rawSetSlot(key, value slot) tableKeyStatus {
 	return tableKeyValid
 }
 
-func (table *Table) rawSetNormalizedSlot(
+func (table *tableObject) rawSetNormalizedSlot(
 	key slot,
 	index int,
 	arrayKey bool,
@@ -581,7 +696,7 @@ func (table *Table) rawSetNormalizedSlot(
 
 // Integer keys cannot name string-keyed metamethods, so rawSetIntegerSlot
 // preserves the absence cache.
-func (table *Table) rawSetIntegerSlot(key int, value slot) {
+func (table *tableObject) rawSetIntegerSlot(key int, value slot) {
 	table.setInteger(key, value)
 }
 
@@ -594,7 +709,7 @@ func (table *Table) rawSetIntegerSlot(key int, value slot) {
 // physical storage. The common dense case stays on the allocation-free raw
 // loop. A small stack buffer also keeps sparse pathological ranges
 // allocation-free.
-func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
+func (table *tableObject) shiftSparseIntegerRangeUp(first, last int) {
 	if first > last {
 		return
 	}
@@ -668,7 +783,7 @@ func (table *Table) shiftSparseIntegerRangeUp(first, last int) {
 	}
 }
 
-func (table *Table) rawSetList(first int, values []slot) {
+func (table *tableObject) rawSetList(first int, values []slot) {
 	if len(values) == 0 {
 		return
 	}
@@ -710,7 +825,7 @@ func (table *Table) rawSetList(first int, values []slot) {
 	}
 }
 
-func (table *Table) set(
+func (table *tableObject) set(
 	key slot,
 	index int,
 	arrayKey bool,
@@ -731,7 +846,7 @@ func (table *Table) set(
 	return true
 }
 
-func (table *Table) setStoredRecord(
+func (table *tableObject) setStoredRecord(
 	index int,
 	value slot,
 ) bool {
@@ -743,7 +858,7 @@ func (table *Table) setStoredRecord(
 	return table.setStoredRecordSlow(index, value)
 }
 
-func (table *Table) setStoredRecordSlow(
+func (table *tableObject) setStoredRecordSlow(
 	index int,
 	value slot,
 ) bool {
@@ -776,7 +891,7 @@ func (table *Table) setStoredRecordSlow(
 	panic("lua: invalid slow table record update")
 }
 
-func (table *Table) insertNewField(
+func (table *tableObject) insertNewField(
 	key, value slot,
 	hash uint32,
 	integerClass uint8,
@@ -810,7 +925,7 @@ func (table *Table) insertNewField(
 	table.redistributeForInsert(key, value, hash)
 }
 
-func (table *Table) canGrowRecordStore(pendingClass uint8) bool {
+func (table *tableObject) canGrowRecordStore(pendingClass uint8) bool {
 	arraySize := table.array.len()
 	arrayExponent := -1
 	switch {
@@ -849,11 +964,11 @@ func (table *Table) canGrowRecordStore(pendingClass uint8) bool {
 	return totalIntegers <= candidate/2
 }
 
-func (table *Table) recordIntegerInserted(key slot) {
+func (table *tableObject) recordIntegerInserted(key slot) {
 	table.recordIntegerInsertedClass(recordIntegerClass(key))
 }
 
-func (table *Table) recordIntegerInsertedClass(class uint8) {
+func (table *tableObject) recordIntegerInsertedClass(class uint8) {
 	if class != 0 &&
 		(table.recordIntegerFloor == 0 ||
 			class < table.recordIntegerFloor) {
@@ -861,7 +976,7 @@ func (table *Table) recordIntegerInsertedClass(class uint8) {
 	}
 }
 
-func (table *Table) recordIntegerDeleted() {
+func (table *tableObject) recordIntegerDeleted() {
 	if table.store.integerKeys == 0 {
 		table.recordIntegerFloor = 0
 	}
@@ -885,7 +1000,7 @@ func integerRecordClass(integer int) uint8 {
 	return uint8(bits.Len(uint(integer-1)) + 1)
 }
 
-func (table *Table) setInteger(index int, value slot) bool {
+func (table *tableObject) setInteger(index int, value slot) bool {
 	if index > 0 &&
 		index <= table.array.len() &&
 		(value.isNil() ||
@@ -917,7 +1032,7 @@ func (table *Table) setInteger(index int, value slot) bool {
 	return table.setIntegerUnresolved(index, value)
 }
 
-func (table *Table) setIntegerUnresolved(
+func (table *tableObject) setIntegerUnresolved(
 	index int,
 	value slot,
 ) bool {
@@ -993,7 +1108,7 @@ func (table *Table) setIntegerUnresolved(
 	return true
 }
 
-func (table *Table) admitsArrayInsert(index int) bool {
+func (table *tableObject) admitsArrayInsert(index int) bool {
 	if index <= 0 || index > maximumTableArrayCapacity {
 		return false
 	}
@@ -1015,7 +1130,7 @@ func (table *Table) admitsArrayInsert(index int) bool {
 	return table.arrayUsed+1 > index/2
 }
 
-func (table *Table) directArrayGrowth(index int) int {
+func (table *tableObject) directArrayGrowth(index int) int {
 	if index <= initialArrayCapacity ||
 		index <= table.array.cap() ||
 		index > maximumTableArrayCapacity ||
@@ -1030,7 +1145,7 @@ func (table *Table) directArrayGrowth(index int) int {
 	return target
 }
 
-func (table *Table) growArrayExact(length int) {
+func (table *tableObject) growArrayExact(length int) {
 	arrayVector := makeTableVector[slot](length, length)
 	array := arrayVector.values()
 	oldArray := table.array.values()
@@ -1041,7 +1156,7 @@ func (table *Table) growArrayExact(length int) {
 	table.array = arrayVector
 }
 
-func (table *Table) redistributeForInsert(
+func (table *tableObject) redistributeForInsert(
 	key slot,
 	value slot,
 	hash uint32,
@@ -1183,7 +1298,7 @@ func (table *Table) redistributeForInsert(
 	table.recordIntegerFloor = recordIntegerFloor
 }
 
-func (table *Table) densityForInsert(
+func (table *tableObject) densityForInsert(
 	pending slot,
 ) (arraySize, arrayLive, totalLive int) {
 	total := uint64(table.arrayUsed) +
@@ -1216,7 +1331,7 @@ func (table *Table) densityForInsert(
 	return arraySize, arrayLive, totalLive
 }
 
-func (table *Table) countArrayDensity(
+func (table *tableObject) countArrayDensity(
 	counts *[maximumTableArrayBits + 1]int,
 ) {
 	if table.arrayUsed == 0 {
@@ -1282,7 +1397,7 @@ func mustInsertTableRecord(
 	}
 }
 
-func (table *Table) setArray(index int, value slot) bool {
+func (table *tableObject) setArray(index int, value slot) bool {
 	if index > table.array.len() {
 		table.growArrayWith(index, value)
 		table.arrayUsed++
@@ -1309,12 +1424,12 @@ func (table *Table) setArray(index int, value slot) bool {
 	}
 }
 
-func (table *Table) growArrayWith(length int, value slot) {
+func (table *tableObject) growArrayWith(length int, value slot) {
 	table.growArray(length)
 	writeSlot(table.array.at(length-1), value)
 }
 
-func (table *Table) growArray(length int) {
+func (table *tableObject) growArray(length int) {
 	oldArray := table.array.values()
 	oldLength := len(oldArray)
 	if length <= table.array.cap() {
@@ -1377,7 +1492,7 @@ func growTableArrayCapacity(current, length int) int {
 	return capacity
 }
 
-func (table *Table) rawIntSlot(key int) (slot, bool) {
+func (table *tableObject) rawIntSlot(key int) (slot, bool) {
 	if key <= 0 {
 		number := float64(key)
 		return table.store.get(

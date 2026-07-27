@@ -48,19 +48,17 @@ func (state *State) OpenString() error {
 		return err
 	}
 	const aliasCount = 1 // gfind
-	library, err := state.NewTable(
+	library := newTable(
+		state.runtime,
 		0,
 		len(stringLibraryFunctions)+aliasCount,
 	)
-	if err != nil {
-		return err
-	}
 	for _, definition := range stringLibraryFunctions {
 		function, functionErr := state.NewNativeFunction(definition.entry)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
@@ -70,30 +68,28 @@ func (state *State) OpenString() error {
 	// The standard Lua 5.1 distribution defines LUA_COMPAT_GFIND, which
 	// publishes string.gmatch a second time under its former name. It aliases
 	// the same canonical Function rather than registering a second one.
-	if err := library.RawSetString(
+	if err := library.rawSetStringValue(
 		"gfind",
-		library.RawGetString("gmatch"),
+		library.rawGetStringValue("gmatch"),
 	); err != nil {
 		return err
 	}
 
-	metatable, err := state.NewTable(0, 1)
-	if err != nil {
-		return err
-	}
-	if err := metatable.RawSetString("__index", library.Value()); err != nil {
-		return err
-	}
-	if err := state.SetMetatable(state.String(""), metatable); err != nil {
-		return err
-	}
-	if err := state.globalEnvironment().RawSetString(
-		"string",
-		library.Value(),
+	metatable := newTable(state.runtime, 0, 1)
+	if err := metatable.rawSetStringSlot(
+		"__index",
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "string", slotFromTable(library))
+	state.typeMetatables[StringKind] = metatable
+	if err := state.globalEnvironment().rawSetStringSlot(
+		"string",
+		slotFromTableObject(library),
+	); err != nil {
+		return err
+	}
+	state.setLoadedModule(loaded, "string", slotFromTableObject(library))
 	return nil
 }
 

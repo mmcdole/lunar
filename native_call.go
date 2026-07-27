@@ -214,7 +214,7 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 		var handler slot
 		var found bool
 		if target.isTable() {
-			table := (*Table)(target.ref)
+			table := (*tableObject)(target.ref)
 			if result, hit := table.rawSlot(key); hit &&
 				!result.isNil() {
 				return result, nil
@@ -283,7 +283,7 @@ func (frame Frame) setIndexCompact(
 		var handler slot
 		var found bool
 		if target.isTable() {
-			table := (*Table)(target.ref)
+			table := (*tableObject)(target.ref)
 			normalized, index, arrayKey, hash, status :=
 				normalizeTableKey(key)
 			switch status {

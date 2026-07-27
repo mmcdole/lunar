@@ -119,11 +119,12 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 			t.Fatalf("io.%s does not share the private environment", name)
 		}
 	}
-	if value, found := environment.rawIntSlot(ioDefaultInput); !found ||
+	environmentObject := environment.runtimeObject()
+	if value, found := environmentObject.rawIntSlot(ioDefaultInput); !found ||
 		value.ref != slotFromValue(stdin.Value()).ref {
 		t.Fatal("private input default is not io.stdin")
 	}
-	if value, _ := environment.rawIntSlot(ioDefaultOutput); value.ref !=
+	if value, _ := environmentObject.rawIntSlot(ioDefaultOutput); value.ref !=
 		slotFromValue(stdout.Value()).ref {
 		t.Fatal("private output default is not io.stdout")
 	}
@@ -491,7 +492,7 @@ return file,message,code,before,text,closed,after,closedText,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.runtimeObject().environment != privateEnvironment {
+	if data.runtimeObject().environment != privateEnvironment.runtimeObject() {
 		t.Fatal("regular file does not share the IO private environment")
 	}
 	assertTestValues(
@@ -604,7 +605,7 @@ return io.type(forged_file),ok,message
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.registry.RawSetString(
+	if err := state.registry.rawSetStringValue(
 		luaFileHandleRegistryKey,
 		replacement.Value(),
 	); err != nil {
@@ -612,7 +613,7 @@ return io.type(forged_file),ok,message
 	}
 	results = runIOChunk(t, state, `return io.type(io.stdin)`)
 	assertTestValues(t, results, Nil())
-	if err := state.registry.RawSetString(
+	if err := state.registry.rawSetStringValue(
 		luaFileHandleRegistryKey,
 		metatable.Value(),
 	); err != nil {
@@ -1152,7 +1153,7 @@ func ioLibraryTable(t testing.TB, state *State) *Table {
 
 func fileMetatable(t testing.TB, state *State) *Table {
 	t.Helper()
-	value := state.registry.RawGetString(luaFileHandleRegistryKey)
+	value := state.registry.rawGetStringValue(luaFileHandleRegistryKey)
 	metatable, ok := value.Table()
 	if !ok {
 		t.Fatalf("registry FILE* = %v", value)
@@ -1188,7 +1189,7 @@ func assertTableSurface(
 	t.Helper()
 	found := 0
 	for key := nilSlot; ; {
-		next, value, present, err := table.next(key)
+		next, value, present, err := table.runtimeObject().next(key)
 		if err != nil {
 			t.Fatal(err)
 		}

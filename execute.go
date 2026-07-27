@@ -524,7 +524,7 @@ dispatch:
 			case TableKind:
 				writeTableLength(
 					&values[base+current.a()],
-					(*Table)(source.ref),
+					(*tableObject)(source.ref),
 				)
 			default:
 				thread.frames[len(thread.frames)-1].pc = uint32(pc)

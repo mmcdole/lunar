@@ -56,7 +56,7 @@ func TestOpenPackageInstallsCanonicalLua51Surface(t *testing.T) {
 	if err := state.OpenMath(); err != nil {
 		t.Fatal(err)
 	}
-	registryLoadedValue := state.registry.RawGetString(
+	registryLoadedValue := state.registry.rawGetStringValue(
 		loadedModulesRegistryKey,
 	)
 	registryLoaded, ok := registryLoadedValue.Table()
@@ -503,7 +503,7 @@ return virtual,meta,writes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.registry.RawSetString(
+	if err := state.registry.rawSetStringValue(
 		loadedModulesRegistryKey,
 		redirectedLoaded.Value(),
 	); err != nil {

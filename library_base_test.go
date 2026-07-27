@@ -75,7 +75,9 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if same, applicable := global.SameObject(state.main.globals.Value()); !applicable || !same {
+	if same, applicable := global.SameObject(
+		state.main.globals.owningValue(),
+	); !applicable || !same {
 		t.Fatal("_G does not identify the canonical global environment")
 	}
 	version, err := state.Global("_VERSION")
@@ -118,7 +120,9 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		}
 	}
 	global, _ = state.Global("_G")
-	if same, applicable := global.SameObject(state.main.globals.Value()); !applicable || !same {
+	if same, applicable := global.SameObject(
+		state.main.globals.owningValue(),
+	); !applicable || !same {
 		t.Fatal("reopening did not restore _G")
 	}
 

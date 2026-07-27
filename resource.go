@@ -272,7 +272,7 @@ func acquireManagedResource(
 func classifyManagedUserData(
 	data *userDataObject,
 	class *nativeResourceClass,
-	metatable *Table,
+	metatable *tableObject,
 ) {
 	if data == nil || data.resource == nil ||
 		class == nil || metatable == nil {

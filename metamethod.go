@@ -68,10 +68,10 @@ func (event metamethod) bit() uint32 {
 	return uint32(1) << event
 }
 
-func metatableForSlot(thread *Thread, value slot) *Table {
+func metatableForSlot(thread *Thread, value slot) *tableObject {
 	switch value.kind() {
 	case TableKind:
-		return (*Table)(value.ref).metatable
+		return (*tableObject)(value.ref).metatable
 	case UserDataKind:
 		return userDataObjectFromSlot(value).metatable
 	default:

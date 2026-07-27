@@ -118,49 +118,50 @@ func (state *State) OpenPackage() error {
 		cLoader,
 		cRootLoader,
 	} {
-		if err := loaders.RawSetInt(index+1, loader.Value()); err != nil {
-			return err
-		}
+		loaders.rawSetIntegerSlot(index+1, slotFromFunction(loader))
 	}
 	for _, field := range []struct {
 		name  string
-		value Value
+		value slot
 	}{
-		{name: "loadlib", value: loadlib.Value()},
-		{name: "seeall", value: seeall.Value()},
-		{name: "loaders", value: loaders.Value()},
-		{name: "path", value: state.String(path)},
-		{name: "cpath", value: state.String(cpath)},
+		{name: "loadlib", value: slotFromFunction(loadlib)},
+		{name: "seeall", value: slotFromFunction(seeall)},
+		{name: "loaders", value: slotFromTableObject(loaders)},
+		{name: "path", value: stringSlot(state.runtime.strings.make(path))},
+		{name: "cpath", value: stringSlot(state.runtime.strings.make(cpath))},
 		{
 			name: "config",
-			value: state.String(
+			value: stringSlot(state.runtime.strings.make(
 				string(os.PathSeparator) + "\n;\n?\n!\n-",
-			),
+			)),
 		},
-		{name: "loaded", value: loaded.Value()},
-		{name: "preload", value: preload.Value()},
+		{name: "loaded", value: slotFromTableObject(loaded)},
+		{name: "preload", value: slotFromTableObject(preload)},
 	} {
-		if err := library.RawSetString(field.name, field.value); err != nil {
+		if err := library.rawSetStringSlot(field.name, field.value); err != nil {
 			return err
 		}
 	}
 
 	globals := state.globalEnvironment()
-	if err := globals.RawSetString("package", library.Value()); err != nil {
+	if err := globals.rawSetStringSlot(
+		"package",
+		slotFromTableObject(library),
+	); err != nil {
 		return err
 	}
-	if err := globals.RawSetString("require", require.Value()); err != nil {
+	if err := globals.rawSetStringValue("require", require.Value()); err != nil {
 		return err
 	}
-	if err := globals.RawSetString("module", module.Value()); err != nil {
+	if err := globals.rawSetStringValue("module", module.Value()); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "package", slotFromTable(library))
+	state.setLoadedModule(loaded, "package", slotFromTableObject(library))
 	return nil
 }
 
 func (state *State) newPackageFunction(
-	environment *Table,
+	environment *tableObject,
 	entry NativeFunc,
 	captures ...slot,
 ) (*Function, error) {
@@ -172,7 +173,7 @@ func (state *State) newPackageFunction(
 	return function, nil
 }
 
-func (state *State) ensureLoadedModules() (*Table, error) {
+func (state *State) ensureLoadedModules() (*tableObject, error) {
 	key := stringSlot(state.runtime.strings.make(loadedModulesRegistryKey))
 	if value, found := state.registry.rawSlot(key); found {
 		if !value.isTable() {
@@ -181,10 +182,10 @@ func (state *State) ensureLoadedModules() (*Table, error) {
 				loadedModulesRegistryKey,
 			)
 		}
-		return (*Table)(value.ref), nil
+		return (*tableObject)(value.ref), nil
 	}
 	loaded := newTable(state.runtime, 0, 8)
-	state.registry.rawSetSlot(key, slotFromTable(loaded))
+	state.registry.rawSetSlot(key, slotFromTableObject(loaded))
 	return loaded, nil
 }
 
@@ -204,7 +205,7 @@ func (state *State) ensurePackageSentinel() *userDataObject {
 }
 
 func (state *State) setLoadedModule(
-	loaded *Table,
+	loaded *tableObject,
 	name string,
 	value slot,
 ) {
@@ -312,7 +313,7 @@ func packageRequire(frame Frame) Outcome {
 		return frame.returnOne(frame.activation(), cached)
 	}
 
-	packageTable := slotFromTable(frame.Environment())
+	packageTable := slotFromTableObject(frame.environmentObject())
 	loaders, failure := frame.indexCompact(
 		packageTable,
 		stringSlot(frame.thread.owner.strings.make("loaders")),
@@ -329,7 +330,7 @@ func packageRequire(frame Frame) Outcome {
 		module      slot
 	)
 	for index := 1; ; index++ {
-		loader, found := (*Table)(loaders.ref).rawIntSlot(index)
+		loader, found := (*tableObject)(loaders.ref).rawIntSlot(index)
 		if !found || loader.isNil() {
 			return libraryError(
 				frame,
@@ -395,7 +396,7 @@ func packageRequire(frame Frame) Outcome {
 
 func packageLoadedTarget(frame Frame) (slot, *Error) {
 	return frame.indexCompact(
-		slotFromTable(frame.thread.state.registry),
+		slotFromTableObject(frame.thread.state.registry),
 		stringSlot(
 			frame.thread.owner.strings.make(loadedModulesRegistryKey),
 		),
@@ -414,7 +415,7 @@ func packagePreloadLoader(frame Frame) Outcome {
 		return outcome
 	}
 	preload, failure := frame.indexCompact(
-		slotFromTable(frame.Environment()),
+		slotFromTableObject(frame.environmentObject()),
 		stringSlot(frame.thread.owner.strings.make("preload")),
 	)
 	if failure != nil {
@@ -561,7 +562,7 @@ func packageFindFile(
 	control *loadControl,
 ) (*os.File, string, string, *Error) {
 	pathValue, failure := frame.indexCompact(
-		slotFromTable(frame.Environment()),
+		slotFromTableObject(frame.environmentObject()),
 		stringSlot(frame.thread.owner.strings.make(field)),
 	)
 	if failure != nil {
@@ -723,7 +724,7 @@ func packageModule(frame Frame) Outcome {
 			"'module' not called from a Lua function",
 		)
 	}
-	caller.function.environment = (*Table)(module.ref)
+	caller.function.environment = (*tableObject)(module.ref)
 
 	arguments := [1]slot{module}
 	for index := 1; index < frame.ArgumentCount(); index++ {
@@ -742,7 +743,7 @@ func packageModuleTable(
 	frame Frame,
 	name string,
 ) (slot, bool, *Error) {
-	current := slotFromTable(frame.thread.globals)
+	current := slotFromTableObject(frame.thread.globals)
 	cursor := 0
 	for {
 		end := strings.IndexByte(name[cursor:], '.')
@@ -754,10 +755,10 @@ func packageModuleTable(
 		key := stringSlot(
 			frame.thread.owner.strings.make(name[cursor:end]),
 		)
-		table := (*Table)(current.ref)
+		table := (*tableObject)(current.ref)
 		next, found := table.rawSlot(key)
 		if !found || next.isNil() {
-			next = slotFromTable(newTable(frame.thread.owner, 0, 1))
+			next = slotFromTableObject(newTable(frame.thread.owner, 0, 1))
 			if failure := frame.setIndexCompact(
 				current,
 				key,
@@ -777,7 +778,7 @@ func packageModuleTable(
 }
 
 func packageSeeAll(frame Frame) Outcome {
-	module, ok := frame.Table(0)
+	module, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -787,9 +788,9 @@ func packageSeeAll(frame Frame) Outcome {
 		module.metatable = metatable
 	}
 	if failure := frame.setIndexCompact(
-		slotFromTable(metatable),
+		slotFromTableObject(metatable),
 		stringSlot(frame.thread.owner.strings.make("__index")),
-		slotFromTable(frame.thread.globals),
+		slotFromTableObject(frame.thread.globals),
 	); failure != nil {
 		return frame.sealError(failure)
 	}

@@ -10,13 +10,29 @@ import (
 	"testing"
 )
 
+func newTableObjectForTest(
+	state *State,
+	arrayHint, recordHint int,
+) (*tableObject, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	if arrayHint < 0 || recordHint < 0 {
+		return nil, ErrNegativeCapacity
+	}
+	if arrayHint > maxTableHint || recordHint > maxTableHint {
+		return nil, ErrCapacity
+	}
+	return newTable(state.runtime, arrayHint, recordHint), nil
+}
+
 func TestTableRawScalarAccess(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +48,10 @@ func TestTableRawScalarAccess(t *testing.T) {
 		{state.String("name"), state.String("badger")},
 	}
 	for _, test := range tests {
-		if err := table.RawSet(test.key, test.value); err != nil {
+		if err := table.rawSetValue(test.key, test.value); err != nil {
 			t.Fatalf("RawSet(%v): %v", test.key, err)
 		}
-		got, err := table.RawGet(test.key)
+		got, err := table.rawGetValue(test.key)
 		if err != nil {
 			t.Fatalf("RawGet(%v): %v", test.key, err)
 		}
@@ -45,10 +61,10 @@ func TestTableRawScalarAccess(t *testing.T) {
 		}
 	}
 
-	if err := table.RawSet(Number(math.Copysign(0, -1)), Number(9)); err != nil {
+	if err := table.rawSetValue(Number(math.Copysign(0, -1)), Number(9)); err != nil {
 		t.Fatal(err)
 	}
-	if got := table.RawGetInt(0); got.String() != "9" {
+	if got := table.rawGetIntValue(0); got.String() != "9" {
 		t.Fatalf("-0/+0 canonicalization = %v, want 9", got)
 	}
 
@@ -61,28 +77,28 @@ func TestTableRawScalarAccess(t *testing.T) {
 		{
 			name: "string",
 			set: func(value Value) error {
-				return table.RawSetString("signed-zero", value)
+				return table.rawSetStringValue("signed-zero", value)
 			},
 			get: func() (Value, error) {
-				return table.RawGetString("signed-zero"), nil
+				return table.rawGetStringValue("signed-zero"), nil
 			},
 		},
 		{
 			name: "array",
 			set: func(value Value) error {
-				return table.RawSetInt(1, value)
+				return table.rawSetIntValue(1, value)
 			},
 			get: func() (Value, error) {
-				return table.RawGetInt(1), nil
+				return table.rawGetIntValue(1), nil
 			},
 		},
 		{
 			name: "record",
 			set: func(value Value) error {
-				return table.RawSet(Number(-1), value)
+				return table.rawSetValue(Number(-1), value)
 			},
 			get: func() (Value, error) {
-				return table.RawGet(Number(-1))
+				return table.rawGetValue(Number(-1))
 			},
 		},
 	} {
@@ -104,23 +120,23 @@ func TestTableRawScalarAccess(t *testing.T) {
 		})
 	}
 
-	if err := table.RawSet(Nil(), Bool(true)); !errors.Is(err, ErrInvalidKey) {
+	if err := table.rawSetValue(Nil(), Bool(true)); !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("nil key error = %v, want ErrInvalidKey", err)
 	}
-	if err := table.RawSet(Number(math.NaN()), Bool(true)); !errors.Is(err, ErrInvalidKey) {
+	if err := table.rawSetValue(Number(math.NaN()), Bool(true)); !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("NaN key error = %v, want ErrInvalidKey", err)
 	}
 	for _, key := range []Value{Nil(), Number(math.NaN())} {
-		got, err := table.RawGet(key)
+		got, err := table.rawGetValue(key)
 		if err != nil || !got.IsNil() {
 			t.Fatalf("RawGet(%v) = (%v, %v), want (nil, nil)", key, got, err)
 		}
 	}
 	var invalid Value
-	if err := table.RawSet(Bool(true), invalid); !errors.Is(err, ErrInvalidValue) {
+	if err := table.rawSetValue(Bool(true), invalid); !errors.Is(err, ErrInvalidValue) {
 		t.Fatalf("invalid value error = %v, want ErrInvalidValue", err)
 	}
-	if err := table.RawSet(invalid, Bool(true)); !errors.Is(err, ErrInvalidValue) {
+	if err := table.rawSetValue(invalid, Bool(true)); !errors.Is(err, ErrInvalidValue) {
 		t.Fatalf("invalid key error = %v, want ErrInvalidValue", err)
 	}
 	other, err := New(Options{})
@@ -132,7 +148,7 @@ func TestTableRawScalarAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSet(
+	if err := table.rawSetValue(
 		foreign.Value(),
 		Bool(true),
 	); !errors.Is(err, ErrForeignValue) {
@@ -146,7 +162,7 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +173,7 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 		if stringSlotLen(slotFromValue(key)) <= shortStringLimit {
 			t.Fatal("test key unexpectedly entered the short-string cache")
 		}
-		if err := table.RawSet(key, state.String("dynamic")); err != nil {
+		if err := table.rawSetValue(key, state.String("dynamic")); err != nil {
 			t.Fatal(err)
 		}
 
@@ -168,7 +184,7 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 		}
 
 		lookup := state.String(strings.Repeat("dynamic-key-", 16))
-		got, err := table.RawGet(lookup)
+		got, err := table.rawGetValue(lookup)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,10 +215,10 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 		if !rawEqual(longKey, equalLong) {
 			t.Fatal("equal long strings with different backing compared unequal")
 		}
-		if err := table.RawSet(longKey, Number(1)); err != nil {
+		if err := table.rawSetValue(longKey, Number(1)); err != nil {
 			t.Fatal(err)
 		}
-		if err := table.RawSet(shortKey, Number(2)); err != nil {
+		if err := table.rawSetValue(shortKey, Number(2)); err != nil {
 			t.Fatal(err)
 		}
 
@@ -218,14 +234,14 @@ func TestTableRetainsFlatStringKeysAcrossGC(t *testing.T) {
 			strings.Repeat("l", stringLengthSentinel),
 			collisionHash,
 		))
-		got, err := table.RawGet(equalLong)
+		got, err := table.rawGetValue(equalLong)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if number, ok := got.AsNumber(); !ok || number != 1 {
 			t.Fatalf("long-key lookup = %v, want 1", got)
 		}
-		got, err = table.RawGet(stringValue(newHashedStringRef(
+		got, err = table.rawGetValue(stringValue(newHashedStringRef(
 			"short collision",
 			collisionHash,
 		)))
@@ -244,56 +260,59 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := table.RawSetString("ordinary", Number(1)); err != nil {
+	if err := table.rawSetStringValue("ordinary", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetString("ordinary", Number(2)); err != nil {
+	if err := table.rawSetStringValue("ordinary", Number(2)); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := table.RawGetString("ordinary").AsNumber(); !ok || got != 2 {
+	if got, ok := table.rawGetStringValue("ordinary").AsNumber(); !ok || got != 2 {
 		t.Fatalf("updated ordinary field = (%v, %v), want (2, true)", got, ok)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetMetatable(target.Value(), table); err != nil {
+	if err := state.SetMetatable(
+		target.owningValue(),
+		table.owningHandle(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, found := metamethodSlot(
 		state.MainThread(),
-		slotFromValue(target.Value()),
+		slotFromTableObject(target),
 		metaIndex,
 	); found || table.absentMetamethods&metaIndex.bit() == 0 {
 		t.Fatal("missing __index was not cached")
 	}
 
-	if err := table.RawSetInt(1, Number(1)); err != nil {
+	if err := table.rawSetIntValue(1, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(1, Number(2)); err != nil {
+	if err := table.rawSetIntValue(1, Number(2)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(1, Nil()); err != nil {
+	if err := table.rawSetIntValue(1, Nil()); err != nil {
 		t.Fatal(err)
 	}
 	table.rawSetList(2, []slot{numberSlot(2), numberSlot(3)})
-	if err := table.RawSetInt(-1, Number(1)); err != nil {
+	if err := table.rawSetIntValue(-1, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(-1, Nil()); err != nil {
+	if err := table.rawSetIntValue(-1, Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if table.absentMetamethods&metaIndex.bit() == 0 {
 		t.Fatal("integer mutations invalidated cached string metamethod absence")
 	}
 
-	if err := table.RawSetString("__index", Number(1)); err != nil {
+	if err := table.rawSetStringValue("__index", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if table.absentMetamethods&metaIndex.bit() != 0 {
@@ -301,13 +320,13 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 	}
 	method, found := metamethodSlot(
 		state.MainThread(),
-		slotFromValue(target.Value()),
+		slotFromTableObject(target),
 		metaIndex,
 	)
 	if !found || !rawSlotEqual(method, numberSlot(1)) {
 		t.Fatal("inserted __index was not found")
 	}
-	if err := table.RawSetString("__index", Nil()); err != nil {
+	if err := table.rawSetStringValue("__index", Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if table.absentMetamethods&metaIndex.bit() != 0 {
@@ -315,12 +334,12 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 	}
 	if _, found := metamethodSlot(
 		state.MainThread(),
-		slotFromValue(target.Value()),
+		slotFromTableObject(target),
 		metaIndex,
 	); found || table.absentMetamethods&metaIndex.bit() == 0 {
 		t.Fatal("deleted __index was not recached as absent")
 	}
-	if got := table.RawGetString("__index"); !got.IsNil() {
+	if got := table.rawGetStringValue("__index"); !got.IsNil() {
 		t.Fatalf("deleted key = %v, want nil", got)
 	}
 	assertTableStoreInvariant(t, &table.store)
@@ -343,11 +362,11 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			table, err := state.NewTable(1, 1)
+			table, err := newTableObjectForTest(state, 1, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := table.RawSet(test.key, Number(1)); err != nil {
+			if err := table.rawSetValue(test.key, Number(1)); err != nil {
 				t.Fatal(err)
 			}
 
@@ -390,7 +409,7 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 			if table.absentMetamethods != 0 {
 				t.Fatal("value update retained the absent-metamethod cache")
 			}
-			got, err := table.RawGet(test.key)
+			got, err := table.rawGetValue(test.key)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -403,7 +422,7 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 				location,
 				numberSlot(math.Copysign(0, -1)),
 			)
-			got, err = table.RawGet(test.key)
+			got, err = table.rawGetValue(test.key)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -435,7 +454,7 @@ func TestTableResolvedLocationUpdatesExactStorage(t *testing.T) {
 			if table.absentMetamethods != 0 {
 				t.Fatal("deletion retained the absent-metamethod cache")
 			}
-			got, err = table.RawGet(test.key)
+			got, err = table.rawGetValue(test.key)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -459,17 +478,17 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 1; index <= 8; index++ {
-		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+		if err := table.rawSetIntValue(index, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, key := range []string{"north", "south", "east", "west"} {
-		if err := table.RawSetString(key, Bool(true)); err != nil {
+		if err := table.rawSetStringValue(key, Bool(true)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -485,7 +504,7 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 			break
 		}
 		visited++
-		if err := table.RawSet(key.owningValue(), Nil()); err != nil {
+		if err := table.rawSetValue(key.owningValue(), Nil()); err != nil {
 			t.Fatal(err)
 		}
 		previous = key
@@ -505,13 +524,13 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	// Lua permits deletion during traversal. Two paused traversals therefore
 	// need independent continuation keys that survive deletion until an
 	// insertion makes traversal order undefined.
-	nested, err := state.NewTable(0, 8)
+	nested, err := newTableObjectForTest(state, 0, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 8; index++ {
 		key := "nested-" + strconv.Itoa(index)
-		if err := nested.RawSetString(key, Number(float64(index))); err != nil {
+		if err := nested.rawSetStringValue(key, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -519,14 +538,14 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("outer first next = (found %v, err %v)", found, err)
 	}
-	if err := nested.RawSet(outer.owningValue(), Nil()); err != nil {
+	if err := nested.rawSetValue(outer.owningValue(), Nil()); err != nil {
 		t.Fatal(err)
 	}
 	inner, _, found, err := nested.next(nilSlot)
 	if err != nil || !found {
 		t.Fatalf("inner first next = (found %v, err %v)", found, err)
 	}
-	if err := nested.RawSet(inner.owningValue(), Nil()); err != nil {
+	if err := nested.rawSetValue(inner.owningValue(), Nil()); err != nil {
 		t.Fatal(err)
 	}
 	collect := func(name string, previous slot) map[slot]struct{} {
@@ -589,21 +608,21 @@ func TestTableTraversalContinuesAfterUpdatingExistingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 64)
+	table, err := newTableObjectForTest(state, 0, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(5, Number(1)); err != nil {
+	if err := table.rawSetIntValue(5, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(1, Number(1)); err != nil {
+	if err := table.rawSetIntValue(1, Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(2, Number(2)); err != nil {
+	if err := table.rawSetIntValue(2, Number(2)); err != nil {
 		t.Fatal(err)
 	}
 	for index := range 32 {
-		if err := table.RawSetString(
+		if err := table.rawSetStringValue(
 			fmt.Sprintf("field-%02d", index),
 			Number(float64(index)),
 		); err != nil {
@@ -631,7 +650,7 @@ func TestTableTraversalContinuesAfterUpdatingExistingKey(t *testing.T) {
 		seen[key] = struct{}{}
 		if key.kind() == NumberKind &&
 			math.Float64frombits(key.bits) == 5 {
-			if err := table.RawSetInt(5, Number(2)); err != nil {
+			if err := table.rawSetIntValue(5, Number(2)); err != nil {
 				t.Fatal(err)
 			}
 			updated = true
@@ -644,7 +663,7 @@ func TestTableTraversalContinuesAfterUpdatingExistingKey(t *testing.T) {
 	if len(seen) != 35 {
 		t.Fatalf("traversal visited %d fields, want 35", len(seen))
 	}
-	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
+	if got, ok := table.rawGetIntValue(5).AsNumber(); !ok || got != 2 {
 		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
 	}
 }
@@ -706,16 +725,16 @@ func TestTableTraversalAcceptsArrayHoleAsContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(4, 0)
+	table, err := newTableObjectForTest(state, 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 1; index <= 4; index++ {
-		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+		if err := table.rawSetIntValue(index, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := table.RawSetInt(3, Nil()); err != nil {
+	if err := table.rawSetIntValue(3, Nil()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -734,7 +753,7 @@ func TestTableTraversalAcceptsArrayHoleAsContinuation(t *testing.T) {
 		)
 	}
 
-	if err := table.RawSetInt(4, Nil()); err != nil {
+	if err := table.rawSetIntValue(4, Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, found, err := table.next(numberSlot(3)); err != nil || found {
@@ -748,32 +767,32 @@ func TestTableRawLenSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for index := 1; index <= 64; index++ {
-		if err := table.RawSetInt(index, Bool(true)); err != nil {
+		if err := table.rawSetIntValue(index, Bool(true)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := table.RawLen(); got != 64 {
+	if got := table.rawLen(); got != 64 {
 		t.Fatalf("RawLen = %d, want 64", got)
 	}
-	if err := table.RawSetInt(64, Nil()); err != nil {
+	if err := table.rawSetIntValue(64, Nil()); err != nil {
 		t.Fatal(err)
 	}
-	if got := table.RawLen(); got != 63 {
+	if got := table.rawLen(); got != 63 {
 		t.Fatalf("RawLen after tail deletion = %d, want 63", got)
 	}
 
-	hashTail, err := state.NewTable(0, 0)
+	hashTail, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index := 1; index <= 3; index++ {
-		if err := hashTail.RawSetInt(index, Bool(true)); err != nil {
+		if err := hashTail.rawSetIntValue(index, Bool(true)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -787,7 +806,7 @@ func TestTableRawLenSequence(t *testing.T) {
 		t.Fatal("failed to seed record tail")
 	}
 	hashTail.recordIntegerInserted(numberSlot(number))
-	if got := hashTail.RawLen(); got != 4 {
+	if got := hashTail.rawLen(); got != 4 {
 		t.Fatalf("RawLen across storage = %d, want 4", got)
 	}
 	assertTableLaneInvariant(t, hashTail)
@@ -800,15 +819,15 @@ func TestTableSteadyStateRawAccessDoesNotAllocate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(8, 0)
+	table, err := newTableObjectForTest(state, 8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(1, Number(1)); err != nil {
+	if err := table.rawSetIntValue(1, Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	for range 4 {
-		if err := table.RawSetString("field", Number(1)); err != nil {
+		if err := table.rawSetStringValue("field", Number(1)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -817,15 +836,15 @@ func TestTableSteadyStateRawAccessDoesNotAllocate(t *testing.T) {
 	}
 
 	allocations := testing.AllocsPerRun(1000, func() {
-		if err := table.RawSetInt(1, Number(2)); err != nil {
+		if err := table.rawSetIntValue(1, Number(2)); err != nil {
 			panic(err)
 		}
-		_ = table.RawGetInt(1)
-		if err := table.RawSetString("field", Number(2)); err != nil {
+		_ = table.rawGetIntValue(1)
+		if err := table.rawSetStringValue("field", Number(2)); err != nil {
 			panic(err)
 		}
-		_ = table.RawGetString("field")
-		if err := table.RawSetString("absent", Nil()); err != nil {
+		_ = table.rawGetStringValue("field")
+		if err := table.rawSetStringValue("absent", Nil()); err != nil {
 			panic(err)
 		}
 	})
@@ -928,12 +947,12 @@ func BenchmarkTableNext(b *testing.B) {
 		b.ReportAllocs()
 		b.ReportMetric(deleteCount, "keys/op")
 		for range b.N {
-			table, err := state.NewTable(0, deleteCount)
+			table, err := newTableObjectForTest(state, 0, deleteCount)
 			if err != nil {
 				b.Fatal(err)
 			}
 			for index, key := range keys {
-				if err := table.RawSetString(
+				if err := table.rawSetStringValue(
 					key,
 					Number(float64(index)),
 				); err != nil {
@@ -950,7 +969,7 @@ func BenchmarkTableNext(b *testing.B) {
 				if !found {
 					break
 				}
-				if err := table.RawSet(key.owningValue(), Nil()); err != nil {
+				if err := table.rawSetValue(key.owningValue(), Nil()); err != nil {
 					b.Fatal(err)
 				}
 				previous = key

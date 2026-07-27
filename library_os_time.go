@@ -121,7 +121,7 @@ func returnDateTable(frame Frame, date time.Time) Outcome {
 			panic("lua: date field produced an invalid table key")
 		}
 	}
-	return frame.returnOne(frame.activation(), slotFromTable(table))
+	return frame.returnOne(frame.activation(), slotFromTableObject(table))
 }
 
 func osTime(frame Frame) Outcome {

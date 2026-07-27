@@ -61,7 +61,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if environment != state.main.globals {
+	if environment.runtimeObject() != state.main.globals {
 		t.Fatal("native Function did not use the State global environment")
 	}
 	if got, ok := function.Value().Function(); !ok || got != function {
@@ -269,7 +269,7 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 			if frame.State() != state || frame.Thread() != state.MainThread() {
 				t.Fatal("Frame did not expose its executing State and Thread")
 			}
-			if frame.Environment() != state.main.globals {
+			if frame.Environment().runtimeObject() != state.main.globals {
 				t.Fatal("Frame did not expose its function environment")
 			}
 			if value, ok := frame.Bool(0); !ok || !value {

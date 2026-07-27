@@ -48,29 +48,26 @@ func (state *State) OpenTable() error {
 	if err != nil {
 		return err
 	}
-	library, err := state.NewTable(0, len(tableLibraryFunctions))
-	if err != nil {
-		return err
-	}
+	library := newTable(state.runtime, 0, len(tableLibraryFunctions))
 	for _, definition := range tableLibraryFunctions {
 		function, functionErr := state.NewNativeFunction(definition.entry)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
 			return setErr
 		}
 	}
-	if err := state.globalEnvironment().RawSetString(
+	if err := state.globalEnvironment().rawSetStringSlot(
 		"table",
-		library.Value(),
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "table", slotFromTable(library))
+	state.setLoadedModule(loaded, "table", slotFromTableObject(library))
 	return nil
 }
 
@@ -97,7 +94,7 @@ func tableConcat(frame Frame) Outcome {
 			return baseArgumentTypeError(frame, 1, "string")
 		}
 	}
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -109,7 +106,7 @@ func tableConcat(frame Frame) Outcome {
 			return numberArgumentError(frame, 2)
 		}
 	}
-	last := target.RawLen()
+	last := target.rawLen()
 	if value, present := frame.argument(3); present &&
 		!value.isNil() {
 		last, ok = frame.integerArgument(3)
@@ -193,7 +190,7 @@ func tableConcat(frame Frame) Outcome {
 // tableForEach traverses the whole table and stops at the first non-nil
 // callback result, which becomes its own result.
 func tableForEach(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -226,11 +223,11 @@ func tableForEach(frame Frame) Outcome {
 // callback runs, as Lua 5.1 does. A hole inside that range is visited with a
 // nil value rather than ending the traversal.
 func tableForEachI(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
-	length := target.RawLen()
+	length := target.rawLen()
 	callback, present := frame.argument(1)
 	if !present || !callback.isFunction() {
 		return baseArgumentTypeError(frame, 1, "function")
@@ -254,23 +251,23 @@ func tableForEachI(frame Frame) Outcome {
 }
 
 func tableGetN(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
-	return frame.ReturnNumber(float64(target.RawLen()))
+	return frame.ReturnNumber(float64(target.rawLen()))
 }
 
 // tableInsert shifts the tail up with raw reads and writes, exactly as Lua
 // 5.1 does, so a position outside the sequence keeps PUC's observable result
 // instead of being rejected.
 func tableInsert(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	count := frame.ArgumentCount()
-	end := target.RawLen() + 1
+	end := target.rawLen() + 1
 	position := end
 	switch count {
 	case 2:
@@ -303,7 +300,7 @@ func tableInsert(frame Frame) Outcome {
 }
 
 func useSparseTableInsertShift(
-	target *Table,
+	target *tableObject,
 	first, last int,
 ) bool {
 	if first > last {
@@ -321,7 +318,7 @@ func useSparseTableInsertShift(
 // tableMaxN returns the largest positive numeric key, or zero when the table
 // has none. It never consults the sequence length.
 func tableMaxN(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -349,11 +346,11 @@ func tableMaxN(frame Frame) Outcome {
 // tableRemove returns no results when the position lies outside the sequence,
 // which Lua 5.1 distinguishes from removing a nil element.
 func tableRemove(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
-	end := target.RawLen()
+	end := target.rawLen()
 	position := end
 	if value, present := frame.argument(1); present &&
 		!value.isNil() {
@@ -379,18 +376,18 @@ func tableRemove(frame Frame) Outcome {
 // leaves LUA_COMPAT_GETN undefined, which makes the stored size a no-op and
 // setn nothing but this error; only the table argument is validated first.
 func tableSetN(frame Frame) Outcome {
-	if _, ok := frame.Table(0); !ok {
+	if _, ok := frame.tableObject(0); !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	return libraryError(frame, "'setn' is obsolete")
 }
 
 func tableSort(frame Frame) Outcome {
-	target, ok := frame.Table(0)
+	target, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
-	length := target.RawLen()
+	length := target.rawLen()
 	comparator := nilSlot
 	if value, present := frame.argument(1); present &&
 		!value.isNil() {
@@ -430,7 +427,7 @@ func tableSort(frame Frame) Outcome {
 // range.
 func sortRange(
 	frame Frame,
-	target *Table,
+	target *tableObject,
 	comparator slot,
 	low int,
 	high int,

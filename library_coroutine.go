@@ -26,29 +26,30 @@ func (state *State) OpenCoroutine() error {
 	if err != nil {
 		return err
 	}
-	library, err := state.NewTable(0, len(coroutineLibraryFunctions))
-	if err != nil {
-		return err
-	}
+	library := newTable(
+		state.runtime,
+		0,
+		len(coroutineLibraryFunctions),
+	)
 	for _, definition := range coroutineLibraryFunctions {
 		function, functionErr := state.NewNativeFunction(definition.entry)
 		if functionErr != nil {
 			return functionErr
 		}
-		if setErr := library.RawSetString(
+		if setErr := library.rawSetStringValue(
 			definition.name,
 			function.Value(),
 		); setErr != nil {
 			return setErr
 		}
 	}
-	if err := state.globalEnvironment().RawSetString(
+	if err := state.globalEnvironment().rawSetStringSlot(
 		"coroutine",
-		library.Value(),
+		slotFromTableObject(library),
 	); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "coroutine", slotFromTable(library))
+	state.setLoadedModule(loaded, "coroutine", slotFromTableObject(library))
 	return nil
 }
 

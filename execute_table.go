@@ -90,7 +90,7 @@ func executeRawTableGet(
 	if !target.isTable() {
 		return code
 	}
-	table := (*Table)(target.ref)
+	table := (*tableObject)(target.ref)
 	result, found := table.rawSlot(key)
 	if !found {
 		if table.metatable == nil ||
@@ -119,7 +119,7 @@ func executeRawStringTableGet(
 
 	switch code.opcode() {
 	case opGetGlobal:
-		target = slotFromTable(frame.function.environment)
+		target = slotFromTableObject(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
 	case opGetField:
 		target = thread.values[base+code.b()]
@@ -135,7 +135,7 @@ func executeRawStringTableGet(
 	if !target.isTable() {
 		return code
 	}
-	table := (*Table)(target.ref)
+	table := (*tableObject)(target.ref)
 	result, found := table.rawStringKeySlot(
 		key,
 		uint32(stringSlotHash(key)),
@@ -186,7 +186,7 @@ func executeRawTableSet(
 	if !target.isTable() {
 		return code
 	}
-	table := (*Table)(target.ref)
+	table := (*tableObject)(target.ref)
 	normalized, index, arrayKey, hash, status :=
 		normalizeTableKey(key)
 	if status != tableKeyValid {
@@ -230,7 +230,7 @@ func executeRawStringTableSet(
 
 	switch code.opcode() {
 	case opSetGlobal:
-		target = slotFromTable(frame.function.environment)
+		target = slotFromTableObject(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
 		value = thread.values[base+code.a()]
 	case opSetField:
@@ -249,7 +249,7 @@ func executeRawStringTableSet(
 	if !target.isTable() {
 		return code
 	}
-	table := (*Table)(target.ref)
+	table := (*tableObject)(target.ref)
 	hash := uint32(stringSlotHash(key))
 	_, location, found := table.resolveStringKeySlot(
 		key,
@@ -290,7 +290,7 @@ func slowTableGet(
 	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
 	switch operation {
 	case opGetGlobal:
-		target = slotFromTable(frame.function.environment)
+		target = slotFromTableObject(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
 		keyHash = uint32(stringSlotHash(key))
 		stringKey = true
@@ -333,7 +333,7 @@ func slowTableGet(
 		var method slot
 		var found bool
 		if target.isTable() {
-			table := (*Table)(target.ref)
+			table := (*tableObject)(target.ref)
 			if !skipInitialRaw || !firstTarget {
 				var result slot
 				if stringKey {
@@ -421,7 +421,7 @@ func slowTableSet(
 	operation, skipInitialRaw := tableSourceOpcode(code.opcode())
 	switch operation {
 	case opSetGlobal:
-		target = slotFromTable(frame.function.environment)
+		target = slotFromTableObject(frame.function.environment)
 		key = frame.function.prototype.constants[code.bx()]
 		value = thread.values[base+code.a()]
 		keyHash = uint32(stringSlotHash(key))
@@ -460,7 +460,7 @@ func slowTableSet(
 		var method slot
 		var found bool
 		if target.isTable() {
-			table := (*Table)(target.ref)
+			table := (*tableObject)(target.ref)
 			normalized := key
 			index := 0
 			arrayKey := false
@@ -605,7 +605,7 @@ func executeNewTable(
 	)
 	writeSlot(
 		&thread.values[int(frame.base)+code.a()],
-		slotFromTable(table),
+		slotFromTableObject(table),
 	)
 }
 
@@ -660,7 +660,7 @@ func executeSetList(
 		}
 	}
 
-	table := (*Table)(tableSlot.ref)
+	table := (*tableObject)(tableSlot.ref)
 	valueStart := base + code.a() + 1
 	table.rawSetList(
 		first,

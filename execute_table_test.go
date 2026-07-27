@@ -166,7 +166,8 @@ return target.missing
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Nil())
-	if getterMetatable.absentMetamethods&metaIndex.bit() == 0 {
+	if getterMetatable.runtimeObject().absentMetamethods&
+		metaIndex.bit() == 0 {
 		t.Fatal("initial read did not cache absent __index")
 	}
 
@@ -247,7 +248,8 @@ return target.recorded
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(0))
-	if setterMetatable.absentMetamethods&metaNewIndex.bit() == 0 {
+	if setterMetatable.runtimeObject().absentMetamethods&
+		metaNewIndex.bit() == 0 {
 		t.Fatal("initial write did not cache absent __newindex")
 	}
 
@@ -1399,15 +1401,16 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	if !ok {
 		t.Fatal("NEWTABLE did not return a table")
 	}
-	if table.array.cap() < arrayHint ||
-		table.store.entries.len() < recordHint {
+	object := table.runtimeObject()
+	if object.array.cap() < arrayHint ||
+		object.store.entries.len() < recordHint {
 		t.Fatalf(
 			"decoded capacities = array %d, record %d",
-			table.array.cap(),
-			table.store.entries.len(),
+			object.array.cap(),
+			object.store.entries.len(),
 		)
 	}
-	if table.arrayUsed != 0 || table.store.live != 0 {
+	if object.arrayUsed != 0 || object.store.live != 0 {
 		t.Fatal("capacity hints changed table contents")
 	}
 
@@ -1552,7 +1555,8 @@ func TestExecutorOpenSetListChecksIndexBeforeMutation(t *testing.T) {
 		!strings.Contains(result.err.Error(), "SETLIST index") {
 		t.Fatalf("open SETLIST result = %+v", result)
 	}
-	if target.arrayUsed != 0 || target.store.live != 0 {
+	targetObject := target.runtimeObject()
+	if targetObject.arrayUsed != 0 || targetObject.store.live != 0 {
 		t.Fatal("failed open SETLIST partially mutated its table")
 	}
 }
@@ -1568,10 +1572,11 @@ func TestExecutorTableKeyClassificationDoesNotUseCapacityLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := maxTableHint + 1
-	table.growArray(key)
-	array := table.array.values()
+	object := table.runtimeObject()
+	object.growArray(key)
+	array := object.array.values()
 	writeSlot(&array[key-1], numberSlot(17))
-	table.arrayUsed = 1
+	object.arrayUsed = 1
 	got, err := table.RawGet(Number(float64(key)))
 	if err != nil {
 		t.Fatal(err)
@@ -1580,7 +1585,7 @@ func TestExecutorTableKeyClassificationDoesNotUseCapacityLimit(t *testing.T) {
 		t.Fatalf("generic lookup above hint limit = (%v, %v)", number, ok)
 	}
 	previous := numberSlot(float64(key))
-	if _, _, _, err := table.next(previous); err != nil {
+	if _, _, _, err := object.next(previous); err != nil {
 		t.Fatalf("continuation above hint limit: %v", err)
 	}
 

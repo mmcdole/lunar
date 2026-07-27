@@ -589,8 +589,9 @@ func TestOperandDescriptionFollowsBytecodeStructure(t *testing.T) {
 func TestArbitraryUserDataErrorPublishesAtGoBoundary(t *testing.T) {
 	state := newStateWithIO(t, Options{})
 	defer state.Close()
-	if entries, keys, _ := hostDirectoryCounts(
+	if entries, keys, _ := hostDirectoryKindCounts(
 		&state.runtime.hosts,
+		UserDataKind,
 	); entries != 0 || keys != 0 {
 		t.Fatalf(
 			"opening libraries published userdata: entries=%d keys=%d",
@@ -621,8 +622,9 @@ error(file,0)
 			first,
 		)
 	}
-	if entries, keys, stale := hostDirectoryCounts(
+	if entries, keys, stale := hostDirectoryKindCounts(
 		&state.runtime.hosts,
+		UserDataKind,
 	); entries != 1 || keys != 1 || stale != 0 {
 		t.Fatalf(
 			"escaped error directory = entries:%d keys:%d stale:%d; want 1/1/0",
@@ -670,8 +672,9 @@ error(io.tmpfile(),0)
 	if _, ok := failure.Value().UserData(); !ok {
 		t.Fatalf("coroutine error Value = %v", failure.Value())
 	}
-	if entries, keys, stale := hostDirectoryCounts(
+	if entries, keys, stale := hostDirectoryKindCounts(
 		&state.runtime.hosts,
+		UserDataKind,
 	); entries != 1 || keys != 1 || stale != 0 {
 		t.Fatalf(
 			"coroutine error directory = entries:%d keys:%d stale:%d; want 1/1/0",
@@ -772,8 +775,9 @@ return setmetatable({},{
 					applicable,
 				)
 			}
-			if entries, keys, stale := hostDirectoryCounts(
+			if entries, keys, stale := hostDirectoryKindCounts(
 				&state.runtime.hosts,
+				UserDataKind,
 			); entries != 1 || keys != 1 || stale != 0 {
 				t.Fatalf(
 					"Frame %s directory = entries:%d keys:%d stale:%d; want 1/1/0",

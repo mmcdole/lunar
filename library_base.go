@@ -80,30 +80,30 @@ func (state *State) OpenBase() error {
 		return err
 	}
 
-	if err := globals.RawSetString("_G", globals.Value()); err != nil {
+	if err := globals.rawSetStringSlot("_G", slotFromTableObject(globals)); err != nil {
 		return err
 	}
-	if err := globals.RawSetString(
+	if err := globals.rawSetStringValue(
 		"_VERSION",
 		state.String("Lua 5.1"),
 	); err != nil {
 		return err
 	}
 	for index, definition := range baseLibraryFunctions {
-		if err := globals.RawSetString(
+		if err := globals.rawSetStringValue(
 			definition.name,
 			functions[index].Value(),
 		); err != nil {
 			return err
 		}
 	}
-	if err := globals.RawSetString("pairs", pairs.Value()); err != nil {
+	if err := globals.rawSetStringValue("pairs", pairs.Value()); err != nil {
 		return err
 	}
-	if err := globals.RawSetString("ipairs", ipairs.Value()); err != nil {
+	if err := globals.rawSetStringValue("ipairs", ipairs.Value()); err != nil {
 		return err
 	}
-	state.setLoadedModule(loaded, "_G", slotFromTable(globals))
+	state.setLoadedModule(loaded, "_G", slotFromTableObject(globals))
 	return state.OpenCoroutine()
 }
 
@@ -160,7 +160,7 @@ func baseError(frame Frame) Outcome {
 
 func basePrint(frame Frame) Outcome {
 	toString, failure := frame.indexCompact(
-		slotFromTable(frame.thread.globals),
+		slotFromTableObject(frame.thread.globals),
 		stringSlot(frame.thread.owner.strings.make("tostring")),
 	)
 	if failure != nil {
@@ -268,12 +268,12 @@ func baseGetEnvironment(frame Frame) Outcome {
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromTable(environment),
+		slotFromTableObject(environment),
 	)
 }
 
 func baseSetEnvironment(frame Frame) Outcome {
-	environment, ok := frame.Table(1)
+	environment, ok := frame.tableObject(1)
 	if !ok {
 		return baseArgumentTypeError(frame, 1, "table")
 	}
@@ -318,12 +318,12 @@ func baseGetMetatable(frame Frame) Outcome {
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromTable(metatable),
+		slotFromTableObject(metatable),
 	)
 }
 
 func baseSetMetatable(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -334,19 +334,19 @@ func baseSetMetatable(frame Frame) Outcome {
 	}
 	if _, protected := metamethodSlot(
 		frame.thread,
-		slotFromTable(table),
+		slotFromTableObject(table),
 		metaMetatable,
 	); protected {
 		return libraryError(frame, "cannot change a protected metatable")
 	}
 
-	var metatable *Table
+	var metatable *tableObject
 	if value.isTable() {
-		metatable = (*Table)(value.ref)
+		metatable = (*tableObject)(value.ref)
 	}
 	frame.discardArgumentsAfter(2)
 	table.metatable = metatable
-	return frame.returnOne(frame.activation(), slotFromTable(table))
+	return frame.returnOne(frame.activation(), slotFromTableObject(table))
 }
 
 func baseRawEqual(frame Frame) Outcome {
@@ -362,7 +362,7 @@ func baseRawEqual(frame Frame) Outcome {
 }
 
 func baseRawGet(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -375,7 +375,7 @@ func baseRawGet(frame Frame) Outcome {
 }
 
 func baseRawSet(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -394,7 +394,7 @@ func baseRawSet(frame Frame) Outcome {
 		return frame.raiseString("table index is NaN")
 	}
 	frame.discardArgumentsAfter(3)
-	return frame.returnOne(frame.activation(), slotFromTable(table))
+	return frame.returnOne(frame.activation(), slotFromTableObject(table))
 }
 
 func baseType(frame Frame) Outcome {
@@ -406,7 +406,7 @@ func baseType(frame Frame) Outcome {
 }
 
 func baseNext(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -429,28 +429,28 @@ func baseNext(frame Frame) Outcome {
 }
 
 func basePairs(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	iterator := frame.nativeCapture(0)
 	frame.discardArgumentsAfter(1)
 	return frame.returnCompactValues(
-		[2]slot{iterator, slotFromTable(table)},
+		[2]slot{iterator, slotFromTableObject(table)},
 		2,
 		[]slot{nilSlot},
 	)
 }
 
 func baseIPairs(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	iterator := frame.nativeCapture(0)
 	frame.discardArgumentsAfter(1)
 	return frame.returnCompactValues(
-		[2]slot{iterator, slotFromTable(table)},
+		[2]slot{iterator, slotFromTableObject(table)},
 		2,
 		[]slot{numberSlot(0)},
 	)
@@ -461,7 +461,7 @@ func baseIPairsIterator(frame Frame) Outcome {
 	if !ok {
 		return numberArgumentError(frame, 1)
 	}
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -516,7 +516,7 @@ func baseSelect(frame Frame) Outcome {
 }
 
 func baseUnpack(frame Frame) Outcome {
-	table, ok := frame.Table(0)
+	table, ok := frame.tableObject(0)
 	if !ok {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
@@ -527,7 +527,7 @@ func baseUnpack(frame Frame) Outcome {
 	last, outcome, failed := optionalLibraryInteger(
 		frame,
 		2,
-		table.RawLen(),
+		table.rawLen(),
 	)
 	if failed {
 		return outcome

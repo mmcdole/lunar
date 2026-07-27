@@ -237,7 +237,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 		state.runtime,
 		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
-		[]slot{slotFromTable(retained)},
+		[]slot{slotFromValue(retained.Value())},
 	)
 	retained = nil
 
@@ -274,7 +274,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 	tests := []struct {
 		name        string
 		owner       *runtimeState
-		environment *Table
+		environment *tableObject
 		entry       NativeFunc
 		captures    []slot
 	}{
@@ -304,7 +304,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 			owner:       state.runtime,
 			environment: state.main.globals,
 			entry:       entry,
-			captures:    []slot{slotFromTable(foreign)},
+			captures:    []slot{slotFromValue(foreign.Value())},
 		},
 	}
 	for _, test := range tests {
@@ -334,7 +334,7 @@ func TestStateClosePreservesRetainedOpenUpvalue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread.values = []slot{slotFromTable(retained)}
+	thread.values = []slot{slotFromValue(retained.Value())}
 	upvalue := thread.captureUpvalue(0)
 
 	if err := state.Close(); err != nil {

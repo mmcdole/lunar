@@ -209,7 +209,13 @@ func (value Value) Table() (*Table, bool) {
 	if value.Kind() != TableKind {
 		return nil, false
 	}
-	return (*Table)(value.ref), true
+	token := (*hostToken)(value.ref)
+	if token.kind != TableKind || token.object == nil {
+		return nil, false
+	}
+	table := (*Table)(token)
+	runtime.KeepAlive(value)
+	return table, true
 }
 
 // Function returns the canonical function and whether value is a function.
@@ -320,14 +326,16 @@ func slotFromUserDataObject(data *userDataObject) slot {
 }
 
 func (value Value) objectIdentity() unsafe.Pointer {
-	if value.Kind() == UserDataKind {
+	switch value.Kind() {
+	case UserDataKind, TableKind:
 		token := (*hostToken)(value.ref)
-		if token.kind != UserDataKind {
+		if token.kind != value.Kind() {
 			return nil
 		}
 		return token.object
+	default:
+		return value.ref
 	}
-	return value.ref
 }
 
 func stringValue(value stringRef) Value {
@@ -350,7 +358,7 @@ func (value Value) owner() *runtimeState {
 	case ThreadKind:
 		return (*Thread)(value.ref).owner
 	case TableKind:
-		return (*Table)(value.ref).owner
+		return (*hostToken)(value.ref).owner
 	default:
 		return nil
 	}
@@ -363,16 +371,18 @@ func slotFromValue(value Value) slot {
 	if value.ref == numberMarkerPointer {
 		return slot{bits: value.bits}
 	}
-	if value.Kind() == UserDataKind {
+	switch value.Kind() {
+	case UserDataKind, TableKind:
 		token := (*hostToken)(value.ref)
-		if token.kind != UserDataKind || token.object == nil {
-			panic("lua: invalid userdata host token")
+		if token.kind != value.Kind() || token.object == nil {
+			panic("lua: invalid reference host token")
 		}
-		result := objectSlot(UserDataKind, token.object)
+		result := objectSlot(token.kind, token.object)
 		runtime.KeepAlive(value)
 		return result
+	default:
+		return slot{ref: value.ref, bits: value.bits}
 	}
-	return slot{ref: value.ref, bits: value.bits}
 }
 
 func (value slot) owningValue() Value {
@@ -381,6 +391,9 @@ func (value slot) owningValue() Value {
 	}
 	if value.isUserData() {
 		return userDataObjectFromSlot(value).owningValue()
+	}
+	if value.isTable() {
+		return tableObjectFromSlot(value).owningValue()
 	}
 	return Value{ref: value.ref, bits: value.bits}
 }
@@ -442,7 +455,7 @@ func (value slot) owner() *runtimeState {
 	case ThreadKind:
 		return (*Thread)(value.ref).owner
 	case TableKind:
-		return (*Table)(value.ref).owner
+		return (*tableObject)(value.ref).owner
 	default:
 		return nil
 	}

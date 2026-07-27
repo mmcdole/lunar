@@ -199,7 +199,15 @@ func (frame Frame) Table(index int) (*Table, bool) {
 	if !present || !value.isTable() {
 		return nil, false
 	}
-	return (*Table)(value.ref), true
+	return tableHandleFromSlot(value), true
+}
+
+func (frame Frame) tableObject(index int) (*tableObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isTable() {
+		return nil, false
+	}
+	return tableObjectFromSlot(value), true
 }
 
 // Function returns argument index and whether it is exactly a function.
@@ -254,12 +262,20 @@ func (frame Frame) Thread() *Thread {
 
 // Environment returns the executing native Function's Lua 5.1 environment.
 func (frame Frame) Environment() *Table {
+	return frame.environmentObject().owningHandle()
+}
+
+func (frame Frame) environmentObject() *tableObject {
 	return frame.activation().function.environment
 }
 
 // GlobalEnvironment returns the executing Thread's Lua 5.1 global
 // environment. It can differ from Environment after setfenv(0, table).
 func (frame Frame) GlobalEnvironment() *Table {
+	return frame.globalEnvironmentObject().owningHandle()
+}
+
+func (frame Frame) globalEnvironmentObject() *tableObject {
 	frame.activation()
 	return frame.thread.globals
 }

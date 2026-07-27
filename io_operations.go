@@ -523,7 +523,7 @@ func acquireDefaultOutputFile(
 	Outcome,
 	bool,
 ) {
-	current, found := frame.Environment().rawIntSlot(ioDefaultOutput)
+	current, found := frame.environmentObject().rawIntSlot(ioDefaultOutput)
 	if !found || !current.isUserData() {
 		return nativeResourceLease{}, nil,
 			libraryError(frame, "standard output file is closed"),

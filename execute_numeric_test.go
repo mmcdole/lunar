@@ -895,10 +895,16 @@ return left < right, left <= right
 	assertExecutionValues(t, thread, Bool(true), Bool(false))
 
 	lessEqual := compileTestFunction(t, state, "@less-equal.lua", `return false`)
-	if err := left.metatable.RawSetString("__le", lessEqual.Value()); err != nil {
+	if err := left.runtimeObject().metatable.rawSetStringValue(
+		"__le",
+		lessEqual.Value(),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := right.metatable.RawSetString("__le", lessEqual.Value()); err != nil {
+	if err := right.runtimeObject().metatable.rawSetStringValue(
+		"__le",
+		lessEqual.Value(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	thread, result = executeTestFunction(
@@ -912,7 +918,10 @@ return left < right, left <= right
 	assertExecutionValues(t, thread, Bool(true), Bool(false))
 
 	different := compileTestFunction(t, state, "@different.lua", `return true`)
-	if err := right.metatable.RawSetString("__lt", different.Value()); err != nil {
+	if err := right.runtimeObject().metatable.rawSetStringValue(
+		"__lt",
+		different.Value(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	_, result = executeTestFunction(

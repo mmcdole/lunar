@@ -625,13 +625,14 @@ sequence above. The direct A/B is the causal tranche evidence; the absolute
 PUC run is the standing destination rather than a claim that host timing
 between separate days is perfectly stationary.
 
-### 12. Host ownership checkpoint
+### 12. Host ownership checkpoints
 
-The first semantic-collection boundary tranche separates public userdata
-handles from compact userdata objects. Lua slots, tables, native captures, and
-the standard libraries retain the 48-byte compact object directly. A
-State-local weak directory canonicalizes public handles only when userdata
-actually crosses into Go; it adds no field to every compact object.
+The semantic-collection boundary separates public handles from compact
+userdata and table objects. Lua slots, tables, native captures, and the
+standard libraries retain the 48-byte compact userdata or 80-byte compact
+table directly. A State-local weak directory canonicalizes a public handle
+only when an object actually crosses into Go; it adds no field to every
+compact object.
 
 On the same Apple M3 Pro, first publication through `State.NewUserData`
 measures four allocations per object, compared with one allocation for the
@@ -642,13 +643,29 @@ read/write, and close sequence creates no host-directory entry, and a managed
 resource held only by compact Lua storage remains live across forced Go
 collections.
 
-This is an explicit trade: boundary-only objects pay more so all Lua-only
-tables, functions, threads, and userdata avoid a permanent handle-cache word
-and its possible allocator size-class increase. Re-measure representative
-embedding workloads before extending the mechanism to the other reference
-kinds. If first-publication cost is material there, change the canonicalization
-strategy as one coherent representation decision rather than adding per-kind
-shortcuts.
+The table checkpoint makes that trade more explicit:
+
+- the internal table-constructor benchmark remains three allocations and
+  416 bytes, with its median moving only from about 204 ns to 205 ns;
+- warm table publication is allocation-free at about 27 ns;
+- `State.NewTable`, which necessarily publishes immediately, moves from one
+  80-byte allocation at about 18.5 ns to four allocations and 121 bytes at
+  about 712 ns;
+- public raw integer and string update/read pairs remain allocation-free,
+  measuring about 10.4 ns and 22.0 ns versus 9.2 ns and 20.8 ns before the
+  split; and
+- opening and exercising every standard library without returning a table to
+  Go creates no table handle.
+
+This is an explicit trade: boundary-created objects pay more so every Lua-only
+table avoids a permanent handle-cache word and its allocator size-class cost.
+Function and thread publication should use the same rule because their
+boundary frequency is lower and their internal paths remain compact. Bulk
+Go-side graph construction needs the planned low-level builder rather than
+thousands of friendly owning publications. If representative embedding
+workloads show that first-publication cost dominates despite that interface,
+change canonicalization as one coherent representation decision rather than
+adding per-kind shortcuts.
 
 ## Gates
 

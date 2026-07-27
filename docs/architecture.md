@@ -809,14 +809,16 @@ four-slot array class and already-reserved array capacity are deliberate Go
 allocation adaptations; neither changes the global density rule at a fresh
 allocation.
 
-On 64-bit Go, the canonical Table header is 80 bytes and occupies the 80-byte
-allocator class. Its array and record vectors each use a typed backing pointer
-plus 32-bit length and capacity fields, a 16-byte private descriptor rather
-than a 24-byte Go slice header. The typed pointer keeps the backing allocation
-and its pointer bitmap visible to the collector. Checked point access stays
-inlined; bulk walks construct one fixed-capacity slice view. A pointer or view
-cannot survive growth, redistribution, or rehash. The same descriptor is 12
-bytes on 32-bit Go, equal to a native slice header there.
+On 64-bit Go, the private `tableObject` header is 80 bytes and occupies the
+80-byte allocator class. The public `Table` is a 24-byte canonical owning
+token published only when a table crosses into Go. Its array and record vectors
+each use a typed backing pointer plus 32-bit length and capacity fields, a
+16-byte private descriptor rather than a 24-byte Go slice header. The typed
+pointer keeps the backing allocation and its pointer bitmap visible to the
+collector. Checked point access stays inlined; bulk walks construct one
+fixed-capacity slice view. A pointer or view cannot survive growth,
+redistribution, or rehash. The same descriptor is 12 bytes on 32-bit Go, equal
+to a native slice header there.
 
 The Table contains only ownership, the two storage descriptors and their
 accounting, the metatable, the metamethod absence cache, and the conservative

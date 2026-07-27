@@ -11,7 +11,7 @@ func (state *State) newProcessFile(
 	pipe *os.File,
 	process *childProcess,
 	direction processPipeDirection,
-	metatable *Table,
+	metatable *tableObject,
 ) (*userDataObject, error) {
 	handle := &fileHandle{
 		closer:  pipe,

@@ -491,7 +491,7 @@ func currentIOFile(
 	frame Frame,
 	index int,
 ) (*userDataObject, bool) {
-	current, found := frame.Environment().rawIntSlot(index)
+	current, found := frame.environmentObject().rawIntSlot(index)
 	if !found || !current.isUserData() {
 		return nil, false
 	}

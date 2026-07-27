@@ -32,7 +32,7 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(tableStore{}); size != 32 {
 			t.Fatalf("table store size = %d, want 32", size)
 		}
-		if size := unsafe.Sizeof(Table{}); size != 80 {
+		if size := unsafe.Sizeof(tableObject{}); size != 80 {
 			t.Fatalf("table size = %d, want 80", size)
 		}
 		if size := unsafe.Sizeof(hostToken{}); size != 24 {
@@ -590,6 +590,291 @@ func TestUserDataOwningHandleRepresentation(t *testing.T) {
 	runtime.KeepAlive(data)
 }
 
+func TestTableOwningHandleRepresentation(t *testing.T) {
+	if unsafe.Sizeof(Table{}) != unsafe.Sizeof(hostToken{}) {
+		t.Fatalf(
+			"Table size = %d; host token size = %d",
+			unsafe.Sizeof(Table{}),
+			unsafe.Sizeof(hostToken{}),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := table.token()
+	if unsafe.Pointer(table) != unsafe.Pointer(token) {
+		t.Fatal("Table is not an offset-zero host-token view")
+	}
+	object := table.runtimeObject()
+	if object == nil {
+		t.Fatal("table handle has no compact object")
+	}
+	if unsafe.Pointer(&object.objectHeader) != unsafe.Pointer(object) {
+		t.Fatal("table object header is not at offset zero")
+	}
+	key := weak.Make(&object.objectHeader)
+	if state.runtime.hosts.entries[key].Value() != token {
+		t.Fatal("table object does not have its live token in the directory")
+	}
+
+	public := table.Value()
+	compact := slotFromValue(public)
+	if compact.ref != unsafe.Pointer(object) {
+		t.Fatal("compact table slot does not point directly at its object")
+	}
+	if compact.ref == public.ref {
+		t.Fatal("public table Value exposed the compact object pointer")
+	}
+	published, ok := compact.owningValue().Table()
+	if !ok || published != table {
+		t.Fatalf(
+			"re-published table = (%p, %v); want (%p, true)",
+			published,
+			ok,
+			table,
+		)
+	}
+	runtime.KeepAlive(table)
+}
+
+func TestWarmTablePublicationDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	object := newTable(state.runtime, 0, 0)
+	first := object.owningHandle()
+	compact := slotFromTableObject(object)
+
+	var published *Table
+	allocations := testing.AllocsPerRun(1_000, func() {
+		value := compact.owningValue()
+		published, _ = value.Table()
+	})
+	if allocations != 0 {
+		t.Fatalf(
+			"warm table publication allocated %.2f times",
+			allocations,
+		)
+	}
+	if published != first {
+		t.Fatalf(
+			"warm table publication = %p; want %p",
+			published,
+			first,
+		)
+	}
+	runtime.KeepAlive(first)
+}
+
+func TestTableRepublishAfterOwningTokenDies(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	object, token := rootedTableWithoutHandle(t, state)
+	index := newTable(state.runtime, 0, 1)
+	index.rawSetSlot(slotFromTableObject(object), numberSlot(91))
+	waitForWeakTableToken(t, object, token)
+
+	first, ok := state.registry.rawGetStringValue("rooted table").Table()
+	if !ok || first.runtimeObject() != object {
+		t.Fatal("re-publication changed compact table identity")
+	}
+	second, ok := state.registry.rawGetStringValue("rooted table").Table()
+	if !ok || second != first {
+		t.Fatalf(
+			"second re-publication = (%p, %v); want (%p, true)",
+			second,
+			ok,
+			first,
+		)
+	}
+	stored, err := index.rawGetValue(first.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := stored.AsNumber(); !ok || number != 91 {
+		t.Fatalf(
+			"table-key lookup after token replacement = (%v, %v); want 91",
+			number,
+			ok,
+		)
+	}
+	entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		TableKind,
+	)
+	if entries != 1 || keys != 1 || stale != 0 {
+		t.Fatalf(
+			"table directory = entries:%d keys:%d stale:%d; want 1/1/0",
+			entries,
+			keys,
+			stale,
+		)
+	}
+	runtime.KeepAlive(first)
+}
+
+func TestHostDirectoryDoesNotPinCyclicTable(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	object, token := weakTablePublication(t, state)
+	waitForWeakTable(t, object, token)
+	state.runtime.hosts.prune()
+	entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		TableKind,
+	)
+	if entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"dead table remains in host directory: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+	runtime.KeepAlive(state)
+}
+
+func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := state.NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outerObject := outer.runtimeObject()
+	inner := newTable(state.runtime, 0, 1)
+	inner.rawSetIntegerSlot(1, numberSlot(17))
+	outerObject.rawSetIntegerSlot(1, numberSlot(11))
+	if err := outerObject.rawSetStringSlot(
+		"inner",
+		slotFromTableObject(inner),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if outer.RawLen() != 1 {
+		t.Fatalf("post-close outer length = %d; want 1", outer.RawLen())
+	}
+	if number, ok := outer.RawGetInt(1).AsNumber(); !ok || number != 11 {
+		t.Fatalf("post-close scalar = (%v, %v); want 11", number, ok)
+	}
+	first, ok := outer.RawGetString("inner").Table()
+	if !ok || first.runtimeObject() != inner {
+		t.Fatal("post-close nested table was not published")
+	}
+	second, ok := outer.RawGetString("inner").Table()
+	if !ok || second != first {
+		t.Fatal("post-close nested table publication was not canonical")
+	}
+	if err := outer.RawSetString("blocked", Bool(true)); !errors.Is(
+		err,
+		ErrClosed,
+	) {
+		t.Fatalf("post-close mutation = %v; want ErrClosed", err)
+	}
+	runtime.KeepAlive(outer)
+	runtime.KeepAlive(first)
+}
+
+func TestLuaOnlyLibrariesDoNotPublishTableHandles(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	for _, open := range []func() error{
+		state.OpenBase,
+		state.OpenPackage,
+		state.OpenTable,
+		state.OpenString,
+		state.OpenMath,
+		state.OpenIO,
+		state.OpenOS,
+	} {
+		if err := open(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		TableKind,
+	); entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"opening libraries published tables: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+
+	chunk := mustLoadString(t, state, "@compact-tables.lua", `
+local sequence={1,2,3}
+table.insert(sequence,4)
+package.preload.compact=function()
+	return {answer=40}
+end
+local module=require("compact")
+local file=assert(io.tmpfile())
+assert(file:write("compact"))
+assert(file:close())
+local protected,caught=pcall(function()
+	error(sequence,0)
+end)
+local thread=coroutine.create(function()
+	error({thread=true},0)
+end)
+local resumed,raised=coroutine.resume(thread)
+return module.answer+math.floor(2.9),
+	not protected and caught==sequence,
+	not resumed and type(raised)=="table"
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		Number(42),
+		Bool(true),
+		Bool(true),
+	)
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		TableKind,
+	); entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"Lua-only execution published tables: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+}
+
 func TestUserDataOwningHandleEnforcesStateOwnership(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -740,14 +1025,14 @@ func TestUserDataRepublishAfterOwningTokenDies(t *testing.T) {
 	table, object, token := rootedUserDataWithoutHandle(t, state)
 	waitForWeakUserDataToken(t, object, token)
 
-	first, ok := table.RawGetString("data").UserData()
+	first, ok := table.rawGetStringValue("data").UserData()
 	if !ok {
 		t.Fatal("re-published compact userdata is not userdata")
 	}
 	if first.runtimeObject() != object.Value() {
 		t.Fatal("re-publication changed compact userdata identity")
 	}
-	second, ok := table.RawGetString("data").UserData()
+	second, ok := table.rawGetStringValue("data").UserData()
 	if !ok || second != first {
 		t.Fatalf(
 			"second re-publication = (%p, %v); want (%p, true)",
@@ -792,7 +1077,7 @@ func TestConcurrentUserDataRepublishAfterStateClose(t *testing.T) {
 		go func() {
 			defer group.Done()
 			<-start
-			value := table.RawGetString("data")
+			value := table.rawGetStringValue("data")
 			data, ok := value.UserData()
 			if !ok {
 				return
@@ -908,11 +1193,130 @@ func hostDirectoryCounts(
 	return len(directory.entries), len(directory.keys), stale
 }
 
+func hostDirectoryKindCounts(
+	directory *hostDirectory,
+	kind Kind,
+) (entries, keys, staleAllKinds int) {
+	directory.mutex.Lock()
+	defer directory.mutex.Unlock()
+	for object, reference := range directory.entries {
+		token := reference.Value()
+		if object.Value() == nil || token == nil {
+			// A dead weak endpoint no longer carries enough information to
+			// attribute the entry to one object kind.
+			staleAllKinds++
+			continue
+		}
+		if token.kind == kind {
+			entries++
+		}
+	}
+	for _, object := range directory.keys {
+		reference, found := directory.entries[object]
+		if !found {
+			continue
+		}
+		token := reference.Value()
+		if object.Value() != nil &&
+			token != nil &&
+			token.kind == kind {
+			keys++
+		}
+	}
+	return entries, keys, staleAllKinds
+}
+
+func rootedTableWithoutHandle(
+	t *testing.T,
+	state *State,
+) (*tableObject, weak.Pointer[hostToken]) {
+	t.Helper()
+	object := newTable(state.runtime, 0, 0)
+	if err := state.registry.rawSetStringSlot(
+		"rooted table",
+		slotFromTableObject(object),
+	); err != nil {
+		t.Fatal(err)
+	}
+	handle := object.owningHandle()
+	token := weak.Make(handle.token())
+	runtime.KeepAlive(handle)
+	return object, token
+}
+
+func weakTablePublication(
+	t *testing.T,
+	state *State,
+) (weak.Pointer[tableObject], weak.Pointer[hostToken]) {
+	t.Helper()
+	object := newTable(state.runtime, 0, 1)
+	if err := object.rawSetStringSlot(
+		"self",
+		slotFromTableObject(object),
+	); err != nil {
+		t.Fatal(err)
+	}
+	handle := object.owningHandle()
+	objectReference := weak.Make(object)
+	tokenReference := weak.Make(handle.token())
+	runtime.KeepAlive(handle)
+	return objectReference, tokenReference
+}
+
+func waitForWeakTable(
+	t *testing.T,
+	object weak.Pointer[tableObject],
+	token weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		if object.Value() == nil && token.Value() == nil {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("weak host directory pinned a discarded cyclic table")
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForWeakTableToken(
+	t *testing.T,
+	object *tableObject,
+	token weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		if token.Value() == nil {
+			if object == nil || object.owner == nil {
+				t.Fatal("Lua-rooted compact table disappeared with its token")
+			}
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("discarded table owning token remained reachable")
+		case <-ticker.C:
+		}
+	}
+}
+
 func rootedUserDataWithoutHandle(
 	t *testing.T,
 	state *State,
 ) (
-	*Table,
+	*tableObject,
 	weak.Pointer[userDataObject],
 	weak.Pointer[hostToken],
 ) {
@@ -924,7 +1328,7 @@ func rootedUserDataWithoutHandle(
 	}
 	object := data.runtimeObject()
 	token := data.token()
-	if err := table.RawSetString("data", data.Value()); err != nil {
+	if err := table.rawSetStringValue("data", data.Value()); err != nil {
 		t.Fatal(err)
 	}
 	return table, weak.Make(object), weak.Make(token)
@@ -1327,6 +1731,25 @@ func BenchmarkWarmUserDataPublication(b *testing.B) {
 	runtime.KeepAlive(data)
 }
 
+func BenchmarkWarmTablePublication(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	object := newTable(state.runtime, 0, 0)
+	first := object.owningHandle()
+	compact := slotFromTableObject(object)
+
+	var published Value
+	b.ReportAllocs()
+	for range b.N {
+		published = compact.owningValue()
+	}
+	runtime.KeepAlive(published)
+	runtime.KeepAlive(first)
+}
+
 func BenchmarkNewUserData(b *testing.B) {
 	state, err := New(Options{})
 	if err != nil {
@@ -1343,4 +1766,23 @@ func BenchmarkNewUserData(b *testing.B) {
 		}
 	}
 	runtime.KeepAlive(data)
+}
+
+func BenchmarkNewTable(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+
+	var table *Table
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		table, err = state.NewTable(0, 0)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	runtime.KeepAlive(table)
 }

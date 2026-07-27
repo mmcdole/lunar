@@ -712,7 +712,7 @@ func (thread *Thread) makeLegacyArgTable(
 		uint32(name.hash()),
 		slot{bits: math.Float64bits(float64(extraCount))},
 	)
-	return slotFromTable(table)
+	return slotFromTableObject(table)
 }
 
 func (thread *Thread) reserveValues(required int) {

@@ -811,7 +811,7 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 				}
 				callerFrame := thread.frames[0]
 				for index := int(callerFrame.base); index < thread.frameExtent; index++ {
-					thread.values[index] = slotFromTable(dirty)
+					thread.values[index] = slotFromValue(dirty.Value())
 				}
 				callBase := int(callerFrame.base) + test.callRegister
 				thread.values[callBase] = slotFromFunction(callee)
@@ -935,7 +935,7 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 				calleeFrame := thread.frames[1]
 				firstResult := int(calleeFrame.base) + test.firstOffset
 				for index := int(calleeFrame.base); index < thread.frameExtent; index++ {
-					thread.values[index] = slotFromTable(dirty)
+					thread.values[index] = slotFromValue(dirty.Value())
 				}
 				for index := 0; index < test.resultCount; index++ {
 					value := numberSlot(float64(index + 1))
@@ -944,7 +944,7 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 							firstReference,
 							secondReference,
 						}
-						value = slotFromTable(references[index])
+						value = slotFromValue(references[index].Value())
 					}
 					thread.values[firstResult+index] = value
 				}

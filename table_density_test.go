@@ -12,18 +12,18 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	const denseCount = 10_000
 	for index := 1; index <= denseCount; index++ {
-		if err := table.RawSetInt(index, Number(float64(index))); err != nil {
+		if err := table.rawSetIntValue(index, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := table.RawLen(); got != denseCount {
+	if got := table.rawLen(); got != denseCount {
 		t.Fatalf("dense RawLen = %d, want %d", got, denseCount)
 	}
 	if table.array.len() != 16_384 ||
@@ -37,12 +37,12 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 		)
 	}
 
-	sparse, err := state.NewTable(0, 0)
+	sparse, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const sparseIndex = 50_000_000
-	if err := sparse.RawSetInt(sparseIndex, Bool(true)); err != nil {
+	if err := sparse.rawSetIntValue(sparseIndex, Bool(true)); err != nil {
 		t.Fatal(err)
 	}
 	if sparse.array.len() != 0 {
@@ -51,21 +51,21 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 			sparse.array.len(),
 		)
 	}
-	if got, ok := sparse.RawGetInt(sparseIndex).AsBool(); !ok || !got {
+	if got, ok := sparse.rawGetIntValue(sparseIndex).AsBool(); !ok || !got {
 		t.Fatalf("sparse lookup = (%v, %v), want (true, true)", got, ok)
 	}
 	if sparse.store.live != 1 {
 		t.Fatalf("sparse hash count = %d, want 1", sparse.store.live)
 	}
 
-	strided, err := state.NewTable(0, 0)
+	strided, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const stridedCount = 256
 	for offset := 0; offset < stridedCount; offset++ {
 		key := 1 + offset*257
-		if err := strided.RawSetInt(key, Number(float64(key))); err != nil {
+		if err := strided.rawSetIntValue(key, Number(float64(key))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -81,7 +81,7 @@ func TestTableDenseAndSparseIntegerPolicy(t *testing.T) {
 	}
 	for offset := 0; offset < stridedCount; offset++ {
 		key := 1 + offset*257
-		if got, ok := strided.RawGetInt(key).AsNumber(); !ok ||
+		if got, ok := strided.rawGetIntValue(key).AsNumber(); !ok ||
 			got != float64(key) {
 			t.Fatalf("strided key %d = (%v, %v)", key, got, ok)
 		}
@@ -137,8 +137,8 @@ func TestTableDenseLayoutIsInsertionOrderIndependent(t *testing.T) {
 					table.store.entries.len(),
 				)
 			}
-			if table.RawLen() != count {
-				t.Fatalf("RawLen = %d, want %d", table.RawLen(), count)
+			if table.rawLen() != count {
+				t.Fatalf("RawLen = %d, want %d", table.rawLen(), count)
 			}
 			for key := 1; key <= count; key++ {
 				value, found := table.rawIntSlot(key)
@@ -217,7 +217,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var table Table
+			var table tableObject
 			for _, integer := range test.existing {
 				number := float64(integer)
 				table.store.setFixture(
@@ -267,7 +267,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 		var random uint64 = 0x13198a2e03707344
 		for length := 1; length <= 128; length++ {
 			for sample := 0; sample < 16; sample++ {
-				table := Table{
+				table := tableObject{
 					array: makeTableVector[slot](length, length),
 				}
 				array := table.array.values()
@@ -319,7 +319,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 	})
 
 	t.Run("initial array size class", func(t *testing.T) {
-		var table Table
+		var table tableObject
 		for index := 1; index <= initialArrayCapacity; index++ {
 			if !table.admitsArrayInsert(index) {
 				t.Fatalf("initial index %d was not admitted", index)
@@ -334,7 +334,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 	})
 
 	t.Run("maximum array index remains bounded", func(t *testing.T) {
-		var table Table
+		var table tableObject
 		for _, index := range []int{
 			maximumTableArrayCapacity,
 			maximumTableArrayCapacity + 1,
@@ -365,7 +365,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 	})
 
 	t.Run("proven dense growth skips redistribution", func(t *testing.T) {
-		table := Table{
+		table := tableObject{
 			array: makeTableVector[slot](
 				initialArrayCapacity,
 				initialArrayCapacity,
@@ -393,7 +393,7 @@ func TestTableArraySizingPolicy(t *testing.T) {
 			)
 		}
 
-		holey := Table{
+		holey := tableObject{
 			array: makeTableVector[slot](
 				initialArrayCapacity,
 				initialArrayCapacity,
@@ -472,12 +472,12 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := table.RawSetInt(5, Number(1)); err != nil {
+	if err := table.rawSetIntValue(5, Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if table.store.live != 1 || table.array.len() != 0 {
@@ -487,10 +487,10 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 			table.array.len(),
 		)
 	}
-	if err := table.RawSetInt(1, Bool(true)); err != nil {
+	if err := table.rawSetIntValue(1, Bool(true)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSetInt(2, Bool(true)); err != nil {
+	if err := table.rawSetIntValue(2, Bool(true)); err != nil {
 		t.Fatal(err)
 	}
 	number := float64(5)
@@ -501,7 +501,7 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	if !found {
 		t.Fatal("sparse key 5 was not in the record store")
 	}
-	if err := table.RawSetInt(5, Number(2)); err != nil {
+	if err := table.rawSetIntValue(5, Number(2)); err != nil {
 		t.Fatal(err)
 	}
 	if table.store.live != 1 || table.store.integerKeys != 1 {
@@ -514,7 +514,7 @@ func TestTableKeepsExistingSparseIntegerPositionOnUpdate(t *testing.T) {
 	if table.array.len() != 2 {
 		t.Fatalf("updated array length = %d, want 2", table.array.len())
 	}
-	if got, ok := table.RawGetInt(5).AsNumber(); !ok || got != 2 {
+	if got, ok := table.rawGetIntValue(5).AsNumber(); !ok || got != 2 {
 		t.Fatalf("updated value = (%v, %v), want (2, true)", got, ok)
 	}
 	updatedIndex, found := table.store.find(
@@ -538,7 +538,7 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +567,7 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 	verify := func(step int) {
 		t.Helper()
 		for _, key := range integers {
-			got := table.RawGetInt(key)
+			got := table.rawGetIntValue(key)
 			want, found := integerValues[key]
 			if !found {
 				if !got.IsNil() {
@@ -592,7 +592,7 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 			}
 		}
 		for _, key := range strings {
-			got := table.RawGetString(key)
+			got := table.rawGetStringValue(key)
 			want, found := stringValues[key]
 			if !found {
 				if !got.IsNil() {
@@ -631,12 +631,12 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 		if choice < len(integers) {
 			key := integers[choice]
 			if deleting {
-				if err := table.RawSetInt(key, Nil()); err != nil {
+				if err := table.rawSetIntValue(key, Nil()); err != nil {
 					t.Fatal(err)
 				}
 				delete(integerValues, key)
 			} else {
-				if err := table.RawSetInt(key, Number(value)); err != nil {
+				if err := table.rawSetIntValue(key, Number(value)); err != nil {
 					t.Fatal(err)
 				}
 				integerValues[key] = value
@@ -644,12 +644,12 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 		} else {
 			key := strings[choice-len(integers)]
 			if deleting {
-				if err := table.RawSetString(key, Nil()); err != nil {
+				if err := table.rawSetStringValue(key, Nil()); err != nil {
 					t.Fatal(err)
 				}
 				delete(stringValues, key)
 			} else {
-				if err := table.RawSetString(key, Number(value)); err != nil {
+				if err := table.rawSetStringValue(key, Number(value)); err != nil {
 					t.Fatal(err)
 				}
 				stringValues[key] = value
@@ -662,24 +662,24 @@ func TestTableMixedKeyMutationModel(t *testing.T) {
 	verify(steps)
 
 	fractional := Number(1.5)
-	if err := table.RawSet(fractional, Number(17)); err != nil {
+	if err := table.rawSetValue(fractional, Number(17)); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := table.RawGet(fractional); err != nil {
+	if got, err := table.rawGetValue(fractional); err != nil {
 		t.Fatal(err)
 	} else if number, ok := got.AsNumber(); !ok || number != 17 {
 		t.Fatalf("fractional key = %v, want 17", got)
 	}
-	if err := table.RawSet(fractional, Nil()); err != nil {
+	if err := table.rawSetValue(fractional, Nil()); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := table.RawGet(fractional); err != nil || !got.IsNil() {
+	if got, err := table.rawGetValue(fractional); err != nil || !got.IsNil() {
 		t.Fatalf("deleted fractional key = (%v, %v), want nil", got, err)
 	}
 	assertTableLaneInvariant(t, table)
 }
 
-func assertTableLaneInvariant(t *testing.T, table *Table) {
+func assertTableLaneInvariant(t *testing.T, table *tableObject) {
 	t.Helper()
 	arrayUsed := 0
 	for _, value := range table.array.values() {
@@ -945,7 +945,7 @@ func TestTableRedistribution(t *testing.T) {
 		for key := 2; key < 8; key++ {
 			table.rawSetIntegerSlot(key, nilSlot)
 		}
-		if err := table.RawSetString("field", Number(9)); err != nil {
+		if err := table.rawSetStringValue("field", Number(9)); err != nil {
 			t.Fatal(err)
 		}
 		if table.array.len() != 1 ||
@@ -1032,7 +1032,7 @@ func TestTableRedistribution(t *testing.T) {
 			{key: state.String("first"), value: 30},
 			{key: state.String("second"), value: 40},
 		} {
-			if err := table.RawSet(field.key, Number(field.value)); err != nil {
+			if err := table.rawSetValue(field.key, Number(field.value)); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1065,7 +1065,7 @@ func TestTableRedistribution(t *testing.T) {
 			{key: state.String("first"), value: 30},
 			{key: state.String("second"), value: 40},
 		} {
-			got, err := table.RawGet(field.key)
+			got, err := table.rawGetValue(field.key)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1094,7 +1094,7 @@ func TestTableRedistribution(t *testing.T) {
 		}
 		for index := 0; index < minimumStoreCapacity; index++ {
 			text := "field-" + strconv.Itoa(index)
-			if err := table.RawSetString(
+			if err := table.rawSetStringValue(
 				text,
 				Number(float64(index)),
 			); err != nil {

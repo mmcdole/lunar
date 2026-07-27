@@ -68,7 +68,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(strconv.Itoa(test.hint), func(t *testing.T) {
-			table, err := state.NewTable(0, test.hint)
+			table, err := newTableObjectForTest(state, 0, test.hint)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 			// load-factor-limited store required.
 			for index := 0; index < test.capacity; index++ {
 				key := "hint-" + strconv.Itoa(index)
-				if err := table.RawSetString(
+				if err := table.rawSetStringValue(
 					key,
 					Number(float64(index)),
 				); err != nil {
@@ -103,9 +103,9 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 			}
 			for index := 0; index < test.capacity; index++ {
 				key := "hint-" + strconv.Itoa(index)
-				got, ok := table.RawGetString(key).AsNumber()
+				got, ok := table.rawGetStringValue(key).AsNumber()
 				if !ok || got != float64(index) {
-					t.Fatalf("RawGetString(%q) = %v", key, table.RawGetString(key))
+					t.Fatalf("RawGetString(%q) = %v", key, table.rawGetStringValue(key))
 				}
 			}
 			assertTableStoreInvariant(t, &table.store)
@@ -113,7 +113,7 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 			if test.capacity > 2 {
 				return
 			}
-			if err := table.RawSetString("overflow", Number(99)); err != nil {
+			if err := table.rawSetStringValue("overflow", Number(99)); err != nil {
 				t.Fatal(err)
 			}
 			if got := table.store.entries.len(); got != test.capacity*2 {
@@ -124,20 +124,20 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 					test.capacity*2,
 				)
 			}
-			if err := table.RawSetString("hint-0", Nil()); err != nil {
+			if err := table.rawSetStringValue("hint-0", Nil()); err != nil {
 				t.Fatal(err)
 			}
-			if got := table.RawGetString("hint-0"); !got.IsNil() {
+			if got := table.rawGetStringValue("hint-0"); !got.IsNil() {
 				t.Fatalf("deleted key = %v, want nil", got)
 			}
-			if got, ok := table.RawGetString("overflow").AsNumber(); !ok || got != 99 {
-				t.Fatalf("overflow key = %v, want 99", table.RawGetString("overflow"))
+			if got, ok := table.rawGetStringValue("overflow").AsNumber(); !ok || got != 99 {
+				t.Fatalf("overflow key = %v, want 99", table.rawGetStringValue("overflow"))
 			}
 			assertTableStoreInvariant(t, &table.store)
 		})
 	}
 
-	unhinted, err := state.NewTable(0, 0)
+	unhinted, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 1)
+	table, err := newTableObjectForTest(state, 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,37 +243,40 @@ func TestTableHashGrowthDeletionAndIdentity(t *testing.T) {
 	const count = 5000
 	for index := 0; index < count; index++ {
 		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Number(float64(index))); err != nil {
+		if err := table.rawSetStringValue(key, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for index := 0; index < count; index++ {
 		key := "key-" + Number(float64(index)).String()
-		if got, ok := table.RawGetString(key).AsNumber(); !ok || got != float64(index) {
-			t.Fatalf("lookup %q = %v", key, table.RawGetString(key))
+		if got, ok := table.rawGetStringValue(key).AsNumber(); !ok || got != float64(index) {
+			t.Fatalf("lookup %q = %v", key, table.rawGetStringValue(key))
 		}
 	}
 	for index := 0; index < count; index += 2 {
 		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Nil()); err != nil {
+		if err := table.rawSetStringValue(key, Nil()); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for index := count; index < count*2; index++ {
 		key := "key-" + Number(float64(index)).String()
-		if err := table.RawSetString(key, Number(float64(index))); err != nil {
+		if err := table.rawSetStringValue(key, Number(float64(index))); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	objectKey, err := state.NewTable(0, 0)
+	objectKey, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := table.RawSet(objectKey.Value(), state.String("identity")); err != nil {
+	if err := table.rawSetValue(
+		objectKey.owningValue(),
+		state.String("identity"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	got, err := table.RawGet(objectKey.Value())
+	got, err := table.rawGetValue(objectKey.owningValue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +758,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 8)
+	table, err := newTableObjectForTest(state, 0, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +773,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 		if len(keys[index]) <= shortStringLimit {
 			t.Fatal("test key unexpectedly qualifies for the string cache")
 		}
-		if err := table.RawSetString(
+		if err := table.rawSetStringValue(
 			keys[index],
 			Number(float64(index)),
 		); err != nil {
@@ -779,7 +782,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 		keySlots[index] = slotFromValue(state.String(keys[index]))
 	}
 	for index := 0; index < 4; index++ {
-		if err := table.RawSetString(keys[index], Nil()); err != nil {
+		if err := table.rawSetStringValue(keys[index], Nil()); err != nil {
 			t.Fatal(err)
 		}
 		hash := uint32(stringSlotHash(keySlots[index]))
@@ -802,7 +805,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 	}
 
 	capacity := table.store.entries.len()
-	if err := table.RawSetString(keys[0], Number(100)); err != nil {
+	if err := table.rawSetStringValue(keys[0], Number(100)); err != nil {
 		t.Fatal(err)
 	}
 	if table.store.entries.len() != capacity ||
@@ -828,10 +831,10 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 			)
 		}
 	}
-	if got, ok := table.RawGetString(keys[0]).AsNumber(); !ok || got != 100 {
+	if got, ok := table.rawGetStringValue(keys[0]).AsNumber(); !ok || got != 100 {
 		t.Fatalf("revived value = (%v, %v), want (100, true)", got, ok)
 	}
-	if got, ok := table.RawGetString(keys[4]).AsNumber(); !ok || got != 4 {
+	if got, ok := table.rawGetStringValue(keys[4]).AsNumber(); !ok || got != 4 {
 		t.Fatalf("surviving value = (%v, %v), want (4, true)", got, ok)
 	}
 	assertTableStoreInvariant(t, &table.store)
@@ -841,17 +844,17 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 	tests := []struct {
 		name   string
-		insert func(*Table) error
+		insert func(*tableObject) error
 	}{
 		{
 			name: "RawSetInt",
-			insert: func(table *Table) error {
-				return table.RawSetInt(1, Number(1))
+			insert: func(table *tableObject) error {
+				return table.rawSetIntValue(1, Number(1))
 			},
 		},
 		{
 			name: "SETLIST",
-			insert: func(table *Table) error {
+			insert: func(table *tableObject) error {
 				table.rawSetList(1, []slot{numberSlot(1)})
 				return nil
 			},
@@ -864,28 +867,31 @@ func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer state.Close()
-			table, err := state.NewTable(0, 8)
+			table, err := newTableObjectForTest(state, 0, 8)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			keys := make([]*Table, 5)
+			keys := make([]*tableObject, 5)
 			keySlots := make([]slot, len(keys))
 			for index := range keys {
-				keys[index], err = state.NewTable(0, 0)
+				keys[index], err = newTableObjectForTest(state, 0, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
-				keySlots[index] = slotFromTable(keys[index])
-				if err := table.RawSet(
-					keys[index].Value(),
+				keySlots[index] = slotFromTableObject(keys[index])
+				if err := table.rawSetValue(
+					keys[index].owningValue(),
 					Number(float64(index)),
 				); err != nil {
 					t.Fatal(err)
 				}
 			}
 			for index := 0; index < 4; index++ {
-				if err := table.RawSet(keys[index].Value(), Nil()); err != nil {
+				if err := table.rawSetValue(
+					keys[index].owningValue(),
+					Nil(),
+				); err != nil {
 					t.Fatal(err)
 				}
 				if _, found := table.store.findContinuation(
@@ -937,10 +943,10 @@ func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 					)
 				}
 			}
-			if got, ok := table.RawGetInt(1).AsNumber(); !ok || got != 1 {
+			if got, ok := table.rawGetIntValue(1).AsNumber(); !ok || got != 1 {
 				t.Fatalf("array value = (%v, %v), want (1, true)", got, ok)
 			}
-			got, err := table.RawGet(keys[4].Value())
+			got, err := table.rawGetValue(keys[4].owningValue())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -963,7 +969,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 8)
+	table, err := newTableObjectForTest(state, 0, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -975,7 +981,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 			"uncached-update-key-"+strconv.Itoa(index)+"-",
 			4,
 		)
-		if err := table.RawSetString(
+		if err := table.rawSetStringValue(
 			keys[index],
 			Number(float64(index)),
 		); err != nil {
@@ -994,7 +1000,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 		byLocation[location] = keys[index]
 	}
 	for location := 0; location < 5; location++ {
-		if err := table.RawSetString(byLocation[location], Nil()); err != nil {
+		if err := table.rawSetStringValue(byLocation[location], Nil()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1030,7 +1036,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 	entries := table.store.entries.data
 	live, dead := table.store.live, table.store.dead
 	lastFree := table.store.lastFree
-	if err := table.RawSetString(byLocation[7], Number(100)); err != nil {
+	if err := table.rawSetStringValue(byLocation[7], Number(100)); err != nil {
 		t.Fatal(err)
 	}
 	if table.store.entries.data != entries ||
@@ -1076,7 +1082,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 			nextFound,
 		)
 	}
-	if got, ok := table.RawGetString(byLocation[7]).AsNumber(); !ok || got != 100 {
+	if got, ok := table.rawGetStringValue(byLocation[7]).AsNumber(); !ok || got != 100 {
 		t.Fatalf("updated value = (%v, %v), want (100, true)", got, ok)
 	}
 	assertTableStoreInvariant(t, &table.store)
@@ -1088,7 +1094,7 @@ func TestTableHashStoreRandomizedMutationInvariants(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := newTableObjectForTest(state, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1104,13 +1110,13 @@ func TestTableHashStoreRandomizedMutationInvariants(t *testing.T) {
 		key := "mutation-key-" + strconv.Itoa(index)
 		deleting := random>>32&3 == 0
 		if deleting {
-			if err := table.RawSetString(key, Nil()); err != nil {
+			if err := table.rawSetStringValue(key, Nil()); err != nil {
 				t.Fatal(err)
 			}
 			delete(expected, key)
 		} else {
 			value := float64(step + 1)
-			if err := table.RawSetString(key, Number(value)); err != nil {
+			if err := table.rawSetStringValue(key, Number(value)); err != nil {
 				t.Fatal(err)
 			}
 			expected[key] = value
@@ -1121,7 +1127,7 @@ func TestTableHashStoreRandomizedMutationInvariants(t *testing.T) {
 			continue
 		}
 		for key, want := range expected {
-			got, ok := table.RawGetString(key).AsNumber()
+			got, ok := table.rawGetStringValue(key).AsNumber()
 			if !ok || got != want {
 				t.Fatalf("step %d: RawGetString(%q) = %v, want %v", step, key, got, want)
 			}
@@ -1129,7 +1135,7 @@ func TestTableHashStoreRandomizedMutationInvariants(t *testing.T) {
 	}
 	for index := 0; index < keyCount; index++ {
 		key := "mutation-key-" + strconv.Itoa(index)
-		got := table.RawGetString(key)
+		got := table.rawGetStringValue(key)
 		want, found := expected[key]
 		if !found {
 			if !got.IsNil() {
@@ -1395,7 +1401,7 @@ func BenchmarkTableStringMap(b *testing.B) {
 				b.ResetTimer()
 				for index := range b.N {
 					runtime.KeepAlive(
-						table.RawGetString(keys[index%count]),
+						table.rawGetStringValue(keys[index%count]),
 					)
 				}
 			})
@@ -1406,7 +1412,7 @@ func BenchmarkTableStringMap(b *testing.B) {
 				b.ResetTimer()
 				for index := range b.N {
 					runtime.KeepAlive(
-						table.RawGetString(missing[index%count]),
+						table.rawGetStringValue(missing[index%count]),
 					)
 				}
 			})
@@ -1417,10 +1423,10 @@ func BenchmarkTableStringMap(b *testing.B) {
 				b.ResetTimer()
 				for index := range b.N {
 					key := keys[index%count]
-					if err := table.RawSetString(key, Nil()); err != nil {
+					if err := table.rawSetStringValue(key, Nil()); err != nil {
 						b.Fatal(err)
 					}
-					if err := table.RawSetString(
+					if err := table.rawSetStringValue(
 						key,
 						Number(float64(index)),
 					); err != nil {
@@ -1443,10 +1449,10 @@ func BenchmarkTableStringMap(b *testing.B) {
 					if active[index] {
 						oldKey, newKey = newKey, oldKey
 					}
-					if err := table.RawSetString(oldKey, Nil()); err != nil {
+					if err := table.rawSetStringValue(oldKey, Nil()); err != nil {
 						b.Fatal(err)
 					}
-					if err := table.RawSetString(
+					if err := table.rawSetStringValue(
 						newKey,
 						Number(float64(iteration)),
 					); err != nil {
@@ -1464,12 +1470,12 @@ func BenchmarkTableStringMap(b *testing.B) {
 				b.ReportAllocs()
 				b.ReportMetric(float64(count), "keys/op")
 				for range b.N {
-					table, err := state.NewTable(0, count)
+					table, err := newTableObjectForTest(state, 0, count)
 					if err != nil {
 						b.Fatal(err)
 					}
 					for index, key := range keys {
-						if err := table.RawSetString(
+						if err := table.rawSetStringValue(
 							key,
 							Number(float64(index)),
 						); err != nil {
@@ -1486,19 +1492,19 @@ func BenchmarkTableStringMap(b *testing.B) {
 func benchmarkStringTable(
 	b *testing.B,
 	keys []string,
-) (*State, *Table) {
+) (*State, *tableObject) {
 	b.Helper()
 	state, err := New(Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
-	table, err := state.NewTable(0, len(keys))
+	table, err := newTableObjectForTest(state, 0, len(keys))
 	if err != nil {
 		state.Close()
 		b.Fatal(err)
 	}
 	for index, key := range keys {
-		if err := table.RawSetString(
+		if err := table.rawSetStringValue(
 			key,
 			Number(float64(index)),
 		); err != nil {

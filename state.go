@@ -280,11 +280,11 @@ type State struct {
 	now             func() time.Time
 	active          *Thread
 	main            *Thread
-	registry        *Table
+	registry        *tableObject
 	packageSentinel *userDataObject
 	resources       *nativeResourceRegistry
 	execution       executionControl
-	typeMetatables  [TableKind + 1]*Table
+	typeMetatables  [TableKind + 1]*tableObject
 }
 
 // New constructs an empty State.
@@ -402,7 +402,7 @@ func (state *State) Close() error {
 	state.options.Stderr = nil
 	state.options.Location = nil
 	state.options.Now = nil
-	state.typeMetatables = [TableKind + 1]*Table{}
+	state.typeMetatables = [TableKind + 1]*tableObject{}
 	state.runtime.hosts.prune()
 	return errors.Join(streamErr, resourceErr)
 }
@@ -439,7 +439,7 @@ func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
 	if arrayHint > maxTableHint || recordHint > maxTableHint {
 		return nil, ErrCapacity
 	}
-	return newTable(state.runtime, arrayHint, recordHint), nil
+	return newTable(state.runtime, arrayHint, recordHint).owningHandle(), nil
 }
 
 // NewUserData constructs canonical userdata holding payload. Its initial
@@ -465,7 +465,7 @@ func (state *State) Registry() (*Table, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
-	return state.registry, nil
+	return state.registry.owningHandle(), nil
 }
 
 func (state *State) currentThread() *Thread {
@@ -475,11 +475,11 @@ func (state *State) currentThread() *Thread {
 	return state.main
 }
 
-func (state *State) globalEnvironment() *Table {
+func (state *State) globalEnvironment() *tableObject {
 	return state.currentThread().globals
 }
 
-func (state *State) constructionEnvironment() *Table {
+func (state *State) constructionEnvironment() *tableObject {
 	thread := state.currentThread()
 	if state.active != nil && len(thread.frames) != 0 {
 		return thread.frames[len(thread.frames)-1].function.environment
@@ -495,7 +495,7 @@ func (state *State) Global(name string) (Value, error) {
 	if err := state.checkOpen(); err != nil {
 		return Value{}, err
 	}
-	return state.globalEnvironment().RawGetString(name), nil
+	return state.globalEnvironment().rawGetStringValue(name), nil
 }
 
 // SetGlobal performs a raw assignment in the current global environment.
@@ -506,7 +506,7 @@ func (state *State) SetGlobal(name string, value Value) error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
-	return state.globalEnvironment().RawSetString(name, value)
+	return state.globalEnvironment().rawSetStringValue(name, value)
 }
 
 // RawEqual applies Lua raw equality without invoking metamethods.
@@ -532,16 +532,16 @@ func (state *State) Metatable(value Value) (*Table, error) {
 	if err := state.runtime.accept(value); err != nil {
 		return nil, err
 	}
+	var metatable *tableObject
 	switch value.Kind() {
 	case TableKind:
-		table, _ := value.Table()
-		return table.metatable, nil
+		metatable = tableObjectFromSlot(slotFromValue(value)).metatable
 	case UserDataKind:
-		data, _ := value.UserData()
-		return data.runtimeObject().metatable, nil
+		metatable = userDataObjectFromSlot(slotFromValue(value)).metatable
 	default:
-		return state.typeMetatables[value.Kind()], nil
+		metatable = state.typeMetatables[value.Kind()]
 	}
+	return metatable.owningHandle(), nil
 }
 
 // SetMetatable replaces value's metatable without invoking Lua. Passing nil
@@ -553,24 +553,23 @@ func (state *State) SetMetatable(value Value, metatable *Table) error {
 	if err := state.runtime.accept(value); err != nil {
 		return err
 	}
+	var compactMetatable *tableObject
 	if metatable != nil {
-		if metatable.owner == nil {
-			return ErrInvalidValue
-		}
-		if metatable.owner != state.runtime {
-			return ErrForeignValue
+		var err error
+		compactMetatable, err = state.acceptTable(metatable)
+		if err != nil {
+			return err
 		}
 	}
 	switch value.Kind() {
 	case TableKind:
-		table, _ := value.Table()
-		table.metatable = metatable
+		tableObjectFromSlot(slotFromValue(value)).metatable = compactMetatable
 	case UserDataKind:
-		data, _ := value.UserData()
-		data.runtimeObject().metatable = metatable
+		userDataObjectFromSlot(slotFromValue(value)).metatable = compactMetatable
 	default:
-		state.typeMetatables[value.Kind()] = metatable
+		state.typeMetatables[value.Kind()] = compactMetatable
 	}
+	runtime.KeepAlive(metatable)
 	return nil
 }
 
@@ -579,7 +578,7 @@ func (state *State) FunctionEnvironment(function *Function) (*Table, error) {
 	if err := state.checkFunction(function); err != nil {
 		return nil, err
 	}
-	return function.environment, nil
+	return function.environment.owningHandle(), nil
 }
 
 // SetFunctionEnvironment replaces function's Lua 5.1 environment.
@@ -587,13 +586,12 @@ func (state *State) SetFunctionEnvironment(function *Function, environment *Tabl
 	if err := state.checkFunction(function); err != nil {
 		return err
 	}
-	if environment == nil || environment.owner == nil {
-		return ErrInvalidValue
+	compactEnvironment, err := state.acceptTable(environment)
+	if err != nil {
+		return err
 	}
-	if environment.owner != state.runtime {
-		return ErrForeignValue
-	}
-	function.environment = environment
+	function.environment = compactEnvironment
+	runtime.KeepAlive(environment)
 	return nil
 }
 
@@ -602,7 +600,7 @@ func (state *State) ThreadEnvironment(thread *Thread) (*Table, error) {
 	if err := state.checkThread(thread); err != nil {
 		return nil, err
 	}
-	return thread.globals, nil
+	return thread.globals.owningHandle(), nil
 }
 
 // SetThreadEnvironment replaces thread's Lua 5.1 global environment.
@@ -613,13 +611,12 @@ func (state *State) SetThreadEnvironment(
 	if err := state.checkThread(thread); err != nil {
 		return err
 	}
-	if environment == nil || environment.owner == nil {
-		return ErrInvalidValue
+	compactEnvironment, err := state.acceptTable(environment)
+	if err != nil {
+		return err
 	}
-	if environment.owner != state.runtime {
-		return ErrForeignValue
-	}
-	thread.globals = environment
+	thread.globals = compactEnvironment
+	runtime.KeepAlive(environment)
 	return nil
 }
 
@@ -631,7 +628,7 @@ func (state *State) UserDataEnvironment(data *UserData) (*Table, error) {
 	}
 	environment := data.runtimeObject().environment
 	runtime.KeepAlive(data)
-	return environment, nil
+	return environment.owningHandle(), nil
 }
 
 // SetUserDataEnvironment replaces data's Lua 5.1 environment. Passing nil
@@ -640,16 +637,17 @@ func (state *State) SetUserDataEnvironment(data *UserData, environment *Table) e
 	if err := state.checkUserData(data); err != nil {
 		return err
 	}
+	var compactEnvironment *tableObject
 	if environment != nil {
-		if environment.owner == nil {
-			return ErrInvalidValue
-		}
-		if environment.owner != state.runtime {
-			return ErrForeignValue
+		var err error
+		compactEnvironment, err = state.acceptTable(environment)
+		if err != nil {
+			return err
 		}
 	}
-	data.runtimeObject().environment = environment
+	data.runtimeObject().environment = compactEnvironment
 	runtime.KeepAlive(data)
+	runtime.KeepAlive(environment)
 	return nil
 }
 
@@ -658,6 +656,22 @@ func (state *State) checkOpen() error {
 		return ErrClosed
 	}
 	return nil
+}
+
+func (state *State) acceptTable(table *Table) (*tableObject, error) {
+	token := table.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.kind != TableKind ||
+		token.object == nil {
+		return nil, ErrInvalidValue
+	}
+	if token.owner != state.runtime {
+		return nil, ErrForeignValue
+	}
+	object := (*tableObject)(token.object)
+	runtime.KeepAlive(table)
+	return object, nil
 }
 
 func (state *State) checkFunction(function *Function) error {
@@ -752,7 +766,7 @@ const (
 type Thread struct {
 	objectHeader
 	state             *State
-	globals           *Table
+	globals           *tableObject
 	values            []slot
 	frames            []activation
 	continuations     []executionContinuation
@@ -811,8 +825,8 @@ type UserData hostToken
 type userDataObject struct {
 	objectHeader
 	payload     any
-	metatable   *Table
-	environment *Table
+	metatable   *tableObject
+	environment *tableObject
 	resource    *nativeResourceToken
 }
 

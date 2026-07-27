@@ -9,8 +9,8 @@ import (
 // frame while preserving a direct non-reentrant length path.
 //
 //go:noinline
-func writeTableLength(destination *slot, table *Table) {
-	writeSlot(destination, numberSlot(float64(table.RawLen())))
+func writeTableLength(destination *slot, table *tableObject) {
+	writeSlot(destination, numberSlot(float64(table.rawLen())))
 }
 
 //go:noinline
@@ -35,7 +35,7 @@ func slowLength(
 	case TableKind:
 		writeSlot(
 			&thread.values[base+code.a()],
-			numberSlot(float64((*Table)(source.ref).RawLen())),
+			numberSlot(float64((*tableObject)(source.ref).rawLen())),
 		)
 		return nil
 	}

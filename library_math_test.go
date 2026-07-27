@@ -59,7 +59,7 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 	}
 	found := 0
 	for key := nilSlot; ; {
-		nextKey, _, present, err := library.next(key)
+		nextKey, _, present, err := library.runtimeObject().next(key)
 		if err != nil {
 			t.Fatal(err)
 		}
