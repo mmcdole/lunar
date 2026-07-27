@@ -9,9 +9,10 @@ finalization, memory accounting, and the `collectgarbage`, `gcinfo`, and
 resources and never execute Lua.
 
 The ownership boundary, State-owned object ledger, centralized tracer,
-logical accounting, close detachment, and internal synchronous sweep are
-implemented. Weak clearing, Lua `__gc`, automatic or incremental policy, and
-the public collection functions are not yet implemented or exposed.
+logical accounting, close detachment, internal synchronous sweep, and
+non-owning deleted-reference continuations are implemented. Weak-table
+classification and clearing, Lua `__gc`, automatic or incremental policy,
+and the public collection functions are not yet implemented or exposed.
 
 ## Ownership boundary
 
@@ -124,8 +125,9 @@ write with an unfinished tri-color protocol.
 
 Logical accounting counts one pointer-sized ledger entry per registered object
 plus retained subordinate backing capacities, including deduplicated
-upvalues. It deliberately excludes unused ledger-vector capacity, collector
-scratch, opaque userdata payloads, public host tokens, immutable Prototypes,
+upvalues and installed dead-reference-key holders. It deliberately excludes
+unused ledger-vector capacity, collector scratch, Go's private weak-pointer
+metadata, opaque userdata payloads, public host tokens, immutable Prototypes,
 strings, and Go allocator size-class rounding. The public Lua count surface
 will define and test its final accounting boundary before exposure.
 
@@ -188,10 +190,16 @@ Weak entries are cleared after marking and before finalizers run. Clearing a
 record entry removes both key and value as semantic edges. When traversal
 continuation requires the old key identity, the store retains only a
 non-owning dead-key token; an ordinary `slot` tombstone would keep the object
-alive through Go's collector. Array entries clear to nil.
+alive through Go's collector. The token contains Go's supported weak pointer,
+not a dangling `unsafe.Pointer` or integerized address. It is installed during
+collection so ordinary deletion remains allocation-free, and revival restores
+the canonical strong key before any table rehash. Array entries clear to nil.
 
 Strings and scalar values are never weak-cleared. Unreachable reference
-values are.
+values are. Deleted reference keys already use the non-owning continuation
+form. Deleted string keys remain ordinary content-bearing tombstones until
+insertion or rehash reclaims them; this preserves content-based string
+continuation semantics without adding string objects to the semantic ledger.
 
 ## Userdata finalization
 
@@ -258,7 +266,8 @@ fresh registered metatable while a valid proxy shares its exact metatable.
    logical accounting, centralized tracing, and an internal synchronous sweep.
    Root/edge, cycle, safe-point, upvalue, close-lifetime, and warm-allocation
    tests qualify the foundation.
-3. Add weak-table classification and clearing, including non-owning dead keys.
+3. **In progress.** Non-owning deleted reference keys and continuation
+   revival are complete. Add weak-table classification and post-mark clearing.
 4. Add userdata separation, finalizer execution, resurrection, errors, and
    close-time draining.
 5. Expose synchronous collection and count controls after the weak and

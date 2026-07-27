@@ -1,9 +1,22 @@
 package lua
 
+import (
+	"unsafe"
+	"weak"
+)
+
 const (
 	entryHashEmpty            uint32 = 0
 	maximumTableStoreCapacity uint64 = 1 << 31
+	deadReferenceKeyTag       uint64 = 1 << 63
 )
+
+// deadReferenceKey preserves the identity required by Lua's next operation
+// without making a deleted reference key a semantic or Go reachability edge.
+// The wrapper is installed during collection, never on the deletion path.
+type deadReferenceKey struct {
+	target weak.Pointer[objectHeader]
+}
 
 // The record store is one indexed chained-scatter array. A zero hash marks an
 // unused node; next stores a successor index plus one, leaving zero as the
@@ -11,8 +24,10 @@ const (
 // nodes; deletion retargets it to the newly dead node, and a partial scan
 // wraps once before declaring the store full. A node displaced from its main
 // position is always linked from that main chain. Deletion clears only the
-// value, retaining the key and links so next can legally continue until a
-// later insertion is allowed to reclaim, compact, or reorder it.
+// value, retaining the key identity and links so next can legally continue
+// until a later insertion is allowed to reclaim, compact, or reorder it.
+// Semantic collection replaces deleted reference keys with non-owning
+// identity holders so continuations do not keep otherwise-dead objects alive.
 type tableEntry struct {
 	key   slot
 	value slot
@@ -26,6 +41,43 @@ type tableStore struct {
 	dead        uint32
 	integerKeys uint32
 	lastFree    uint32
+}
+
+func makeDeadReferenceKey(key slot) slot {
+	if !key.kind().isReference() {
+		panic("lua: dead key is not a reference object")
+	}
+	dead := &deadReferenceKey{
+		target: weak.Make(referenceSlotHeader(key)),
+	}
+	return slot{
+		ref:  unsafe.Pointer(dead),
+		bits: deadReferenceKeyTag,
+	}
+}
+
+func (key slot) isDeadReferenceKey() bool {
+	return key.ref != nil && key.bits == deadReferenceKeyTag
+}
+
+func deadReferenceKeyMatches(dead, key slot) bool {
+	if !dead.isDeadReferenceKey() || !key.kind().isReference() {
+		return false
+	}
+	stored := (*deadReferenceKey)(dead.ref)
+	return stored.target == weak.Make(referenceSlotHeader(key))
+}
+
+func retireDeletedReferenceKey(entry *tableEntry) {
+	if entry == nil || !entry.value.isNil() {
+		panic("lua: invalid dead-key retirement")
+	}
+	if entry.key.isDeadReferenceKey() {
+		return
+	}
+	if entry.key.kind().isReference() {
+		writeSlot(&entry.key, makeDeadReferenceKey(entry.key))
+	}
 }
 
 func (store *tableStore) init(hint int) {
@@ -263,6 +315,8 @@ func (store *tableStore) findStored(
 				if tableNumberBitsEqual(entry.key.bits, key.bits) {
 					return index, true
 				}
+			} else if deadReferenceKeyMatches(entry.key, key) {
+				return index, true
 			} else if rawSlotEqual(entry.key, key) {
 				return index, true
 			}

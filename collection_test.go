@@ -307,6 +307,288 @@ func TestSemanticTracerCoversEveryObjectEdge(t *testing.T) {
 	})
 }
 
+func TestSemanticCollectorRetiresDeletedReferenceKeys(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	table := newTable(state, 0, 4)
+	key := newTable(state, 0, 0)
+	keySlot := slotFromTableObject(key)
+	hash, err := hashTableKey(keySlot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status := table.rawSetSlot(keySlot, numberSlot(1)); status !=
+		tableKeyValid {
+		t.Fatalf("reference-key insertion status = %d", status)
+	}
+	if status := table.rawSetSlot(keySlot, nilSlot); status != tableKeyValid {
+		t.Fatalf("reference-key deletion status = %d", status)
+	}
+	mustRootCollectorObject(
+		t,
+		state,
+		"dead-key table",
+		slotFromTableObject(table),
+	)
+	mustRootCollectorObject(t, state, "dead-key object", keySlot)
+
+	state.collectUnreachable()
+	index, found := table.store.findContinuation(keySlot, hash)
+	if !found {
+		t.Fatal("collector discarded a valid next continuation")
+	}
+	entry := table.store.entries.at(index)
+	if !entry.key.isDeadReferenceKey() {
+		t.Fatal("deleted reference key remained a strong slot")
+	}
+	if _, _, _, nextErr := table.next(keySlot); nextErr != nil {
+		t.Fatalf("next rejected a collector-retired key: %v", nextErr)
+	}
+
+	if changed := table.set(keySlot, 0, false, hash, nilSlot); changed {
+		t.Fatal("absent nil write changed a dead-key tombstone")
+	}
+	if !entry.key.isDeadReferenceKey() {
+		t.Fatal("absent nil write restored a strong reference key")
+	}
+	if changed := table.set(
+		keySlot,
+		0,
+		false,
+		hash,
+		numberSlot(2),
+	); !changed {
+		t.Fatal("dead reference key did not revive")
+	}
+	value, found := table.rawSlot(keySlot)
+	if !found || !rawSlotEqual(value, numberSlot(2)) {
+		t.Fatalf("revived reference value = (%v, %v)", value, found)
+	}
+	index, found = table.store.findStored(keySlot, hash)
+	if !found || table.store.entries.at(index).key.isDeadReferenceKey() {
+		t.Fatal("revival did not restore the canonical key slot")
+	}
+
+	if status := table.rawSetSlot(keySlot, nilSlot); status != tableKeyValid {
+		t.Fatalf("second reference-key deletion status = %d", status)
+	}
+	headerReference := weak.Make(&key.objectHeader)
+	unrootCollectorObject(t, state, "dead-key object")
+	state.collectUnreachable()
+	index, found = table.store.findContinuation(keySlot, hash)
+	if !found {
+		t.Fatal("unreachable key lost its tombstone before Go reclamation")
+	}
+	dead := (*deadReferenceKey)(table.store.entries.at(index).key.ref)
+	if dead.target != headerReference {
+		t.Fatal("dead key did not preserve weak identity")
+	}
+	if key.owner != nil {
+		t.Fatal("deleted key remained semantically reachable")
+	}
+	key = nil
+	keySlot = slot{}
+	waitForWeakObjectHeader(t, headerReference)
+	if dead.target != headerReference || dead.target.Value() != nil {
+		t.Fatal("dead-key identity changed after Go reclamation")
+	}
+}
+
+func TestSemanticCollectorRetiresEveryReferenceKeyKind(t *testing.T) {
+	tests := []struct {
+		name string
+		make func(*testing.T, *State) slot
+	}{
+		{
+			name: "table",
+			make: func(_ *testing.T, state *State) slot {
+				return slotFromTableObject(newTable(state, 0, 0))
+			},
+		},
+		{
+			name: "native function",
+			make: func(_ *testing.T, state *State) slot {
+				function := newNativeFunctionOwned(
+					state,
+					state.main.globals,
+					func(frame Frame) Outcome {
+						return frame.Return()
+					},
+					nil,
+				)
+				return slotFromFunctionObject(function)
+			},
+		},
+		{
+			name: "userdata",
+			make: func(_ *testing.T, state *State) slot {
+				data := newUserDataObject(state, nil, nil, nil)
+				return slotFromUserDataObject(data)
+			},
+		},
+		{
+			name: "thread",
+			make: func(t *testing.T, state *State) slot {
+				entry := newNativeFunctionOwned(
+					state,
+					state.main.globals,
+					func(frame Frame) Outcome {
+						return frame.Return()
+					},
+					nil,
+				)
+				thread, err := state.newThreadObject(
+					slotFromFunctionObject(entry),
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return slotFromThreadObject(thread)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := newCollectorTestState(t)
+			defer state.Close()
+			table := newTable(state, 0, 1)
+			key := test.make(t, state)
+			if unsafe.Pointer(referenceSlotHeader(key)) != key.ref {
+				t.Fatal("object header is not at the canonical object base")
+			}
+			hash, err := hashTableKey(key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status := table.rawSetSlot(
+				key,
+				numberSlot(1),
+			); status != tableKeyValid {
+				t.Fatalf("insertion status = %d", status)
+			}
+			if status := table.rawSetSlot(
+				key,
+				nilSlot,
+			); status != tableKeyValid {
+				t.Fatalf("deletion status = %d", status)
+			}
+			mustRootCollectorObject(
+				t,
+				state,
+				"dead-key-table",
+				slotFromTableObject(table),
+			)
+			mustRootCollectorObject(t, state, "dead-key-object", key)
+
+			state.collectUnreachable()
+			index, found := table.store.findContinuation(key, hash)
+			if !found {
+				t.Fatal("collector discarded the continuation")
+			}
+			dead := table.store.entries.at(index).key
+			if !dead.isDeadReferenceKey() ||
+				!deadReferenceKeyMatches(dead, key) {
+				t.Fatal("collector did not preserve weak key identity")
+			}
+			state.collectUnreachable()
+			if table.store.entries.at(index).key.ref != dead.ref {
+				t.Fatal("repeated collection replaced the dead-key holder")
+			}
+		})
+	}
+}
+
+func TestDeadReferenceKeyRevivalCompactsTombstones(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+	table := newTable(state, 0, 8)
+	key := newTable(state, 0, 0)
+	keySlot := slotFromTableObject(key)
+	if status := table.rawSetSlot(
+		keySlot,
+		numberSlot(1),
+	); status != tableKeyValid {
+		t.Fatalf("reference insertion status = %d", status)
+	}
+	names := [...]string{"discard-a", "discard-b", "discard-c"}
+	for _, name := range names {
+		if err := table.rawSetStringSlot(name, numberSlot(1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if status := table.rawSetSlot(
+		keySlot,
+		nilSlot,
+	); status != tableKeyValid {
+		t.Fatalf("reference deletion status = %d", status)
+	}
+	for _, name := range names {
+		if err := table.rawSetStringSlot(name, nilSlot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !table.store.shouldCompact() {
+		t.Fatal("test did not establish a compactable store")
+	}
+	mustRootCollectorObject(
+		t,
+		state,
+		"compact-table",
+		slotFromTableObject(table),
+	)
+	mustRootCollectorObject(t, state, "compact-key", keySlot)
+	before := state.semanticHeap()
+	state.collectUnreachable()
+	retired := state.semanticHeap()
+	if retired.bytes-before.bytes !=
+		uint64(unsafe.Sizeof(deadReferenceKey{})) {
+		t.Fatalf(
+			"dead-key accounting delta = %d; want %d",
+			retired.bytes-before.bytes,
+			unsafe.Sizeof(deadReferenceKey{}),
+		)
+	}
+
+	hash, err := hashTableKey(keySlot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed := table.set(
+		keySlot,
+		0,
+		false,
+		hash,
+		numberSlot(2),
+	); !changed {
+		t.Fatal("reference-key revival did not change the table")
+	}
+	if table.store.dead != 0 ||
+		table.store.live != 1 ||
+		table.store.shouldCompact() {
+		t.Fatalf(
+			"compacted store = live:%d dead:%d compact:%v",
+			table.store.live,
+			table.store.dead,
+			table.store.shouldCompact(),
+		)
+	}
+	index, found := table.store.findStored(keySlot, hash)
+	if !found || table.store.entries.at(index).key.isDeadReferenceKey() {
+		t.Fatal("compaction retained the dead-key holder")
+	}
+	revived := state.semanticHeap()
+	if retired.bytes-revived.bytes !=
+		uint64(unsafe.Sizeof(deadReferenceKey{})) {
+		t.Fatalf(
+			"compaction accounting delta = %d; want %d",
+			retired.bytes-revived.bytes,
+			unsafe.Sizeof(deadReferenceKey{}),
+		)
+	}
+}
+
 func TestSemanticCollectorSweepsCyclesAndIsolatesStates(t *testing.T) {
 	first := newCollectorTestState(t)
 	defer first.Close()
@@ -837,6 +1119,25 @@ func waitForDiscardedHostTable(
 		select {
 		case <-deadline.C:
 			t.Fatal("discarded host-rooted table remained reachable")
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForWeakObjectHeader(
+	t *testing.T,
+	reference weak.Pointer[objectHeader],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for reference.Value() != nil {
+		runtime.GC()
+		select {
+		case <-deadline.C:
+			t.Fatal("semantically dead reference key remained Go-reachable")
 		case <-ticker.C:
 		}
 	}

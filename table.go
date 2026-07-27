@@ -842,7 +842,7 @@ func (table *tableObject) set(
 	}
 
 	if storeIndex, stored := table.store.findStored(key, hash); stored {
-		return table.setStoredRecord(storeIndex, value)
+		return table.setStoredRecord(storeIndex, key, value)
 	}
 	if value.isNil() {
 		return false
@@ -853,6 +853,7 @@ func (table *tableObject) set(
 
 func (table *tableObject) setStoredRecord(
 	index int,
+	key slot,
 	value slot,
 ) bool {
 	entry := table.store.entries.at(index)
@@ -860,11 +861,12 @@ func (table *tableObject) setStoredRecord(
 	if !current.isNil() && !value.isNil() {
 		return replaceTableValue(&entry.value, value)
 	}
-	return table.setStoredRecordSlow(index, value)
+	return table.setStoredRecordSlow(index, key, value)
 }
 
 func (table *tableObject) setStoredRecordSlow(
 	index int,
+	key slot,
 	value slot,
 ) bool {
 	entry := table.store.entries.at(index)
@@ -873,14 +875,20 @@ func (table *tableObject) setStoredRecordSlow(
 		if value.isNil() {
 			return false
 		}
+		if entry.key.isDeadReferenceKey() {
+			if !deadReferenceKeyMatches(entry.key, key) {
+				panic("lua: mismatched dead-key revival")
+			}
+			writeSlot(&entry.key, key)
+		}
 		if table.store.shouldCompact() {
-			key, hash := entry.key, entry.hash
+			storedKey, hash := entry.key, entry.hash
 			table.store.rehash(table.store.entries.len())
 			table.insertNewField(
-				key,
+				storedKey,
 				value,
 				hash,
-				recordIntegerClass(key),
+				recordIntegerClass(storedKey),
 			)
 		} else {
 			table.store.reviveAt(index, value)
@@ -1090,7 +1098,7 @@ func (table *tableObject) setIntegerUnresolved(
 		// insertion needs to recognize a retained next tombstone.
 		if storedIndex, stored :=
 			table.store.findStored(key, hash); stored {
-			return table.setStoredRecord(storedIndex, value)
+			return table.setStoredRecord(storedIndex, key, value)
 		}
 	}
 	if index > 0 && table.store.shouldCompact() {

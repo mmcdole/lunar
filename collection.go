@@ -443,16 +443,18 @@ func (state *State) traceTable(table *tableObject) {
 	for _, value := range table.array.values() {
 		state.markSlot(value)
 	}
-	for _, entry := range table.store.entries.values() {
+	entries := table.store.entries.values()
+	for index := range entries {
+		entry := &entries[index]
 		if entry.hash == entryHashEmpty {
 			continue
 		}
-		// Tombstone keys remain conservative edges until the weak-table
-		// tranche introduces a non-owning dead-key representation.
-		state.markSlot(entry.key)
-		if !entry.value.isNil() {
-			state.markSlot(entry.value)
+		if entry.value.isNil() {
+			retireDeletedReferenceKey(entry)
+			continue
 		}
+		state.markSlot(entry.key)
+		state.markSlot(entry.value)
 	}
 }
 
@@ -696,6 +698,11 @@ func (state *State) semanticHeap() semanticHeapSummary {
 			uint64(unsafe.Sizeof(slot{}))
 		summary.bytes += uint64(table.store.entries.cap()) *
 			uint64(unsafe.Sizeof(tableEntry{}))
+		for _, entry := range table.store.entries.values() {
+			if entry.key.isDeadReferenceKey() {
+				summary.bytes += uint64(unsafe.Sizeof(deadReferenceKey{}))
+			}
+		}
 	}
 	for _, function := range ledger.functions {
 		summary.functions++

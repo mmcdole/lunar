@@ -330,6 +330,21 @@ func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 	return slot{ref: pointer, bits: uint64(kind)}
 }
 
+func referenceSlotHeader(value slot) *objectHeader {
+	switch value.kind() {
+	case FunctionKind:
+		return &(*functionObject)(value.ref).objectHeader
+	case UserDataKind:
+		return &(*userDataObject)(value.ref).objectHeader
+	case ThreadKind:
+		return &(*threadObject)(value.ref).objectHeader
+	case TableKind:
+		return &(*tableObject)(value.ref).objectHeader
+	default:
+		panic("lua: slot is not a reference object")
+	}
+}
+
 func slotFromUserDataObject(data *userDataObject) slot {
 	if data == nil || data.owner == nil {
 		panic("lua: invalid canonical userdata")

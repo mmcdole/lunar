@@ -735,6 +735,17 @@ Public collection timing and accounting comparisons wait for weak tables and
 Lua finalizers so the measured operation is the one consumers will actually
 receive.
 
+Deleted table/function/thread/userdata keys are converted during semantic
+tracing to small holders containing Go weak pointers. This keeps the normal
+40-byte record entry unchanged and preserves Lua's `next` continuation
+identity without retaining the deleted object. The ordinary deletion path
+still allocates nothing. First retirement may allocate both the explicit
+holder and Go's private canonical weak-handle metadata; subsequent matching
+and collection are allocation-free. Compaction or reinsertion releases the
+holder. Deleted string keys remain content-bearing tombstones because strings
+are value-equal and are not independent objects in the current semantic
+ledger.
+
 ## Gates
 
 Every tranche must pass the full semantic, race, checkptr, vet, and supported
