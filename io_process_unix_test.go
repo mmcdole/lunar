@@ -305,8 +305,10 @@ func TestIOPopenCancellationInterruptsBlockedWriteAndReapsRoot(
 ) {
 	directory := t.TempDir()
 	pidPath := filepathForShell(directory, "pids")
+	// Publishing the PIDs only after one byte reaches the child proves
+	// file:write has entered the process-file operation before cancellation.
 	command := fmt.Sprintf(
-		`sleep 30 & child=$!; printf '%%s %%s' "$$" "$child" > %s; wait`,
+		`dd bs=1 count=1 of=/dev/null 2>/dev/null; sleep 30 & child=$!; printf '%%s %%s' "$$" "$child" > %s; wait`,
 		quoteShellWord(pidPath),
 	)
 	state := newStateWithIO(t, Options{})
@@ -319,8 +321,9 @@ func TestIOPopenCancellationInterruptsBlockedWriteAndReapsRoot(
 		state,
 		"@popen-write-cancel.lua",
 		"popen_write_continued=false\n"+
+			"local payload=string.rep(\"x\",1048576)\n"+
 			"local file=assert(io.popen("+luaTestQuote(command)+",\"w\"))\n"+
-			"file:write(string.rep(\"x\",1048576))\n"+
+			"file:write(payload)\n"+
 			"popen_write_continued=true",
 	)
 
@@ -351,8 +354,10 @@ func TestIOPopenCancellationInterruptsBlockedFlushAndReapsRoot(
 ) {
 	directory := t.TempDir()
 	pidPath := filepathForShell(directory, "pids")
+	// Publishing the PIDs only after one byte reaches the child proves
+	// file:flush has entered the process-file operation before cancellation.
 	command := fmt.Sprintf(
-		`sleep 30 & child=$!; printf '%%s %%s' "$$" "$child" > %s; wait`,
+		`dd bs=1 count=1 of=/dev/null 2>/dev/null; sleep 30 & child=$!; printf '%%s %%s' "$$" "$child" > %s; wait`,
 		quoteShellWord(pidPath),
 	)
 	state := newStateWithIO(t, Options{})
@@ -365,9 +370,10 @@ func TestIOPopenCancellationInterruptsBlockedFlushAndReapsRoot(
 		state,
 		"@popen-flush-cancel.lua",
 		"popen_flush_continued=false\n"+
+			"local payload=string.rep(\"x\",1048576)\n"+
 			"local file=assert(io.popen("+luaTestQuote(command)+",\"w\"))\n"+
 			"assert(file:setvbuf(\"full\",1048576))\n"+
-			"assert(file:write(string.rep(\"x\",1048576)))\n"+
+			"assert(file:write(payload))\n"+
 			"file:flush()\n"+
 			"popen_flush_continued=true",
 	)
@@ -410,7 +416,7 @@ func TestIOPopenAlternateEntryPointsHonorCancellation(t *testing.T) {
 			name: "default output",
 			mode: "w",
 			body: "assert(io.output(file)==file)\n" +
-				"return io.write(string.rep(\"x\",1048576))",
+				"return io.write(payload)",
 		},
 		{
 			name: "line iterator",
@@ -427,18 +433,23 @@ func TestIOPopenAlternateEntryPointsHonorCancellation(t *testing.T) {
 				`sleep 30 >&1 & child=$!; printf '%%s %%s' "$$" "$child" > %s; exit 0`,
 				quoteShellWord(pidPath),
 			)
+			setup := ""
 			if test.mode == "w" {
+				// Do not publish the PIDs until io.write reaches the
+				// pipe. The detached child then keeps that pipe open
+				// after the command-processor root exits.
 				command = fmt.Sprintf(
-					`exec 3<&0; sleep 30 <&3 & child=$!; printf '%%s %%s' "$$" "$child" > %s; exit 0`,
+					`dd bs=1 count=1 of=/dev/null 2>/dev/null; exec 3<&0; sleep 30 <&3 & child=$!; printf '%%s %%s' "$$" "$child" > %s; exit 0`,
 					quoteShellWord(pidPath),
 				)
+				setup = "local payload=string.rep(\"x\",1048576)\n"
 			}
 			state := newStateWithIO(t, Options{})
 			defer state.Close()
 			if err := state.OpenString(); err != nil {
 				t.Fatal(err)
 			}
-			source := "local file=assert(io.popen(" +
+			source := setup + "local file=assert(io.popen(" +
 				luaTestQuote(command) + "," +
 				luaTestQuote(test.mode) + "))\n" +
 				"popen_entry_file=file\n" +

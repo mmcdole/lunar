@@ -1450,8 +1450,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		want:   "ok '0.000|0.|0.'",
 	},
 	{
+		// The sign bit of the NaN produced by 0/0 varies by architecture,
+		// and PUC passes it to the host C printf implementation. Clear that
+		// bit so this recorded differential case has one portable result.
 		name:   "format_nonfinite",
-		source: "return string.format('%f|%g|%e', 1/0, -1/0, 0/0)",
+		source: "return string.format('%f|%g|%e', 1/0, -1/0, math.abs(0/0))",
 		want:   "ok 'inf|-inf|nan'",
 	},
 	{
@@ -1466,7 +1469,7 @@ var stringLibraryLua51Cases = []lua51Case{
 	},
 	{
 		name:   "format_nonfinite_upper",
-		source: "return string.format('%E|%G', 1/0, 0/0)",
+		source: "return string.format('%E|%G', 1/0, math.abs(0/0))",
 		want:   "ok 'INF|NAN'",
 	},
 	{
