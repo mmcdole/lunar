@@ -2,10 +2,10 @@
 
 ## Lua 5.1
 
-The pattern matcher, parts of the string and table libraries, and the binary
-chunk writer adapt algorithms from the Lua 5.1.5 reference implementation.
-The relevant reference sources include `lstrlib.c`, `ltablib.c`, and
-`ldump.c`.
+The pattern matcher, parts of the string, table, and debug libraries, and the
+binary chunk writer adapt algorithms from the Lua 5.1.5 reference
+implementation. The relevant reference sources include `lstrlib.c`,
+`ltablib.c`, `ldblib.c`, and `ldump.c`.
 
 Lua 5.1 is distributed under the following license:
 

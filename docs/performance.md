@@ -760,6 +760,27 @@ Warm collection of a stable weak table is allocation-free. Clearing mutates
 array and chained-record storage in place, preserving collision links and
 deferring compaction to the same insertion seams used by ordinary deletion.
 
+### 14. Debug-hook experiment — rejected
+
+A cached flag check in ordinary opcode dispatch regressed representative
+unhooked loops by 7–13% without adding allocations. An active-only executor
+restored the 160-byte frame and 5,664-byte compiled body of `runInstructions`,
+but required generated duplicate dispatch code. Its driver selection and
+pending-event seams still regressed vararg call/return and indexed-metamethod
+workloads by roughly 3%.
+
+That trade does not meet the project rule. The generated executor, hook side
+state, hook tests, and all ordinary call, return, coroutine, collection, and
+driver seams were removed before landing. The debug library retains cold stack
+inspection and mutation, while `debug.sethook` and `debug.gethook` remain a
+documented compatibility gap.
+
+Host timeout enforcement uses `CallContext`, `CallIntoContext`,
+`ResumeContext`, or `ResumeIntoContext`. A future hook design must preserve one
+canonical dispatch implementation and show no material regression across
+dispatch, numeric, table, vararg, metamethod, Lua/native call, coroutine, and
+context workloads before those two functions are added.
+
 ## Gates
 
 Every tranche must pass the full semantic, race, checkptr, vet, and supported

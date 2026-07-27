@@ -113,8 +113,9 @@ Files are organized by substantial runtime concepts:
 - `function.go`: canonical functions and compact upvalues;
 - `call.go`: compact activations, shared-stack call layout, varargs, tail
   replacement, and result adjustment;
-- `execute.go`: the compact instruction switch, cold execution driver, calls,
-  runtime faults, and traceback capture;
+- `execute.go`: the canonical ordinary compact instruction switch, cold
+  execution driver, calls, runtime faults, and traceback capture;
+- `debug.go`: cold logical-frame, source, local, and upvalue inspection;
 - `execute_numeric.go`: cold numeric coercion, comparisons, numeric-loop
   preparation, and numeric event selection;
 - `execute_string.go`: primitive length, batched concatenation, and string
@@ -152,19 +153,20 @@ Files are organized by substantial runtime concepts:
   and cooperative context polling;
 - `library_base.go`, `library_load.go`, `library_coroutine.go`,
   `library_math.go`, `library_table.go`, `library_string.go`,
-  `library_string_format.go`, `library_package.go`, `library_io.go`, and
-  `library_os.go`: the implemented Lua 5.1 runtime library surface using
-  native frames. `library_os_time.go` owns calendar conversion,
-  `os_date_format.go` owns deterministic C-locale date formatting, and the
-  build-constrained `os_clock_*.go` files read process CPU time.
-  `library_base.go` also owns
-  the auxiliary layer shared by every library file, corresponding to PUC's
-  `lauxlib` plus the runtime operations libraries need: argument coercion,
+  `library_string_format.go`, `library_package.go`, `library_io.go`,
+  `library_os.go`, and `library_debug.go`: the implemented Lua 5.1 runtime
+  library surface using native frames. `library_os_time.go` owns calendar
+  conversion, `os_date_format.go` owns deterministic C-locale date formatting,
+  and the build-constrained `os_clock_*.go` files read process CPU time.
+  `library_base.go` also owns the auxiliary layer shared by every library file,
+  corresponding to PUC's `lauxlib` plus the runtime operations libraries need:
+  argument coercion,
   positioned argument and general diagnostics, compact result publication,
   reentrant compact calls, ordinary indexing, and less-than. `library_load.go`
   owns the Lua-visible source readers and file-loading boundaries;
   `library_package.go` owns module discovery and the registry-backed load
-  cache. Later `library_*.go` files add the remaining standard libraries.
+  cache. `library_debug.go` owns Lua 5.1 stack inspection, mutation,
+  tracebacks, and the interactive console.
 
 A file is split only when the resulting modules have independently meaningful
 interfaces or invariants. Tiny helper and test files are avoided.
@@ -527,8 +529,8 @@ helpers commit the transition and jump to one executor reload label. The
 reload refreshes the private function object, Prototype, bases, PC, code, and
 value slice after frame depth or slice length changes. A failed fast admission
 changes nothing and returns to the checked driver, which grows capacity or
-reports the resource failure. The design therefore keeps one dispatch
-implementation without routing ordinary Lua calls through the outer driver.
+   reports the resource failure. The design therefore keeps one dispatch
+   implementation without routing ordinary Lua calls through the outer driver.
 
 While the switch is active, execution-stack backing arrays cannot be replaced
 and cached frame state remains valid. Calls, returns, errors, and yield
@@ -651,13 +653,32 @@ backtracking, repeated search attempts, balanced scans, and greedy expansion.
 This makes pathological patterns interruptible without putting a channel
 operation in every byte comparison.
 
-The executor has one source and one dispatch loop. A single cold backedge block
-preserves its 160-byte frame and the direct ordinary dispatch branch. On the
-standing Apple M3 Pro benchmark, active polling adds about 4.1% to a numeric
-loop and roughly 1% to representative field and Lua-call loops, with no
-allocation. Tiny public boundaries instead use an absolute budget: their fixed
-admission and final checks can add roughly 10–14 ns even though no work is
-boxed or allocated.
+The canonical ordinary executor keeps context polling in one cold backedge
+block, preserving its direct ordinary dispatch branch. On the standing Apple
+M3 Pro benchmark, active polling adds about 4.1% to a numeric loop and roughly
+1% to representative field and Lua-call loops, with no allocation. Tiny public
+boundaries instead use an absolute budget: their fixed admission and final
+checks can add roughly 10–14 ns even though no work is boxed or allocated.
+
+### Debug inspection
+
+`OpenDebug` installs the Lua 5.1 inspection and mutation operations for
+registry, environments, metatables, source information, active lines, locals,
+upvalues, tracebacks, and the interactive console. They walk logical frames
+only when requested; compact activations and the instruction loop carry no
+debug-only state.
+
+`debug.sethook` and `debug.gethook` are deliberately deferred. A hook branch in
+ordinary opcode dispatch regressed representative unhooked loops by 7–13%.
+An explored active-only executor avoided that raw-loop cost but duplicated
+compiled dispatch machinery and still slowed driver-heavy vararg and
+metamethod workloads by about 3%. Neither design meets the ordinary-execution
+gate.
+
+Embedders enforcing deadlines or interrupting runaway scripts should use
+`CallContext`, `CallIntoContext`, `ResumeContext`, or `ResumeIntoContext`.
+Those controls cannot be disabled or rewritten by Lua and require no
+Lua-level callback.
 
 ### Native-call checkpoint
 
@@ -1116,8 +1137,9 @@ Each library has its own explicit opener and no implicit installation. `New`
 returns an empty State. Reopening replaces the library table and every
 Function in it with fresh canonical objects, so a program cannot half-restore
 a tampered library. `OpenBase` also opens `coroutine` because Lua 5.1's
-`luaopen_base` registers those functions; `package`, `math`, `table`, and
-`string` are separate openers because PUC registers them separately.
+`luaopen_base` registers those functions; `package`, `math`, `table`, `string`,
+`io`, `os`, and `debug` have separate openers because PUC registers them
+separately.
 
 Libraries are ordinary native callbacks. They read compact arguments and
 publish compact results, so a scalar entry never materializes an owning
@@ -1201,6 +1223,18 @@ an error preserves output already written by earlier arguments. Writes are
 sequential and their errors are deliberately ignored, matching PUC's
 unchecked `fputs`; the `io` library reports failures through its own
 Lua-visible result convention.
+
+The debug library exposes the twelve Lua 5.1 inspection and mutation
+operations that do not require execution hooks: registry, environment,
+metatable, local, upvalue, and function inspection or mutation; source
+information and tracebacks; and the interactive debug console. It is
+intentionally not opened by default because it exposes raw mutable execution
+state and the registry. Applications running untrusted Lua should leave it
+closed.
+
+Inspection uses the same cold logical-frame walker as runtime diagnostics.
+`debug.sethook` and `debug.gethook` are omitted under the performance rule
+recorded above; no dormant hook state or executor branch remains.
 
 The IO library represents each file as one compact managed userdata over one
 `fileHandle`; there is no library-private object mirror. A public userdata
@@ -1523,7 +1557,8 @@ one.
 11. The owning-handle boundary and State-local Lua collection described in
     [collection.md](collection.md), including weak tables, finalization, and
     the Lua 5.1 collection controls.
-12. Debug facilities and optional extensions.
+12. Lua 5.1 debug inspection; exact hooks remain deferred until they can avoid
+    ordinary-execution cost and a second dispatch implementation.
 13. Profile-driven quickening, inline caches, and executor specialization.
 
 The compiler remains in the root package so it can build private compact

@@ -39,16 +39,19 @@ through protected `Frame.Call` or caller-buffer `Frame.CallInto` without a
 second executor or object representation; warmed `CallInto` paths allocate
 nothing. Context-aware calls and coroutine resumes provide bounded cooperative
 cancellation without changing the raw execution path or retaining a caller's
-context across suspension. The explicitly opened `math`, `table`, and
-`string` libraries provide the Lua 5.1 surfaces over compact scalar arguments
-and raw storage. This includes PUC-compatible table sorting, byte-oriented
-patterns and formatting, reentrant replacement callbacks, and native Lua 5.1
-binary chunks produced by `string.dump`. Source or binary chunks can be loaded
-from fixed strings, `io.Reader` streams, or files through `LoadString`, `Load`,
-and `LoadFile`, with context-aware variants. Fixed source strings scan
-directly; streamed input is consumed as immutable pieces and preserves reader
-error identity. The base library exposes Lua 5.1's `load`, `loadstring`,
-`loadfile`, and `dofile`; file loading honors a leading interpreter line, and
+context across suspension. Embedders enforcing deadlines or stopping runaway
+scripts should use `CallContext`, `CallIntoContext`, or the context-aware
+resume APIs rather than a Lua debug hook. The explicitly opened `math`,
+`table`, and `string` libraries provide the Lua 5.1 surfaces over compact
+scalar arguments and raw storage. This includes PUC-compatible table sorting,
+byte-oriented patterns and formatting, reentrant replacement callbacks, and
+native Lua 5.1 binary chunks produced by `string.dump`. Source or binary
+chunks can be loaded from fixed strings, `io.Reader` streams, or files through
+`LoadString`, `Load`, and `LoadFile`, with context-aware variants. Fixed source
+strings scan directly; streamed input is consumed as immutable pieces and
+preserves reader error identity. The base library exposes Lua 5.1's `load`,
+`loadstring`, `loadfile`, and `dofile`; file loading honors a leading
+interpreter line, and
 `dofile` returns all chunk results through the compact stack. Each State is
 configured with borrowed standard input, output, and error streams;
 argumentless loaders and Lua 5.1 `print` use those streams without
@@ -67,8 +70,12 @@ and an embedding-safe `os.exit` request returned to Go without terminating the
 host.
 Its `os.execute` invokes the platform shell and returns Lua 5.1's single
 numeric status while inheriting the embedding process's environment, working
-directory, and actual standard descriptors. The debug library remains under
-construction. A State-local semantic collector handles cycles, weak tables,
+directory, and actual standard descriptors. The explicitly opened `debug`
+library implements Lua 5.1 stack inspection, registry, environment,
+metatable, and upvalue access, tracebacks, and the interactive console.
+`debug.sethook` and `debug.gethook` are deliberately deferred: exact
+instruction hooks measurably slowed ordinary execution in the explored
+designs. A State-local semantic collector handles cycles, weak tables,
 userdata finalization, and explicit Lua 5.1 collection controls independently
 of Go's process-wide collector. Embedders use the same machinery through
 `State.Collect` and `State.HeapBytes`; native callbacks use the matching
