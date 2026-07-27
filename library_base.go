@@ -176,20 +176,24 @@ func baseCollectGarbage(frame Frame) Outcome {
 	control := &state.runtime.collection
 	switch option {
 	case "stop":
-		control.stopped = true
+		control.setStopped(true)
 		return frame.ReturnNumber(0)
 	case "restart":
-		control.stopped = false
+		control.setStopped(false)
+		// PUC installs the current allocation total as its threshold.
+		// Badger records the equivalent request and services it at the
+		// next graph-stable executor seam.
+		control.requestCycle()
 		return frame.ReturnNumber(0)
 	case "collect":
 		// PUC encodes stop in its next-allocation threshold. A full
 		// collection installs a normal threshold again, so an explicit
 		// collection also resumes automatic scheduling.
-		control.stopped = false
+		control.setStopped(false)
 		if _, failure := frame.collectAndFinalize(); failure != nil {
 			return frame.sealError(failure)
 		}
-		control.stopped = false
+		control.setStopped(false)
 		return frame.ReturnNumber(0)
 	case "count":
 		return frame.ReturnNumber(
@@ -200,11 +204,11 @@ func baseCollectGarbage(frame Frame) Outcome {
 		// therefore completes one whole cycle; amount is still parsed
 		// with Lua 5.1's unconditional second-argument contract.
 		_ = amount
-		control.stopped = false
+		control.setStopped(false)
 		if _, failure := frame.collectAndFinalize(); failure != nil {
 			return frame.sealError(failure)
 		}
-		control.stopped = false
+		control.setStopped(false)
 		return frame.ReturnBool(true)
 	case "setpause":
 		previous := control.pause

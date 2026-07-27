@@ -250,7 +250,7 @@ func verifyPrototype(prototype *Prototype) *Error {
 				index,
 			)
 		}
-		if !child.sealed {
+		if !child.isSealed() {
 			return prototype.syntaxError(
 				-1,
 				"child function %d is not a sealed prototype",

@@ -20,7 +20,7 @@ func TestCompileSourceDirectExpressionSlice(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	if !prototype.sealed ||
+	if !prototype.isSealed() ||
 		prototype.SourceName() != "@sample.lua" ||
 		prototype.ParameterCount() != 0 ||
 		!prototype.IsVararg() {

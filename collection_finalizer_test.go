@@ -3,6 +3,8 @@ package lua
 import (
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -742,7 +744,7 @@ func TestSuccessfulFinalizerCannotStopOuterCollection(t *testing.T) {
 			defer state.Close()
 
 			handler := newFinalizerFunction(state, func(frame Frame) Outcome {
-				frame.thread.owner.collection.stopped = true
+				frame.thread.owner.collection.setStopped(true)
 				return frame.Return()
 			})
 			newFinalizerUserData(
@@ -770,7 +772,7 @@ func TestFailingFinalizerMayLeaveCollectionStopped(t *testing.T) {
 	defer state.Close()
 
 	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
-		frame.thread.owner.collection.stopped = true
+		frame.thread.owner.collection.setStopped(true)
 		return frame.RaiseString("stopped")
 	})
 	newFinalizerUserData(
@@ -1136,6 +1138,59 @@ func TestFinalizersPermitNestedCollectionAndDeferNewUserData(t *testing.T) {
 			)
 		}
 	})
+
+	t.Run("nested collection owns the final schedule", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+
+		retained := state.String(strings.Repeat("x", 1<<20))
+		if err := state.main.globals.rawSetStringSlot(
+			"large",
+			slotFromValue(retained),
+		); err != nil {
+			t.Fatal(err)
+		}
+		var nestedBaseline uint64
+		handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+			if err := state.main.globals.rawSetStringSlot(
+				"large",
+				nilSlot,
+			); err != nil {
+				return frame.RaiseString(err.Error())
+			}
+			if _, failure := frame.collectAndFinalize(); failure != nil {
+				return frame.RaiseError(failure)
+			}
+			nestedBaseline = state.runtime.collection.baseline
+			state.runtime.collection.pause = 300
+			return frame.Return()
+		})
+		newFinalizerUserData(
+			state,
+			newFinalizerMetatable(
+				t,
+				state,
+				slotFromFunctionObject(handler),
+			),
+			nil,
+		)
+
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if nestedBaseline == 0 {
+			t.Fatal("nested collection did not establish a live baseline")
+		}
+		want := automaticCollectionBudget(nestedBaseline, 300)
+		if got := state.runtime.collection.budget; got != want {
+			t.Fatalf(
+				"post-finalizer budget = %d; want nested baseline budget %d",
+				got,
+				want,
+			)
+		}
+		runtime.KeepAlive(retained)
+	})
 }
 
 func TestFinalizerCannotYieldAcrossTheCollectingFrame(t *testing.T) {
@@ -1175,6 +1230,496 @@ func TestFinalizerCannotYieldAcrossTheCollectingFrame(t *testing.T) {
 			status,
 			err,
 		)
+	}
+}
+
+func TestAutomaticCollectionCompletesIndexContinuationsBeforeFinalizers(
+	t *testing.T,
+) {
+	tests := []struct {
+		name    string
+		handler func(*testing.T, *State) slot
+	}{
+		{
+			name: "native",
+			handler: func(t *testing.T, state *State) slot {
+				t.Helper()
+				function := newFinalizerFunction(
+					state,
+					func(frame Frame) Outcome {
+						return frame.ReturnNumber(42)
+					},
+				)
+				return slotFromFunctionObject(function)
+			},
+		},
+		{
+			name: "Lua",
+			handler: func(t *testing.T, state *State) slot {
+				t.Helper()
+				function := mustLoadString(
+					t,
+					state,
+					"@automatic-index-handler.lua",
+					`local _, _ = ...; return 42`,
+				)
+				return slotFromValue(function.Value())
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := newCollectorTestState(t)
+			defer state.Close()
+
+			targetTable := newTable(state, 0, 0)
+			targetMetatable := newTable(state, 0, 1)
+			if err := targetMetatable.rawSetStringSlot(
+				metamethodNames[metaIndex],
+				test.handler(t, state),
+			); err != nil {
+				t.Fatal(err)
+			}
+			targetTable.metatable = targetMetatable
+			if err := state.main.globals.rawSetStringSlot(
+				"automatic_index_target",
+				slotFromTableObject(targetTable),
+			); err != nil {
+				t.Fatal(err)
+			}
+			target := mustLoadString(
+				t,
+				state,
+				"@automatic-index-target.lua",
+				`return automatic_index_target.missing`,
+			)
+
+			calls := 0
+			finalizer := newFinalizerFunction(
+				state,
+				func(frame Frame) Outcome {
+					if count := len(frame.thread.continuations); count != 1 ||
+						frame.thread.continuations[0].mode !=
+							continuationFinalizerGuard {
+						t.Fatalf(
+							"finalizer saw %d continuations; want only its guard",
+							count,
+						)
+					}
+					calls++
+					return frame.Return()
+				},
+			)
+			metatable := newFinalizerMetatable(
+				t,
+				state,
+				slotFromFunctionObject(finalizer),
+			)
+			state.resetCollectionDebt()
+			state.runtime.collection.budget = 1
+			newFinalizerUserData(state, metatable, nil)
+
+			results, err := state.Call(target.Value())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 {
+				t.Fatalf("automatic finalizer calls = %d; want 1", calls)
+			}
+			assertTestValues(t, results, Number(42))
+		})
+	}
+}
+
+func TestAutomaticFinalizerReusesTheActiveExecutor(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	nested := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-nested.lua",
+		`return 73`,
+	)
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-root.lua",
+		`return 41, 42`,
+	)
+	nestedSlot := slotFromValue(nested.Value())
+	calls := 0
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		if frame.thread != state.main {
+			t.Fatal("main-thread collection ran its finalizer elsewhere")
+		}
+		value, failure := frame.callCompactOne(nestedSlot, nil)
+		if failure != nil {
+			return frame.sealError(failure)
+		}
+		if number, ok := slotToNumber(value); !ok || number != 73 {
+			t.Fatalf("nested finalizer result = %v; want 73", value)
+		}
+		calls++
+		return frame.Return()
+	})
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler),
+	)
+
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	newFinalizerUserData(state, metatable, nil)
+	if !state.runtime.collection.requested {
+		t.Fatal("userdata allocation did not request collection")
+	}
+
+	hostTable, err := state.NewTable(1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := hostTable.RawSetInt(1, Number(1)); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatal("host construction or mutation executed a finalizer")
+	}
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("automatic finalizer calls = %d; want 1", calls)
+	}
+	assertTestValues(t, results, Number(41), Number(42))
+}
+
+func TestAutomaticFinalizerUsesTheTriggeringCoroutine(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-coroutine.lua",
+		`return 19`,
+	)
+	thread, err := state.newThreadObject(slotFromValue(target.Value()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := thread.owningHandle()
+
+	calls := 0
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		if frame.thread != thread {
+			t.Fatal("automatic finalizer did not use the triggering coroutine")
+		}
+		calls++
+		return frame.Return()
+	})
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler),
+	)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	newFinalizerUserData(state, metatable, nil)
+
+	results, status, err := handle.Resume()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != ThreadDead {
+		t.Fatalf("coroutine status = %d; want dead", status)
+	}
+	if calls != 1 {
+		t.Fatalf("coroutine finalizer calls = %d; want 1", calls)
+	}
+	assertTestValues(t, results, Number(19))
+}
+
+func TestAutomaticFinalizerCannotYieldAcrossItsCollectionSeam(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-yield.lua",
+		`return 19`,
+	)
+	thread, err := state.newThreadObject(slotFromValue(target.Value()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		return frame.Yield()
+	})
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler),
+	)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	newFinalizerUserData(state, metatable, nil)
+
+	_, status, err := thread.owningHandle().Resume()
+	if status != ThreadDead ||
+		err == nil ||
+		err.Error() != "attempt to yield across metamethod/C-call boundary" {
+		t.Fatalf(
+			"automatic finalizer yield = status %d, error %v",
+			status,
+			err,
+		)
+	}
+}
+
+func TestAutomaticFinalizerPanicRestoresExecutorAndQueue(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-panic.lua",
+		`return 19`,
+	)
+	probe := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-panic-recovery.lua",
+		`return 23`,
+	)
+	var order []string
+	old := newFinalizerFunction(state, func(frame Frame) Outcome {
+		order = append(order, "old")
+		return frame.Return()
+	})
+	bad := newFinalizerFunction(state, func(frame Frame) Outcome {
+		order = append(order, "bad")
+		panic("automatic finalizer panic")
+	})
+	oldMetatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(old),
+	)
+	badMetatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(bad),
+	)
+
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	newFinalizerUserData(state, oldMetatable, nil)
+	badData := newFinalizerUserData(state, badMetatable, nil)
+
+	var recovered any
+	func() {
+		defer func() {
+			recovered = recover()
+		}()
+		_, _ = state.Call(target.Value())
+	}()
+	if recovered != "automatic finalizer panic" {
+		t.Fatalf("automatic finalizer panic = %v", recovered)
+	}
+	if !reflect.DeepEqual(order, []string{"bad"}) {
+		t.Fatalf("panic finalizer order = %v; want [bad]", order)
+	}
+	if state.active != nil ||
+		state.main.status != ThreadReady ||
+		state.main.top != 0 ||
+		state.main.frameExtent != 0 ||
+		len(state.main.frames) != 0 ||
+		len(state.main.continuations) != 0 ||
+		state.main.openUpvalues != nil ||
+		state.main.activeNativeToken != 0 ||
+		state.main.nativeCallDepth != 0 ||
+		state.runtime.nativeCallDepth != 0 {
+		t.Fatal("automatic finalizer panic left executable state")
+	}
+	if state.objects.phase != collectionIdle ||
+		state.runtime.collection.servicing ||
+		state.runtime.collection.stopped ||
+		state.runtime.collection.requested !=
+			(state.runtime.collection.debt >=
+				state.runtime.collection.budget) {
+		t.Fatalf(
+			"automatic finalizer panic left collection state: phase=%d control=%+v",
+			state.objects.phase,
+			state.runtime.collection,
+		)
+	}
+	if state.execution.failure != nil ||
+		state.execution.pendingExit != nil {
+		t.Fatal("automatic finalizer panic retained execution failure state")
+	}
+	if pendingFinalizerCount(state) != 1 ||
+		badData.flags&userDataFinalized == 0 {
+		t.Fatal("automatic finalizer panic did not preserve later work")
+	}
+
+	if err := state.Collect(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []string{"bad", "old"}) ||
+		pendingFinalizerCount(state) != 0 {
+		t.Fatalf("post-panic finalizer queue = %v", order)
+	}
+	results, err := state.Call(probe.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(23))
+}
+
+func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	trigger := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-trigger.lua",
+		`local scratch = {}; return 7`,
+	)
+	if err := state.SetGlobal("automatic_trigger", trigger.Value()); err != nil {
+		t.Fatal(err)
+	}
+	runner := mustLoadString(
+		t,
+		state,
+		"@automatic-finalizer-pcall.lua",
+		`return pcall(automatic_trigger)`,
+	)
+	marker, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		return frame.Raise(marker.Value())
+	})
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler),
+	)
+
+	state.main.reserveValues(64)
+	state.main.reserveFrames(8)
+	newFinalizerUserData(state, metatable, nil)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	results, err := state.Call(runner.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 ||
+		results[0].Kind() != BoolKind ||
+		results[0].Truth() {
+		t.Fatalf("protected automatic finalizer result = %v", results)
+	}
+	got, ok := results[1].Table()
+	if !ok || got != marker {
+		t.Fatal("pcall did not preserve the finalizer's arbitrary error value")
+	}
+}
+
+func TestAutomaticLuaFinalizerObservesClearedWeakValues(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	factory := mustLoadString(
+		t,
+		state,
+		"@automatic-lua-finalizer.lua",
+		`
+return function(value)
+	lua_gc_calls = (lua_gc_calls or 0) + 1
+	lua_gc_weak_cleared = lua_gc_weak.value == nil
+	lua_gc_seen = value
+end
+`,
+	)
+	values, err := state.Call(factory.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("Lua finalizer factory returned %d values; want 1", len(values))
+	}
+	handler, ok := values[0].Function()
+	if !ok || handler.runtimeObject().prototype == nil {
+		t.Fatal("finalizer factory did not return a Lua function")
+	}
+
+	weakTable, _ := newWeakTableForTest(t, state, "v", 0, 1)
+	if err := state.main.globals.rawSetStringSlot(
+		"lua_gc_weak",
+		slotFromTableObject(weakTable),
+	); err != nil {
+		t.Fatal(err)
+	}
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-lua-finalizer-trigger.lua",
+		`return 29`,
+	)
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler.runtimeObject()),
+	)
+
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	data := newFinalizerUserData(state, metatable, nil)
+	if err := weakTable.rawSetStringSlot(
+		"value",
+		slotFromUserDataObject(data),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(29))
+	if _, found := weakTable.rawStringSlot("value"); found {
+		t.Fatal("automatic Lua finalizer observed a retained weak value")
+	}
+	calls, found := state.main.globals.rawStringSlot("lua_gc_calls")
+	if !found {
+		t.Fatal("Lua finalizer did not publish its call count")
+	}
+	if number, ok := slotToNumber(calls); !ok || number != 1 {
+		t.Fatalf("Lua finalizer call count = %v; want 1", calls)
+	}
+	cleared, found := state.main.globals.rawStringSlot(
+		"lua_gc_weak_cleared",
+	)
+	if !found || cleared != trueSlot {
+		t.Fatalf("Lua finalizer weak observation = %v; want true", cleared)
+	}
+	seen, found := state.main.globals.rawStringSlot("lua_gc_seen")
+	if !found ||
+		seen.kind() != UserDataKind ||
+		userDataObjectFromSlot(seen) != data ||
+		data.owner != state.runtime ||
+		data.flags&userDataFinalized == 0 {
+		t.Fatal("Lua finalizer did not receive and resurrect its userdata")
 	}
 }
 
@@ -1248,6 +1793,9 @@ func TestStateCloseDoesNotFinalizeCallbackCreatedUserData(t *testing.T) {
 		newFinalizerMetatable(t, state, slotFromFunctionObject(parent)),
 		nil,
 	)
+	// Close must suppress an already-due automatic cycle while its one
+	// close-time finalizer batch is running.
+	state.runtime.collection.requestCycle()
 
 	if err := state.Close(); err != nil {
 		t.Fatal(err)

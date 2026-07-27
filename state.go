@@ -325,6 +325,7 @@ func New(options Options) (*State, error) {
 	rt := &runtimeState{
 		collection: defaultCollectionControl(),
 	}
+	rt.strings.owner = rt
 	state := &State{
 		runtime: rt,
 		options: options,
@@ -403,6 +404,7 @@ func (state *State) Close() error {
 		state.resources = nil
 	}
 	state.runtime.strings.close()
+	state.runtime.collection.release()
 	state.detachObjectsForClose()
 	state.registry = nil
 	state.packageSentinel = nil
@@ -442,7 +444,13 @@ func (state *State) String(text string) Value {
 	if state == nil || state.runtime == nil {
 		return Value{}
 	}
-	return stringValue(state.runtime.strings.make(text))
+	var value stringRef
+	if len(text) <= shortStringLimit {
+		value = state.runtime.strings.make(text)
+	} else {
+		value = newStateNeutralLongString(text)
+	}
+	return stringValue(value)
 }
 
 // NewTable constructs an empty canonical Table using optional capacity hints.
@@ -770,6 +778,52 @@ func (rt *runtimeState) accept(value Value) error {
 		return ErrForeignValue
 	}
 	return nil
+}
+
+// importValue crosses the owning Go API into the compact runtime. Short
+// strings become runtime-local cache entries; longer State-neutral strings
+// retain their existing immutable backing and enter the State's swept
+// attribution set. Internal compact seams never pay this boundary work.
+func (rt *runtimeState) importValue(
+	value Value,
+) (compact slot, err error) {
+	if value.ref != numberMarkerPointer {
+		return rt.importNonNumberValue(value)
+	}
+	compact.bits = value.bits
+	return
+}
+
+func (rt *runtimeState) importNonNumberValue(value Value) (slot, error) {
+	if err := rt.accept(value); err != nil {
+		return nilSlot, err
+	}
+	return rt.importAcceptedSlot(slotFromValue(value)), nil
+}
+
+func (rt *runtimeState) importAcceptedSlot(compact slot) slot {
+	if !compact.isString() {
+		return compact
+	}
+	return rt.importAcceptedString(compact)
+}
+
+func (rt *runtimeState) importAcceptedString(compact slot) slot {
+	length := stringSlotLen(compact)
+	if length <= 1 {
+		return compact
+	}
+	if length <= shortStringLimit {
+		return stringSlot(rt.strings.makeKnownHash(
+			stringSlotText(compact),
+			stringSlotHash(compact),
+		))
+	}
+	rt.collection.attributeString(stringRef{
+		ref:  compact.ref,
+		bits: compact.bits,
+	})
+	return compact
 }
 
 func (rt *runtimeState) acceptSlot(value slot) error {

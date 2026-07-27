@@ -11,8 +11,9 @@ private native resources and never execute Lua.
 The ownership boundary, State-owned object ledger, centralized tracer,
 logical accounting, close detachment, synchronous sweep, Lua 5.1 weak-table
 classification and clearing, userdata `__gc`, explicit Lua controls, and host
-collection and measurement methods are implemented. Automatic
-allocation-debt policy and incremental collection are not yet implemented.
+collection and measurement methods are implemented. Retained-allocation debt
+now schedules automatic full cycles at graph-stable executor safe points.
+Incremental collection is not yet implemented.
 
 ## Ownership boundary
 
@@ -145,8 +146,9 @@ size-class rounding.
 `State.HeapBytes`, `Frame.HeapBytes`, `collectgarbage("count")`, and `gcinfo`
 all use this one target-architecture logical boundary. It is a Lua heap
 measure, not process RSS or physical Go allocator usage. Measurement currently
-scans the registered heap and retained metadata; automatic scheduling will use
-maintained allocation debt rather than placing this scan on allocation paths.
+scans the registered heap and retained metadata. Automatic scheduling instead
+maintains allocation debt at object-creation and capacity-growth seams, so it
+does not put a heap scan on ordinary allocation or mutation paths.
 
 ## Roots and graph traversal
 
@@ -268,6 +270,73 @@ deterministic State shutdown. A collection nested inside close still uses the
 shutdown release policy. Close-time cleanup errors are returned to the host
 without becoming Lua `__gc` errors.
 
+## Automatic scheduling
+
+Each State records logical bytes newly retained since its last completed
+cycle. Canonical object creation, table-storage growth, thread stack and frame
+growth, continuation storage, upvalue cells, runtime-owned strings and string
+cache shards, and loading an immutable Prototype tree charge this
+debt. Replacements that retain no newly imported string backing, deletions,
+writes within existing capacity, table compaction without capacity growth,
+cache hits, and scalar execution do not.
+Constructing an uncached long public string does not by itself make that
+backing part of a State. Its first owning-API import enters a State-local
+attribution set. Short strings constructed through `State.String` instead
+cross the runtime-local bounded cache immediately. The completed-cycle heap
+scan sweeps long-string attribution entries no longer present in the Lua graph,
+so a still-live string is not recharged after every cycle and dead backing is
+not permanently rooted. Runtime-created long
+strings charge allocation debt directly and stay out of the set while they
+remain compact. Exporting one to an owning Go value is read-only and adds no
+scheduling metadata. A later public-to-compact import is a conservative
+ownership admission: it may charge once even when that State originally
+created the backing, then records attribution so repeated imports while the
+string remains live are free. Cross-State imports charge each retaining State
+independently. Debt is a conservative scheduling signal, not heap size; exact
+heap reporting and `collectgarbage("count")` still deduplicate the backing
+actually retained by each Lua graph. Conservative admission may request an
+earlier cycle, but service remains deferred to a rooted executor safe point.
+The attribution set records its high-water occupancy and rebuilds only after
+a substantial drop below one quarter of a nontrivial peak. This releases Go
+map buckets after bursty long-string churn without allocating during stable
+collection cycles.
+Prototype debt uses an allocation-free weight cached when the immutable tree
+is sealed; repeated loading may conservatively charge shared metadata again
+rather than maintaining a permanent attribution map on the load path.
+
+After a cycle, the collector measures the surviving logical heap once, clears
+old debt, and installs a growth budget. With the default pause of 200 the
+budget is approximately one additional live heap, subject to a 256 KiB
+batching floor. A pause above 100 scales that growth allowance by
+`(pause-100)/100`; values at or below 100 use the floor. Saturating arithmetic
+prevents control values or very large heaps from wrapping the schedule.
+
+Allocation never enters Lua or starts tracing. A due cycle runs only at a
+graph-stable executor seam:
+
+- when root execution begins after its callable and arguments are rooted;
+- after table construction, concatenation, or closure installation;
+- after a native or checked Lua call has published its results;
+- after a suspended metamethod or iterator continuation has completed; and
+- before root execution returns to its host.
+
+There is no collection branch on every instruction or loop backedge, and
+the compact instruction loop does not poll at every nested fixed call or
+return. Table mutation never invokes Lua synchronously. A long operation that
+reaches none of these seams defers collection until the next one, matching Lua
+5.1's allocation-accounting-versus-safe-check separation.
+
+Automatic finalizers run synchronously on the Thread that triggered the
+cycle, using the existing executor and compact call convention. Their
+arguments and the interrupted operation's results are already rooted.
+Automatic re-entry is suppressed while any finalizer batch runs; a finalizer
+may still request an explicit nested collection. Lua 5.1 restores the outer
+threshold around each successful `__gc`, so successful stop/restart requests
+made inside a finalizer are discarded. The enclosing completed cycle then
+installs its next schedule from the current pause and latest completed-cycle
+baseline, retaining allocations made by the handler. A failing finalizer
+retains its control state and leaves later queued work for another cycle.
+
 ## Collection controls
 
 The base library exposes the Lua 5.1 operations:
@@ -294,11 +363,17 @@ whole cycle and returns true; the amount is parsed but does not manufacture a
 fake partial phase. A later genuinely incremental collector may return false
 when a step does not complete its cycle.
 
+`setstepmul` stores and reports Lua 5.1's policy value, but a synchronous full
+cycle has no honest incremental work rate for it to control. It becomes
+operational only with a real incremental phase machine and write barriers.
+`setpause` affects the budget installed by the next completed cycle.
+
 Explicit collect and step continue to work while automatic collection is
 stopped and, as in PUC's threshold-based implementation, either resumes
-automatic scheduling afterward. Stop and restart only control future
-automatic work. No control invokes process-wide `runtime.GC` as a substitute
-for State-local work.
+automatic scheduling afterward. Stop continues recording debt but suppresses
+service; restart makes the next executor safe point service the due work. No
+control invokes process-wide `runtime.GC` as a substitute for State-local
+work.
 
 `State.Collect` provides the idle high-level host operation.
 `Frame.Collect` performs the same work safely from a live native callback.
@@ -328,10 +403,11 @@ fresh registered metatable while a valid proxy shares its exact metatable.
    errors, and close-time draining.
 5. **Complete.** Expose synchronous collection and count controls after the
    weak and finalizer rules they can observe are complete.
-6. Add automatic allocation-debt policy, making the stored stop, restart,
-   pause, and multiplier policy affect automatic execution. Incremental step
-   behavior and write barriers belong together and follow only if measurement
-   justifies the additional state machine.
+6. **Complete.** Add retained-allocation debt and executor safe-point service.
+   Stop, restart, and pause govern automatic full cycles without adding a
+   mutation barrier or per-instruction collector check. Step multiplier,
+   incremental step behavior, and write barriers belong together and follow
+   only if latency measurements justify the additional state machine.
 7. Add `newproxy` and complete the base-library surface.
 
 The current ledger suite covers registration, every object-edge kind, State
@@ -348,3 +424,10 @@ policy, panic cleanup, bounded finalizer queues, the complete explicit Lua
 control surface, argument coercion and validation, return types, exact logical
 count reporting, State isolation, arbitrary finalizer errors, queue
 resumption, and the high- and low-level host collection methods.
+
+Automatic coverage additionally pins debt saturation and reset, capacity and
+string-cache charging, Prototype attribution, rooted results, host mutation
+non-reentrancy, native and Lua finalizer re-entry, triggering-coroutine
+identity, protected arbitrary errors, stop/restart scheduling, successful
+finalizer threshold restoration, nested-cycle baselines, and close-time
+automatic suppression.

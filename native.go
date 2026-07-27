@@ -88,17 +88,19 @@ func (state *State) NewNativeFunction(
 	if len(captures) > maxNativeCaptures {
 		return nil, ErrNativeCaptureLimit
 	}
-	for _, capture := range captures {
-		if err := state.runtime.accept(capture); err != nil {
-			return nil, err
-		}
-	}
 
 	var compact []slot
 	if len(captures) != 0 {
+		for _, capture := range captures {
+			if err := state.runtime.accept(capture); err != nil {
+				return nil, err
+			}
+		}
 		compact = make([]slot, len(captures))
 		for index, capture := range captures {
-			compact[index] = slotFromValue(capture)
+			compact[index] = state.runtime.importAcceptedSlot(
+				slotFromValue(capture),
+			)
 		}
 	}
 	function := newNativeFunctionOwned(
@@ -315,12 +317,13 @@ func (frame Frame) Capture(index int) Value {
 func (frame Frame) SetCapture(index int, value Value) {
 	call := frame.activation()
 	frame.checkCaptureIndex(call.function, index)
-	if err := frame.thread.owner.accept(value); err != nil {
+	compact, err := frame.thread.owner.importValue(value)
+	if err != nil {
 		panic(err)
 	}
 	writeSlot(
 		&call.function.nativeBodyUnchecked().captures[index],
-		slotFromValue(value),
+		compact,
 	)
 }
 
@@ -342,7 +345,19 @@ func (frame Frame) ReturnValue(value Value) Outcome {
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
 	}
-	return frame.returnOne(call, slotFromValue(value))
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	if outputCount != 0 {
+		resultBase := int(call.resultBase)
+		writeSlot(
+			&frame.thread.values[resultBase],
+			frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
+		)
+		frame.thread.fillNil(resultBase+1, resultBase+outputCount)
+	}
+	return frame.sealReturn(outputCount)
 }
 
 // ReturnValues completes the callback with values.
@@ -369,7 +384,9 @@ func (frame Frame) ReturnValues(values ...Value) Outcome {
 	for index := 0; index < copied; index++ {
 		writeSlot(
 			&frame.thread.values[resultBase+index],
-			slotFromValue(values[index]),
+			frame.thread.owner.importAcceptedSlot(
+				slotFromValue(values[index]),
+			),
 		)
 	}
 	frame.thread.fillNil(
@@ -524,7 +541,7 @@ func (frame Frame) YieldValue(value Value) Outcome {
 	}
 	writeSlot(
 		&frame.thread.values[resultBase],
-		slotFromValue(value),
+		frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
 	)
 	frame.finishYield(call, resultBase, 1, previousTop, previousExtent)
 	return frame.sealYield(1)
@@ -550,7 +567,7 @@ func (frame Frame) YieldValues(values ...Value) Outcome {
 	for index, value := range values {
 		writeSlot(
 			&frame.thread.values[resultBase+index],
-			slotFromValue(value),
+			frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
 		)
 	}
 	frame.finishYield(

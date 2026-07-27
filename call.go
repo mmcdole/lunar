@@ -1,6 +1,9 @@
 package lua
 
-import "math"
+import (
+	"math"
+	"unsafe"
+)
 
 const allResults = -1
 
@@ -601,7 +604,7 @@ func (thread *threadObject) checkFunctionCallWindow(
 	}
 	if function == nil ||
 		function.owner != thread.owner ||
-		(function.prototype != nil && !function.prototype.sealed) ||
+		(function.prototype != nil && !function.prototype.isSealed()) ||
 		(function.prototype == nil &&
 			(function.body == nil ||
 				function.nativeBodyUnchecked().entry == nil)) {
@@ -749,9 +752,15 @@ func (thread *threadObject) reserveValues(required int) {
 	if capacity < required {
 		capacity = required
 	}
+	previousCapacity := cap(thread.values)
 	grown := make([]slot, required, capacity)
 	copy(grown, thread.values)
 	thread.values = grown
+	thread.owner.collection.chargeCapacityGrowth(
+		previousCapacity,
+		cap(thread.values),
+		uint64(unsafe.Sizeof(slot{})),
+	)
 	for upvalue := thread.openUpvalues; upvalue != nil; upvalue = upvalue.next {
 		upvalue.cell = &thread.values[upvalue.stackIndex()]
 	}
@@ -787,9 +796,15 @@ func (thread *threadObject) reserveFrames(required int) {
 	if capacity < required {
 		capacity = required
 	}
+	previousCapacity := cap(thread.frames)
 	grown := make([]activation, len(thread.frames), capacity)
 	copy(grown, thread.frames)
 	thread.frames = grown
+	thread.owner.collection.chargeCapacityGrowth(
+		previousCapacity,
+		cap(thread.frames),
+		uint64(unsafe.Sizeof(activation{})),
+	)
 }
 
 func (thread *threadObject) fillNil(from, to int) {

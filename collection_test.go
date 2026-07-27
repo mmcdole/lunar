@@ -2,6 +2,7 @@ package lua
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -915,6 +916,13 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 	if err := table.RawSetInt(1, Number(19)); err != nil {
 		t.Fatal(err)
 	}
+	external := state.String(strings.Repeat("close-attribution-", 8))
+	if err := table.RawSetString("external", external); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.runtime.collection.attributedStrings) == 0 {
+		t.Fatal("test did not populate long-string attribution")
+	}
 	data, err := state.NewUserData("retained")
 	if err != nil {
 		t.Fatal(err)
@@ -954,6 +962,14 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 		state.objects.threads != nil ||
 		state.objects.userData != nil {
 		t.Fatal("Close retained an object-ledger head")
+	}
+	if state.runtime.collection.attributedStrings != nil ||
+		state.runtime.collection.attributedStringHighWater != 0 ||
+		state.runtime.collection.debt != 0 ||
+		state.runtime.collection.budget != 0 ||
+		state.runtime.collection.requested ||
+		state.runtime.collection.runnable {
+		t.Fatal("Close retained collection scheduling state")
 	}
 	if state.objects.tableWork != nil ||
 		state.objects.functionWork != nil ||
@@ -1280,6 +1296,1250 @@ func TestCollectionHostSurfaceUsesTheSemanticCollector(t *testing.T) {
 	}
 }
 
+func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
+	t.Run("control arithmetic", func(t *testing.T) {
+		control := collectionControl{budget: 10}
+		control.charge(9)
+		if control.debt != 9 || control.requested || control.runnable {
+			t.Fatalf("debt before threshold = %+v", control)
+		}
+		control.charge(1)
+		if control.debt != 10 ||
+			!control.requested ||
+			!control.runnable {
+			t.Fatalf("debt at threshold = %+v", control)
+		}
+		control.setStopped(true)
+		if !control.requested || control.runnable {
+			t.Fatalf("stopped due cycle = %+v", control)
+		}
+		control.setStopped(false)
+		if !control.runnable {
+			t.Fatalf("restarted due cycle = %+v", control)
+		}
+		control.setServicing(true)
+		if control.runnable {
+			t.Fatalf("servicing due cycle = %+v", control)
+		}
+		control.setServicing(false)
+		if !control.runnable {
+			t.Fatalf("restored due cycle = %+v", control)
+		}
+
+		control.debt = ^uint64(0) - 1
+		control.requested = false
+		control.refreshRunnable()
+		control.charge(2)
+		if control.debt != ^uint64(0) ||
+			!control.requested ||
+			!control.runnable {
+			t.Fatalf("saturated debt = %+v", control)
+		}
+
+		if got := automaticCollectionBudget(1, 200); got != minimumAutomaticCollectionDebt {
+			t.Fatalf("small live-heap budget = %d", got)
+		}
+		if got := automaticCollectionBudget(1<<20, 200); got != 1<<20 {
+			t.Fatalf("one-live-heap budget = %d; want %d", got, 1<<20)
+		}
+		if got := automaticCollectionBudget(^uint64(0), 300); got != ^uint64(0) {
+			t.Fatalf("overflowing budget = %d; want saturation", got)
+		}
+
+		control = collectionControl{
+			pause:     300,
+			debt:      100,
+			stopped:   true,
+			requested: true,
+			baseline:  1 << 20,
+		}
+		control.restoreAfterFinalizer()
+		if control.stopped ||
+			control.requested ||
+			control.runnable ||
+			control.debt != 100 ||
+			control.budget != 2<<20 {
+			t.Fatalf("successful finalizer restoration = %+v", control)
+		}
+	})
+
+	t.Run("objects and capacity", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+		state.resetCollectionDebt()
+
+		table := newTable(state, 4, 4)
+		if got, want := state.runtime.collection.debt,
+			tableRetainedBytes(table); got != want {
+			t.Fatalf("new-table debt = %d; want %d", got, want)
+		}
+
+		before := state.runtime.collection.debt
+		table.rawSetIntegerSlot(1, numberSlot(1))
+		table.rawSetIntegerSlot(1, numberSlot(2))
+		table.rawSetIntegerSlot(1, nilSlot)
+		if got := state.runtime.collection.debt; got != before {
+			t.Fatalf(
+				"in-capacity writes changed debt from %d to %d",
+				before,
+				got,
+			)
+		}
+
+		for index := 5; index <= 12; index++ {
+			table.rawSetIntegerSlot(index, numberSlot(float64(index)))
+		}
+		if got := state.runtime.collection.debt; got <= before {
+			t.Fatalf(
+				"capacity growth left debt at %d; want more than %d",
+				got,
+				before,
+			)
+		}
+
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("completed cycle left %d bytes of old debt", got)
+		}
+	})
+
+	t.Run("strings", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+		state.resetCollectionDebt()
+
+		long := strings.Repeat("x", shortStringLimit+1)
+		external := state.String(long)
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("uncached external string charged %d bytes", got)
+		}
+		table, err := state.NewTable(1, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.resetCollectionDebt()
+		if err := table.RawSetInt(1, external); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := state.runtime.collection.debt,
+			uint64(len(long)); got != want {
+			t.Fatalf(
+				"retained external string debt = %d; want %d",
+				got,
+				want,
+			)
+		}
+		beforeRepeat := state.runtime.collection.debt
+		if err := table.RawSetInt(1, external); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.runtime.collection.debt; got != beforeRepeat {
+			t.Fatalf(
+				"repeated external string changed debt from %d to %d",
+				beforeRepeat,
+				got,
+			)
+		}
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("completed cycle left %d bytes of string debt", got)
+		}
+		if err := table.RawSetInt(1, external); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf(
+				"live external string was recharged after a cycle: %d",
+				got,
+			)
+		}
+		if err := table.RawSetInt(1, Nil()); err != nil {
+			t.Fatal(err)
+		}
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("cycle retained attribution for a dead external string")
+		}
+		if err := table.RawSetInt(1, external); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := state.runtime.collection.debt,
+			uint64(len(long)); got != want {
+			t.Fatalf(
+				"reimported dead string debt = %d; want %d",
+				got,
+				want,
+			)
+		}
+		peer := newCollectorTestState(t)
+		defer peer.Close()
+		peerTable, err := peer.NewTable(1, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		peer.resetCollectionDebt()
+		if err := peerTable.RawSetInt(1, external); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := peer.runtime.collection.debt,
+			uint64(len(long)); got != want {
+			t.Fatalf(
+				"cross-State external string debt = %d; want %d",
+				got,
+				want,
+			)
+		}
+
+		_ = state.String("automatic-debt-cache-entry")
+		first := state.runtime.collection.debt
+		if first == 0 {
+			t.Fatal("cached external string did not charge retained storage")
+		}
+		_ = state.String("automatic-debt-cache-entry")
+		second := state.runtime.collection.debt
+		_ = state.String("automatic-debt-cache-entry")
+		if third := state.runtime.collection.debt; third != second {
+			t.Fatalf(
+				"warm string-cache hit changed debt from %d to %d",
+				second,
+				third,
+			)
+		}
+
+		runtimeLong := strings.Repeat("y", shortStringLimit+1)
+		state.resetCollectionDebt()
+		runtimeString := state.runtime.strings.make(runtimeLong)
+		if got, want := state.runtime.collection.debt,
+			uint64(len(runtimeLong)); got != want {
+			t.Fatalf("retained long-string debt = %d; want %d", got, want)
+		}
+		beforeExport := state.runtime.collection.debt
+		beforeAttribution := len(
+			state.runtime.collection.attributedStrings,
+		)
+		runtimeValue := stringValue(runtimeString)
+		if got := state.runtime.collection.debt; got != beforeExport {
+			t.Fatalf(
+				"runtime string export changed debt from %d to %d",
+				beforeExport,
+				got,
+			)
+		}
+		if got := len(state.runtime.collection.attributedStrings); got !=
+			beforeAttribution {
+			t.Fatalf(
+				"runtime string export attribution count = %d; want %d",
+				got,
+				beforeAttribution,
+			)
+		}
+		beforeIngress := state.runtime.collection.debt
+		if err := table.RawSetInt(1, runtimeValue); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := state.runtime.collection.debt,
+			beforeIngress+uint64(len(runtimeLong)); got != want {
+			t.Fatalf(
+				"runtime string re-entry debt = %d; want %d",
+				got,
+				want,
+			)
+		}
+		afterIngress := state.runtime.collection.debt
+		if err := table.RawSetInt(1, runtimeValue); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.runtime.collection.debt; got != afterIngress {
+			t.Fatalf(
+				"repeated runtime string re-entry changed debt from %d to %d",
+				afterIngress,
+				got,
+			)
+		}
+	})
+
+	t.Run("runtime string export", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+		state.resetCollectionDebt()
+
+		text := strings.Repeat("runtime-export-", 8)
+		reference := state.runtime.strings.make(text)
+		compact := stringSlot(reference)
+		retainedBytes := stringRefRetainedBytes(reference)
+		if got := state.runtime.collection.debt; got != retainedBytes {
+			t.Fatalf(
+				"runtime string debt = %d; want %d",
+				got,
+				retainedBytes,
+			)
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("internal runtime string entered the attribution set")
+		}
+
+		beforeHeap := state.semanticHeap().bytes
+		beforeExport := state.runtime.collection.debt
+		value := compact.owningValue()
+		if got := state.runtime.collection.debt; got != beforeExport {
+			t.Fatalf(
+				"runtime string export changed debt from %d to %d",
+				beforeExport,
+				got,
+			)
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("runtime string export created attribution")
+		}
+		if afterHeap := state.semanticHeap().bytes; afterHeap != beforeHeap {
+			t.Fatalf(
+				"runtime string export changed heap from %d to %d",
+				beforeHeap,
+				afterHeap,
+			)
+		}
+
+		beforeReentry := state.runtime.collection.debt
+		reentered, err := state.runtime.importValue(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rawSlotEqual(reentered, compact) {
+			t.Fatal("same-State string re-entry changed compact identity")
+		}
+		if got, want := state.runtime.collection.debt,
+			beforeReentry+retainedBytes; got != want {
+			t.Fatalf(
+				"same-State string re-entry debt = %d; want %d",
+				got,
+				want,
+			)
+		}
+		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+			t.Fatal("same-State string re-entry did not record attribution")
+		}
+		afterReentry := state.runtime.collection.debt
+		if _, err := state.runtime.importValue(value); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.runtime.collection.debt; got != afterReentry {
+			t.Fatalf(
+				"repeated string re-entry changed debt from %d to %d",
+				afterReentry,
+				got,
+			)
+		}
+
+		table, err := state.NewTable(1, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := table.RawSetInt(1, value); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+			t.Fatal("collection discarded live imported string attribution")
+		}
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("completed cycle left string debt = %d", got)
+		}
+		if _, err := state.runtime.importValue(value); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("live post-cycle re-entry charged %d bytes", got)
+		}
+
+		if err := table.RawSetInt(1, Nil()); err != nil {
+			t.Fatal(err)
+		}
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("collection retained a Go-only string attribution")
+		}
+
+		reentered, err = state.runtime.importValue(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rawSlotEqual(reentered, compact) {
+			t.Fatal("post-cycle string re-entry changed compact identity")
+		}
+		if got := state.runtime.collection.debt; got != retainedBytes {
+			t.Fatalf(
+				"post-cycle string re-entry debt = %d; want %d",
+				got,
+				retainedBytes,
+			)
+		}
+	})
+
+	t.Run("prototype trees", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+		prototype, err := Compile(
+			"@automatic-debt-prototype.lua",
+			`return function() return "child constant" end`,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.resetCollectionDebt()
+
+		state.loadPrototypeObject(prototype)
+		first := state.runtime.collection.debt
+		beforeSecond := first
+		state.loadPrototypeObject(prototype)
+		second := state.runtime.collection.debt - beforeSecond
+		if first != second {
+			t.Fatalf(
+				"first prototype load charged %d bytes; repeat charged %d",
+				first,
+				second,
+			)
+		}
+
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			t.Fatal(failure)
+		}
+		state.loadPrototypeObject(prototype)
+		if third := state.runtime.collection.debt; third != first {
+			t.Fatalf(
+				"reloaded swept prototype charged %d bytes; want %d",
+				third,
+				first,
+			)
+		}
+	})
+}
+
+func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	longText := strings.Repeat("boundary-read-key-", 5)
+	shortText := "boundary-read-key"
+	table, err := state.NewTable(0, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetString(longText, Number(11)); err != nil {
+		t.Fatal(err)
+	}
+
+	storedShort := stateNeutralString(strings.Clone(shortText))
+	shortProbe := stateNeutralString(strings.Clone(shortText))
+	if storedShort.ref == shortProbe.ref {
+		t.Fatal("short-string test backings unexpectedly match")
+	}
+	if status := table.runtimeObject().rawSetSlot(
+		slotFromValue(storedShort),
+		numberSlot(13),
+	); status != tableKeyValid {
+		t.Fatalf("short-key setup status = %d", status)
+	}
+
+	longProbe := state.String(strings.Clone(longText))
+	storedLong, found := table.runtimeObject().rawSlot(
+		slotFromValue(longProbe),
+	)
+	if !found || !rawSlotEqual(storedLong, numberSlot(11)) {
+		t.Fatal("long-key setup is not readable by content")
+	}
+	key, _, found, err := table.runtimeObject().next(nilSlot)
+	if err != nil || !found {
+		t.Fatalf("first table key = (%v, %v)", found, err)
+	}
+	for found && (!key.isString() || stringSlotText(key) != longText) {
+		key, _, found, err = table.runtimeObject().next(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !found {
+		t.Fatal("stored long key is absent")
+	}
+	if key.ref == longProbe.ref {
+		t.Fatal("long-string test backings unexpectedly match")
+	}
+	storedLongKeyRef := key.ref
+
+	enabled := false
+	lookupTarget := table.Value()
+	var nestedError error
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if !enabled {
+			return frame.ReturnNumber(0)
+		}
+		longResult, indexErr := frame.Index(lookupTarget, longProbe)
+		if indexErr != nil {
+			nestedError = indexErr
+			return frame.RaiseString(indexErr.Error())
+		}
+		shortResult, indexErr := frame.Index(lookupTarget, shortProbe)
+		if indexErr != nil {
+			nestedError = indexErr
+			return frame.RaiseString(indexErr.Error())
+		}
+		longNumber, longOK := longResult.AsNumber()
+		shortNumber, shortOK := shortResult.AsNumber()
+		if !longOK || !shortOK {
+			return frame.RaiseString("non-numeric lookup result")
+		}
+		return frame.ReturnNumber(longNumber + shortNumber)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var destination [1]Value
+	if count, callErr := state.CallInto(
+		host.Value(),
+		nil,
+		destination[:],
+	); callErr != nil || count != 1 {
+		t.Fatalf("warm native call = (%d, %v)", count, callErr)
+	}
+
+	enabled = true
+	state.resetCollectionDebt()
+	control := &state.runtime.collection
+	if control.attributedStrings != nil {
+		t.Fatal("setup retained a public long-string attribution")
+	}
+	hash := hashString(shortText)
+	if state.runtime.strings.lookupProtected(shortText, hash).valid() {
+		t.Fatal("setup admitted the short probe to the protected cache")
+	}
+	if value, _, _ := state.runtime.strings.lookupProbation(
+		shortText,
+		hash,
+	); value.valid() {
+		t.Fatal("setup admitted the short probe to the probation cache")
+	}
+
+	count, callErr := state.CallInto(
+		host.Value(),
+		nil,
+		destination[:],
+	)
+	if callErr != nil || nestedError != nil || count != 1 {
+		t.Fatalf(
+			"read-only native lookup = (count %d, call %v, nested %v)",
+			count,
+			callErr,
+			nestedError,
+		)
+	}
+	if number, ok := destination[0].AsNumber(); !ok || number != 24 {
+		t.Fatalf("read-only native lookup result = %v; want 24", destination[0])
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"read-only native lookup changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+	if state.runtime.strings.lookupProtected(shortText, hash).valid() {
+		t.Fatal("read-only lookup admitted the short probe to the protected cache")
+	}
+	if value, _, _ := state.runtime.strings.lookupProbation(
+		shortText,
+		hash,
+	); value.valid() {
+		t.Fatal("read-only lookup admitted the short probe to the probation cache")
+	}
+
+	lookupProxy, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookupMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lookupMetatable.RawSetString("__index", table.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		lookupProxy.Value(),
+		lookupMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+	lookupTarget = lookupProxy.Value()
+	state.resetCollectionDebt()
+	count, callErr = state.CallInto(
+		host.Value(),
+		nil,
+		destination[:],
+	)
+	if callErr != nil || nestedError != nil || count != 1 {
+		t.Fatalf(
+			"table-valued __index lookup = (count %d, call %v, nested %v)",
+			count,
+			callErr,
+			nestedError,
+		)
+	}
+	if number, ok := destination[0].AsNumber(); !ok || number != 24 {
+		t.Fatalf("table-valued __index result = %v; want 24", destination[0])
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"table-valued __index changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+
+	absent := state.String(
+		strings.Clone(strings.Repeat("absent-boundary-key-", 4)),
+	)
+	if err := table.RawSet(absent, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"absent nil write changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+
+	if err := table.RawSet(longProbe, Number(17)); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := table.RawGetString(longText).AsNumber(); !ok || got != 17 {
+		t.Fatalf("equal-content key update = %v; want 17", got)
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"equal-content key update changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+
+	if err := table.RawSetString(longText, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	state.resetCollectionDebt()
+	if err := table.RawSet(longProbe, Number(19)); err != nil {
+		t.Fatal(err)
+	}
+	longKeySlot := slotFromValue(longProbe)
+	longHash := uint32(stringSlotHash(longKeySlot))
+	storeIndex, stored := table.runtimeObject().store.findStored(
+		longKeySlot,
+		longHash,
+	)
+	if !stored {
+		t.Fatal("generic RawSet did not revive the long-key tombstone")
+	}
+	entry := table.runtimeObject().store.entries.at(storeIndex)
+	if entry.key.ref != storedLongKeyRef {
+		t.Fatal("generic RawSet replaced a retained tombstone key")
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"generic tombstone revival changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+
+	if err := table.RawSetString(longText, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	setProxy, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setMetatable, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setMetatable.RawSetString("__newindex", table.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(setProxy.Value(), setMetatable); err != nil {
+		t.Fatal(err)
+	}
+	setEnabled := false
+	var setError error
+	setter, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if !setEnabled {
+			return frame.ReturnBool(true)
+		}
+		setError = frame.SetIndex(setProxy.Value(), longProbe, Number(23))
+		if setError != nil {
+			return frame.RaiseString(setError.Error())
+		}
+		return frame.ReturnBool(true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, callErr := state.CallInto(
+		setter.Value(),
+		nil,
+		destination[:],
+	); callErr != nil || count != 1 {
+		t.Fatalf("warm SetIndex call = (%d, %v)", count, callErr)
+	}
+	setEnabled = true
+	state.resetCollectionDebt()
+	if count, callErr := state.CallInto(
+		setter.Value(),
+		nil,
+		destination[:],
+	); callErr != nil || setError != nil || count != 1 {
+		t.Fatalf(
+			"tombstone SetIndex = (count %d, call %v, nested %v)",
+			count,
+			callErr,
+			setError,
+		)
+	}
+	storeIndex, stored = table.runtimeObject().store.findStored(
+		longKeySlot,
+		longHash,
+	)
+	if !stored {
+		t.Fatal("table-valued __newindex did not revive the long-key tombstone")
+	}
+	entry = table.runtimeObject().store.entries.at(storeIndex)
+	if entry.key.ref != storedLongKeyRef {
+		t.Fatal("table-valued __newindex replaced a retained tombstone key")
+	}
+	if control.debt != 0 || control.attributedStrings != nil {
+		t.Fatalf(
+			"table-valued __newindex changed collection state: debt=%d attributed=%d",
+			control.debt,
+			len(control.attributedStrings),
+		)
+	}
+
+	requireStableAllocationAccounting(t)
+	indexAllocations := testing.AllocsPerRun(100, func() {
+		control.attributedStrings = nil
+		control.attributedStringHighWater = 0
+		control.debt = 0
+		control.requested = false
+		control.refreshRunnable()
+		count, callErr := state.CallInto(
+			host.Value(),
+			nil,
+			destination[:],
+		)
+		if callErr != nil || count != 1 {
+			panic("read-only native lookup failed")
+		}
+	})
+	if indexAllocations != 0 {
+		t.Fatalf(
+			"warm read-only native lookup allocated %.2f objects",
+			indexAllocations,
+		)
+	}
+	absentAllocations := testing.AllocsPerRun(100, func() {
+		control.attributedStrings = nil
+		control.attributedStringHighWater = 0
+		control.debt = 0
+		control.requested = false
+		control.refreshRunnable()
+		if err := table.RawSet(absent, Nil()); err != nil {
+			panic(err)
+		}
+	})
+	if absentAllocations != 0 {
+		t.Fatalf(
+			"absent nil write allocated %.2f objects",
+			absentAllocations,
+		)
+	}
+}
+
+func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
+	longValue := func(state *State, label string) Value {
+		return state.String(strings.Clone(
+			label + strings.Repeat("-external-backing", 5),
+		))
+	}
+	assertNotAttributed := func(
+		t *testing.T,
+		state *State,
+		value Value,
+	) {
+		t.Helper()
+		compact := slotFromValue(value)
+		reference := stringRef{ref: compact.ref, bits: compact.bits}
+		if _, found := state.runtime.collection.attributedStrings[reference]; found {
+			t.Fatalf("%q was attributed by a failed boundary", stringSlotText(compact))
+		}
+	}
+
+	t.Run("constructors validate before admission", func(t *testing.T) {
+		state := newCollectorTestState(t)
+		defer state.Close()
+		nonCallable := longValue(state, "thread-callable")
+		state.resetCollectionDebt()
+		if _, err := state.Call(nonCallable); err == nil {
+			t.Fatal("Call accepted a non-callable string")
+		}
+		assertNotAttributed(t, state, nonCallable)
+
+		state.resetCollectionDebt()
+		if _, err := state.NewThread(nonCallable); err == nil {
+			t.Fatal("NewThread accepted a non-callable string")
+		}
+		assertNotAttributed(t, state, nonCallable)
+
+		peer := newCollectorTestState(t)
+		defer peer.Close()
+		foreign, err := peer.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		capture := longValue(state, "native-capture")
+		state.resetCollectionDebt()
+		if _, err := state.NewNativeFunction(
+			func(frame Frame) Outcome { return frame.Return() },
+			capture,
+			foreign.Value(),
+		); err == nil {
+			t.Fatal("NewNativeFunction accepted a foreign capture")
+		}
+		assertNotAttributed(t, state, capture)
+		if got := state.runtime.collection.debt; got != 0 {
+			t.Fatalf("failed native construction charged %d bytes", got)
+		}
+	})
+
+	t.Run("nested calls preflight before admission", func(t *testing.T) {
+		state, err := New(Options{MaxFrames: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+
+		handler, err := state.NewNativeFunction(
+			func(frame Frame) Outcome { return frame.Return() },
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := state.NewTable(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metatable, err := state.NewTable(0, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := metatable.RawSetString("__index", handler.Value()); err != nil {
+			t.Fatal(err)
+		}
+		if err := metatable.RawSetString("__newindex", handler.Value()); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.SetMetatable(target.Value(), metatable); err != nil {
+			t.Fatal(err)
+		}
+
+		nonCallable := longValue(state, "nested-callable")
+		key := longValue(state, "nested-index-key")
+		value := longValue(state, "nested-index-value")
+		var callFailure, indexFailure, setFailure error
+		host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+			_, callFailure = frame.Call(nonCallable)
+			_, indexFailure = frame.Index(target.Value(), key)
+			setFailure = frame.SetIndex(target.Value(), key, value)
+			return frame.ReturnBool(true)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		state.resetCollectionDebt()
+		var destination [1]Value
+		count, callErr := state.CallInto(
+			host.Value(),
+			nil,
+			destination[:],
+		)
+		if callErr != nil || count != 1 {
+			t.Fatalf("outer native call = (%d, %v)", count, callErr)
+		}
+		if callFailure == nil || indexFailure == nil || setFailure == nil {
+			t.Fatalf(
+				"nested failures = (call %v, index %v, set %v)",
+				callFailure,
+				indexFailure,
+				setFailure,
+			)
+		}
+		assertNotAttributed(t, state, nonCallable)
+		assertNotAttributed(t, state, key)
+		assertNotAttributed(t, state, value)
+	})
+}
+
+func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	internalText := strings.Repeat("runtime-created-chain-target-", 4)
+	internalRef := state.runtime.strings.make(internalText)
+	handlerCalls := 0
+	handler, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		handlerCalls++
+		if target, ok := frame.String(0); !ok || target != internalText {
+			return frame.RaiseString("unexpected metamethod target")
+		}
+		switch frame.ArgumentCount() {
+		case 2:
+			return frame.ReturnNumber(29)
+		case 3:
+			return frame.Return()
+		default:
+			return frame.RaiseString("unexpected metamethod argument count")
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stringMetatable, err := state.NewTable(0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stringMetatable.RawSetString(
+		"__index",
+		handler.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := stringMetatable.RawSetString(
+		"__newindex",
+		handler.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(
+		stringValue(internalRef),
+		stringMetatable,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceMetatable, err := state.NewTable(0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceMetatable.runtimeObject().rawSetStringSlot(
+		"__index",
+		stringSlot(internalRef),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceMetatable.runtimeObject().rawSetStringSlot(
+		"__newindex",
+		stringSlot(internalRef),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(source.Value(), sourceMetatable); err != nil {
+		t.Fatal(err)
+	}
+
+	indexKey := state.String(strings.Clone(strings.Repeat(
+		"external-index-key-",
+		5,
+	)))
+	setKey := state.String(strings.Clone(strings.Repeat(
+		"external-newindex-key-",
+		5,
+	)))
+	setValue := state.String(strings.Clone(strings.Repeat(
+		"external-newindex-value-",
+		5,
+	)))
+	var indexFailure, setFailure error
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		result, failure := frame.Index(source.Value(), indexKey)
+		indexFailure = failure
+		if failure != nil {
+			return frame.RaiseString(failure.Error())
+		}
+		number, ok := result.AsNumber()
+		if !ok || number != 29 {
+			return frame.RaiseString("unexpected __index result")
+		}
+		setFailure = frame.SetIndex(source.Value(), setKey, setValue)
+		if setFailure != nil {
+			return frame.RaiseString(setFailure.Error())
+		}
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state.resetCollectionDebt()
+	if _, err := state.Call(host.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if indexFailure != nil || setFailure != nil || handlerCalls != 2 {
+		t.Fatalf(
+			"metamethod chain = (index %v, set %v, calls %d); want two successful calls",
+			indexFailure,
+			setFailure,
+			handlerCalls,
+		)
+	}
+
+	control := &state.runtime.collection
+	assertAttribution := func(value slot, want bool) {
+		t.Helper()
+		reference := stringRef{ref: value.ref, bits: value.bits}
+		_, found := control.attributedStrings[reference]
+		if found != want {
+			t.Fatalf(
+				"string %q attribution = %v; want %v",
+				stringSlotText(value),
+				found,
+				want,
+			)
+		}
+	}
+	assertAttribution(stringSlot(internalRef), false)
+	assertAttribution(slotFromValue(indexKey), true)
+	assertAttribution(slotFromValue(setKey), true)
+	assertAttribution(slotFromValue(setValue), true)
+}
+
+func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	table, err := state.NewTable(2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	survivor := state.String(
+		"survivor-" + strings.Repeat("s", shortStringLimit),
+	)
+	if err := table.RawSetInt(1, survivor); err != nil {
+		t.Fatal(err)
+	}
+
+	const attributedStringCount = minimumAttributedStringCompactionPeak * 4
+	for index := 1; index < attributedStringCount; index++ {
+		value := state.String(fmt.Sprintf(
+			"discarded-%04d-%s",
+			index,
+			strings.Repeat("x", shortStringLimit),
+		))
+		if err := table.RawSetInt(2, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := table.RawSetInt(2, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	control := &state.runtime.collection
+	if got := len(control.attributedStrings); got != attributedStringCount {
+		t.Fatalf(
+			"attribution size before collection = %d; want %d",
+			got,
+			attributedStringCount,
+		)
+	}
+	if got := control.attributedStringHighWater; got !=
+		attributedStringCount {
+		t.Fatalf(
+			"attribution high-water before collection = %d; want %d",
+			got,
+			attributedStringCount,
+		)
+	}
+
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	if got := len(control.attributedStrings); got != 1 {
+		t.Fatalf("attribution size after collection = %d; want 1", got)
+	}
+	reference := stringRef{
+		ref:  slotFromValue(survivor).ref,
+		bits: slotFromValue(survivor).bits,
+	}
+	if _, found := control.attributedStrings[reference]; !found {
+		t.Fatal("compaction discarded the live string attribution")
+	}
+	if got := control.attributedStringHighWater; got != 1 {
+		t.Fatalf(
+			"attribution high-water after compaction = %d; want 1",
+			got,
+		)
+	}
+
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	if got := control.attributedStringHighWater; got != 1 {
+		t.Fatalf(
+			"stable collection changed attribution high-water to %d",
+			got,
+		)
+	}
+	runtime.KeepAlive(table)
+}
+
+func TestAutomaticCollectionRunsOnlyAtRootedExecutorSafePoints(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-newtable.lua",
+		`return 41, {answer = 42}`,
+	)
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(32)
+	state.main.reserveFrames(4)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	if state.runtime.collection.requested {
+		t.Fatal("fresh debt interval began with a due cycle")
+	}
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("automatic collection did not sweep prior garbage")
+	}
+	if len(results) != 2 {
+		t.Fatalf("automatic collection changed result count to %d", len(results))
+	}
+	if number, ok := results[0].AsNumber(); !ok || number != 41 {
+		t.Fatalf("first rooted result = %v; want 41", results[0])
+	}
+	table, ok := results[1].Table()
+	if !ok {
+		t.Fatalf("second rooted result = %v; want table", results[1])
+	}
+	assertTestValue(t, table.RawGetString("answer"), Number(42))
+	if state.runtime.collection.requested {
+		t.Fatal("completed automatic cycle remained requested")
+	}
+}
+
+func TestAutomaticCollectionServicesPreexistingDebtAtRootEntry(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		return frame.ReturnNumber(42)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(4)
+	state.main.reserveFrames(1)
+	state.resetCollectionDebt()
+	state.runtime.collection.requestCycle()
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("root-entry collection did not sweep prior garbage")
+	}
+	if len(results) != 1 {
+		t.Fatalf("native result count = %d; want 1", len(results))
+	}
+	if number, ok := results[0].AsNumber(); !ok || number != 42 {
+		t.Fatalf("native result = %v; want 42", results[0])
+	}
+	if state.runtime.collection.requested {
+		t.Fatal("root-entry collection remained requested")
+	}
+}
+
+func TestAutomaticCollectionRootsNativeReturnAtDepthZero(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	var returned *tableObject
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		returned = newTable(state, 0, 1)
+		if setErr := returned.rawSetStringSlot(
+			"answer",
+			numberSlot(42),
+		); setErr != nil {
+			return frame.RaiseString(setErr.Error())
+		}
+		return frame.returnOne(
+			frame.activation(),
+			slotFromTableObject(returned),
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(8)
+	state.main.reserveFrames(2)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("native-return collection did not sweep prior garbage")
+	}
+	if returned == nil || returned.owner != state.runtime {
+		t.Fatal("collection swept the compact native result")
+	}
+	if len(results) != 1 {
+		t.Fatalf("native result count = %d; want 1", len(results))
+	}
+	table, ok := results[0].Table()
+	if !ok || table.runtimeObject() != returned {
+		t.Fatal("native return did not preserve canonical table identity")
+	}
+	assertTestValue(t, table.RawGetString("answer"), Number(42))
+	if state.runtime.collection.requested {
+		t.Fatal("native-return collection remained requested")
+	}
+}
+
 func newCollectorTestState(t *testing.T) *State {
 	t.Helper()
 	state, err := New(Options{})
@@ -1501,5 +2761,136 @@ func BenchmarkSemanticTableChurn(b *testing.B) {
 				uncollected,
 			)
 		}
+	}
+}
+
+func BenchmarkCompleteSemanticDeadTableChurn(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+
+	const tablesPerCycle = 1024
+	runCycle := func() {
+		for range tablesPerCycle {
+			newTable(state, 0, 0)
+		}
+		result, failure := state.collectAndFinalize()
+		if failure != nil {
+			b.Fatal(failure)
+		}
+		if result.tables != tablesPerCycle {
+			b.Fatalf(
+				"complete semantic table sweep = %d; want %d",
+				result.tables,
+				tablesPerCycle,
+			)
+		}
+	}
+
+	runCycle()
+	b.ReportAllocs()
+	b.ReportMetric(tablesPerCycle, "tables/cycle")
+	b.ResetTimer()
+	for range b.N {
+		runCycle()
+	}
+}
+
+func BenchmarkCompleteSemanticLiveTableCycle(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+
+	const liveTables = 1024
+	root := newTable(state, liveTables, 0)
+	if err := state.registry.rawSetStringSlot(
+		"collection-benchmark-root",
+		slotFromTableObject(root),
+	); err != nil {
+		b.Fatal(err)
+	}
+	for index := 1; index <= liveTables; index++ {
+		root.rawSetIntegerSlot(
+			index,
+			slotFromTableObject(newTable(state, 0, 0)),
+		)
+	}
+	runCycle := func() {
+		result, failure := state.collectAndFinalize()
+		if failure != nil {
+			b.Fatal(failure)
+		}
+		if result.total() != 0 {
+			b.Fatalf(
+				"live semantic cycle swept %d objects; want 0",
+				result.total(),
+			)
+		}
+	}
+
+	runCycle()
+	b.ReportAllocs()
+	b.ReportMetric(liveTables, "tables/cycle")
+	b.ResetTimer()
+	for range b.N {
+		runCycle()
+	}
+}
+
+func BenchmarkCompleteSemanticMixedTableChurn(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+
+	const (
+		liveTables = 512
+		deadTables = 512
+	)
+	root := newTable(state, liveTables, 0)
+	if err := state.registry.rawSetStringSlot(
+		"collection-benchmark-root",
+		slotFromTableObject(root),
+	); err != nil {
+		b.Fatal(err)
+	}
+	for index := 1; index <= liveTables; index++ {
+		root.rawSetIntegerSlot(
+			index,
+			slotFromTableObject(newTable(state, 0, 0)),
+		)
+	}
+	runCycle := func() {
+		for range deadTables {
+			newTable(state, 0, 0)
+		}
+		result, failure := state.collectAndFinalize()
+		if failure != nil {
+			b.Fatal(failure)
+		}
+		if result.tables != deadTables ||
+			result.functions != 0 ||
+			result.threads != 0 ||
+			result.userData != 0 {
+			b.Fatalf(
+				"mixed semantic sweep = %+v; want %d dead tables",
+				result,
+				deadTables,
+			)
+		}
+	}
+
+	runCycle()
+	b.ReportAllocs()
+	b.ReportMetric(liveTables, "live-tables/cycle")
+	b.ReportMetric(deadTables, "dead-tables/cycle")
+	b.ResetTimer()
+	for range b.N {
+		runCycle()
 	}
 }

@@ -589,6 +589,280 @@ func TestNativeFrameSkipsDiscardedStringConstruction(t *testing.T) {
 	}
 }
 
+func TestNativeFrameSkipsDiscardedValueImport(t *testing.T) {
+	t.Run("return", func(t *testing.T) {
+		state, err := New(Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		value := state.String(strings.Repeat("discarded-return-", 8))
+		function, err := state.NewNativeFunction(
+			func(frame Frame) Outcome {
+				return frame.ReturnValue(value)
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thread := stageNativeTestCall(t, state, function, 0)
+		state.resetCollectionDebt()
+		if failure := invokeNativeCall(thread); failure != nil {
+			t.Fatal(failure)
+		}
+		if state.runtime.collection.debt != 0 ||
+			state.runtime.collection.attributedStrings != nil {
+			t.Fatal("discarded return imported its owning Value")
+		}
+	})
+
+	t.Run("failed yield", func(t *testing.T) {
+		state, err := New(Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		value := state.String(strings.Repeat("discarded-yield-", 8))
+		function, err := state.NewNativeFunction(
+			func(frame Frame) Outcome {
+				return frame.YieldValue(value)
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thread := stageNativeTestCall(t, state, function, allResults)
+		state.resetCollectionDebt()
+		failure := invokeNativeCall(thread)
+		if failure == nil {
+			t.Fatal("main-thread YieldValue succeeded")
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("failed yield imported its owning Value")
+		}
+		thread.unwindCalls(0)
+	})
+}
+
+func TestNativeFrameStringRoundTripChargesAtImport(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	var observed string
+	function, err := state.NewNativeFunction(
+		func(frame Frame) Outcome {
+			var ok bool
+			observed, ok = frame.String(0)
+			if !ok {
+				return frame.RaiseString("missing string argument")
+			}
+			return frame.ReturnValue(frame.State().String(observed))
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := stageNativeTestCall(
+		t,
+		state,
+		function,
+		allResults,
+		Nil(),
+	)
+	state.resetCollectionDebt()
+
+	text := strings.Repeat("native-string-view-", 8)
+	reference := state.runtime.strings.make(text)
+	writeSlot(&thread.values[1], stringSlot(reference))
+	beforeCall := state.runtime.collection.debt
+	if beforeCall != stringRefRetainedBytes(reference) {
+		t.Fatalf(
+			"runtime string debt = %d; want %d",
+			beforeCall,
+			stringRefRetainedBytes(reference),
+		)
+	}
+	if state.runtime.collection.attributedStrings != nil {
+		t.Fatal("internal runtime string entered the attribution set")
+	}
+
+	if failure := invokeNativeCall(thread); failure != nil {
+		t.Fatal(failure)
+	}
+	if observed != text {
+		t.Fatalf("Frame.String = %q; want %q", observed, text)
+	}
+	if got, want := state.runtime.collection.debt,
+		beforeCall+stringRefRetainedBytes(reference); got != want {
+		t.Fatalf(
+			"Frame.String round-trip debt = %d; want %d",
+			got,
+			want,
+		)
+	}
+	if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+		t.Fatal("Frame.String round-trip import did not record attribution")
+	}
+	if thread.top != 1 ||
+		!thread.values[0].isString() ||
+		stringSlotText(thread.values[0]) != text {
+		t.Fatal("Frame.String round trip returned the wrong compact value")
+	}
+}
+
+func TestCompactErrorStringAttributionBeginsOnReimport(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	state.resetCollectionDebt()
+
+	text := strings.Repeat("compact-error-", 8)
+	reference := state.runtime.strings.make(text)
+	compact := stringSlot(reference)
+	failure := &Error{
+		compactValue:    compact,
+		description:     text,
+		category:        RuntimeError,
+		hasCompactValue: true,
+	}
+	beforeCatch := state.runtime.collection.debt
+	if got := failure.mustValueSlot(state.runtime); !rawSlotEqual(got, compact) {
+		t.Fatal("compact error changed identity while staying inside Lua")
+	}
+	if got := state.runtime.collection.debt; got != beforeCatch {
+		t.Fatalf(
+			"internal compact error changed debt from %d to %d",
+			beforeCatch,
+			got,
+		)
+	}
+	if state.runtime.collection.attributedStrings != nil {
+		t.Fatal("internal compact error entered the attribution set")
+	}
+
+	failure.exposeValue()
+	if got := state.runtime.collection.debt; got != beforeCatch {
+		t.Fatalf(
+			"compact error exposure changed debt from %d to %d",
+			beforeCatch,
+			got,
+		)
+	}
+	if state.runtime.collection.attributedStrings != nil {
+		t.Fatal("compact error exposure created attribution")
+	}
+	if failure.hasCompactValue || !failure.value.Valid() {
+		t.Fatal("compact error was not converted to an owning Value")
+	}
+	if got, ok := failure.Value().AsString(); !ok || got != text {
+		t.Fatalf("exposed error Value = (%q, %v)", got, ok)
+	}
+	imported, err := state.runtime.importValue(failure.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rawSlotEqual(imported, compact) {
+		t.Fatal("compact error reimport changed identity")
+	}
+	if got, want := state.runtime.collection.debt,
+		beforeCatch+stringRefRetainedBytes(reference); got != want {
+		t.Fatalf("compact error reimport debt = %d; want %d", got, want)
+	}
+	if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+		t.Fatal("compact error reimport did not record attribution")
+	}
+}
+
+func TestProtectedErrorImportsStateNeutralStringOnDemand(t *testing.T) {
+	t.Run("uncaught", func(t *testing.T) {
+		state, err := New(Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		value := state.String(strings.Repeat("uncaught-native-error-", 8))
+		function, err := state.NewNativeFunction(
+			func(frame Frame) Outcome {
+				return frame.Raise(value)
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.resetCollectionDebt()
+		if _, err := state.Call(function.Value()); err == nil {
+			t.Fatal("uncaught native error succeeded")
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("uncaught host-facing error entered the Lua heap")
+		}
+	})
+
+	t.Run("caught", func(t *testing.T) {
+		state, err := New(Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		if err := state.OpenBase(); err != nil {
+			t.Fatal(err)
+		}
+		value := state.String(strings.Repeat("caught-native-error-", 8))
+		compact := slotFromValue(value)
+		reference := stringRef{ref: compact.ref, bits: compact.bits}
+		function, err := state.NewNativeFunction(
+			func(frame Frame) Outcome {
+				return frame.Raise(value)
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := state.SetGlobal("raise_host", function.Value()); err != nil {
+			t.Fatal(err)
+		}
+		caller := mustLoadString(
+			t,
+			state,
+			"@caught-native-error.lua",
+			`local ok, message = pcall(raise_host)
+return ok, message`,
+		)
+		results := make([]Value, 2)
+		state.resetCollectionDebt()
+		if _, err := state.CallInto(caller.Value(), nil, results); err != nil {
+			t.Fatal(err)
+		}
+		if truth := results[0].Truth(); truth {
+			t.Fatal("pcall reported success")
+		}
+		if got, ok := results[1].AsString(); !ok || got != value.String() {
+			t.Fatalf("caught error = (%q, %v)", got, ok)
+		}
+		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+			t.Fatal("caught error bypassed long-string attribution")
+		}
+		if state.runtime.collection.debt < stringRefRetainedBytes(reference) {
+			t.Fatalf(
+				"caught error debt = %d; want at least %d",
+				state.runtime.collection.debt,
+				stringRefRetainedBytes(reference),
+			)
+		}
+		if err := state.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		if state.runtime.collection.attributedStrings != nil {
+			t.Fatal("collection retained a returned-only error string")
+		}
+	})
+}
+
 func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 	t.Run("arbitrary value", func(t *testing.T) {
 		state, err := New(Options{})
@@ -1229,7 +1503,7 @@ return result
 				defer func() {
 					recovered = recover()
 				}()
-				_ = execute(thread, 0)
+				_ = runTestExecutor(t, thread, 0)
 				return nil
 			}()
 			if recovered != "host panic" {

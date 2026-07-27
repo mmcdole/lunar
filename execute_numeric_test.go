@@ -1221,7 +1221,7 @@ return invalid()
 		t.Fatal("metamethod call did not suspend its caller")
 	}
 
-	result := execute(thread, 1)
+	result := runTestExecutor(t, thread, 1)
 	if result.kind != executionFailed || result.err == nil {
 		t.Fatalf("metamethod execution = %+v; want failure", result)
 	}
@@ -1258,6 +1258,8 @@ return total
 	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(4)
+	leave := enterTestExecution(t, thread)
+	defer leave()
 
 	run := func() {
 		benchmarkRunExecutor(thread, function, nil)
@@ -1303,6 +1305,8 @@ func TestExecutorWarmMetamethodContinuationDoesNotAllocate(t *testing.T) {
 	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(8)
+	leave := enterTestExecution(t, thread)
+	defer leave()
 
 	run := func() {
 		benchmarkRunExecutor(thread, caller, arguments)

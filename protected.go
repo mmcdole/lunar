@@ -23,14 +23,22 @@ type executionCheckpoint struct {
 
 func captureExecutionCheckpoint(frame Frame) executionCheckpoint {
 	frame.activation()
-	thread := frame.thread
+	return captureThreadExecutionCheckpoint(frame.thread)
+}
+
+func captureThreadExecutionCheckpoint(
+	thread *threadObject,
+) executionCheckpoint {
+	if thread == nil || thread.state == nil || thread.owner == nil {
+		panic("lua: invalid execution checkpoint")
+	}
 	return executionCheckpoint{
 		frameDepth:         len(thread.frames),
 		continuationDepth:  len(thread.continuations),
 		top:                thread.top,
 		frameExtent:        thread.frameExtent,
 		liveExtent:         thread.liveValueExtent(),
-		nativeToken:        frame.token,
+		nativeToken:        thread.activeNativeToken,
 		nativeCallDepth:    thread.nativeCallDepth,
 		runtimeNativeDepth: thread.owner.nativeCallDepth,
 	}
@@ -44,7 +52,7 @@ func (checkpoint executionCheckpoint) restore(
 	clearScratch bool,
 ) int {
 	if thread == nil ||
-		checkpoint.frameDepth <= 0 ||
+		checkpoint.frameDepth < 0 ||
 		checkpoint.frameDepth > len(thread.frames) ||
 		checkpoint.continuationDepth > len(thread.continuations) ||
 		checkpoint.top < 0 ||
@@ -190,7 +198,7 @@ func runProtectedCall(
 		}
 	}()
 
-	resultBase, failure := startNestedCall(
+	resultBase, failure := startStagedCall(
 		thread,
 		target,
 		callArguments{compact: arguments},
@@ -238,7 +246,7 @@ func runProtectedCall(
 	}
 
 	positionExecutionFailure(thread, failure)
-	errorValue := failure.mustValueSlot()
+	errorValue := failure.mustValueSlot(thread.owner)
 	if !hasHandler {
 		checkpoint.restore(thread, true)
 		restored = true
@@ -258,7 +266,7 @@ func runProtectedCall(
 	handlerActive = true
 	failureDepth := len(thread.frames)
 	handlerArguments := [1]slot{errorValue}
-	handlerBase, handlerFailure := startNestedCall(
+	handlerBase, handlerFailure := startStagedCall(
 		thread,
 		slotFromFunctionObject(handlerFunction),
 		callArguments{compact: handlerArguments[:]},
@@ -320,11 +328,21 @@ func isCatchableProtectedFailure(failure *Error) bool {
 }
 
 type callArguments struct {
-	owning  []Value
-	compact []slot
+	owning    []Value
+	compact   []slot
+	admission uint64
 }
 
-func startNestedCall(
+const callCallableAdmission = uint64(1) << 63
+
+func compactCallAdmission(index int) uint64 {
+	if index < 0 || index >= 63 {
+		panic("lua: compact call admission index is out of range")
+	}
+	return uint64(1) << uint(index)
+}
+
+func startStagedCall(
 	thread *threadObject,
 	callable slot,
 	arguments callArguments,
@@ -385,18 +403,39 @@ func startNestedCall(
 
 	thread.reserveValues(layout.required)
 	thread.reserveFrames(len(thread.frames) + 1)
+	if arguments.admission&callCallableAdmission != 0 {
+		callable = thread.owner.importAcceptedSlot(callable)
+	}
 	writeSlot(&thread.values[scratchBase], callable)
 	argumentBase := scratchBase + 1
 	if arguments.compact != nil {
-		copy(
-			thread.values[argumentBase:argumentBase+argumentCount],
-			arguments.compact,
-		)
+		compactAdmission := arguments.admission &^ callCallableAdmission
+		if compactAdmission != 0 {
+			for index, value := range arguments.compact {
+				if compactAdmission&
+					compactCallAdmission(index) == 0 {
+					writeSlot(
+						&thread.values[argumentBase+index],
+						value,
+					)
+					continue
+				}
+				writeSlot(
+					&thread.values[argumentBase+index],
+					thread.owner.importAcceptedSlot(value),
+				)
+			}
+		} else {
+			copy(
+				thread.values[argumentBase:argumentBase+argumentCount],
+				arguments.compact,
+			)
+		}
 	} else {
 		for index, value := range arguments.owning {
 			writeSlot(
 				&thread.values[argumentBase+index],
-				slotFromValue(value),
+				thread.owner.importAcceptedSlot(slotFromValue(value)),
 			)
 		}
 	}
@@ -409,7 +448,13 @@ func startNestedCall(
 	}
 	stageEnd := scratchBase + stagedCount
 	thread.top = stageEnd
-	thread.frameExtent = stageEnd
+	// A nested protected call stages its argument window above the caller
+	// frame, and that scratch must remain part of the caller extent until its
+	// checkpoint consumes the results. A root call has no caller: publishing
+	// the staged extent there would restore a phantom frame after return.
+	if len(thread.frames) != 0 {
+		thread.frameExtent = stageEnd
+	}
 	thread.commitFunctionCall(function, layout, stageEnd)
 	return scratchBase, nil
 }

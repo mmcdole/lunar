@@ -771,6 +771,13 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	longText := strings.Repeat("post-close-string-", 8)
+	if err := outerObject.rawSetStringSlot(
+		"long",
+		stringSlot(state.runtime.strings.make(longText)),
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
@@ -788,6 +795,14 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	second, ok := outer.RawGetString("inner").Table()
 	if !ok || second != first {
 		t.Fatal("post-close nested table publication was not canonical")
+	}
+	if text, ok := outer.RawGetString("long").AsString(); !ok ||
+		text != longText {
+		t.Fatalf("post-close string = (%q, %v)", text, ok)
+	}
+	if state.runtime.collection.attributedStrings != nil ||
+		state.runtime.collection.attributedStringHighWater != 0 {
+		t.Fatal("post-close string read recreated collection attribution")
 	}
 	if err := outer.RawSetString("blocked", Bool(true)); !errors.Is(
 		err,

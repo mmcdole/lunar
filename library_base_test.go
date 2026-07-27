@@ -276,6 +276,125 @@ func TestBaseCollectionControlPolicyIsStateLocal(t *testing.T) {
 	}
 }
 
+func TestBaseAutomaticCollectionHonorsStopAndRestart(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	stop := mustLoadString(
+		t,
+		state,
+		"@automatic-stop.lua",
+		`collectgarbage("stop"); return 1`,
+	)
+	restart := mustLoadString(
+		t,
+		state,
+		"@automatic-restart.lua",
+		`collectgarbage("restart"); return 2`,
+	)
+
+	if results, err := state.Call(stop.Value()); err != nil {
+		t.Fatal(err)
+	} else {
+		assertTestValues(t, results, Number(1))
+	}
+	if !state.runtime.collection.stopped {
+		t.Fatal("stop did not suspend automatic collection")
+	}
+
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	garbage := newTable(state, 0, 0)
+	if !state.runtime.collection.requested {
+		t.Fatal("allocation while stopped did not record due debt")
+	}
+	if garbage.owner != state.runtime {
+		t.Fatal("host allocation entered the stopped collector")
+	}
+
+	if results, err := state.Call(restart.Value()); err != nil {
+		t.Fatal(err)
+	} else {
+		assertTestValues(t, results, Number(2))
+	}
+	if state.runtime.collection.stopped ||
+		state.runtime.collection.requested {
+		t.Fatal("restart did not service and reset the due cycle")
+	}
+	if garbage.owner != nil {
+		t.Fatal("restarted automatic collector did not sweep garbage")
+	}
+}
+
+func TestSuccessfulFinalizerRestoresOuterCollectionSchedule(t *testing.T) {
+	state := newStateWithBase(t, Options{})
+	defer state.Close()
+
+	collector, err := state.Global("collectgarbage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectorSlot := slotFromValue(collector)
+	restartArgument := stringSlot(
+		state.runtime.strings.make("restart"),
+	)
+	weakTable, _ := newWeakTableForTest(t, state, "v", 0, 1)
+	rootWeakTableForTest(t, state, weakTable)
+	target := mustLoadString(
+		t,
+		state,
+		"@successful-finalizer-schedule.lua",
+		`return 42`,
+	)
+	probe := mustLoadString(
+		t,
+		state,
+		"@successful-finalizer-probe.lua",
+		`return true`,
+	)
+	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
+		if _, failure := frame.callCompactOne(
+			collectorSlot,
+			[]slot{restartArgument},
+		); failure != nil {
+			return frame.sealError(failure)
+		}
+		child := newTable(state, 0, 0)
+		if err := weakTable.rawSetStringSlot(
+			"held",
+			slotFromTableObject(child),
+		); err != nil {
+			return frame.RaiseString(err.Error())
+		}
+		return frame.Return()
+	})
+	metatable := newFinalizerMetatable(
+		t,
+		state,
+		slotFromFunctionObject(handler),
+	)
+
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	newFinalizerUserData(state, metatable, nil)
+	if _, err := state.Call(target.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if state.runtime.collection.requested {
+		t.Fatal("successful finalizer leaked its restart request")
+	}
+	if value, found := weakTable.rawStringSlot("held"); !found || value.kind() != TableKind {
+		t.Fatal("same-cycle finalizer allocation did not survive")
+	}
+
+	if _, err := state.Call(probe.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if value, found := weakTable.rawStringSlot("held"); !found || value.kind() != TableKind {
+		t.Fatal("redundant post-finalizer cycle cleared the weak value")
+	}
+}
+
 func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()

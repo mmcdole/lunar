@@ -165,19 +165,20 @@ func (state *State) callMain(
 		}
 	}()
 
-	required := 1 + len(arguments)
-	thread.reserveValues(required)
-	writeSlot(&thread.values[0], slotFromValue(callable))
-	for index, argument := range arguments {
-		writeSlot(
-			&thread.values[index+1],
-			slotFromValue(argument),
-		)
-	}
-	thread.top = required
-
-	if failure := thread.startMainCall(); failure != nil {
+	resultBase, failure := startStagedCall(
+		thread,
+		slotFromValue(callable),
+		callArguments{
+			owning:    arguments,
+			admission: callCallableAdmission,
+		},
+		allResults,
+	)
+	if failure != nil {
 		return nil, 0, failure.exposeValue()
+	}
+	if resultBase != 0 {
+		panic("lua: main call staged at a nonzero result base")
 	}
 	result := execute(thread, 0)
 	if result.kind == executionFailed {
@@ -250,14 +251,17 @@ func (state *State) callMainCompactNone(
 		state.execution.pendingExit = nil
 	}()
 
-	required := 1 + len(arguments)
-	thread.reserveValues(required)
-	writeSlot(&thread.values[0], callable)
-	copy(thread.values[1:required], arguments)
-	thread.top = required
-
-	if failure := thread.startMainCallWithResults(0); failure != nil {
+	resultBase, failure := startStagedCall(
+		thread,
+		callable,
+		callArguments{compact: arguments},
+		0,
+	)
+	if failure != nil {
 		return failure
+	}
+	if resultBase != 0 {
+		panic("lua: compact main call staged at a nonzero result base")
 	}
 	result := execute(thread, 0)
 	if result.kind == executionFailed {
@@ -328,41 +332,6 @@ func (state *State) prepareReadyMainThread() (*threadObject, error) {
 		panic("lua: ready main thread retains execution state")
 	}
 	return thread, nil
-}
-
-func (thread *threadObject) startMainCall() *Error {
-	return thread.startMainCallWithResults(allResults)
-}
-
-func (thread *threadObject) startMainCallWithResults(
-	wantedResults int,
-) *Error {
-	callable := thread.values[0]
-	if function, direct := functionSlot(callable); direct {
-		return thread.pushFunctionCall(
-			function,
-			0,
-			thread.top-1,
-			wantedResults,
-		)
-	}
-	if function := callMetamethodFunction(thread, callable); function != nil {
-		return thread.pushFunctionMetamethodCall(
-			function,
-			0,
-			thread.top-1,
-			wantedResults,
-		)
-	}
-	message := fmt.Sprintf(
-		"attempt to call a %s value",
-		callable.kind(),
-	)
-	return &Error{
-		value:       thread.state.String(message),
-		description: message,
-		category:    RuntimeError,
-	}
 }
 
 func (thread *threadObject) resetMainCall() {

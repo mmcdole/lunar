@@ -138,6 +138,28 @@ func newTable(state *State, arrayHint, recordHint int) *tableObject {
 	return table
 }
 
+func (table *tableObject) chargeStorageGrowth(previous uint64) {
+	if table == nil || table.owner == nil {
+		return
+	}
+	current := tableStorageRetainedBytes(table)
+	if current > previous {
+		table.owner.collection.charge(current - previous)
+	}
+}
+
+func (table *tableObject) rehashStore(capacity int) {
+	previousCapacity := table.store.entries.cap()
+	table.store.rehash(capacity)
+	if table.owner != nil {
+		table.owner.collection.chargeCapacityGrowth(
+			previousCapacity,
+			table.store.entries.cap(),
+			uint64(unsafe.Sizeof(tableEntry{})),
+		)
+	}
+}
+
 // Value returns the owning Lua value for table.
 func (table *Table) Value() Value {
 	token := table.token()
@@ -232,18 +254,31 @@ func (table *tableObject) rawSetValue(key, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
-	if err := table.owner.accept(value); err != nil {
-		return err
+	var incoming slot
+	if value.ref == numberMarkerPointer {
+		incoming.bits = value.bits
+	} else {
+		if err := table.owner.accept(value); err != nil {
+			return err
+		}
+		incoming = slotFromValue(value)
 	}
 	if err := table.owner.accept(key); err != nil {
 		return err
 	}
-	if table.rawSetSlot(
-		slotFromValue(key),
-		slotFromValue(value),
-	) != tableKeyValid {
+
+	normalized, index, arrayKey, hash, status :=
+		normalizeTableKey(slotFromValue(key))
+	if status != tableKeyValid {
 		return ErrInvalidKey
 	}
+	table.rawSetBoundaryNormalizedSlot(
+		normalized,
+		index,
+		arrayKey,
+		hash,
+		incoming,
+	)
 	return nil
 }
 
@@ -278,10 +313,23 @@ func (table *tableObject) rawSetIntValue(key int, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
-	if err := table.owner.accept(value); err != nil {
-		return err
+	var incoming slot
+	if value.ref == numberMarkerPointer {
+		incoming.bits = value.bits
+	} else {
+		if err := table.owner.accept(value); err != nil {
+			return err
+		}
+		incoming = slotFromValue(value)
 	}
-	table.rawSetIntegerSlot(key, slotFromValue(value))
+	if incoming.isString() {
+		if current, found := table.rawIntSlot(key); found &&
+			sameSlotRepresentation(current, incoming) {
+			return nil
+		}
+		incoming = table.owner.importAcceptedSlot(incoming)
+	}
+	table.rawSetIntegerSlot(key, incoming)
 	return nil
 }
 
@@ -324,10 +372,23 @@ func (table *tableObject) rawSetStringValue(key string, value Value) error {
 	if err := table.checkMutable(); err != nil {
 		return err
 	}
-	if err := table.owner.accept(value); err != nil {
-		return err
+	var incoming slot
+	if value.ref == numberMarkerPointer {
+		incoming.bits = value.bits
+	} else {
+		if err := table.owner.accept(value); err != nil {
+			return err
+		}
+		incoming = slotFromValue(value)
 	}
-	return table.setStringSlot(key, slotFromValue(value))
+	if incoming.isString() {
+		if current, found := table.rawStringSlot(key); found &&
+			sameSlotRepresentation(current, incoming) {
+			return nil
+		}
+		incoming = table.owner.importAcceptedSlot(incoming)
+	}
+	return table.setStringSlot(key, incoming)
 }
 
 func (table *tableObject) rawSetStringSlot(key string, value slot) error {
@@ -362,7 +423,7 @@ func (table *tableObject) setStringSlot(key string, value slot) error {
 	case stored && !value.isNil():
 		if table.store.shouldCompact() {
 			storedKey := entry.key
-			table.store.rehash(table.store.entries.len())
+			table.rehashStore(table.store.entries.len())
 			table.insertNewField(storedKey, value, hash, 0)
 		} else {
 			table.store.reviveAt(index, value)
@@ -699,6 +760,57 @@ func (table *tableObject) rawSetNormalizedSlot(
 	}
 }
 
+// rawSetBoundaryNormalizedSlot admits only backing that the table will retain.
+// A deleted string record keeps its original immutable key, so revival imports
+// the value but not an equal incoming key with different backing.
+func (table *tableObject) rawSetBoundaryNormalizedSlot(
+	key slot,
+	index int,
+	arrayKey bool,
+	hash uint32,
+	value slot,
+) {
+	if !key.isString() {
+		if value.isString() {
+			if current, _, present := table.resolveNormalizedSlot(
+				key,
+				index,
+				arrayKey,
+				hash,
+			); present && sameSlotRepresentation(current, value) {
+				return
+			}
+			value = table.owner.importAcceptedSlot(value)
+		}
+		table.rawSetNormalizedSlot(key, index, arrayKey, hash, value)
+		return
+	}
+
+	storeIndex, stored := table.store.findStored(key, hash)
+	if stored {
+		current := table.store.entries.at(storeIndex).value
+		if sameSlotRepresentation(current, value) {
+			return
+		}
+		if value.isString() {
+			value = table.owner.importAcceptedSlot(value)
+		}
+		if table.setStoredRecord(storeIndex, key, value) {
+			table.absentMetamethods = 0
+		}
+		return
+	}
+	if value.isNil() {
+		return
+	}
+	key = table.owner.importAcceptedSlot(key)
+	if value.isString() {
+		value = table.owner.importAcceptedSlot(value)
+	}
+	table.insertNewField(key, value, hash, 0)
+	table.absentMetamethods = 0
+}
+
 // Integer keys cannot name string-keyed metamethods, so rawSetIntegerSlot
 // preserves the absence cache.
 func (table *tableObject) rawSetIntegerSlot(key int, value slot) {
@@ -805,7 +917,7 @@ func (table *tableObject) rawSetList(first int, values []slot) {
 			if table.store.shouldCompact() {
 				// SETLIST appends new fields, so it is the same legal
 				// compaction seam as any other insertion.
-				table.store.rehash(table.store.entries.len())
+				table.rehashStore(table.store.entries.len())
 			}
 
 			oldLength := table.array.len()
@@ -883,7 +995,7 @@ func (table *tableObject) setStoredRecordSlow(
 		}
 		if table.store.shouldCompact() {
 			storedKey, hash := entry.key, entry.hash
-			table.store.rehash(table.store.entries.len())
+			table.rehashStore(table.store.entries.len())
 			table.insertNewField(
 				storedKey,
 				value,
@@ -914,7 +1026,7 @@ func (table *tableObject) insertNewField(
 	}
 	if table.store.entries.len() != 0 {
 		if table.store.shouldCompact() {
-			table.store.rehash(table.store.entries.len())
+			table.rehashStore(table.store.entries.len())
 		}
 		if table.store.insertAbsent(key, value, hash) {
 			table.recordIntegerInsertedClass(integerClass)
@@ -928,7 +1040,7 @@ func (table *tableObject) insertNewField(
 				table.store.entries.len(),
 			)
 		}
-		table.store.rehash(capacity)
+		table.rehashStore(capacity)
 		if !table.store.insertAbsent(key, value, hash) {
 			panic("lua: table record growth exhausted its store")
 		}
@@ -1057,7 +1169,7 @@ func (table *tableObject) setIntegerUnresolved(
 		// With no live sparse integer, this key cannot already exist in the
 		// record lane. Compact before the cheap array-admission decision.
 		if table.store.shouldCompact() {
-			table.store.rehash(table.store.entries.len())
+			table.rehashStore(table.store.entries.len())
 		}
 		if target := table.directArrayGrowth(index); target != 0 {
 			table.growArrayExact(target)
@@ -1106,7 +1218,7 @@ func (table *tableObject) setIntegerUnresolved(
 		// that permitted seam to release dead record keys even when the new
 		// integer itself belongs in the array lane. This check must follow
 		// findStored: an existing sparse field must retain its position.
-		table.store.rehash(table.store.entries.len())
+		table.rehashStore(table.store.entries.len())
 	}
 	if table.admitsArrayInsert(index) {
 		return table.setArray(index, value)
@@ -1159,6 +1271,7 @@ func (table *tableObject) directArrayGrowth(index int) int {
 }
 
 func (table *tableObject) growArrayExact(length int) {
+	previousStorage := tableStorageRetainedBytes(table)
 	arrayVector := makeTableVector[slot](length, length)
 	array := arrayVector.values()
 	oldArray := table.array.values()
@@ -1167,6 +1280,7 @@ func (table *tableObject) growArrayExact(length int) {
 		array[index] = nilSlot
 	}
 	table.array = arrayVector
+	table.chargeStorageGrowth(previousStorage)
 }
 
 func (table *tableObject) redistributeForInsert(
@@ -1179,6 +1293,7 @@ func (table *tableObject) redistributeForInsert(
 	// strictly more than half occupied, rebuild the record lane to its exact
 	// size class, and count the pending field once. Moving existing fields
 	// between private lanes is not a logical mutation.
+	previousStorage := tableStorageRetainedBytes(table)
 	arraySize, arrayLive, totalLive :=
 		table.densityForInsert(key)
 	recordLive := totalLive - arrayLive
@@ -1309,6 +1424,7 @@ func (table *tableObject) redistributeForInsert(
 	table.arrayUsed = installedArray
 	table.store = store
 	table.recordIntegerFloor = recordIntegerFloor
+	table.chargeStorageGrowth(previousStorage)
 }
 
 func (table *tableObject) densityForInsert(
@@ -1445,6 +1561,7 @@ func (table *tableObject) growArrayWith(length int, value slot) {
 func (table *tableObject) growArray(length int) {
 	oldArray := table.array.values()
 	oldLength := len(oldArray)
+	previousCapacity := table.array.cap()
 	if length <= table.array.cap() {
 		table.array = table.array.withLength(length)
 	} else {
@@ -1455,6 +1572,13 @@ func (table *tableObject) growArray(length int) {
 		grown := makeTableVector[slot](length, capacity)
 		copy(grown.values(), oldArray)
 		table.array = grown
+	}
+	if table.owner != nil {
+		table.owner.collection.chargeCapacityGrowth(
+			previousCapacity,
+			table.array.cap(),
+			uint64(unsafe.Sizeof(slot{})),
+		)
 	}
 	array := table.array.values()
 	for index := oldLength; index < length; index++ {
@@ -1604,11 +1728,15 @@ func writeSlot(destination *slot, value slot) {
 // +0 and -0 compare equal, but their sign remains observable.
 func replaceTableValue(destination *slot, value slot) bool {
 	current := *destination
-	if current.ref == value.ref && current.bits == value.bits {
+	if sameSlotRepresentation(current, value) {
 		return false
 	}
 	writeSlot(destination, value)
 	return true
+}
+
+func sameSlotRepresentation(left, right slot) bool {
+	return left.ref == right.ref && left.bits == right.bits
 }
 
 func hashNumber(number float64) uint32 {

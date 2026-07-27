@@ -618,6 +618,8 @@ return sum
 	thread := state.main
 	thread.reserveValues(64)
 	thread.reserveFrames(8)
+	leave := enterTestExecution(t, thread)
+	defer leave()
 	benchmarkRunExecutor(thread, caller, arguments)
 	allocations := testing.AllocsPerRun(1000, func() {
 		benchmarkRunExecutor(thread, caller, arguments)

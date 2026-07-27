@@ -1,5 +1,7 @@
 package lua
 
+import "unsafe"
+
 type continuationMode uint32
 
 const (
@@ -9,6 +11,7 @@ const (
 	continuationCompareInverted
 	continuationConcat
 	continuationIterator
+	continuationFinalizerGuard
 )
 
 // executionContinuation records only work suspended across a function call.
@@ -22,6 +25,25 @@ type executionContinuation struct {
 	nextPC      uint32
 	code        instruction
 	mode        continuationMode
+}
+
+func (thread *threadObject) pushExecutionContinuation(
+	continuation executionContinuation,
+) {
+	previousCapacity := cap(thread.continuations)
+	thread.continuations = append(thread.continuations, continuation)
+	if cap(thread.continuations) != previousCapacity {
+		thread.chargeContinuationGrowth(previousCapacity)
+	}
+}
+
+//go:noinline
+func (thread *threadObject) chargeContinuationGrowth(previousCapacity int) {
+	thread.owner.collection.chargeCapacityGrowth(
+		previousCapacity,
+		cap(thread.continuations),
+		uint64(unsafe.Sizeof(executionContinuation{})),
+	)
 }
 
 //go:noinline
@@ -131,7 +153,7 @@ func startMetamethodCall(
 	continuation.savedTop = uint32(savedTop)
 	continuation.savedExtent = uint32(savedExtent)
 	thread.commitFunctionCall(function, layout, stageEnd)
-	thread.continuations = append(thread.continuations, continuation)
+	thread.pushExecutionContinuation(continuation)
 	return nil
 }
 
@@ -207,7 +229,7 @@ func startIteratorCall(
 		mode:        continuationIterator,
 	}
 	thread.commitFunctionCall(function, layout, oldExtent)
-	thread.continuations = append(thread.continuations, continuation)
+	thread.pushExecutionContinuation(continuation)
 	return nil
 }
 
@@ -217,6 +239,9 @@ func resumeExecutionContinuation(thread *threadObject) *Error {
 	continuation := thread.continuations[last]
 	if int(continuation.frameDepth) != len(thread.frames) {
 		panic("lua: execution continuation resumed at the wrong depth")
+	}
+	if continuation.mode == continuationFinalizerGuard {
+		panic("lua: finalizer call guard escaped its collection seam")
 	}
 	if continuation.mode == continuationIterator {
 		thread.continuations[last] = executionContinuation{}

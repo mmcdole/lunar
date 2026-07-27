@@ -719,6 +719,16 @@ semantics. Longer recurring strings use the bounded State-local probation and
 protected sets. Badger does not use an unbounded strong interner or let a
 retained short string pin an unrelated arena page.
 
+Runtime-created strings charge semantic allocation debt when their backing is
+created. A longer string stays out of the swept attribution set while it
+remains inside the compact runtime, and owning Go export is read-only.
+External strings and returned strings later reimported by a State enter and
+charge the set once, after which repeated imports remain free while the
+backing is live. This conservative admission policy keeps pure-Lua
+construction and ordinary result publication free of boundary bookkeeping;
+exact heap reporting remains graph-derived, and cross-State accounting stays
+independent.
+
 Runtime number coercion accepts numbers and complete numeric strings. The
 shared parser recognizes signed decimal fractions and exponents, signed
 hexadecimal integers, and the six ASCII whitespace bytes used by Lua. Finite
@@ -1095,9 +1105,10 @@ unreachable Lua graphs, clear Lua 5.1 weak tables, and run userdata `__gc`
 with resurrection, error-queue, and close-order semantics before Go reclaims
 backing allocations. `collectgarbage`, `gcinfo`, `State.Collect`,
 `Frame.Collect`, and their shared logical heap accounting are exposed over
-that one collector. Automatic allocation-debt pacing remains separate from
-the completed explicit control surface. The design and delivery state are
-specified in [collection.md](collection.md).
+that one collector. Retained-allocation debt now schedules synchronous cycles
+at rooted executor safe points without a table-write barrier or a branch on
+every instruction. The design and delivery state are specified in
+[collection.md](collection.md).
 
 ## Standard libraries
 
@@ -1362,8 +1373,9 @@ than the C runtime's locale-dependent narrow-character conversion.
 The remaining base entry is intentionally absent rather than a partial stub.
 State-local weak clearing, Lua finalizer ordering, logical heap accounting,
 `collectgarbage`, and `gcinfo` are complete. `newproxy` follows on those
-semantics; automatic allocation-debt pacing remains collector policy rather
-than part of its base-library surface. None is a process-wide Go GC shim.
+semantics. Automatic allocation-debt pacing uses the same collector and
+control values; it remains runtime policy rather than a second base-library
+surface. None is a process-wide Go GC shim.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

@@ -524,7 +524,7 @@ func (state *State) LoadPrototype(
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
-	if prototype == nil || !prototype.sealed {
+	if !prototype.isSealed() {
 		return nil, ErrInvalidPrototype
 	}
 	return state.loadPrototypeObject(prototype).owningHandle(), nil
@@ -542,11 +542,16 @@ func (state *State) loadPrototypeObject(
 			cells[index].cell = &cells[index].storage
 			upvalues[index] = &cells[index]
 		}
+		state.runtime.collection.charge(
+			upvalueCellsRetainedBytes(count),
+		)
 	}
-	return newLuaFunctionOwned(
+	function := newLuaFunctionOwned(
 		state,
 		prototype,
 		state.globalEnvironment(),
 		upvalues,
 	)
+	state.chargePrototypeTree(prototype)
+	return function
 }

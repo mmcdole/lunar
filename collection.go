@@ -42,8 +42,10 @@ const (
 )
 
 const (
-	defaultCollectionPause          = 200
-	defaultCollectionStepMultiplier = 200
+	defaultCollectionPause                = 200
+	defaultCollectionStepMultiplier       = 200
+	minimumAutomaticCollectionDebt        = 256 << 10
+	minimumAttributedStringCompactionPeak = 256
 )
 
 // collectionControl is scheduling policy, kept separate from the object
@@ -52,7 +54,20 @@ const (
 type collectionControl struct {
 	pause          int
 	stepMultiplier int
+	debt           uint64
+	budget         uint64
+	baseline       uint64
 	stopped        bool
+	requested      bool
+	servicing      bool
+	runnable       bool
+
+	// attributedStrings records long string backing admitted and charged to
+	// this State. A completed semantic scan removes entries not retained by
+	// the Lua graph, making this a swept attribution set rather than a
+	// permanent string store.
+	attributedStrings         map[stringRef]struct{}
+	attributedStringHighWater int
 }
 
 type stringBacking struct {
@@ -64,7 +79,165 @@ func defaultCollectionControl() collectionControl {
 	return collectionControl{
 		pause:          defaultCollectionPause,
 		stepMultiplier: defaultCollectionStepMultiplier,
+		budget:         minimumAutomaticCollectionDebt,
 	}
+}
+
+// charge records retained Lua-heap growth. It is called only at allocation
+// and capacity-growth seams, never for in-capacity replacement or deletion.
+func (control *collectionControl) charge(bytes uint64) {
+	if control == nil || bytes == 0 {
+		return
+	}
+	if bytes > ^uint64(0)-control.debt {
+		control.debt = ^uint64(0)
+	} else {
+		control.debt += bytes
+	}
+	if control.budget == 0 {
+		control.budget = minimumAutomaticCollectionDebt
+	}
+	if !control.requested && control.debt >= control.budget {
+		control.requestCycle()
+	}
+}
+
+func (control *collectionControl) refreshRunnable() {
+	control.runnable =
+		control.requested &&
+			!control.stopped &&
+			!control.servicing
+}
+
+func (control *collectionControl) requestCycle() {
+	control.requested = true
+	control.refreshRunnable()
+}
+
+func (control *collectionControl) setStopped(stopped bool) {
+	control.stopped = stopped
+	control.refreshRunnable()
+}
+
+func (control *collectionControl) setServicing(servicing bool) {
+	control.servicing = servicing
+	control.refreshRunnable()
+}
+
+func (control *collectionControl) attributeString(value stringRef) {
+	bytes := stringRefRetainedBytes(value)
+	if bytes == 0 {
+		return
+	}
+	if control.attributedStrings == nil {
+		control.attributedStrings = make(map[stringRef]struct{})
+	}
+	if _, found := control.attributedStrings[value]; found {
+		return
+	}
+	control.attributedStrings[value] = struct{}{}
+	if size := len(control.attributedStrings); size >
+		control.attributedStringHighWater {
+		control.attributedStringHighWater = size
+	}
+	control.charge(bytes)
+}
+
+func (control *collectionControl) sweepAttributedStrings(
+	ledger *objectLedger,
+) {
+	if control == nil || len(control.attributedStrings) == 0 {
+		return
+	}
+	if size := len(control.attributedStrings); size >
+		control.attributedStringHighWater {
+		control.attributedStringHighWater = size
+	}
+	for value := range control.attributedStrings {
+		if ledger.retainsString(value) {
+			continue
+		}
+		delete(control.attributedStrings, value)
+	}
+	if len(control.attributedStrings) == 0 {
+		control.attributedStrings = nil
+		control.attributedStringHighWater = 0
+		return
+	}
+	if control.attributedStringHighWater <
+		minimumAttributedStringCompactionPeak ||
+		len(control.attributedStrings) >=
+			control.attributedStringHighWater/4 {
+		return
+	}
+	compacted := make(
+		map[stringRef]struct{},
+		len(control.attributedStrings),
+	)
+	for value := range control.attributedStrings {
+		compacted[value] = struct{}{}
+	}
+	control.attributedStrings = compacted
+	control.attributedStringHighWater = len(compacted)
+}
+
+func (control *collectionControl) release() {
+	if control == nil {
+		return
+	}
+	*control = collectionControl{}
+}
+
+func (control *collectionControl) chargeCapacityGrowth(
+	previous int,
+	current int,
+	elementBytes uint64,
+) {
+	if current <= previous || elementBytes == 0 {
+		return
+	}
+	count := uint64(current - previous)
+	if count > ^uint64(0)/elementBytes {
+		control.charge(^uint64(0))
+		return
+	}
+	control.charge(count * elementBytes)
+}
+
+func (control *collectionControl) resetDebt(liveBytes uint64) {
+	control.debt = 0
+	control.baseline = liveBytes
+	control.budget = automaticCollectionBudget(
+		liveBytes,
+		control.pause,
+	)
+	control.requested = false
+	control.refreshRunnable()
+}
+
+func (control *collectionControl) restoreAfterFinalizer() {
+	control.stopped = false
+	control.budget = automaticCollectionBudget(
+		control.baseline,
+		control.pause,
+	)
+	control.requested = control.debt >= control.budget
+	control.refreshRunnable()
+}
+
+func automaticCollectionBudget(liveBytes uint64, pause int) uint64 {
+	if pause <= 100 || liveBytes == 0 {
+		return minimumAutomaticCollectionDebt
+	}
+	scale := uint64(pause - 100)
+	if liveBytes > ^uint64(0)/scale {
+		return ^uint64(0)
+	}
+	budget := liveBytes * scale / 100
+	if budget < minimumAutomaticCollectionDebt {
+		return minimumAutomaticCollectionDebt
+	}
+	return budget
 }
 
 // objectLedger is State-owned. Compact objects point only at runtimeState, so
@@ -154,6 +327,7 @@ func (state *State) registerTable(table *tableObject) {
 	tables := appendObjectVector(state.objects.tables, table)
 	table.owner = state.runtime
 	state.objects.tables = tables
+	state.runtime.collection.charge(tableRetainedBytes(table))
 }
 
 func (state *State) registerFunction(function *functionObject) {
@@ -172,6 +346,7 @@ func (state *State) registerFunction(function *functionObject) {
 	)
 	function.owner = state.runtime
 	state.objects.functions = functions
+	state.runtime.collection.charge(functionRetainedBytes(function))
 }
 
 func (state *State) registerThread(thread *threadObject) {
@@ -187,6 +362,7 @@ func (state *State) registerThread(thread *threadObject) {
 	threads := appendObjectVector(state.objects.threads, thread)
 	thread.owner = state.runtime
 	state.objects.threads = threads
+	state.runtime.collection.charge(threadRetainedBytes(thread))
 }
 
 func (state *State) registerUserData(data *userDataObject) {
@@ -202,6 +378,7 @@ func (state *State) registerUserData(data *userDataObject) {
 	userData := appendObjectVector(state.objects.userData, data)
 	data.owner = state.runtime
 	state.objects.userData = userData
+	state.runtime.collection.charge(userDataRetainedBytes(data))
 }
 
 const initialObjectVectorCapacity = 4
@@ -403,7 +580,54 @@ func (state *State) collectAndFinalize() (collectionResult, *Error) {
 		panic("lua: idle collection requested during execution")
 	}
 	result := state.collectUnreachable()
-	return result, state.runPendingFinalizers(nil)
+	state.resetCollectionDebt()
+	return result, state.runPendingFinalizers(nil, nil)
+}
+
+func (state *State) resetCollectionDebt() {
+	liveBytes := state.semanticHeapForCollection().bytes
+	state.runtime.collection.resetDebt(liveBytes)
+}
+
+// serviceAutomaticCollection runs only after the executor has published a
+// complete root entry, operation, or call result. Allocation paths merely
+// charge debt. Finalizers reuse the active Thread and executor; automatic
+// re-entry is suppressed while they run, while an explicit nested collection
+// remains legal.
+func serviceAutomaticCollection(thread *threadObject) (failure *Error) {
+	if thread == nil ||
+		thread.owner == nil ||
+		!thread.owner.collection.runnable {
+		return nil
+	}
+	return runAutomaticCollection(thread)
+}
+
+// runAutomaticCollection is the cold half of the safe-point check. Keeping
+// the one-branch wrapper small lets it inline at call and return seams.
+func runAutomaticCollection(thread *threadObject) (failure *Error) {
+	if thread.state == nil ||
+		thread.owner == nil ||
+		!thread.owner.collection.runnable {
+		panic("lua: invalid automatic collection request")
+	}
+	state := thread.state
+	if state.active != thread ||
+		thread.status != ThreadRunning ||
+		state.objects.phase != collectionIdle {
+		panic("lua: automatic collection outside an execution safe point")
+	}
+
+	control := &thread.owner.collection
+	control.setServicing(true)
+	defer func() {
+		control.setServicing(false)
+	}()
+
+	state.collectUnreachable()
+	state.resetCollectionDebt()
+	failure = state.runPendingFinalizers(nil, thread)
+	return failure
 }
 
 // Collect performs one complete semantic collection and runs pending userdata
@@ -418,12 +642,12 @@ func (state *State) Collect() error {
 	if _, err := state.prepareReadyMainThread(); err != nil {
 		return err
 	}
-	state.runtime.collection.stopped = false
+	state.runtime.collection.setStopped(false)
 	_, failure := state.collectAndFinalize()
 	if failure != nil {
 		return failure.exposeValue()
 	}
-	state.runtime.collection.stopped = false
+	state.runtime.collection.setStopped(false)
 	return nil
 }
 
@@ -449,7 +673,8 @@ func (frame Frame) collectAndFinalize() (collectionResult, *Error) {
 	frame.activation()
 	state := frame.thread.state
 	result := state.collectUnreachable()
-	return result, state.runPendingFinalizers(&frame)
+	state.resetCollectionDebt()
+	return result, state.runPendingFinalizers(&frame, nil)
 }
 
 // Collect performs one complete semantic collection from a NativeFunc and
@@ -459,12 +684,12 @@ func (frame Frame) collectAndFinalize() (collectionResult, *Error) {
 // interface.
 func (frame Frame) Collect() error {
 	frame.activation()
-	frame.thread.owner.collection.stopped = false
+	frame.thread.owner.collection.setStopped(false)
 	_, failure := frame.collectAndFinalize()
 	if failure != nil {
 		return failure.exposeValue()
 	}
-	frame.thread.owner.collection.stopped = false
+	frame.thread.owner.collection.setStopped(false)
 	return nil
 }
 
@@ -475,7 +700,24 @@ func (frame Frame) HeapBytes() uint64 {
 	return frame.thread.state.semanticHeap().bytes
 }
 
-func (state *State) runPendingFinalizers(frame *Frame) *Error {
+func (state *State) runPendingFinalizers(
+	frame *Frame,
+	automaticThread *threadObject,
+) *Error {
+	if frame != nil && automaticThread != nil {
+		panic("lua: ambiguous finalizer execution seam")
+	}
+	if automaticThread != nil &&
+		(automaticThread.state != state ||
+			automaticThread.owner != state.runtime) {
+		panic("lua: finalizer thread belongs to another State")
+	}
+	control := &state.runtime.collection
+	previousServicing := control.servicing
+	control.setServicing(true)
+	defer func() {
+		control.setServicing(previousServicing)
+	}()
 	for {
 		handler, argument, pending, invoke :=
 			state.nextPendingFinalizer()
@@ -489,13 +731,94 @@ func (state *State) runPendingFinalizers(frame *Frame) *Error {
 		var failure *Error
 		if frame != nil {
 			failure = frame.callCompactNone(handler, arguments[:])
+		} else if automaticThread != nil {
+			failure = callAutomaticFinalizer(
+				automaticThread,
+				handler,
+				argument,
+			)
 		} else {
 			failure = state.callMainCompactNone(handler, arguments[:])
 		}
 		if failure != nil {
 			return failure
 		}
+		// GCTM saves and restores the outer collection threshold around
+		// every successful __gc call. Preserve allocation debt and pause
+		// changes, but discard stop/restart requests made by that handler.
+		control.restoreAfterFinalizer()
 	}
+}
+
+// callAutomaticFinalizer re-enters the one executor on its current Thread.
+// The temporary continuation is only a non-yielding and unwind guard:
+// driveExecution stops before it can resume the record, and the checkpoint
+// removes it after the call. Automatic collection is a cold synchronous seam,
+// not a second execution path.
+func callAutomaticFinalizer(
+	thread *threadObject,
+	handler slot,
+	argument slot,
+) (failure *Error) {
+	checkpoint := captureThreadExecutionCheckpoint(thread)
+	restored := false
+	defer func() {
+		if !restored {
+			checkpoint.restore(thread, true)
+		}
+	}()
+
+	arguments := [1]slot{argument}
+	_, failure = startStagedCall(
+		thread,
+		handler,
+		callArguments{compact: arguments[:]},
+		0,
+	)
+	if failure == nil {
+		if len(thread.continuations) != checkpoint.continuationDepth {
+			panic("lua: finalizer call created an unexpected continuation")
+		}
+		thread.pushExecutionContinuation(executionContinuation{
+			frameDepth:  uint32(checkpoint.frameDepth),
+			scratchBase: uint32(checkpoint.liveExtent),
+			savedTop:    uint32(checkpoint.top),
+			savedExtent: uint32(checkpoint.frameExtent),
+			mode:        continuationFinalizerGuard,
+		})
+
+		result := driveExecution(thread, checkpoint.frameDepth)
+		switch result.kind {
+		case executionReturned:
+			if len(thread.frames) != checkpoint.frameDepth ||
+				len(thread.continuations) !=
+					checkpoint.continuationDepth+1 ||
+				thread.continuations[len(thread.continuations)-1].mode !=
+					continuationFinalizerGuard {
+				panic("lua: finalizer returned invalid execution state")
+			}
+			checkpoint.restore(thread, true)
+			restored = true
+			return nil
+		case executionFailed:
+			if result.err == nil {
+				panic("lua: finalizer failed without an error")
+			}
+			failure = result.err
+			snapshotExecutionFailure(
+				thread,
+				checkpoint.frameDepth,
+				failure,
+			)
+		case executionYielded:
+			panic("lua: finalizer escaped its non-yielding call guard")
+		default:
+			panic("lua: finalizer produced an invalid execution result")
+		}
+	}
+	checkpoint.restore(thread, true)
+	restored = true
+	return failure
 }
 
 func (state *State) nextPendingFinalizer() (
@@ -525,6 +848,13 @@ func (state *State) nextPendingFinalizer() (
 // ignored as required by lua_close. A panic from host code is remembered,
 // cleanup continues deterministically, and Close re-panics after teardown.
 func (state *State) finalizeForClose() (any, bool) {
+	control := &state.runtime.collection
+	previousServicing := control.servicing
+	control.setServicing(true)
+	defer func() {
+		control.setServicing(previousServicing)
+	}()
+
 	state.separateFinalizers(true)
 	var firstPanic any
 	panicked := false
@@ -1091,12 +1421,174 @@ func (state *State) detachObjectsForClose() {
 	state.objects = objectLedger{}
 }
 
+const collectedObjectLedgerBytes = uint64(
+	unsafe.Sizeof((*objectHeader)(nil)),
+)
+
+func tableRetainedBytes(table *tableObject) uint64 {
+	if table == nil {
+		return 0
+	}
+	return uint64(unsafe.Sizeof(*table)) +
+		collectedObjectLedgerBytes +
+		tableStorageRetainedBytes(table)
+}
+
+func tableStorageRetainedBytes(table *tableObject) uint64 {
+	if table == nil {
+		return 0
+	}
+	return uint64(table.array.cap())*uint64(unsafe.Sizeof(slot{})) +
+		uint64(table.store.entries.cap())*
+			uint64(unsafe.Sizeof(tableEntry{}))
+}
+
+func functionRetainedBytes(function *functionObject) uint64 {
+	if function == nil {
+		return 0
+	}
+	if function.prototype == nil {
+		body := function.nativeBodyUnchecked()
+		return uint64(unsafe.Sizeof(nativeFunctionAllocation{})) +
+			collectedObjectLedgerBytes +
+			uint64(cap(body.captures))*
+				uint64(unsafe.Sizeof(slot{}))
+	}
+	return uint64(unsafe.Sizeof(*function)) +
+		collectedObjectLedgerBytes +
+		uint64(function.prototype.upvalues)*
+			uint64(unsafe.Sizeof((*upvalue)(nil)))
+}
+
+func threadRetainedBytes(thread *threadObject) uint64 {
+	if thread == nil {
+		return 0
+	}
+	return uint64(unsafe.Sizeof(*thread)) +
+		collectedObjectLedgerBytes +
+		uint64(cap(thread.values))*uint64(unsafe.Sizeof(slot{})) +
+		uint64(cap(thread.frames))*uint64(unsafe.Sizeof(activation{})) +
+		uint64(cap(thread.continuations))*
+			uint64(unsafe.Sizeof(executionContinuation{}))
+}
+
+func userDataRetainedBytes(data *userDataObject) uint64 {
+	if data == nil {
+		return 0
+	}
+	return uint64(unsafe.Sizeof(*data)) + collectedObjectLedgerBytes
+}
+
+func upvalueCellsRetainedBytes(count int) uint64 {
+	if count <= 0 {
+		return 0
+	}
+	return uint64(count) * uint64(unsafe.Sizeof(upvalue{}))
+}
+
+func stringRefRetainedBytes(value stringRef) uint64 {
+	if !value.valid() {
+		return 0
+	}
+	length := stringLength(value.ref, value.bits)
+	if length <= 1 {
+		return 0
+	}
+	bytes := uint64(length)
+	if int(value.bits>>stringLengthShift&stringLengthSentinel) ==
+		stringLengthSentinel {
+		bytes += uint64(unsafe.Sizeof(longString{}))
+	}
+	return bytes
+}
+
+// prototypeTreeRetainedBytes is cached when immutable executable metadata is
+// sealed. It deliberately uses a conservative, allocation-free sum: repeated
+// name or string backing inside one tree may be counted more than once. Debt
+// only schedules a collection; semanticHeap remains the exact deduplicated
+// reporting source.
+func prototypeTreeRetainedBytes(prototype *Prototype) uint64 {
+	if prototype == nil {
+		return 0
+	}
+	var bytes uint64
+	add := func(value uint64) {
+		limit := uint64(prototypeRetainedMask)
+		if bytes >= limit || value >= limit-bytes {
+			bytes = limit
+			return
+		}
+		bytes += value
+	}
+	addVector := func(count int, size uintptr) {
+		if count <= 0 {
+			return
+		}
+		value := uint64(count) * uint64(size)
+		if uint64(count) != 0 &&
+			value/uint64(count) != uint64(size) {
+			value = uint64(prototypeRetainedMask)
+		}
+		add(value)
+	}
+	addName := func(name *internedText) {
+		if name == nil {
+			return
+		}
+		add(uint64(unsafe.Sizeof(*name)))
+		add(uint64(len(name.text)))
+	}
+
+	add(uint64(unsafe.Sizeof(*prototype)))
+	addVector(cap(prototype.code), unsafe.Sizeof(instruction(0)))
+	addVector(cap(prototype.constants), unsafe.Sizeof(slot{}))
+	addVector(cap(prototype.children), unsafe.Sizeof((*Prototype)(nil)))
+	addName(prototype.sourceName)
+	for _, constant := range prototype.constants {
+		if constant.isString() {
+			add(stringRefRetainedBytes(stringRef{
+				ref:  constant.ref,
+				bits: constant.bits,
+			}))
+		}
+	}
+	for _, child := range prototype.children {
+		add(child.schedulingBytes())
+	}
+
+	debug := prototype.debug
+	if debug == nil {
+		return bytes
+	}
+	add(uint64(unsafe.Sizeof(*debug)))
+	addVector(cap(debug.lines), unsafe.Sizeof(uint32(0)))
+	addVector(cap(debug.locals), unsafe.Sizeof(localInfo{}))
+	addVector(cap(debug.upvalues), unsafe.Sizeof((*internedText)(nil)))
+	for _, local := range debug.locals {
+		addName(local.name)
+	}
+	for _, name := range debug.upvalues {
+		addName(name)
+	}
+	return bytes
+}
+
 // semanticHeap reports the target-architecture logical storage retained by
 // this State's Lua graph. Strings and immutable Prototypes are State-neutral
 // representations, but each is attributed once when this State retains it.
 // Opaque userdata payloads, host tokens, and Go allocator size-class rounding
 // remain outside the accounting boundary.
 func (state *State) semanticHeap() semanticHeapSummary {
+	return state.measureSemanticHeap(false)
+}
+
+func (state *State) semanticHeapForCollection() semanticHeapSummary {
+	return state.measureSemanticHeap(true)
+}
+
+func (state *State) measureSemanticHeap(
+	reconcileStrings bool,
+) semanticHeapSummary {
 	if state == nil {
 		return semanticHeapSummary{}
 	}
@@ -1105,15 +1597,9 @@ func (state *State) semanticHeap() semanticHeapSummary {
 	var summary semanticHeapSummary
 	defer ledger.releaseSemanticHeapScratch()
 
-	ledgerEntryBytes := uint64(unsafe.Sizeof((*tableObject)(nil)))
 	for _, table := range ledger.tables {
 		summary.tables++
-		summary.bytes += uint64(unsafe.Sizeof(*table)) +
-			ledgerEntryBytes
-		summary.bytes += uint64(table.array.cap()) *
-			uint64(unsafe.Sizeof(slot{}))
-		summary.bytes += uint64(table.store.entries.cap()) *
-			uint64(unsafe.Sizeof(tableEntry{}))
+		summary.bytes += tableRetainedBytes(table)
 		for _, value := range table.array.values() {
 			summary.addSlot(ledger, value)
 		}
@@ -1127,23 +1613,15 @@ func (state *State) semanticHeap() semanticHeapSummary {
 	}
 	for _, function := range ledger.functions {
 		summary.functions++
+		summary.bytes += functionRetainedBytes(function)
 		if function.prototype == nil {
-			summary.bytes += uint64(unsafe.Sizeof(
-				nativeFunctionAllocation{},
-			)) + ledgerEntryBytes
 			body := function.nativeBodyUnchecked()
-			summary.bytes += uint64(cap(body.captures)) *
-				uint64(unsafe.Sizeof(slot{}))
 			for _, capture := range body.captures {
 				summary.addSlot(ledger, capture)
 			}
 		} else {
-			summary.bytes += uint64(unsafe.Sizeof(*function)) +
-				ledgerEntryBytes
 			summary.addPrototype(ledger, function.prototype)
 			count := int(function.prototype.upvalues)
-			summary.bytes += uint64(count) *
-				uint64(unsafe.Sizeof((*upvalue)(nil)))
 			for index := 0; index < count; index++ {
 				summary.addUpvalue(
 					ledger,
@@ -1154,14 +1632,7 @@ func (state *State) semanticHeap() semanticHeapSummary {
 	}
 	for _, thread := range ledger.threads {
 		summary.threads++
-		summary.bytes += uint64(unsafe.Sizeof(*thread)) +
-			ledgerEntryBytes
-		summary.bytes += uint64(cap(thread.values)) *
-			uint64(unsafe.Sizeof(slot{}))
-		summary.bytes += uint64(cap(thread.frames)) *
-			uint64(unsafe.Sizeof(activation{}))
-		summary.bytes += uint64(cap(thread.continuations)) *
-			uint64(unsafe.Sizeof(executionContinuation{}))
+		summary.bytes += threadRetainedBytes(thread)
 		extent := thread.liveValueExtent()
 		if extent < 0 || extent > len(thread.values) {
 			panic("lua: invalid live thread extent")
@@ -1175,12 +1646,14 @@ func (state *State) semanticHeap() semanticHeapSummary {
 	}
 	for _, data := range ledger.userData {
 		summary.userData++
-		summary.bytes += uint64(unsafe.Sizeof(*data)) +
-			ledgerEntryBytes
+		summary.bytes += userDataRetainedBytes(data)
 	}
 	summary.addError(ledger, state.execution.failure)
 	summary.addError(ledger, state.execution.pendingExit)
 	summary.addStringPool(ledger, &state.runtime.strings)
+	if reconcileStrings {
+		state.runtime.collection.sweepAttributedStrings(ledger)
+	}
 	return summary
 }
 
@@ -1290,6 +1763,27 @@ func (summary *semanticHeapSummary) addStringRef(
 		ledger,
 		stringBacking{data: value.ref, length: length},
 	)
+}
+
+func (ledger *objectLedger) retainsString(value stringRef) bool {
+	if ledger == nil || !value.valid() {
+		return false
+	}
+	encodedLength := int(
+		value.bits >> stringLengthShift & stringLengthSentinel,
+	)
+	if encodedLength == stringLengthSentinel {
+		_, found := ledger.longStrings[(*longString)(value.ref)]
+		return found
+	}
+	if encodedLength <= 1 {
+		return true
+	}
+	_, found := ledger.stringBacking[stringBacking{
+		data:   value.ref,
+		length: encodedLength,
+	}]
+	return found
 }
 
 func (summary *semanticHeapSummary) addTextBacking(
@@ -1404,6 +1898,18 @@ func (summary *semanticHeapSummary) addPrototype(
 			summary.addName(ledger, name)
 		}
 	}
+}
+
+// chargePrototypeTree records the conservative logical weight cached when
+// immutable executable metadata was sealed. Repeated loading may deliberately
+// charge shared metadata again: debt is a scheduling signal, and keeping an
+// exact per-State attribution map would add allocation and lookup cost to
+// every load. semanticHeap remains the exact deduplicated reporting source.
+func (state *State) chargePrototypeTree(root *Prototype) {
+	if state == nil || root == nil {
+		return
+	}
+	state.runtime.collection.charge(root.schedulingBytes())
 }
 
 func (summary *semanticHeapSummary) addStringPool(

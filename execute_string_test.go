@@ -812,6 +812,8 @@ return left .. right
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			leave := enterTestExecution(t, thread)
+			defer leave()
 			benchmarkRunExecutor(thread, test.function, test.arguments)
 			benchmarkRunExecutor(thread, test.function, test.arguments)
 			allocations := testing.AllocsPerRun(1000, func() {

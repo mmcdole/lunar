@@ -99,7 +99,7 @@ func coroutineResume(frame Frame) Outcome {
 			!isCatchableProtectedFailure(run.failure) {
 			return frame.sealError(run.failure)
 		}
-		errorValue := run.failure.mustValueSlot()
+		errorValue := run.failure.mustValueSlot(frame.thread.owner)
 		return frame.returnCompactValues(
 			[2]slot{falseSlot, errorValue},
 			2,
@@ -191,7 +191,7 @@ func coroutineWrappedResume(frame Frame) Outcome {
 			!isCatchableProtectedFailure(run.failure) {
 			return frame.sealError(run.failure)
 		}
-		value := run.failure.mustValueSlot()
+		value := run.failure.mustValueSlot(frame.thread.owner)
 		if kind := value.kind(); kind == StringKind || kind == NumberKind {
 			text, _ := compactText(value)
 			value = stringSlot(

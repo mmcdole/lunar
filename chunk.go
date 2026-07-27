@@ -35,7 +35,7 @@ const (
 // than defining a portable byte order or size_t width. The resulting string is
 // therefore loadable by a Lua 5.1 interpreter built for the same architecture.
 func dumpPrototype(prototype *Prototype) (string, error) {
-	if prototype == nil || !prototype.sealed {
+	if !prototype.isSealed() {
 		return "", ErrInvalidPrototype
 	}
 
@@ -84,7 +84,7 @@ func (writer *chunkWriter) writeFunction(
 	if writer.err != nil {
 		return
 	}
-	if prototype == nil || !prototype.sealed {
+	if !prototype.isSealed() {
 		writer.fail(ErrInvalidPrototype)
 		return
 	}

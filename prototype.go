@@ -8,6 +8,9 @@ const (
 
 	maxLuaRegisters = 250
 	maxLuaUpvalues  = 60
+
+	prototypeSealedBit    = uint32(1) << 31
+	prototypeRetainedMask = prototypeSealedBit - 1
 )
 
 type localInfo struct {
@@ -39,7 +42,29 @@ type Prototype struct {
 	registers   uint8
 	upvalues    uint8
 	varargFlags uint8
-	sealed      bool
+	metadata    uint32
+}
+
+func (prototype *Prototype) isSealed() bool {
+	return prototype != nil &&
+		prototype.metadata&prototypeSealedBit != 0
+}
+
+func (prototype *Prototype) markSealed(retainedBytes uint64) {
+	if prototype == nil || prototype.isSealed() {
+		panic("lua: invalid prototype seal")
+	}
+	if retainedBytes > uint64(prototypeRetainedMask) {
+		retainedBytes = uint64(prototypeRetainedMask)
+	}
+	prototype.metadata = prototypeSealedBit | uint32(retainedBytes)
+}
+
+func (prototype *Prototype) schedulingBytes() uint64 {
+	if !prototype.isSealed() {
+		return 0
+	}
+	return uint64(prototype.metadata & prototypeRetainedMask)
 }
 
 // SourceName returns the source identifier recorded by the compiler or
@@ -355,7 +380,7 @@ func (builder *prototypeBuilder) seal() (*Prototype, *Error) {
 	if syntaxError := verifyPrototype(prototype); syntaxError != nil {
 		return nil, syntaxError
 	}
-	prototype.sealed = true
+	prototype.markSealed(prototypeTreeRetainedBytes(prototype))
 	return prototype, nil
 }
 

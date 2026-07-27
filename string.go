@@ -91,6 +91,7 @@ type stringPool struct {
 	closed    bool
 	probation [stringProbationShardCount]*stringSetShard
 	protected [stringProtectedShardCount]*stringSetShard
+	owner     *runtimeState
 }
 
 func (pool *stringPool) make(text string) stringRef {
@@ -116,7 +117,7 @@ func (pool *stringPool) makeBytes(bytes []byte) stringRef {
 	}
 	hash := hashBytes(bytes)
 	if pool.closed || len(bytes) > shortStringLimit {
-		return newUncachedHashedStringRef(string(bytes), hash)
+		return pool.makeUncachedBytes(bytes, hash)
 	}
 
 	if found := pool.lookupProtectedBytes(bytes, hash); found.valid() {
@@ -129,9 +130,7 @@ func (pool *stringPool) makeBytes(bytes []byte) stringRef {
 		return found
 	}
 
-	created := newUncachedHashedStringRef(string(bytes), hash)
-	pool.storeProbation(created)
-	return created
+	return pool.makeBytesMiss(bytes, hash)
 }
 
 // makeKnownHash retains text using a hash already computed at a trusted
@@ -156,10 +155,7 @@ func (pool *stringPool) makeHashed(
 		return singleByteStringRef(text[0])
 	}
 	if pool.closed || len(text) > shortStringLimit {
-		if borrowed {
-			text = strings.Clone(text)
-		}
-		return newUncachedHashedStringRef(text, hash)
+		return pool.makeUncachedText(text, hash, borrowed)
 	}
 
 	if found := pool.lookupProtected(text, hash); found.valid() {
@@ -172,12 +168,80 @@ func (pool *stringPool) makeHashed(
 		return found
 	}
 
+	return pool.makeTextMiss(text, hash, borrowed)
+}
+
+// makeUncachedBytes is the cold path for a closed pool or a long byte string.
+//
+//go:noinline
+func (pool *stringPool) makeUncachedBytes(
+	bytes []byte,
+	hash stringHash,
+) stringRef {
+	created := newUncachedHashedStringRef(string(bytes), hash)
+	if !pool.closed {
+		pool.chargeCreatedString(created)
+	}
+	return created
+}
+
+// makeBytesMiss copies, charges, and admits one cacheable byte string after
+// both cache tiers miss.
+//
+//go:noinline
+func (pool *stringPool) makeBytesMiss(
+	bytes []byte,
+	hash stringHash,
+) stringRef {
+	created := newUncachedHashedStringRef(string(bytes), hash)
+	pool.chargeCreatedString(created)
+	pool.storeProbation(created)
+	return created
+}
+
+// makeUncachedText is the cold path for a closed pool or a long string.
+//
+//go:noinline
+func (pool *stringPool) makeUncachedText(
+	text string,
+	hash stringHash,
+	borrowed bool,
+) stringRef {
 	if borrowed {
 		text = strings.Clone(text)
 	}
 	created := newUncachedHashedStringRef(text, hash)
+	if !pool.closed {
+		pool.chargeCreatedString(created)
+	}
+	return created
+}
+
+// makeTextMiss copies borrowed input, charges, and admits one cacheable string
+// after both cache tiers miss.
+//
+//go:noinline
+func (pool *stringPool) makeTextMiss(
+	text string,
+	hash stringHash,
+	borrowed bool,
+) stringRef {
+	if borrowed {
+		text = strings.Clone(text)
+	}
+	created := newUncachedHashedStringRef(text, hash)
+	pool.chargeCreatedString(created)
 	pool.storeProbation(created)
 	return created
+}
+
+func (pool *stringPool) chargeCreatedString(value stringRef) {
+	if pool == nil ||
+		pool.owner == nil ||
+		!value.valid() {
+		return
+	}
+	pool.owner.collection.charge(stringRefRetainedBytes(value))
 }
 
 func (pool *stringPool) hash(text string) stringHash {
@@ -186,6 +250,14 @@ func (pool *stringPool) hash(text string) stringHash {
 
 func newStringRef(text string) stringRef {
 	return newHashedStringRef(text, hashString(text))
+}
+
+// newStateNeutralLongString keeps hashing and uncached construction out of
+// State.String's recurring short-string path.
+//
+//go:noinline
+func newStateNeutralLongString(text string) stringRef {
+	return newUncachedHashedStringRef(text, hashString(text))
 }
 
 func newHashedStringRef(text string, hash stringHash) stringRef {
@@ -443,7 +515,7 @@ func (pool *stringPool) storeProbation(value stringRef) {
 	)
 	shard := pool.probation[shardIndex]
 	if shard == nil {
-		shard = new(stringSetShard)
+		shard = pool.newCacheShard()
 		pool.probation[shardIndex] = shard
 	}
 	set := &shard.sets[setIndex]
@@ -459,7 +531,7 @@ func (pool *stringPool) storeProtected(value stringRef) {
 	)
 	shard := pool.protected[shardIndex]
 	if shard == nil {
-		shard = new(stringSetShard)
+		shard = pool.newCacheShard()
 		pool.protected[shardIndex] = shard
 	}
 	set := &shard.sets[setIndex]
@@ -471,6 +543,15 @@ func (pool *stringPool) storeProtected(value stringRef) {
 	index := int(set.next % stringCacheWays)
 	set.entries[index] = value
 	set.next++
+}
+
+//go:noinline
+func (pool *stringPool) newCacheShard() *stringSetShard {
+	shard := new(stringSetShard)
+	if pool.owner != nil {
+		pool.owner.collection.charge(uint64(unsafe.Sizeof(*shard)))
+	}
+	return shard
 }
 
 func (pool *stringPool) close() {

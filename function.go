@@ -60,7 +60,7 @@ func newLuaFunctionOwned(
 	if state == nil ||
 		state.runtime == nil ||
 		prototype == nil ||
-		!prototype.sealed {
+		!prototype.isSealed() {
 		panic("lua: invalid Lua function")
 	}
 	if environment == nil || environment.owner != state.runtime {
@@ -281,6 +281,7 @@ func (thread *threadObject) captureUpvalue(index int) *upvalue {
 	}
 	created.cell = &thread.values[index]
 	*link = created
+	thread.owner.collection.charge(upvalueCellsRetainedBytes(1))
 	return created
 }
 

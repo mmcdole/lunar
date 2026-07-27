@@ -194,7 +194,7 @@ func returnLoadResult(
 		frame.thread.owner.strings.make(err.Error()),
 	)
 	if luaFailure {
-		errorValue = failure.mustValueSlot()
+		errorValue = failure.mustValueSlot(frame.thread.owner)
 	}
 	return frame.returnCompactValues(
 		[2]slot{nilSlot, errorValue},
@@ -214,6 +214,8 @@ func raiseDoFileError(frame Frame, err error) Outcome {
 	default:
 		// Loading failures are values raised by dofile. Reclassify syntax
 		// failures as ordinary runtime errors so pcall can catch them.
-		return frame.raiseCompact(failure.mustValueSlot())
+		return frame.raiseCompact(
+			failure.mustValueSlot(frame.thread.owner),
+		)
 	}
 }

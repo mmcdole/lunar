@@ -27,11 +27,13 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 	if err := state.runtime.accept(callable); err != nil {
 		return nil, err
 	}
-	thread, err := state.newThreadObject(slotFromValue(callable))
-	runtime.KeepAlive(callable)
-	if err != nil {
+	compact := slotFromValue(callable)
+	if err := state.validateThreadCallable(compact); err != nil {
 		return nil, err
 	}
+	compact = state.runtime.importAcceptedSlot(compact)
+	thread := state.constructThread(compact)
+	runtime.KeepAlive(callable)
 	return thread.owningHandle(), nil
 }
 
@@ -42,6 +44,13 @@ func (state *State) newThreadObject(callable slot) (*threadObject, error) {
 	if err := state.runtime.acceptSlot(callable); err != nil {
 		return nil, err
 	}
+	if err := state.validateThreadCallable(callable); err != nil {
+		return nil, err
+	}
+	return state.constructThread(callable), nil
+}
+
+func (state *State) validateThreadCallable(callable slot) error {
 	parent := state.currentThread()
 	if _, direct := functionSlot(callable); !direct &&
 		callMetamethodFunction(parent, callable) == nil {
@@ -49,9 +58,13 @@ func (state *State) newThreadObject(callable slot) (*threadObject, error) {
 			"attempt to call a %s value",
 			callable.kind(),
 		)
-		return nil, newCoroutineFailure(state, message)
+		return newCoroutineFailure(state, message)
 	}
+	return nil
+}
 
+func (state *State) constructThread(callable slot) *threadObject {
+	parent := state.currentThread()
 	capacity := 16
 	if capacity > state.options.MaxValues {
 		capacity = state.options.MaxValues
@@ -65,7 +78,7 @@ func (state *State) newThreadObject(callable slot) (*threadObject, error) {
 	}
 	writeSlot(&thread.values[0], callable)
 	state.registerThread(thread)
-	return thread, nil
+	return thread
 }
 
 // Resume starts or continues a suspended coroutine.
@@ -277,7 +290,11 @@ func (arguments resumeArguments) count() int {
 	return len(arguments.values)
 }
 
-func (arguments resumeArguments) copyTo(destination []slot, count int) {
+func (arguments resumeArguments) copyTo(
+	owner *runtimeState,
+	destination []slot,
+	count int,
+) {
 	if count < 0 || count > arguments.count() || count > len(destination) {
 		panic("lua: invalid coroutine argument copy")
 	}
@@ -286,7 +303,12 @@ func (arguments resumeArguments) copyTo(destination []slot, count int) {
 		return
 	}
 	for index := 0; index < count; index++ {
-		writeSlot(&destination[index], slotFromValue(arguments.values[index]))
+		writeSlot(
+			&destination[index],
+			owner.importAcceptedSlot(
+				slotFromValue(arguments.values[index]),
+			),
+		)
 	}
 }
 
@@ -618,7 +640,11 @@ func (thread *threadObject) startCoroutine(arguments resumeArguments) *Error {
 	argumentCount := arguments.count()
 	required := 1 + argumentCount
 	thread.reserveValues(required)
-	arguments.copyTo(thread.values[1:required], argumentCount)
+	arguments.copyTo(
+		thread.owner,
+		thread.values[1:required],
+		argumentCount,
+	)
 	thread.top = required
 
 	callable := thread.values[0]
@@ -663,6 +689,7 @@ func (thread *threadObject) continueCoroutine(arguments resumeArguments) *Error 
 		copied = outputCount
 	}
 	arguments.copyTo(
+		thread.owner,
 		thread.values[resultBase:resultBase+copied],
 		copied,
 	)

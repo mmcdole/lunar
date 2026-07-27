@@ -70,7 +70,9 @@ construction. A State-local semantic collector handles cycles, weak tables,
 userdata finalization, and explicit Lua 5.1 collection controls independently
 of Go's process-wide collector. Embedders use the same machinery through
 `State.Collect` and `State.HeapBytes`; native callbacks use the matching
-`Frame` methods.
+`Frame` methods. Retained allocation growth automatically schedules semantic
+cycles at rooted executor safe points; consumers do not need to drive normal
+collection manually.
 
 See [the architecture](docs/architecture.md) for the invariants and build
 order, [semantic collection](docs/collection.md) for the ownership and Lua GC

@@ -712,12 +712,15 @@ class does not shrink. This is an ownership and traversal design, not a claim
 of a universal per-object memory win; constructor and representative workload
 measurements remain gates.
 
-A dedicated internal churn benchmark creates unexposed tables, performs a
-full semantic collection every 1,024 creations, and keeps only the State
-roots. On the standing Apple M3 Pro it measures 23.2 ns, 98 allocated bytes,
-and one allocation per table. The 80-byte object plus geometrically grown
-ledger storage accounts for the bytes without adding another per-object
-allocation.
+A dedicated registration-and-sweep benchmark creates unexposed tables,
+performs the mark/sweep phase every 1,024 creations, and keeps only the State
+roots. On the standing Apple M3 Pro it measures about 24 ns, 98 allocated
+bytes, and one allocation per table. Complete-cycle benchmarks separately
+measure dead-table churn, a stable retained graph, and a mixed live/dead graph.
+They include exact heap accounting, debt reset, weak processing, and the empty
+finalizer drain instead of labeling mark/sweep alone as a complete pause. The
+80-byte object plus geometrically grown ledger storage accounts for the
+ordinary churn bytes without adding another per-object allocation.
 
 Registration occasionally grows one typed vector but adds no table mutation
 or executor-instruction barrier while collection remains synchronous. Sweep
@@ -725,15 +728,18 @@ compacts vectors stably, drops excessive capacity, and clears every discarded
 pointer. Four typed mark stacks retain at most a bounded ordinary frontier;
 larger spikes are released. Marking uses one resettable bit, so a failed
 internal trace can cleanly retry instead of carrying a half-colored graph.
-`State.Close` drops every object vector, work buffer, and accounting map.
+`State.Close` drops every object vector, work buffer, accounting map, and
+long-string attribution entry.
 
 Tests cover every object-edge kind, State and host roots, cyclic graphs of all
 four kinds, collection inside a live execution frame, escaped upvalue closure,
 two-State isolation, retained-table ownership isolation, tracing-panic retry,
 post-close handles and scratch release, and zero-allocation warm collections.
-Public collection timing and accounting comparisons wait for weak tables and
-Lua finalizers so the measured operation is the one consumers will actually
-receive.
+The complete-cycle benchmark, executor constructor benchmarks that naturally
+cross the debt threshold, and focused finalizer tests together cover the
+weak-table, finalizer, accounting, and automatic-scheduling operation. The
+lower-level churn benchmark remains explicit about measuring registration and
+mark/sweep alone.
 
 Deleted table/function/thread/userdata keys are converted during semantic
 tracing to small holders containing Go weak pointers. This keeps the normal

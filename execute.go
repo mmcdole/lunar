@@ -22,7 +22,12 @@ type executionResult struct {
 // the current frame's hot state in Go locals and publishes only at seams that
 // can replace a frame, grow the value stack, or leave the executor.
 func execute(thread *threadObject, stopDepth int) executionResult {
-	result := driveExecution(thread, stopDepth)
+	var result executionResult
+	if failure := serviceAutomaticCollection(thread); failure != nil {
+		result = stopExecution(thread, failure)
+	} else {
+		result = driveExecution(thread, stopDepth)
+	}
 	if result.kind == executionFailed {
 		finalizeExecutionFailure(thread, stopDepth, result.err)
 	}
@@ -44,8 +49,16 @@ driver:
 			last := len(thread.continuations) - 1
 			depth := int(thread.continuations[last].frameDepth)
 			if depth == len(thread.frames) {
+				frameDepth := len(thread.frames)
 				if failure := resumeExecutionContinuation(thread); failure != nil {
 					return stopExecution(thread, failure)
+				}
+				if len(thread.frames) == frameDepth {
+					if failure := serviceAutomaticCollection(
+						thread,
+					); failure != nil {
+						return stopExecution(thread, failure)
+					}
 				}
 			} else if depth > len(thread.frames) {
 				panic("lua: orphaned execution continuation")
@@ -66,15 +79,20 @@ driver:
 				if thread.status == ThreadSuspended {
 					return executionResult{kind: executionYielded}
 				}
-				if len(thread.frames) == stopDepth {
-					return executionResult{kind: executionReturned}
-				}
 				if len(thread.continuations) != 0 {
 					last := len(thread.continuations) - 1
 					if int(thread.continuations[last].frameDepth) ==
 						len(thread.frames) {
 						continue driver
 					}
+				}
+				if failure := serviceAutomaticCollection(
+					thread,
+				); failure != nil {
+					return stopExecution(thread, failure)
+				}
+				if len(thread.frames) == stopDepth {
+					return executionResult{kind: executionReturned}
 				}
 				continue
 			}
@@ -108,6 +126,11 @@ driver:
 					len(thread.frames)-1,
 					current,
 				)
+				if failure := serviceAutomaticCollection(
+					thread,
+				); failure != nil {
+					return stopExecution(thread, failure)
+				}
 			case opAdd, opSub, opMul, opDiv, opMod, opPow, opUnaryMinus:
 				frameIndex := len(thread.frames) - 1
 				if failure := slowArithmetic(
@@ -134,6 +157,13 @@ driver:
 					current,
 				); failure != nil {
 					return stopExecution(thread, failure)
+				}
+				if len(thread.frames) == frameIndex+1 {
+					if failure := serviceAutomaticCollection(
+						thread,
+					); failure != nil {
+						return stopExecution(thread, failure)
+					}
 				}
 			case opEqual:
 				frameIndex := len(thread.frames) - 1
@@ -267,6 +297,11 @@ driver:
 				}
 				thread.finishLuaCall(firstResult, resultCount)
 				if len(thread.frames) == stopDepth {
+					if failure := serviceAutomaticCollection(
+						thread,
+					); failure != nil {
+						return stopExecution(thread, failure)
+					}
 					return executionResult{kind: executionReturned}
 				}
 				if len(thread.continuations) != 0 {
@@ -275,6 +310,11 @@ driver:
 						len(thread.frames) {
 						continue driver
 					}
+				}
+				if failure := serviceAutomaticCollection(
+					thread,
+				); failure != nil {
+					return stopExecution(thread, failure)
 				}
 			case opClose:
 				frame := thread.frames[len(thread.frames)-1]
@@ -288,6 +328,11 @@ driver:
 					current,
 					bindingPC,
 				))
+				if failure := serviceAutomaticCollection(
+					thread,
+				); failure != nil {
+					return stopExecution(thread, failure)
+				}
 			case opVararg:
 				if failure := executeVararg(
 					thread,

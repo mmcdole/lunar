@@ -127,12 +127,27 @@ func (err *Error) valueSlot() (slot, bool) {
 	return slot{}, false
 }
 
-func (err *Error) mustValueSlot() slot {
+func (err *Error) mustValueSlot(owner *runtimeState) slot {
+	if owner == nil {
+		panic("lua: Lua error has no target runtime")
+	}
+	if err != nil && err.hasCompactValue {
+		// The value never left this execution graph, so its allocation or
+		// ingress debt has already been recorded.
+		value := err.compactValue
+		if acceptErr := owner.acceptSlot(value); acceptErr != nil {
+			panic(acceptErr)
+		}
+		return value
+	}
 	value, valid := err.valueSlot()
 	if !valid {
 		panic("lua: invalid Lua error")
 	}
-	return value
+	if acceptErr := owner.acceptSlot(value); acceptErr != nil {
+		panic(acceptErr)
+	}
+	return owner.importAcceptedSlot(value)
 }
 
 func (err *Error) exposeValue() *Error {

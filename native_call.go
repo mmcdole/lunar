@@ -7,7 +7,15 @@ func (frame Frame) callCompactOne(
 	callable slot,
 	arguments []slot,
 ) (slot, *Error) {
-	return frame.callCompactFixed(callable, arguments, 1)
+	return frame.callCompactFixed(callable, arguments, 1, 0)
+}
+
+func (frame Frame) callBoundaryCompactOne(
+	callable slot,
+	arguments []slot,
+	admission uint64,
+) (slot, *Error) {
+	return frame.callCompactFixed(callable, arguments, 1, admission)
 }
 
 // callCompactNone invokes callable with compact arguments and discards every
@@ -17,7 +25,21 @@ func (frame Frame) callCompactNone(
 	callable slot,
 	arguments []slot,
 ) *Error {
-	_, failure := frame.callCompactFixed(callable, arguments, 0)
+	_, failure := frame.callCompactFixed(callable, arguments, 0, 0)
+	return failure
+}
+
+func (frame Frame) callBoundaryCompactNone(
+	callable slot,
+	arguments []slot,
+	admission uint64,
+) *Error {
+	_, failure := frame.callCompactFixed(
+		callable,
+		arguments,
+		0,
+		admission,
+	)
 	return failure
 }
 
@@ -25,6 +47,7 @@ func (frame Frame) callCompactFixed(
 	callable slot,
 	arguments []slot,
 	wantedResults int,
+	admission uint64,
 ) (slot, *Error) {
 	if wantedResults < 0 || wantedResults > 1 {
 		panic("lua: compact fixed call requires zero or one result")
@@ -38,10 +61,13 @@ func (frame Frame) callCompactFixed(
 		}
 	}()
 
-	resultBase, failure := startNestedCall(
+	resultBase, failure := startStagedCall(
 		thread,
 		callable,
-		callArguments{compact: arguments},
+		callArguments{
+			compact:   arguments,
+			admission: admission,
+		},
 		wantedResults,
 	)
 	if failure == nil {
@@ -98,7 +124,7 @@ func (frame Frame) callCompactAllAndReturn(
 		}
 	}()
 
-	resultBase, failure := startNestedCall(
+	resultBase, failure := startStagedCall(
 		thread,
 		callable,
 		callArguments{compact: arguments},
@@ -199,9 +225,10 @@ func (frame Frame) Index(target, key Value) (Value, error) {
 	if err := frame.thread.owner.accept(key); err != nil {
 		return Value{}, err
 	}
-	result, failure := frame.indexCompact(
+	result, failure := frame.indexSlots(
 		slotFromValue(target),
 		slotFromValue(key),
+		true,
 	)
 	if failure != nil {
 		return Value{}, failure.exposeValue()
@@ -210,6 +237,18 @@ func (frame Frame) Index(target, key Value) (Value, error) {
 }
 
 func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
+	return frame.indexSlots(target, key, false)
+}
+
+// indexSlots admits boundary values only when a callable metamethod can retain
+// them. Raw lookup and table-valued __index chains merely observe their
+// immutable representations.
+func (frame Frame) indexSlots(
+	target slot,
+	key slot,
+	admitArguments bool,
+) (slot, *Error) {
+	targetBoundary := admitArguments
 	for step := 0; step < maxTableMetamethodChain; step++ {
 		var handler slot
 		var found bool
@@ -235,9 +274,21 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 		}
 		if _, callable := functionSlot(handler); callable {
 			arguments := [2]slot{target, key}
+			if admitArguments {
+				admission := compactCallAdmission(1)
+				if targetBoundary {
+					admission |= compactCallAdmission(0)
+				}
+				return frame.callBoundaryCompactOne(
+					handler,
+					arguments[:],
+					admission,
+				)
+			}
 			return frame.callCompactOne(handler, arguments[:])
 		}
 		target = handler
+		targetBoundary = false
 	}
 	return nilSlot, libraryFailure(frame, "loop in gettable")
 }
@@ -264,10 +315,11 @@ func (frame Frame) SetIndex(target, key, value Value) error {
 	if err := frame.thread.owner.accept(value); err != nil {
 		return err
 	}
-	if failure := frame.setIndexCompact(
+	if failure := frame.setIndexSlots(
 		slotFromValue(target),
 		slotFromValue(key),
 		slotFromValue(value),
+		true,
 	); failure != nil {
 		return failure.exposeValue()
 	}
@@ -279,6 +331,19 @@ func (frame Frame) setIndexCompact(
 	key slot,
 	value slot,
 ) *Error {
+	return frame.setIndexSlots(target, key, value, false)
+}
+
+// setIndexSlots admits boundary values at the operation that retains them:
+// direct storage or a callable metamethod's argument window. Table-valued
+// __newindex traversal and no-op assignments remain observation-only.
+func (frame Frame) setIndexSlots(
+	target slot,
+	key slot,
+	value slot,
+	admitArguments bool,
+) *Error {
+	targetBoundary := admitArguments
 	for range maxTableMetamethodChain {
 		var handler slot
 		var found bool
@@ -295,12 +360,16 @@ func (frame Frame) setIndexCompact(
 			default:
 				panic("lua: invalid normalized table key status")
 			}
-			if _, location, present := table.resolveNormalizedSlot(
+			if current, location, present := table.resolveNormalizedSlot(
 				normalized,
 				index,
 				arrayKey,
 				hash,
 			); present {
+				if admitArguments &&
+					!sameSlotRepresentation(current, value) {
+					value = frame.thread.owner.importAcceptedSlot(value)
+				}
 				table.replaceResolvedSlot(location, value)
 				return nil
 			}
@@ -310,13 +379,23 @@ func (frame Frame) setIndexCompact(
 				metaNewIndex,
 			)
 			if !found {
-				table.rawSetNormalizedSlot(
-					normalized,
-					index,
-					arrayKey,
-					hash,
-					value,
-				)
+				if admitArguments {
+					table.rawSetBoundaryNormalizedSlot(
+						normalized,
+						index,
+						arrayKey,
+						hash,
+						value,
+					)
+				} else {
+					table.rawSetNormalizedSlot(
+						normalized,
+						index,
+						arrayKey,
+						hash,
+						value,
+					)
+				}
 				return nil
 			}
 		} else {
@@ -335,9 +414,22 @@ func (frame Frame) setIndexCompact(
 		}
 		if _, callable := functionSlot(handler); callable {
 			arguments := [3]slot{target, key, value}
+			if admitArguments {
+				admission := compactCallAdmission(1) |
+					compactCallAdmission(2)
+				if targetBoundary {
+					admission |= compactCallAdmission(0)
+				}
+				return frame.callBoundaryCompactNone(
+					handler,
+					arguments[:],
+					admission,
+				)
+			}
 			return frame.callCompactNone(handler, arguments[:])
 		}
 		target = handler
+		targetBoundary = false
 	}
 	return libraryFailure(frame, "loop in settable")
 }
@@ -420,7 +512,6 @@ func (frame Frame) callNested(
 			return nil, 0, err
 		}
 	}
-
 	checkpoint := captureExecutionCheckpoint(frame)
 	restored := false
 	defer func() {
@@ -429,10 +520,13 @@ func (frame Frame) callNested(
 		}
 	}()
 
-	resultBase, failure := startNestedCall(
+	resultBase, failure := startStagedCall(
 		thread,
 		slotFromValue(callable),
-		callArguments{owning: arguments},
+		callArguments{
+			owning:    arguments,
+			admission: callCallableAdmission,
+		},
 		allResults,
 	)
 	if failure == nil {

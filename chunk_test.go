@@ -157,7 +157,7 @@ return values.first, values.second, -0.0
 	if err != nil {
 		t.Fatalf("decode prototype: %v", err)
 	}
-	if !decoded.sealed {
+	if !decoded.isSealed() {
 		t.Fatal("decoded Prototype is not sealed")
 	}
 	if len(decoded.children) != 2 ||
@@ -1283,7 +1283,7 @@ func FuzzDecodeBinaryChunk(f *testing.F) {
 			newStringChunkInput(string(encoded), &control),
 			&control,
 		)
-		if decodeErr == nil && (prototype == nil || !prototype.sealed) {
+		if decodeErr == nil && !prototype.isSealed() {
 			t.Fatal("decoder returned an unsealed Prototype")
 		}
 	})

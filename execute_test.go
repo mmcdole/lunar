@@ -321,7 +321,7 @@ end
 	if callErr := thread.pushFunctionCall(closure, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
-	result = execute(thread, 0)
+	result = runTestExecutor(t, thread, 0)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, stateNeutralString("captured"))
 }
@@ -425,7 +425,7 @@ end
 	if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
-	result := execute(thread, 0)
+	result := runTestExecutor(t, thread, 0)
 	assertExecutionReturned(t, result)
 
 	middle, ok := functionSlot(thread.values[0])
@@ -438,7 +438,7 @@ end
 	if callErr := thread.pushFunctionCall(middle, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
-	result = execute(thread, 0)
+	result = runTestExecutor(t, thread, 0)
 	assertExecutionReturned(t, result)
 
 	inner, ok := functionSlot(thread.values[0])
@@ -451,7 +451,7 @@ end
 	if callErr := thread.pushFunctionCall(inner, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
-	result = execute(thread, 0)
+	result = runTestExecutor(t, thread, 0)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(
 		t,
@@ -502,7 +502,7 @@ func TestExecutorRunsNot(t *testing.T) {
 			); callErr != nil {
 				t.Fatal(callErr)
 			}
-			result := execute(thread, 0)
+			result := runTestExecutor(t, thread, 0)
 			assertExecutionReturned(t, result)
 			assertExecutionValues(t, thread, test.want)
 		})
@@ -551,7 +551,7 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 		if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 			t.Fatal(callErr)
 		}
-		result := execute(thread, 0)
+		result := runTestExecutor(t, thread, 0)
 		assertExecutionReturned(t, result)
 		if thread.top != 1 {
 			t.Fatalf("logical result count = %d; want 1", thread.top)
@@ -635,7 +635,7 @@ func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
 			); callErr != nil {
 				t.Fatal(callErr)
 			}
-			result := execute(thread, 0)
+			result := runTestExecutor(t, thread, 0)
 			assertExecutionReturned(t, result)
 			assertExecutionValues(t, thread, test.want)
 		})
@@ -665,7 +665,7 @@ func TestExecutorHonorsLoadBoolSkip(t *testing.T) {
 	if callErr := thread.pushFunctionCall(function, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
 	}
-	result := execute(thread, 0)
+	result := runTestExecutor(t, thread, 0)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Bool(true))
 }
@@ -1074,7 +1074,7 @@ return value()
 		t.Fatal(callErr)
 	}
 
-	result := driveExecution(thread, 1)
+	result := runTestExecutionDriver(t, thread, 1)
 	if result.kind != executionFailed || result.err == nil {
 		t.Fatalf("partial execution result = %+v; want failure", result)
 	}
@@ -1160,7 +1160,7 @@ return result`
 		t.Fatal(callErr)
 	}
 
-	result := execute(thread, 1)
+	result := runTestExecutor(t, thread, 1)
 	assertExecutionReturned(t, result)
 	if len(thread.frames) != 1 ||
 		thread.frames[0] != callerFrame ||
@@ -1324,6 +1324,8 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 	thread := state.main
 	thread.reserveValues(8)
 	thread.reserveFrames(1)
+	leave := enterTestExecution(t, thread)
+	defer leave()
 
 	run := func() {
 		thread.values[0] = slotFromFunctionObject(function)
@@ -1407,6 +1409,8 @@ end`
 	thread.reserveValues(32)
 	thread.reserveFrames(8)
 	arguments := []slot{numberSlot(41)}
+	leave := enterTestExecution(t, thread)
+	defer leave()
 	run := func() {
 		benchmarkRunExecutor(thread, kernel, arguments)
 		number, ok := slotToNumber(thread.values[0])
@@ -1611,11 +1615,15 @@ end
 	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(8)
-	benchmarkRunExecutor(
-		thread,
-		factory,
-		[]slot{slotFromValue(Number(17))},
-	)
+	func() {
+		leave := enterTestExecution(b, thread)
+		defer leave()
+		benchmarkRunExecutor(
+			thread,
+			factory,
+			[]slot{slotFromValue(Number(17))},
+		)
+	}()
 	closure, ok := functionSlot(thread.values[0])
 	if !ok {
 		b.Fatal("factory did not return a closure")
@@ -1655,7 +1663,7 @@ func executeTestChunk(
 		state.Close()
 		t.Fatal(callErr)
 	}
-	return state, thread, execute(thread, 0)
+	return state, thread, runTestExecutor(t, thread, 0)
 }
 
 func compileTestFunction(
@@ -1670,6 +1678,56 @@ func compileTestFunction(
 		t.Fatal(syntaxError)
 	}
 	return newLuaFunction(state, prototype, state.main.globals, nil)
+}
+
+// enterTestExecution installs the same active-Thread invariant as public call
+// and resume entry points. Executor tests bypass those boundaries so they can
+// inspect compact stacks directly, but collection safe points must still see
+// a real running Thread.
+func enterTestExecution(t testing.TB, thread *threadObject) func() {
+	t.Helper()
+	if thread == nil ||
+		thread.state == nil ||
+		thread.owner != thread.state.runtime {
+		t.Fatal("test executor received an invalid Thread")
+	}
+	state := thread.state
+	if state.active != nil || thread.status == ThreadRunning {
+		t.Fatal("test State already has an active Thread")
+	}
+	previousStatus := thread.status
+	state.active = thread
+	thread.status = ThreadRunning
+	return func() {
+		valid := state.active == thread
+		thread.status = previousStatus
+		state.active = nil
+		if !valid {
+			t.Fatal("test executor changed the active Thread")
+		}
+	}
+}
+
+func runTestExecutor(
+	t testing.TB,
+	thread *threadObject,
+	stopDepth int,
+) executionResult {
+	t.Helper()
+	leave := enterTestExecution(t, thread)
+	defer leave()
+	return execute(thread, stopDepth)
+}
+
+func runTestExecutionDriver(
+	t testing.TB,
+	thread *threadObject,
+	stopDepth int,
+) executionResult {
+	t.Helper()
+	leave := enterTestExecution(t, thread)
+	defer leave()
+	return driveExecution(thread, stopDepth)
 }
 
 func executeTestFunction(
@@ -1696,7 +1754,7 @@ func executeTestFunction(
 	); callErr != nil {
 		t.Fatal(callErr)
 	}
-	return thread, execute(thread, 0)
+	return thread, runTestExecutor(t, thread, 0)
 }
 
 func benchmarkExecutorFunction(
@@ -1711,6 +1769,9 @@ func benchmarkExecutorFunction(
 		argumentSlots[index] = slotFromValue(argument)
 	}
 	thread := state.main
+	leave := enterTestExecution(b, thread)
+	defer leave()
+
 	required := 1 + len(argumentSlots)
 	thread.reserveValues(max(required, 32))
 	thread.reserveFrames(8)
@@ -1768,6 +1829,12 @@ func benchmarkRunExecutor(
 	function *functionObject,
 	arguments []slot,
 ) {
+	if thread == nil ||
+		thread.state == nil ||
+		thread.state.active != thread ||
+		thread.status != ThreadRunning {
+		panic("benchmark executor lacks an active execution scope")
+	}
 	oldExtent := thread.liveValueExtent()
 	thread.top = 0
 	thread.frameExtent = 0
