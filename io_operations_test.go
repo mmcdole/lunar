@@ -685,7 +685,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 	}
 	if _, err := state.Call(
 		write.Value(),
-		data.Value(),
+		data.owningValue(),
 		state.String("x"),
 	); err == nil || !strings.Contains(
 		err.Error(),
@@ -705,7 +705,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forged.metatable = other
+	forged.runtimeObject().metatable = other
 	if _, err := state.Call(
 		write.Value(),
 		forged.Value(),
@@ -719,7 +719,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 
 	defaultWrite := ioOperationFunction(t, state, ioWrite)
 	stdout := ioFileField(t, ioLibraryTable(t, state), "stdout")
-	if _, err := stdout.resource.resource.release(nativeRelease{
+	if _, err := stdout.runtimeObject().resource.resource.release(nativeRelease{
 		reason: nativeReleaseExplicit,
 	}); err != nil {
 		t.Fatal(err)
@@ -758,7 +758,7 @@ func TestIOSeekNativeArgumentsAndFailureTuple(t *testing.T) {
 	}
 	results, err := state.Call(
 		seek.Value(),
-		data.Value(),
+		data.owningValue(),
 		state.String("set\x00ignored"),
 		state.String("2.9"),
 	)
@@ -899,7 +899,7 @@ func newIOOperationFile(
 		&fileResourceClass,
 		fileMetatable(t, state),
 	)
-	return data
+	return data.owningHandle()
 }
 
 func ioOperationInput(reader io.Reader) *inputEndpoint {

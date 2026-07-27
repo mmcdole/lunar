@@ -99,7 +99,7 @@ func (state *State) OpenPackage() error {
 	require, err := state.newPackageFunction(
 		library,
 		packageRequire,
-		sentinel.Value(),
+		slotFromUserDataObject(sentinel),
 	)
 	if err != nil {
 		return err
@@ -162,9 +162,9 @@ func (state *State) OpenPackage() error {
 func (state *State) newPackageFunction(
 	environment *Table,
 	entry NativeFunc,
-	captures ...Value,
+	captures ...slot,
 ) (*Function, error) {
-	function, err := state.NewNativeFunction(entry, captures...)
+	function, err := state.newNativeFunctionCompact(entry, captures)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +188,7 @@ func (state *State) ensureLoadedModules() (*Table, error) {
 	return loaded, nil
 }
 
-func (state *State) ensurePackageSentinel() *UserData {
+func (state *State) ensurePackageSentinel() *userDataObject {
 	if state.packageSentinel != nil {
 		return state.packageSentinel
 	}
@@ -196,11 +196,11 @@ func (state *State) ensurePackageSentinel() *UserData {
 	// Lua the same stable, exact identity across package reopenings without
 	// deriving identity from its host-mutable payload. It deliberately has no
 	// environment, so retaining the marker cannot retain the global graph.
-	sentinel := &UserData{
+	object := &userDataObject{
 		objectHeader: objectHeader{owner: state.runtime},
 	}
-	state.packageSentinel = sentinel
-	return sentinel
+	state.packageSentinel = object
+	return object
 }
 
 func (state *State) setLoadedModule(

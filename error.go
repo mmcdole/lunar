@@ -74,9 +74,11 @@ type TraceFrame struct {
 // owning State closes.
 type Error struct {
 	value              Value
+	compactValue       slot
 	description        string
 	traceback          []TraceFrame
 	category           ErrorCategory
+	hasCompactValue    bool
 	sourcePositionable bool
 	sourcePositioned   bool
 	cause              error
@@ -106,7 +108,48 @@ func (err *Error) Value() Value {
 	if err == nil {
 		return Value{}
 	}
+	if !err.value.Valid() && err.hasCompactValue {
+		return err.compactValue.owningValue()
+	}
 	return err.value
+}
+
+func (err *Error) valueSlot() (slot, bool) {
+	if err == nil {
+		return slot{}, false
+	}
+	if err.value.Valid() {
+		return slotFromValue(err.value), true
+	}
+	if err.hasCompactValue {
+		return err.compactValue, true
+	}
+	return slot{}, false
+}
+
+func (err *Error) mustValueSlot() slot {
+	value, valid := err.valueSlot()
+	if !valid {
+		panic("lua: invalid Lua error")
+	}
+	return value
+}
+
+func (err *Error) exposeValue() *Error {
+	if err == nil || err.value.Valid() || !err.hasCompactValue {
+		return err
+	}
+	err.value = err.compactValue.owningValue()
+	err.compactValue = nilSlot
+	err.hasCompactValue = false
+	return err
+}
+
+func exposeLuaError(err error) error {
+	if failure, ok := err.(*Error); ok {
+		failure.exposeValue()
+	}
+	return err
 }
 
 // Category returns the broad error category.
@@ -212,6 +255,8 @@ func (err *Error) positionExecutionFailure(
 	}
 	message := executionErrorDescription(prototype, pc, err.description)
 	err.value = state.String(message)
+	err.compactValue = nilSlot
+	err.hasCompactValue = false
 	err.description = message
 	err.sourcePositioned = true
 }

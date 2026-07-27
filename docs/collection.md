@@ -28,18 +28,20 @@ The boundary will use two lifetimes:
   a reference leaves the runtime.
 
 Copying an owning handle remains cheap. Go reachability keeps its small root
-token alive; the core object keeps only a weak link to that token. The token
-points at the one compact object, so this is ownership metadata rather than a
-second table, function, thread, or userdata representation. Scalars and
-strings remain direct values.
+token alive. A State-local directory weakly indexes compact objects to their
+live host tokens; both the key and value are weak, so the directory pins
+neither side. The token points at the one compact object, so this is ownership
+metadata rather than a second table, function, thread, or userdata
+representation. Scalars and strings remain direct values.
 
-For reference kinds, a public `Value` points at the host token rather than the
-compact object. Public `*Table`, `*Function`, `*Thread`, and `*UserData` values
-are opaque token views whose first private field is the common token; their
-methods unwrap the compact object at the boundary. The compact object weakly
-caches that token, so repeated publication returns the same live Go pointer
-without a wrapper map or repeated allocation. Internal `slot` values continue
-to point directly at the compact object. Conversion in either direction is one
+For migrated reference kinds, a public `Value` points at the host token rather
+than the compact object. The first implementation covers `*UserData`; tables,
+functions, and threads follow before the object ledger is enabled. Each public
+handle is an opaque token view whose first private field is the common token,
+and its methods unwrap the compact object at the boundary. The weak directory
+returns the same live Go pointer on repeated publication without repeated
+allocation or per-object handle fields. Internal `slot` values continue to
+point directly at the compact object. Conversion in either direction is one
 boundary operation, never an interpreter-loop operation.
 
 The low-level API promotes a borrow only when the caller explicitly retains
@@ -58,7 +60,8 @@ The collector treats every non-nil weak token as a root. Go may report an
 unreachable token as live until a later Go collection, which can delay Lua
 reclamation but cannot finalize an object still held by the host. State-local
 collection never forces a process-wide Go collection merely to retire that
-conservative root.
+conservative root. Collection and bounded publication-time maintenance remove
+directory entries whose object or token has disappeared.
 
 Reference identity is the compact object's identity, not the address of a
 temporary Go view. `SameObject` compares that identity. No public operation
@@ -84,7 +87,8 @@ Each collected object has a common intrusive header containing:
 
 Mark work, weak-table work, and pending finalizers use reusable State-owned
 slices. Objects do not carry gray links, cached weak modes, per-object
-reference counts, or a second graph representation.
+reference counts, or host-handle cache fields. Host metadata is paid only by
+objects that cross the Go boundary.
 
 The ledger initially supports synchronous full collection at executor safe
 points. Incremental barriers are added only with the incremental collector;
@@ -111,6 +115,14 @@ Go callback closures and userdata payloads are opaque. If they retain Lua
 objects, they do so through ordinary owning handles, which appear in the host
 root set. Ownership back-pointers, State pointers, native-resource records,
 and unused slice capacity are not Lua graph edges.
+
+An owning handle hidden inside opaque Go data is necessarily a host root.
+The collector cannot inspect a Go closure or arbitrary payload to discover
+that the handle is reachable only through an otherwise dead Lua object.
+Native functions should use explicit compact captures when the captured value
+belongs to the Lua graph. Hosts that construct cycles through opaque payloads
+must break those cycles; silently tracing arbitrary Go memory is not a
+supported ownership model.
 
 Sweeping unlinks unreachable objects from the State ledger. Go then reclaims
 their backing allocations and any unreachable cycles. Sweep does not

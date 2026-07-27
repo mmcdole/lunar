@@ -323,7 +323,7 @@ func ioLines(frame Frame) Outcome {
 }
 
 func fileLines(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(
 			frame,
@@ -344,13 +344,15 @@ func fileLines(frame Frame) Outcome {
 
 func newFileLineIterator(
 	frame Frame,
-	data *UserData,
+	data *userDataObject,
 	autoClose bool,
 ) Outcome {
-	function, err := frame.State().NewNativeFunction(
+	function, err := frame.State().newNativeFunctionCompact(
 		fileLineIterator,
-		data.Value(),
-		Bool(autoClose),
+		[]slot{
+			slotFromUserDataObject(data),
+			slotFromValue(Bool(autoClose)),
+		},
 	)
 	if err != nil {
 		if autoClose {
@@ -370,7 +372,7 @@ func fileLineIterator(frame Frame) Outcome {
 	if !captured.isUserData() {
 		return libraryError(frame, "file is already closed")
 	}
-	data := (*UserData)(captured.ref)
+	data := userDataObjectFromSlot(captured)
 	if !isManagedUserDataClass(data, &fileResourceClass) {
 		return libraryError(frame, "file is already closed")
 	}
@@ -406,7 +408,7 @@ func fileLineIterator(frame Frame) Outcome {
 func readFileLine(
 	frame Frame,
 	handle *fileHandle,
-	data *UserData,
+	data *userDataObject,
 ) Outcome {
 	if err := handle.prepareRead(); err != nil {
 		return libraryError(frame, "%s", ioFailureMessage(err))
@@ -445,7 +447,7 @@ func readFileLine(
 func readProcessFileLine(
 	frame Frame,
 	handle *fileHandle,
-	data *UserData,
+	data *userDataObject,
 	ctx context.Context,
 ) Outcome {
 	stopCancellation := handle.interruptProcessIO(ctx)
@@ -488,12 +490,12 @@ func acquireDefaultInputFile(
 func currentIOFile(
 	frame Frame,
 	index int,
-) (*UserData, bool) {
+) (*userDataObject, bool) {
 	current, found := frame.Environment().rawIntSlot(index)
 	if !found || !current.isUserData() {
 		return nil, false
 	}
-	data := (*UserData)(current.ref)
+	data := userDataObjectFromSlot(current)
 	if !isFileUserData(frame.thread.state, data) {
 		return nil, false
 	}

@@ -585,3 +585,204 @@ func TestOperandDescriptionFollowsBytecodeStructure(t *testing.T) {
 		})
 	}
 }
+
+func TestArbitraryUserDataErrorPublishesAtGoBoundary(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	if entries, keys, _ := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 0 || keys != 0 {
+		t.Fatalf(
+			"opening libraries published userdata: entries=%d keys=%d",
+			entries,
+			keys,
+		)
+	}
+
+	chunk := mustLoadString(t, state, "=userdata-error", `
+local file=assert(io.tmpfile())
+error(file,0)
+`)
+	_, err := state.Call(chunk.Value())
+	var failure *Error
+	if !errors.As(err, &failure) {
+		t.Fatalf("userdata error = %T %v; want *Error", err, err)
+	}
+	first, ok := failure.Value().UserData()
+	if !ok {
+		t.Fatalf("userdata error Value = %v", failure.Value())
+	}
+	second, ok := failure.Value().UserData()
+	if !ok || second != first {
+		t.Fatalf(
+			"repeated error Value = (%p, %v); want (%p, true)",
+			second,
+			ok,
+			first,
+		)
+	}
+	if entries, keys, stale := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 1 || keys != 1 || stale != 0 {
+		t.Fatalf(
+			"escaped error directory = entries:%d keys:%d stale:%d; want 1/1/0",
+			entries,
+			keys,
+			stale,
+		)
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	afterClose, ok := failure.Value().UserData()
+	if !ok || afterClose != first {
+		t.Fatalf(
+			"post-close error Value = (%p, %v); want (%p, true)",
+			afterClose,
+			ok,
+			first,
+		)
+	}
+}
+
+func TestCoroutineUserDataErrorPublishesAtGoBoundary(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+	chunk := mustLoadString(t, state, "=coroutine-userdata-error", `
+error(io.tmpfile(),0)
+`)
+	thread, err := state.NewThread(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, status, err := thread.Resume()
+	var failure *Error
+	if !errors.As(err, &failure) || status != ThreadDead {
+		t.Fatalf(
+			"coroutine userdata error = (status=%v, %T %v); want dead *Error",
+			status,
+			err,
+			err,
+		)
+	}
+	if _, ok := failure.Value().UserData(); !ok {
+		t.Fatalf("coroutine error Value = %v", failure.Value())
+	}
+	if entries, keys, stale := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 1 || keys != 1 || stale != 0 {
+		t.Fatalf(
+			"coroutine error directory = entries:%d keys:%d stale:%d; want 1/1/0",
+			entries,
+			keys,
+			stale,
+		)
+	}
+}
+
+func TestNativeFrameUserDataErrorsPublishBeforeReturningToGo(
+	t *testing.T,
+) {
+	for _, boundary := range []string{"call", "index"} {
+		t.Run(boundary, func(t *testing.T) {
+			state := newStateWithIO(t, Options{})
+			defer state.Close()
+
+			var invoke func(Frame) error
+			switch boundary {
+			case "call":
+				target := mustLoadString(
+					t,
+					state,
+					"=frame-call-userdata-error",
+					`error(io.tmpfile(),0)`,
+				)
+				invoke = func(frame Frame) error {
+					_, err := frame.Call(target.Value())
+					return err
+				}
+			case "index":
+				constructor := mustLoadString(
+					t,
+					state,
+					"=frame-index-userdata-error",
+					`
+return setmetatable({},{
+	__index=function()
+		error(io.tmpfile(),0)
+	end,
+})
+`,
+				)
+				results, err := state.Call(constructor.Value())
+				if err != nil {
+					t.Fatal(err)
+				}
+				target, ok := results[0].Table()
+				if !ok {
+					t.Fatalf("index target = %v", results[0])
+				}
+				invoke = func(frame Frame) error {
+					_, err := frame.Index(
+						target.Value(),
+						state.String("missing"),
+					)
+					return err
+				}
+			default:
+				t.Fatalf("unknown boundary %q", boundary)
+			}
+
+			var nested *Error
+			var exposedBeforeReturn bool
+			bridge, err := state.NewNativeFunction(
+				func(frame Frame) Outcome {
+					err := invoke(frame)
+					if !errors.As(err, &nested) {
+						return frame.RaiseString("nested call did not return *Error")
+					}
+					exposedBeforeReturn =
+						nested.value.Valid() &&
+							!nested.hasCompactValue
+					return frame.RaiseError(nested)
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = state.Call(bridge.Value())
+			var outer *Error
+			if !errors.As(err, &outer) {
+				t.Fatalf("outer error = %T %v; want *Error", err, err)
+			}
+			if !exposedBeforeReturn {
+				t.Fatal("Frame boundary returned a compact error to Go")
+			}
+			nestedValue := nested.Value()
+			outerValue := outer.Value()
+			if same, applicable := nestedValue.SameObject(
+				outerValue,
+			); !applicable || !same {
+				t.Fatalf(
+					"nested/outer error identity = (%v, %v)",
+					same,
+					applicable,
+				)
+			}
+			if entries, keys, stale := hostDirectoryCounts(
+				&state.runtime.hosts,
+			); entries != 1 || keys != 1 || stale != 0 {
+				t.Fatalf(
+					"Frame %s directory = entries:%d keys:%d stale:%d; want 1/1/0",
+					boundary,
+					entries,
+					keys,
+					stale,
+				)
+			}
+		})
+	}
+}

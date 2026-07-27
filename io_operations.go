@@ -529,7 +529,7 @@ func acquireDefaultOutputFile(
 			libraryError(frame, "standard output file is closed"),
 			true
 	}
-	data := (*UserData)(current.ref)
+	data := userDataObjectFromSlot(current)
 	if !isFileUserData(frame.thread.state, data) {
 		return nativeResourceLease{}, nil,
 			libraryError(frame, "standard output file is closed"),
@@ -559,7 +559,7 @@ func acquireFileArgument(
 	Outcome,
 	bool,
 ) {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
 		return nativeResourceLease{}, nil,
 			baseArgumentTypeError(

@@ -12,7 +12,7 @@ func (state *State) newProcessFile(
 	process *childProcess,
 	direction processPipeDirection,
 	metatable *Table,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	handle := &fileHandle{
 		closer:  pipe,
 		process: process,
@@ -247,6 +247,6 @@ func ioPopen(frame Frame) Outcome {
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromValue(data.Value()),
+		slotFromUserDataObject(data),
 	)
 }

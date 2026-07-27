@@ -109,6 +109,32 @@ func (state *State) NewNativeFunction(
 	), nil
 }
 
+func (state *State) newNativeFunctionCompact(
+	entry NativeFunc,
+	captures []slot,
+) (*Function, error) {
+	if err := state.checkOpen(); err != nil {
+		return nil, err
+	}
+	if entry == nil {
+		return nil, ErrInvalidNativeFunction
+	}
+	if len(captures) > maxNativeCaptures {
+		return nil, ErrNativeCaptureLimit
+	}
+	for _, capture := range captures {
+		if err := state.runtime.acceptSlot(capture); err != nil {
+			return nil, err
+		}
+	}
+	return newNativeFunctionOwned(
+		state.runtime,
+		state.constructionEnvironment(),
+		entry,
+		captures,
+	), nil
+}
+
 // ArgumentCount returns the number of supplied arguments.
 func (frame Frame) ArgumentCount() int {
 	call := frame.activation()
@@ -191,7 +217,15 @@ func (frame Frame) UserData(index int) (*UserData, bool) {
 	if !present || !value.isUserData() {
 		return nil, false
 	}
-	return (*UserData)(value.ref), true
+	return userDataHandleFromSlot(value), true
+}
+
+func (frame Frame) userDataObject(index int) (*userDataObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isUserData() {
+		return nil, false
+	}
+	return userDataObjectFromSlot(value), true
 }
 
 // LuaThread returns argument index and whether it is exactly a Lua thread.
@@ -532,6 +566,19 @@ func (frame Frame) Raise(value Value) Outcome {
 		value:       value,
 		description: value.String(),
 		category:    RuntimeError,
+	})
+}
+
+func (frame Frame) raiseCompact(value slot) Outcome {
+	frame.activation()
+	if err := frame.thread.owner.acceptSlot(value); err != nil {
+		panic(err)
+	}
+	return frame.sealError(&Error{
+		compactValue:    value,
+		description:     value.diagnosticString(),
+		category:        RuntimeError,
+		hasCompactValue: true,
 	})
 }
 

@@ -44,10 +44,11 @@ func TestManagedNativeResourceExplicitCloseAndSealedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.Data() != nil {
-		t.Fatalf("managed userdata exposed payload %v", data.Data())
+	handle := data.owningHandle()
+	if handle.Data() != nil {
+		t.Fatalf("managed userdata exposed payload %v", handle.Data())
 	}
-	if err := data.SetData("replacement"); !errors.Is(
+	if err := handle.SetData("replacement"); !errors.Is(
 		err,
 		ErrReadOnlyUserData,
 	) {
@@ -88,7 +89,7 @@ func TestManagedNativeResourceExplicitCloseAndSealedPayload(t *testing.T) {
 			probe.count.Load(),
 		)
 	}
-	if err := data.SetData("replacement"); !errors.Is(err, ErrClosed) {
+	if err := handle.SetData("replacement"); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed-State SetData = %v; want ErrClosed", err)
 	}
 }
@@ -128,6 +129,45 @@ func allocateAbandonedNativeResource(
 ) error {
 	_, err := state.newManagedUserData(probe, cleanNativeProbe)
 	return err
+}
+
+func TestCompactUserDataKeepsNativeResourceAlive(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	probe := &nativeCleanupProbe{done: make(chan struct{}, 1)}
+	data, err := state.newManagedUserData(probe, cleanNativeProbe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := stringSlot(state.runtime.strings.make("compact resource"))
+	state.registry.rawSetSlot(key, slotFromUserDataObject(data))
+	data = nil
+
+	for range 8 {
+		runtime.GC()
+		runtime.Gosched()
+		select {
+		case <-probe.done:
+			t.Fatal("resource finalized while compact Lua storage retained it")
+		default:
+		}
+	}
+	if entries, keys, _ := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 0 || keys != 0 {
+		t.Fatalf(
+			"compact resource created host metadata: entries=%d keys=%d",
+			entries,
+			keys,
+		)
+	}
+
+	state.registry.rawSetSlot(key, nilSlot)
+	waitForNativeCleanup(t, probe.done)
 }
 
 func waitForNativeCleanup(t *testing.T, done <-chan struct{}) {
@@ -209,8 +249,8 @@ func TestStateCloseReleasesEveryManagedNativeResource(t *testing.T) {
 		{id: 1, order: &order, err: sentinel},
 		{id: 2, order: &order},
 	}
-	allData := make([]*UserData, 0, len(probes))
-	var retained *UserData
+	allData := make([]*userDataObject, 0, len(probes))
+	var retained *userDataObject
 	for index, probe := range probes {
 		data, createErr := state.newManagedUserData(
 			probe,
@@ -291,7 +331,8 @@ func TestStateCloseNeverClosesBorrowedStandardStreams(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := data.SetData("replacement"); !errors.Is(
+	handle := data.owningHandle()
+	if err := handle.SetData("replacement"); !errors.Is(
 		err,
 		ErrReadOnlyUserData,
 	) {
@@ -366,13 +407,14 @@ func closeStateWithManagedResource(
 	if err := state.SetGlobal("unrelated", unrelated.Value()); err != nil {
 		panic(err)
 	}
-	retained, err := state.newManagedUserData(
+	object, err := state.newManagedUserData(
 		&nativeCleanupProbe{},
 		cleanNativeProbe,
 	)
 	if err != nil {
 		panic(err)
 	}
+	retained := object.owningHandle()
 	if err := state.SetUserDataEnvironment(retained, nil); err != nil {
 		panic(err)
 	}

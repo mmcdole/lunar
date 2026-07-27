@@ -184,26 +184,24 @@ func (state *State) OpenIO() error {
 
 	environment.rawSetIntegerSlot(
 		ioDefaultInput,
-		slotFromValue(stdin.Value()),
+		slotFromUserDataObject(stdin),
 	)
 	environment.rawSetIntegerSlot(
 		ioDefaultOutput,
-		slotFromValue(stdout.Value()),
+		slotFromUserDataObject(stdout),
 	)
 	for _, field := range [...]struct {
 		name string
-		data *UserData
+		data *userDataObject
 	}{
 		{name: "stdin", data: stdin},
 		{name: "stdout", data: stdout},
 		{name: "stderr", data: stderr},
 	} {
-		if err := library.RawSetString(
-			field.name,
-			field.data.Value(),
-		); err != nil {
-			return err
-		}
+		library.rawSetSlot(
+			stringSlot(state.runtime.strings.make(field.name)),
+			slotFromUserDataObject(field.data),
+		)
 	}
 
 	if err := state.globalEnvironment().RawSetString(
@@ -258,7 +256,7 @@ func (state *State) newStandardFile(
 	handle *fileHandle,
 	metatable *Table,
 	environment *Table,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	data, err := state.newBorrowedUserData(handle)
 	if err != nil {
 		return nil, err
@@ -272,7 +270,7 @@ func (state *State) newRegularFile(
 	file *os.File,
 	flags int,
 	metatable *Table,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	return state.newOwnedFile(file, file, flags, metatable)
 }
 
@@ -281,7 +279,7 @@ func (state *State) newOwnedFile(
 	closer io.Closer,
 	flags int,
 	metatable *Table,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	handle := &fileHandle{
 		seeker: file,
 		closer: closer,
@@ -363,7 +361,7 @@ func closeRegularFileHandle(handle *fileHandle) error {
 }
 
 func ioType(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present {
 		if frame.Kind(0) == InvalidKind {
 			return baseArgumentError(frame, 0, "value expected")
@@ -421,7 +419,7 @@ func ioOpen(frame Frame) Outcome {
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromValue(data.Value()),
+		slotFromUserDataObject(data),
 	)
 }
 
@@ -449,7 +447,7 @@ func ioTempFile(frame Frame) Outcome {
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromValue(data.Value()),
+		slotFromUserDataObject(data),
 	)
 }
 
@@ -513,11 +511,11 @@ func fileOpenCapabilities(flags int) (readable, writable bool) {
 }
 
 func ioClose(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present && frame.Kind(0) == InvalidKind {
 		current, _ := frame.Environment().rawIntSlot(ioDefaultOutput)
 		if current.isUserData() {
-			data = (*UserData)(current.ref)
+			data = userDataObjectFromSlot(current)
 			present = true
 		}
 	}
@@ -528,7 +526,7 @@ func ioClose(frame Frame) Outcome {
 }
 
 func fileClose(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present {
 		// Lua 5.1's file:close path reports an absent receiver as nil,
 		// unlike the other file methods, which report "no value".
@@ -547,7 +545,7 @@ func fileClose(frame Frame) Outcome {
 	return closeFileUserData(frame, data)
 }
 
-func closeFileUserData(frame Frame, data *UserData) Outcome {
+func closeFileUserData(frame Frame, data *userDataObject) Outcome {
 	lease, open := acquireManagedResource(data)
 	if !open {
 		return libraryError(frame, "attempt to use a closed file")
@@ -599,7 +597,7 @@ func fileNoClose(frame Frame) Outcome {
 }
 
 func fileCollect(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
@@ -616,7 +614,7 @@ func fileCollect(frame Frame) Outcome {
 }
 
 func fileToString(frame Frame) Outcome {
-	data, present := frame.UserData(0)
+	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
 		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
@@ -649,7 +647,7 @@ func ioDefaultFile(
 ) Outcome {
 	argument, present := frame.argument(0)
 	if present && !argument.isNil() {
-		var data *UserData
+		var data *userDataObject
 		if argument.isString() ||
 			argument.isNumber() {
 			filename, _ := compactText(argument)
@@ -679,7 +677,7 @@ func ioDefaultFile(
 			}
 		} else {
 			if argument.isUserData() {
-				data = (*UserData)(argument.ref)
+				data = userDataObjectFromSlot(argument)
 			}
 			if !isFileUserData(frame.thread.state, data) {
 				return baseArgumentTypeError(
@@ -699,14 +697,14 @@ func ioDefaultFile(
 		}
 		frame.Environment().rawSetIntegerSlot(
 			defaultIndex,
-			slotFromValue(data.Value()),
+			slotFromUserDataObject(data),
 		)
 	}
 	current, _ := frame.Environment().rawIntSlot(defaultIndex)
 	return frame.returnOne(frame.activation(), current)
 }
 
-func isFileUserData(state *State, data *UserData) bool {
+func isFileUserData(state *State, data *userDataObject) bool {
 	if state == nil ||
 		state.registry == nil ||
 		!isManagedUserDataClass(data, &fileResourceClass) {

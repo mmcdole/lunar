@@ -191,7 +191,7 @@ func (frame Frame) returnScratchValues(
 func (frame Frame) Index(target, key Value) (Value, error) {
 	frame.activation()
 	if failure := frame.thread.state.execution.pendingExit; failure != nil {
-		return Value{}, failure
+		return Value{}, failure.exposeValue()
 	}
 	if err := frame.thread.owner.accept(target); err != nil {
 		return Value{}, err
@@ -204,7 +204,7 @@ func (frame Frame) Index(target, key Value) (Value, error) {
 		slotFromValue(key),
 	)
 	if failure != nil {
-		return Value{}, failure
+		return Value{}, failure.exposeValue()
 	}
 	return result.owningValue(), nil
 }
@@ -253,7 +253,7 @@ func (frame Frame) indexCompact(target, key slot) (slot, *Error) {
 func (frame Frame) SetIndex(target, key, value Value) error {
 	frame.activation()
 	if failure := frame.thread.state.execution.pendingExit; failure != nil {
-		return failure
+		return failure.exposeValue()
 	}
 	if err := frame.thread.owner.accept(target); err != nil {
 		return err
@@ -269,7 +269,7 @@ func (frame Frame) SetIndex(target, key, value Value) error {
 		slotFromValue(key),
 		slotFromValue(value),
 	); failure != nil {
-		return failure
+		return failure.exposeValue()
 	}
 	return nil
 }
@@ -462,7 +462,7 @@ func (frame Frame) callNested(
 	if failure != nil {
 		checkpoint.restore(thread, true)
 		restored = true
-		return nil, 0, failure
+		return nil, 0, failure.exposeValue()
 	}
 
 	if allocateResults {
@@ -503,10 +503,11 @@ func (frame Frame) callNested(
 // panic.
 func (frame Frame) RaiseError(failure *Error) Outcome {
 	frame.activation()
-	if failure == nil || !failure.value.Valid() {
+	value, valid := failure.valueSlot()
+	if !valid {
 		panic("lua: invalid Lua error")
 	}
-	if err := frame.thread.owner.accept(failure.value); err != nil {
+	if err := frame.thread.owner.acceptSlot(value); err != nil {
 		panic(err)
 	}
 

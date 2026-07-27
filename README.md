@@ -9,6 +9,7 @@ embed Lua:
 
 Both interfaces operate on the same values, tables, functions, and threads.
 Executable state has one authoritative representation.
+Badger Lua requires Go 1.24 or newer.
 
 The implementation is under active construction. The compact object model,
 Lua 5.1 bytecode, immutable verified prototypes, direct lexer, and the

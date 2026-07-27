@@ -155,7 +155,7 @@ func baseError(frame Frame) Outcome {
 		}
 		return frame.RaiseString(text)
 	}
-	return frame.Raise(value.owningValue())
+	return frame.raiseCompact(value)
 }
 
 func basePrint(frame Frame) Outcome {

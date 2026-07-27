@@ -238,7 +238,7 @@ func runProtectedCall(
 	}
 
 	positionExecutionFailure(thread, failure)
-	errorValue := slotFromValue(failure.value)
+	errorValue := failure.mustValueSlot()
 	if !hasHandler {
 		checkpoint.restore(thread, true)
 		restored = true

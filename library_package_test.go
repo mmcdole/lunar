@@ -339,6 +339,35 @@ return ok,type(message),string.find(message,"loop or previous error",1,true)~=ni
 	)
 }
 
+func TestPackageRequireSentinelRemainsCompact(t *testing.T) {
+	state := newStateWithPackage(t, Options{})
+	defer state.Close()
+
+	chunk := mustLoadString(t, state, "@package-compact-sentinel.lua", `
+package.preload.empty=function() end
+package.preload.failed=function()
+	error("stopped",0)
+end
+local failed=pcall(require,"failed")
+return require("empty"),failed
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true), Bool(false))
+
+	entries, keys, stale := hostDirectoryCounts(&state.runtime.hosts)
+	if entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"Lua-only require published host tokens: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+}
+
 func TestPackageRequireUsesLua51SearcherRules(t *testing.T) {
 	state := newStateWithPackage(t, Options{})
 	defer state.Close()

@@ -625,6 +625,31 @@ sequence above. The direct A/B is the causal tranche evidence; the absolute
 PUC run is the standing destination rather than a claim that host timing
 between separate days is perfectly stationary.
 
+### 12. Host ownership checkpoint
+
+The first semantic-collection boundary tranche separates public userdata
+handles from compact userdata objects. Lua slots, tables, native captures, and
+the standard libraries retain the 48-byte compact object directly. A
+State-local weak directory canonicalizes public handles only when userdata
+actually crosses into Go; it adds no field to every compact object.
+
+On the same Apple M3 Pro, first publication through `State.NewUserData`
+measures four allocations per object, compared with one allocation for the
+former directly exposed object. The additional work is the host token and the
+two Go weak registrations. Warm publication of an already exposed object
+remains allocation-free at about 27 ns. A Lua-only file create, method,
+read/write, and close sequence creates no host-directory entry, and a managed
+resource held only by compact Lua storage remains live across forced Go
+collections.
+
+This is an explicit trade: boundary-only objects pay more so all Lua-only
+tables, functions, threads, and userdata avoid a permanent handle-cache word
+and its possible allocator size-class increase. Re-measure representative
+embedding workloads before extending the mechanism to the other reference
+kinds. If first-publication cost is material there, change the canonicalization
+strategy as one coherent representation decision rather than adding per-kind
+shortcuts.
+
 ## Gates
 
 Every tranche must pass the full semantic, race, checkptr, vet, and supported

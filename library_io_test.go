@@ -76,7 +76,10 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 		"stdout": stdout,
 		"stderr": stderr,
 	} {
-		if !isManagedUserDataClass(data, &fileResourceClass) {
+		if !isManagedUserDataClass(
+			data.runtimeObject(),
+			&fileResourceClass,
+		) {
 			t.Fatalf("io.%s is not a canonical file", name)
 		}
 		if data.Data() != nil {
@@ -88,7 +91,7 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 		) {
 			t.Fatalf("io.%s SetData = %v", name, err)
 		}
-		lease, open := acquireManagedResource(data)
+		lease, open := acquireManagedResource(data.runtimeObject())
 		if !open || lease.owned {
 			t.Fatalf("io.%s resource = (open %v, owned %v)", name, open, lease.owned)
 		}
@@ -125,19 +128,19 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 		t.Fatal("private output default is not io.stdout")
 	}
 
-	inputLease, _ := acquireManagedResource(stdin)
+	inputLease, _ := acquireManagedResource(stdin.runtimeObject())
 	inputHandle := inputLease.value.(*fileHandle)
 	if inputHandle.input != &state.streams.stdin {
 		t.Fatal("io.stdin does not share the State input cursor")
 	}
 	inputLease.release()
-	outputLease, _ := acquireManagedResource(stdout)
+	outputLease, _ := acquireManagedResource(stdout.runtimeObject())
 	outputHandle := outputLease.value.(*fileHandle)
 	if outputHandle.output != &state.streams.stdout {
 		t.Fatal("io.stdout does not share the State output endpoint")
 	}
 	outputLease.release()
-	errorLease, _ := acquireManagedResource(stderr)
+	errorLease, _ := acquireManagedResource(stderr.runtimeObject())
 	errorHandle := errorLease.value.(*fileHandle)
 	if errorHandle.output != &state.streams.stderr {
 		t.Fatal("io.stderr does not share the State error endpoint")
@@ -160,6 +163,54 @@ return io.type(io.stdin),io.type(io.stdout),io.type(io.stderr),
 	text, ok := results[5].AsString()
 	if !ok || !strings.HasPrefix(text, "file (0x") {
 		t.Fatalf("standard file tostring = %v", results[5])
+	}
+}
+
+func TestIOLuaOnlyExecutionDoesNotPublishUserDataHandles(t *testing.T) {
+	state := newStateWithIO(t, Options{})
+	defer state.Close()
+
+	if entries, keys, _ := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 0 || keys != 0 {
+		t.Fatalf(
+			"opening io published userdata handles: entries=%d keys=%d",
+			entries,
+			keys,
+		)
+	}
+
+	results := runIOChunk(t, state, `
+local file=assert(io.tmpfile())
+assert(io.type(file)=="file")
+assert(file:write("compact"))
+assert(file:seek("set")==0)
+assert(file:read("*a")=="compact")
+assert(file:close())
+local ok,raised=pcall(function()
+	error(io.tmpfile(),0)
+end)
+assert(not ok)
+assert(io.type(raised)=="file")
+assert(raised:close())
+local thread=coroutine.create(function()
+	error(io.tmpfile(),0)
+end)
+ok,raised=coroutine.resume(thread)
+assert(not ok)
+assert(io.type(raised)=="file")
+assert(raised:close())
+return true
+`)
+	assertTestValues(t, results, Bool(true))
+	if entries, keys, _ := hostDirectoryCounts(
+		&state.runtime.hosts,
+	); entries != 0 || keys != 0 {
+		t.Fatalf(
+			"Lua-only io published userdata handles: entries=%d keys=%d",
+			entries,
+			keys,
+		)
 	}
 }
 
@@ -440,7 +491,7 @@ return file,message,code,before,text,closed,after,closedText,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.environment != privateEnvironment {
+	if data.runtimeObject().environment != privateEnvironment {
 		t.Fatal("regular file does not share the IO private environment")
 	}
 	assertTestValues(
@@ -484,7 +535,7 @@ return file,message,code,before,text,closed,after,closedText,
 	) {
 		t.Fatalf("io.close(nil) error = %q", nilError)
 	}
-	if _, open := acquireManagedResource(data); open {
+	if _, open := acquireManagedResource(data.runtimeObject()); open {
 		t.Fatal("closed file resource remains available")
 	}
 
@@ -690,7 +741,9 @@ return file,message,code
 	} else if info.Size() != 0 {
 		t.Fatalf("w mode left size %d; want 0", info.Size())
 	}
-	if first, err := closeManagedResource(data); err != nil || !first {
+	if first, err := closeManagedResource(
+		data.runtimeObject(),
+	); err != nil || !first {
 		t.Fatalf("close truncated-mode file = (%v, %v)", first, err)
 	}
 
@@ -753,7 +806,7 @@ return assert(io.open(`+luaTestQuote(path)+`,"r")),
 		if !ok {
 			t.Fatalf("file %d = %v", index, result)
 		}
-		lease, open := acquireManagedResource(data)
+		lease, open := acquireManagedResource(data.runtimeObject())
 		if !open {
 			t.Fatalf("file %d is closed", index)
 		}
@@ -768,7 +821,7 @@ return assert(io.open(`+luaTestQuote(path)+`,"r")),
 				want[index],
 			)
 		}
-		if _, err := closeManagedResource(data); err != nil {
+		if _, err := closeManagedResource(data.runtimeObject()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -789,7 +842,7 @@ return io.open(`+luaTestQuote(path)+`,"a+")
 	if !ok {
 		t.Fatalf("io.open(a+) = %v", results)
 	}
-	lease, open := acquireManagedResource(data)
+	lease, open := acquireManagedResource(data.runtimeObject())
 	if !open {
 		t.Fatal("a+ handle is closed")
 	}
@@ -804,7 +857,7 @@ return io.open(`+luaTestQuote(path)+`,"a+")
 		t.Fatal(err)
 	}
 	lease.release()
-	if _, err := closeManagedResource(data); err != nil {
+	if _, err := closeManagedResource(data.runtimeObject()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -825,7 +878,7 @@ func TestIOTemporaryFileIsOwnedAndRemovedOnClose(t *testing.T) {
 	if !ok {
 		t.Fatalf("io.tmpfile result = %v", results)
 	}
-	lease, open := acquireManagedResource(data)
+	lease, open := acquireManagedResource(data.runtimeObject())
 	if !open || !lease.owned {
 		t.Fatalf("temporary resource = (open %v, owned %v)", open, lease.owned)
 	}
@@ -962,7 +1015,7 @@ return io.open(`+luaTestQuote(path)+`,"w")
 	if !ok {
 		t.Fatalf("owned open = %v", results)
 	}
-	lease, open := acquireManagedResource(data)
+	lease, open := acquireManagedResource(data.runtimeObject())
 	if !open {
 		t.Fatal("owned file was not open")
 	}
@@ -973,7 +1026,7 @@ return io.open(`+luaTestQuote(path)+`,"w")
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, open := acquireManagedResource(data); open {
+	if _, open := acquireManagedResource(data.runtimeObject()); open {
 		t.Fatal("State.Close left owned file resource open")
 	}
 	if _, err := file.Write([]byte("x")); err == nil {

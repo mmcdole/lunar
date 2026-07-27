@@ -24,11 +24,12 @@ type nativeRelease struct {
 }
 
 // nativeResourceCleanup releases one runtime-owned native resource. It must
-// not enter Lua or retain the runtime UserData that owns its finalizer token.
+// not enter Lua or retain the compact userdata object that owns its finalizer
+// token.
 type nativeResourceCleanup func(any, nativeRelease) error
 
 // nativeResourceRegistry lets State.Close release every live native resource
-// without making the State itself part of a retained UserData's object graph.
+// without making the State itself part of a retained userdata object's graph.
 // Its mutex only coordinates Go finalizers with serialized State operations.
 type nativeResourceRegistry struct {
 	mu     sync.Mutex
@@ -49,9 +50,9 @@ type nativeResource struct {
 	err      error
 }
 
-// nativeResourceToken is reachable only through its owning UserData. The
-// registry deliberately retains the resource record, not this token, so Go
-// can reclaim an unreachable UserData and run native cleanup.
+// nativeResourceToken is reachable only through its owning compact userdata
+// object. The registry deliberately retains the resource record, not this
+// token, so Go can reclaim unreachable userdata and run native cleanup.
 type nativeResourceToken struct {
 	resource *nativeResource
 	class    *nativeResourceClass
@@ -202,13 +203,13 @@ func finalizeNativeResource(token *nativeResourceToken) {
 func (state *State) newManagedUserData(
 	value any,
 	cleanup nativeResourceCleanup,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	return state.newRuntimeUserData(value, cleanup, true)
 }
 
 func (state *State) newBorrowedUserData(
 	value any,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	return state.newRuntimeUserData(
 		value,
 		releaseBorrowedNativeResource,
@@ -220,7 +221,7 @@ func (state *State) newRuntimeUserData(
 	value any,
 	cleanup nativeResourceCleanup,
 	owned bool,
-) (*UserData, error) {
+) (*userDataObject, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -233,11 +234,12 @@ func (state *State) newRuntimeUserData(
 	if err != nil {
 		return nil, err
 	}
-	return &UserData{
+	data := &userDataObject{
 		objectHeader: objectHeader{owner: state.runtime},
 		environment:  state.constructionEnvironment(),
 		resource:     token,
-	}, nil
+	}
+	return data, nil
 }
 
 func releaseBorrowedNativeResource(any, nativeRelease) error {
@@ -245,24 +247,30 @@ func releaseBorrowedNativeResource(any, nativeRelease) error {
 }
 
 func acquireManagedResource(
-	data *UserData,
+	data *userDataObject,
 ) (nativeResourceLease, bool) {
-	if data == nil || data.resource == nil {
+	if data == nil {
 		return nativeResourceLease{}, false
 	}
-	value, open := data.resource.resource.current()
+	token := data.resource
+	if token == nil {
+		return nativeResourceLease{}, false
+	}
+	defer runtime.KeepAlive(data)
+	value, open := token.resource.current()
 	if !open {
 		return nativeResourceLease{}, false
 	}
-	return nativeResourceLease{
+	lease := nativeResourceLease{
 		value: value,
-		token: data.resource,
-		owned: data.resource.resource.owned,
-	}, true
+		token: token,
+		owned: token.resource.owned,
+	}
+	return lease, true
 }
 
 func classifyManagedUserData(
-	data *UserData,
+	data *userDataObject,
 	class *nativeResourceClass,
 	metatable *Table,
 ) {
@@ -272,28 +280,31 @@ func classifyManagedUserData(
 	}
 	data.resource.class = class
 	data.metatable = metatable
+	runtime.KeepAlive(data)
 }
 
 func isManagedUserDataClass(
-	data *UserData,
+	data *userDataObject,
 	class *nativeResourceClass,
 ) bool {
-	return data != nil &&
+	result := data != nil &&
 		data.resource != nil &&
 		class != nil &&
 		data.resource.class == class
+	runtime.KeepAlive(data)
+	return result
 }
 
 func (lease nativeResourceLease) release() {
 	runtime.KeepAlive(lease.token)
 }
 
-func closeManagedResource(data *UserData) (first bool, err error) {
+func closeManagedResource(data *userDataObject) (first bool, err error) {
 	return closeManagedResourceContext(data, nil)
 }
 
 func closeManagedResourceContext(
-	data *UserData,
+	data *userDataObject,
 	ctx context.Context,
 ) (first bool, err error) {
 	if data == nil || data.resource == nil {
@@ -332,7 +343,7 @@ func closeManagedLeaseContext(
 }
 
 func collectManagedResource(
-	data *UserData,
+	data *userDataObject,
 ) (first bool, err error) {
 	if data == nil || data.resource == nil {
 		return false, nil

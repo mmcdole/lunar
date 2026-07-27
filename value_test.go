@@ -8,9 +8,11 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
+	"weak"
 )
 
 func TestValueRepresentation(t *testing.T) {
@@ -32,6 +34,12 @@ func TestValueRepresentation(t *testing.T) {
 		}
 		if size := unsafe.Sizeof(Table{}); size != 80 {
 			t.Fatalf("table size = %d, want 80", size)
+		}
+		if size := unsafe.Sizeof(hostToken{}); size != 24 {
+			t.Fatalf("host token size = %d, want 24", size)
+		}
+		if size := unsafe.Sizeof(userDataObject{}); size != 48 {
+			t.Fatalf("compact userdata size = %d, want 48", size)
 		}
 		if size := unsafe.Sizeof(stringRef{}); size != 16 {
 			t.Fatalf("stringRef size = %d, want 16", size)
@@ -523,6 +531,477 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 	}
 }
 
+func TestUserDataOwningHandleRepresentation(t *testing.T) {
+	if unsafe.Sizeof(UserData{}) != unsafe.Sizeof(hostToken{}) {
+		t.Fatalf(
+			"UserData size = %d; host token size = %d",
+			unsafe.Sizeof(UserData{}),
+			unsafe.Sizeof(hostToken{}),
+		)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	data, err := state.NewUserData("payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := data.token()
+	if unsafe.Pointer(data) != unsafe.Pointer(token) {
+		t.Fatal("UserData is not an offset-zero host-token view")
+	}
+	object := data.runtimeObject()
+	if object == nil {
+		t.Fatal("userdata handle has no compact object")
+	}
+	key := weak.Make(&object.objectHeader)
+	if state.runtime.hosts.entries[key].Value() != token {
+		t.Fatal("userdata object does not have its live token in the directory")
+	}
+
+	public := data.Value()
+	compact := slotFromValue(public)
+	if compact.ref != unsafe.Pointer(object) {
+		t.Fatal("compact userdata slot does not point directly at its object")
+	}
+	if compact.ref == public.ref {
+		t.Fatal("public userdata Value exposed the compact object pointer")
+	}
+
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetString("data", public); err != nil {
+		t.Fatal(err)
+	}
+	fromTable, ok := table.RawGetString("data").UserData()
+	if !ok || fromTable != data {
+		t.Fatalf(
+			"re-published userdata = (%p, %v); want (%p, true)",
+			fromTable,
+			ok,
+			data,
+		)
+	}
+	runtime.KeepAlive(data)
+}
+
+func TestUserDataOwningHandleEnforcesStateOwnership(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	other, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	foreign, err := other.NewUserData("foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetString(
+		"foreign",
+		foreign.Value(),
+	); !errors.Is(err, ErrForeignValue) {
+		t.Fatalf("foreign userdata table value = %v; want ErrForeignValue", err)
+	}
+	if _, err := state.NewNativeFunction(
+		func(frame Frame) Outcome { return frame.Return() },
+		foreign.Value(),
+	); !errors.Is(err, ErrForeignValue) {
+		t.Fatalf("foreign userdata capture = %v; want ErrForeignValue", err)
+	}
+	if _, err := state.UserDataEnvironment(
+		foreign,
+	); !errors.Is(err, ErrForeignValue) {
+		t.Fatalf("foreign userdata environment = %v; want ErrForeignValue", err)
+	}
+	if err := state.SetUserDataEnvironment(
+		foreign,
+		nil,
+	); !errors.Is(err, ErrForeignValue) {
+		t.Fatalf("foreign userdata setter = %v; want ErrForeignValue", err)
+	}
+
+	var zero UserData
+	for name, data := range map[string]*UserData{
+		"nil":  nil,
+		"zero": &zero,
+	} {
+		if data.Value().Valid() {
+			t.Fatalf("%s userdata manufactured a valid Value", name)
+		}
+		if _, err := state.UserDataEnvironment(
+			data,
+		); !errors.Is(err, ErrInvalidValue) {
+			t.Fatalf("%s userdata environment = %v; want ErrInvalidValue", name, err)
+		}
+	}
+}
+
+func TestWarmUserDataPublicationDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	data, err := state.NewUserData(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := slotFromValue(data.Value())
+	var published *UserData
+	allocations := testing.AllocsPerRun(1000, func() {
+		value := compact.owningValue()
+		published, _ = value.UserData()
+	})
+	if allocations != 0 {
+		t.Fatalf(
+			"warm userdata publication allocated %.2f times",
+			allocations,
+		)
+	}
+	if published != data {
+		t.Fatalf("warm userdata publication = %p; want %p", published, data)
+	}
+	runtime.KeepAlive(data)
+}
+
+func TestUserDataHandleIdentitySurvivesStateClose(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := state.NewUserData("payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := state.NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.RawSetString("data", data.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	published, ok := table.RawGetString("data").UserData()
+	if !ok || published != data {
+		t.Fatalf(
+			"post-close userdata = (%p, %v); want (%p, true)",
+			published,
+			ok,
+			data,
+		)
+	}
+	if got := published.Data(); got != "payload" {
+		t.Fatalf("post-close userdata payload = %v; want payload", got)
+	}
+}
+
+func TestHostDirectoryDoesNotPinUserData(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	object, token := weakUserDataPublication(t, state)
+	waitForWeakUserData(t, []weak.Pointer[userDataObject]{object},
+		[]weak.Pointer[hostToken]{token})
+	state.runtime.hosts.prune()
+	if len(state.runtime.hosts.entries) != 0 {
+		t.Fatal("dead userdata publication remains in host directory")
+	}
+	runtime.KeepAlive(state)
+}
+
+func TestUserDataRepublishAfterOwningTokenDies(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	table, object, token := rootedUserDataWithoutHandle(t, state)
+	waitForWeakUserDataToken(t, object, token)
+
+	first, ok := table.RawGetString("data").UserData()
+	if !ok {
+		t.Fatal("re-published compact userdata is not userdata")
+	}
+	if first.runtimeObject() != object.Value() {
+		t.Fatal("re-publication changed compact userdata identity")
+	}
+	second, ok := table.RawGetString("data").UserData()
+	if !ok || second != first {
+		t.Fatalf(
+			"second re-publication = (%p, %v); want (%p, true)",
+			second,
+			ok,
+			first,
+		)
+	}
+
+	state.runtime.hosts.mutex.Lock()
+	entryCount := len(state.runtime.hosts.entries)
+	keyCount := len(state.runtime.hosts.keys)
+	state.runtime.hosts.mutex.Unlock()
+	if entryCount != 1 || keyCount != 1 {
+		t.Fatalf(
+			"re-published directory size = entries:%d keys:%d; want 1/1",
+			entryCount,
+			keyCount,
+		)
+	}
+	runtime.KeepAlive(first)
+	runtime.KeepAlive(table)
+}
+
+func TestConcurrentUserDataRepublishAfterStateClose(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, object, token := rootedUserDataWithoutHandle(t, state)
+	waitForWeakUserDataToken(t, object, token)
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 32
+	start := make(chan struct{})
+	published := make([]*UserData, workers)
+	var group sync.WaitGroup
+	group.Add(workers)
+	for index := range published {
+		go func() {
+			defer group.Done()
+			<-start
+			value := table.RawGetString("data")
+			data, ok := value.UserData()
+			if !ok {
+				return
+			}
+			published[index] = data
+		}()
+	}
+	close(start)
+	group.Wait()
+
+	first := published[0]
+	if first == nil {
+		t.Fatal("concurrent re-publication did not return userdata")
+	}
+	for index, data := range published {
+		if data != first {
+			t.Fatalf(
+				"concurrent re-publication %d = %p; want %p",
+				index,
+				data,
+				first,
+			)
+		}
+	}
+	if first.runtimeObject() != object.Value() {
+		t.Fatal("post-close re-publication changed compact object identity")
+	}
+	runtime.KeepAlive(table)
+}
+
+func TestHostDirectoryIncrementalMaintenanceBoundsStaleMetadata(
+	t *testing.T,
+) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	const abandoned = 256
+	objects := make([]weak.Pointer[userDataObject], abandoned)
+	tokens := make([]weak.Pointer[hostToken], abandoned)
+	for index := range objects {
+		objects[index], tokens[index] = weakUserDataPublication(t, state)
+	}
+	waitForWeakUserData(t, objects, tokens)
+
+	live := make([]*UserData, 0, abandoned*2)
+	previousStale := abandoned
+	for index := 0; index < abandoned*2 && previousStale != 0; index++ {
+		data, createErr := state.NewUserData(index)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		live = append(live, data)
+
+		entryCount, keyCount, stale := hostDirectoryCounts(
+			&state.runtime.hosts,
+		)
+		if stale > previousStale {
+			t.Fatalf(
+				"maintenance step %d increased stale entries from %d to %d",
+				index,
+				previousStale,
+				stale,
+			)
+		}
+		if entryCount > len(live)+abandoned ||
+			keyCount > len(live)+abandoned {
+			t.Fatalf(
+				"maintenance step %d left unbounded metadata entries:%d keys:%d live:%d",
+				index,
+				entryCount,
+				keyCount,
+				len(live),
+			)
+		}
+		previousStale = stale
+	}
+
+	entryCount, keyCount, stale := hostDirectoryCounts(
+		&state.runtime.hosts,
+	)
+	if stale != 0 {
+		t.Fatalf(
+			"incremental maintenance left %d stale entries after %d publications",
+			stale,
+			len(live),
+		)
+	}
+	if entryCount != len(live) || keyCount != len(live) {
+		t.Fatalf(
+			"maintained directory size = entries:%d keys:%d; want %d/%d",
+			entryCount,
+			keyCount,
+			len(live),
+			len(live),
+		)
+	}
+	runtime.KeepAlive(live)
+}
+
+func hostDirectoryCounts(
+	directory *hostDirectory,
+) (entries, keys, stale int) {
+	directory.mutex.Lock()
+	defer directory.mutex.Unlock()
+	for object, token := range directory.entries {
+		if object.Value() == nil || token.Value() == nil {
+			stale++
+		}
+	}
+	return len(directory.entries), len(directory.keys), stale
+}
+
+func rootedUserDataWithoutHandle(
+	t *testing.T,
+	state *State,
+) (
+	*Table,
+	weak.Pointer[userDataObject],
+	weak.Pointer[hostToken],
+) {
+	t.Helper()
+	table := state.registry
+	data, err := state.NewUserData("payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	object := data.runtimeObject()
+	token := data.token()
+	if err := table.RawSetString("data", data.Value()); err != nil {
+		t.Fatal(err)
+	}
+	return table, weak.Make(object), weak.Make(token)
+}
+
+func waitForWeakUserDataToken(
+	t *testing.T,
+	object weak.Pointer[userDataObject],
+	token weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		if token.Value() == nil {
+			if object.Value() == nil {
+				t.Fatal("Lua-rooted compact userdata was collected with its token")
+			}
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("discarded userdata owning token remained reachable")
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForWeakUserData(
+	t *testing.T,
+	objects []weak.Pointer[userDataObject],
+	tokens []weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		allDead := true
+		for index := range objects {
+			if objects[index].Value() != nil ||
+				tokens[index].Value() != nil {
+				allDead = false
+				break
+			}
+		}
+		if allDead {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("weak host directory pinned discarded userdata")
+		case <-ticker.C:
+		}
+	}
+}
+
+func weakUserDataPublication(
+	t *testing.T,
+	state *State,
+) (
+	weak.Pointer[userDataObject],
+	weak.Pointer[hostToken],
+) {
+	t.Helper()
+	data, err := state.NewUserData(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return weak.Make(data.runtimeObject()), weak.Make(data.token())
+}
+
 func TestStringIdentityAndBoundedAdmission(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -825,4 +1304,43 @@ func BenchmarkCachedString(b *testing.B) {
 	for range b.N {
 		runtime.KeepAlive(state.String("destination"))
 	}
+}
+
+func BenchmarkWarmUserDataPublication(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+	data, err := state.NewUserData(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	compact := slotFromValue(data.Value())
+
+	var published Value
+	b.ReportAllocs()
+	for range b.N {
+		published = compact.owningValue()
+	}
+	runtime.KeepAlive(published)
+	runtime.KeepAlive(data)
+}
+
+func BenchmarkNewUserData(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer state.Close()
+
+	var data *UserData
+	b.ReportAllocs()
+	for range b.N {
+		data, err = state.NewUserData(nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	runtime.KeepAlive(data)
 }

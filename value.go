@@ -5,6 +5,7 @@ package lua
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strconv"
 	"unsafe"
 )
@@ -66,6 +67,21 @@ type Value struct {
 	_    [0]func()
 	ref  unsafe.Pointer
 	bits uint64
+}
+
+// hostToken is the owning boundary representation for collected objects.
+// Its object pointer leads to the compact runtime object; runtimeState's host
+// directory weakly indexes the object to this token. Named public handle types
+// use this exact layout, so publication does not need a second wrapper
+// allocation.
+//
+// owner and object also keep the allocation pointer-rich and larger than the
+// runtime's tiny pointer-free allocation batching exception for weak pointers.
+type hostToken struct {
+	noCopy noCopy
+	owner  *runtimeState
+	object unsafe.Pointer
+	kind   Kind
 }
 
 // slot is the private representation used by registers, tables, and upvalues.
@@ -209,7 +225,13 @@ func (value Value) UserData() (*UserData, bool) {
 	if value.Kind() != UserDataKind {
 		return nil, false
 	}
-	return (*UserData)(value.ref), true
+	token := (*hostToken)(value.ref)
+	if token.kind != UserDataKind || token.object == nil {
+		return nil, false
+	}
+	data := (*UserData)(token)
+	runtime.KeepAlive(value)
+	return data, true
 }
 
 // Thread returns the canonical thread and whether value is a thread.
@@ -230,28 +252,33 @@ func (value Value) SameObject(other Value) (same, applicable bool) {
 	if kind != other.Kind() || !kind.isReference() {
 		return false, false
 	}
-	return value.ref == other.ref, true
+	return value.objectIdentity() == other.objectIdentity(), true
 }
 
 // String returns a stable diagnostic representation without executing Lua.
 // Numbers use Lua 5.1's `%.14g`-style spelling, which is not a lossless
 // serialization format.
 func (value Value) String() string {
-	switch value.Kind() {
-	case InvalidKind:
+	if !value.Valid() {
 		return "<invalid>"
+	}
+	return slotFromValue(value).diagnosticString()
+}
+
+func (value slot) diagnosticString() string {
+	switch value.kind() {
 	case NilKind:
 		return "nil"
 	case BoolKind:
-		boolean, _ := value.AsBool()
-		return strconv.FormatBool(boolean)
+		return strconv.FormatBool(value.ref == trueMarkerPointer)
 	case NumberKind:
-		number, _ := value.AsNumber()
 		var buffer [32]byte
-		return string(appendLuaNumber(buffer[:0], number))
+		return string(appendLuaNumber(
+			buffer[:0],
+			math.Float64frombits(value.bits),
+		))
 	case StringKind:
-		text, _ := value.AsString()
-		return text
+		return stringSlotText(value)
 	case FunctionKind:
 		return fmt.Sprintf("function: %p", value.ref)
 	case UserDataKind:
@@ -285,6 +312,24 @@ func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 	return slot{ref: pointer, bits: uint64(kind)}
 }
 
+func slotFromUserDataObject(data *userDataObject) slot {
+	if data == nil || data.owner == nil {
+		panic("lua: invalid canonical userdata")
+	}
+	return objectSlot(UserDataKind, unsafe.Pointer(data))
+}
+
+func (value Value) objectIdentity() unsafe.Pointer {
+	if value.Kind() == UserDataKind {
+		token := (*hostToken)(value.ref)
+		if token.kind != UserDataKind {
+			return nil
+		}
+		return token.object
+	}
+	return value.ref
+}
+
 func stringValue(value stringRef) Value {
 	return stringSlot(value).owningValue()
 }
@@ -301,7 +346,7 @@ func (value Value) owner() *runtimeState {
 	case FunctionKind:
 		return (*Function)(value.ref).owner
 	case UserDataKind:
-		return (*UserData)(value.ref).owner
+		return (*hostToken)(value.ref).owner
 	case ThreadKind:
 		return (*Thread)(value.ref).owner
 	case TableKind:
@@ -318,12 +363,24 @@ func slotFromValue(value Value) slot {
 	if value.ref == numberMarkerPointer {
 		return slot{bits: value.bits}
 	}
+	if value.Kind() == UserDataKind {
+		token := (*hostToken)(value.ref)
+		if token.kind != UserDataKind || token.object == nil {
+			panic("lua: invalid userdata host token")
+		}
+		result := objectSlot(UserDataKind, token.object)
+		runtime.KeepAlive(value)
+		return result
+	}
 	return slot{ref: value.ref, bits: value.bits}
 }
 
 func (value slot) owningValue() Value {
 	if value.ref == nil {
 		return Value{ref: numberMarkerPointer, bits: value.bits}
+	}
+	if value.isUserData() {
+		return userDataObjectFromSlot(value).owningValue()
 	}
 	return Value{ref: value.ref, bits: value.bits}
 }
@@ -376,6 +433,21 @@ func (value slot) isTable() bool {
 	return value.ref != nil && Kind(value.bits&0xff) == TableKind
 }
 
+func (value slot) owner() *runtimeState {
+	switch value.kind() {
+	case FunctionKind:
+		return (*Function)(value.ref).owner
+	case UserDataKind:
+		return (*userDataObject)(value.ref).owner
+	case ThreadKind:
+		return (*Thread)(value.ref).owner
+	case TableKind:
+		return (*Table)(value.ref).owner
+	default:
+		return nil
+	}
+}
+
 func rawEqual(left, right Value) bool {
 	kind := left.Kind()
 	if kind != right.Kind() {
@@ -397,7 +469,7 @@ func rawEqual(left, right Value) bool {
 		rightSlot := slotFromValue(right)
 		return stringSlotsEqual(leftSlot, rightSlot)
 	default:
-		return left.ref == right.ref
+		return left.objectIdentity() == right.objectIdentity()
 	}
 }
 

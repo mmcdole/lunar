@@ -177,11 +177,11 @@ func (state *State) callMain(
 	thread.top = required
 
 	if failure := thread.startMainCall(); failure != nil {
-		return nil, 0, failure
+		return nil, 0, failure.exposeValue()
 	}
 	result := execute(thread, 0)
 	if result.kind == executionFailed {
-		return nil, 0, result.err
+		return nil, 0, result.err.exposeValue()
 	}
 	if result.kind != executionReturned ||
 		len(thread.frames) != 0 ||

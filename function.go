@@ -92,7 +92,7 @@ func newNativeFunctionOwned(
 		panic("lua: invalid native function environment")
 	}
 	for _, capture := range captures {
-		if err := owner.accept(capture.owningValue()); err != nil {
+		if err := owner.acceptSlot(capture); err != nil {
 			panic("lua: invalid native function capture")
 		}
 	}

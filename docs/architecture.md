@@ -6,13 +6,16 @@ embedding stack made from Go interface values.
 
 ## Invariants
 
-1. Each reference object has exactly one canonical Go object. Immutable
-   strings have value semantics; pointer identity is an internal optimization.
-   Canonical objects are retained and passed by pointer; copying a pointer is
-   ordinary, but copying or overwriting the pointed-to struct is unsupported
-   and guarded by `go vet`.
-2. `Value` is an owning, opaque, compact value. It never hides a Go pointer in
-   an integer.
+1. Each reference object has exactly one canonical compact runtime object.
+   Immutable strings have value semantics; pointer identity is an internal
+   optimization. Internal slots point at that object directly. A reference
+   crossing into Go may use a separate opaque ownership token, but the token
+   never duplicates mutable or executable object state. Compact object and
+   token structs must not be copied after first use, as guarded by `go vet`;
+   owning `Value`s and pointers to opaque handles remain cheap to copy.
+2. `Value` is an owning, opaque, two-word boundary value. The private `slot`
+   is the corresponding compact execution value. Both keep every Go pointer
+   visible to the collector; neither hides a pointer in an integer.
 3. Registers, table slots, closed upvalues, call arguments, and call results
    use the compact representation directly.
 4. Prototypes are immutable after verification. Functions have fixed
@@ -51,8 +54,10 @@ It will later add:
 - `Builder` for bulk construction whose allocations follow storage growth,
   not inserted-value count.
 
-These are two interfaces at one seam. Neither wraps or copies canonical
-objects.
+These are two interfaces at one seam. Neither copies canonical object state
+or introduces another execution representation. Friendly reference results
+may materialize an opaque ownership token; low-level operations keep borrowed
+access on compact slots until ownership is explicitly requested.
 
 ## Source layout
 
@@ -552,6 +557,13 @@ stack. Exact typed reads and scalar returns therefore avoid materializing
 `Value`. General owning Values remain available when a callback needs to
 retain a reference or return a heterogeneous result. Captured Values live in
 fixed private compact storage, corresponding to Lua 5.1 C-closure upvalues.
+
+Arbitrary Lua error values likewise remain compact while `pcall`, `xpcall`,
+`coroutine.resume`, or another Lua operation handles them. An `*Error`
+materializes owning reference metadata only before it returns through a Go
+call, resume, index, or nested-call boundary. Retaining an `*Error` therefore
+keeps its Lua value safe without charging Lua-only error handling for a host
+root.
 
 Compact function slots retain Lua's single public `function` kind while one
 private high tag bit distinguishes a Go callback from a Lua closure. Direct
@@ -1155,8 +1167,9 @@ sequential and their errors are deliberately ignored, matching PUC's
 unchecked `fputs`; the `io` library reports failures through its own
 Lua-visible result convention.
 
-The IO library represents each file as one opaque managed userdata over one
-`fileHandle`; there is no public-value mirror or library-private side map.
+The IO library represents each file as one compact managed userdata over one
+`fileHandle`; there is no library-private object mirror. A public userdata
+handle is materialized only if the file crosses into Go.
 Regular files own their operating-system handle and close when Lua closes
 them, the Go object becomes unreachable, or the State closes. Standard files
 borrow the State endpoints and are never closed by Lua or by `State.Close`.

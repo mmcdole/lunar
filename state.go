@@ -4,9 +4,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+	"weak"
 )
 
 // ErrClosed reports an operation that requires a live State.
@@ -116,6 +119,135 @@ type objectHeader struct {
 	owner  *runtimeState
 }
 
+func (header *objectHeader) owningToken(
+	kind Kind,
+	object unsafe.Pointer,
+) *hostToken {
+	if header == nil ||
+		header.owner == nil ||
+		!kind.isReference() ||
+		object == nil ||
+		unsafe.Pointer(header) != object {
+		panic("lua: invalid host-token publication")
+	}
+	return header.owner.hosts.publish(header, kind, object)
+}
+
+// hostDirectory canonicalizes public handles without adding a host-only word
+// to every compact object. Both sides are weak: the directory neither turns a
+// discarded handle into a root nor prevents an unreachable object from being
+// reclaimed. State-local collection also uses these entries as its host-root
+// set.
+type hostDirectory struct {
+	mutex   sync.Mutex
+	entries map[weak.Pointer[objectHeader]]weak.Pointer[hostToken]
+	keys    []weak.Pointer[objectHeader]
+	cursor  int
+}
+
+func (directory *hostDirectory) publish(
+	header *objectHeader,
+	kind Kind,
+	object unsafe.Pointer,
+) *hostToken {
+	directory.mutex.Lock()
+	defer directory.mutex.Unlock()
+
+	key := weak.Make(header)
+	if reference, found := directory.entries[key]; found {
+		if existing := reference.Value(); existing != nil {
+			if existing.owner != header.owner ||
+				existing.kind != kind ||
+				existing.object != object {
+				panic("lua: corrupt host-token directory")
+			}
+			return existing
+		}
+	}
+
+	if directory.entries == nil {
+		directory.initialize()
+	}
+	token := &hostToken{
+		owner:  header.owner,
+		object: object,
+		kind:   kind,
+	}
+	if _, found := directory.entries[key]; !found {
+		directory.keys = append(directory.keys, key)
+	}
+	directory.entries[key] = weak.Make(token)
+	// Install before maintenance so the reverse scan can move away from the
+	// growing tail and continue visiting older entries.
+	directory.maintainLocked(1)
+	return token
+}
+
+func (directory *hostDirectory) initialize() {
+	directory.entries = make(
+		map[weak.Pointer[objectHeader]]weak.Pointer[hostToken],
+	)
+}
+
+func (directory *hostDirectory) prune() {
+	directory.mutex.Lock()
+	defer directory.mutex.Unlock()
+	directory.pruneLocked()
+}
+
+func (directory *hostDirectory) pruneLocked() {
+	live := directory.keys[:0]
+	for _, object := range directory.keys {
+		token, found := directory.entries[object]
+		if !found ||
+			object.Value() == nil ||
+			token.Value() == nil {
+			delete(directory.entries, object)
+			continue
+		}
+		live = append(live, object)
+	}
+	clear(directory.keys[len(live):])
+	directory.keys = live
+	directory.cursor = 0
+	if len(directory.entries) == 0 {
+		directory.entries = nil
+		directory.keys = nil
+	}
+}
+
+func (directory *hostDirectory) maintainLocked(limit int) {
+	for limit > 0 && len(directory.keys) != 0 {
+		// Scan backwards so new tail entries cannot keep the cursor ahead
+		// of older entries. cursor is the exclusive upper bound of the
+		// current reverse pass.
+		if directory.cursor <= 0 ||
+			directory.cursor > len(directory.keys) {
+			directory.cursor = len(directory.keys)
+		}
+		directory.cursor--
+		object := directory.keys[directory.cursor]
+		token, found := directory.entries[object]
+		if found &&
+			object.Value() != nil &&
+			token.Value() != nil {
+			limit--
+			continue
+		}
+		delete(directory.entries, object)
+		last := len(directory.keys) - 1
+		directory.keys[directory.cursor] = directory.keys[last]
+		directory.keys[last] = weak.Pointer[objectHeader]{}
+		directory.keys = directory.keys[:last]
+		limit--
+	}
+	if len(directory.entries) == 0 {
+		directory.entries = nil
+		directory.keys = nil
+		directory.cursor = 0
+	}
+}
+
 // runtimeState is the lightweight ownership token shared by canonical
 // objects. It owns only runtime-wide caches and close state, never the State's
 // object roots. Retaining one object therefore does not pin an unrelated Lua
@@ -123,6 +255,7 @@ type objectHeader struct {
 type runtimeState struct {
 	closed          atomic.Bool
 	strings         stringPool
+	hosts           hostDirectory
 	nativeSequence  uint64
 	nativeCallDepth uint16
 }
@@ -148,7 +281,7 @@ type State struct {
 	active          *Thread
 	main            *Thread
 	registry        *Table
-	packageSentinel *UserData
+	packageSentinel *userDataObject
 	resources       *nativeResourceRegistry
 	execution       executionControl
 	typeMetatables  [TableKind + 1]*Table
@@ -236,6 +369,7 @@ func (state *State) Close() error {
 		return ErrRunning
 	}
 	if state.runtime.closed.Swap(true) {
+		state.runtime.hosts.prune()
 		return nil
 	}
 	var streamErr error
@@ -262,12 +396,14 @@ func (state *State) Close() error {
 		state.main.status = ThreadClosed
 	}
 	state.registry = nil
+	state.packageSentinel = nil
 	state.options.Stdin = nil
 	state.options.Stdout = nil
 	state.options.Stderr = nil
 	state.options.Location = nil
 	state.options.Now = nil
 	state.typeMetatables = [TableKind + 1]*Table{}
+	state.runtime.hosts.prune()
 	return errors.Join(streamErr, resourceErr)
 }
 
@@ -313,11 +449,12 @@ func (state *State) NewUserData(payload any) (*UserData, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
-	return &UserData{
+	data := &userDataObject{
 		objectHeader: objectHeader{owner: state.runtime},
 		payload:      payload,
 		environment:  state.constructionEnvironment(),
-	}, nil
+	}
+	return data.owningHandle(), nil
 }
 
 // Registry returns the private Lua registry table.
@@ -401,7 +538,7 @@ func (state *State) Metatable(value Value) (*Table, error) {
 		return table.metatable, nil
 	case UserDataKind:
 		data, _ := value.UserData()
-		return data.metatable, nil
+		return data.runtimeObject().metatable, nil
 	default:
 		return state.typeMetatables[value.Kind()], nil
 	}
@@ -430,7 +567,7 @@ func (state *State) SetMetatable(value Value, metatable *Table) error {
 		table.metatable = metatable
 	case UserDataKind:
 		data, _ := value.UserData()
-		data.metatable = metatable
+		data.runtimeObject().metatable = metatable
 	default:
 		state.typeMetatables[value.Kind()] = metatable
 	}
@@ -492,7 +629,9 @@ func (state *State) UserDataEnvironment(data *UserData) (*Table, error) {
 	if err := state.checkUserData(data); err != nil {
 		return nil, err
 	}
-	return data.environment, nil
+	environment := data.runtimeObject().environment
+	runtime.KeepAlive(data)
+	return environment, nil
 }
 
 // SetUserDataEnvironment replaces data's Lua 5.1 environment. Passing nil
@@ -509,7 +648,8 @@ func (state *State) SetUserDataEnvironment(data *UserData, environment *Table) e
 			return ErrForeignValue
 		}
 	}
-	data.environment = environment
+	data.runtimeObject().environment = environment
+	runtime.KeepAlive(data)
 	return nil
 }
 
@@ -550,17 +690,32 @@ func (state *State) checkUserData(data *UserData) error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
-	if data == nil || data.owner == nil {
+	token := data.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.kind != UserDataKind ||
+		token.object == nil {
 		return ErrInvalidValue
 	}
-	if data.owner != state.runtime {
+	if token.owner != state.runtime {
 		return ErrForeignValue
 	}
+	runtime.KeepAlive(data)
 	return nil
 }
 
 func (rt *runtimeState) accept(value Value) error {
 	if !value.Valid() {
+		return ErrInvalidValue
+	}
+	if owner := value.owner(); owner != nil && owner != rt {
+		return ErrForeignValue
+	}
+	return nil
+}
+
+func (rt *runtimeState) acceptSlot(value slot) error {
+	if value.kind() == InvalidKind {
 		return ErrInvalidValue
 	}
 	if owner := value.owner(); owner != nil && owner != rt {
@@ -641,13 +796,19 @@ func (thread *Thread) IsMain() bool {
 	return thread != nil && thread.main
 }
 
-// UserData is a canonical Lua userdata object holding a Go value.
+// UserData is an opaque owning handle for a Lua userdata object holding a Go
+// value.
 //
 // The payload is opaque to Lua unless native functions expose operations on
 // it. Metatable and environment changes are controlled by State operations.
+// Repeated publication of the same live Lua object returns the same handle
+// pointer. Execution slots retain the compact object directly and do not pass
+// through this handle.
 //
 // UserData must not be copied after first use. Retain and pass its pointer.
-type UserData struct {
+type UserData hostToken
+
+type userDataObject struct {
 	objectHeader
 	payload     any
 	metatable   *Table
@@ -657,31 +818,88 @@ type UserData struct {
 
 // Value returns the owning Lua value for userdata.
 func (data *UserData) Value() Value {
-	if data == nil || data.owner == nil {
+	token := data.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.object == nil ||
+		token.kind != UserDataKind {
 		return Value{}
 	}
-	return objectValue(UserDataKind, unsafe.Pointer(data))
+	value := Value{ref: unsafe.Pointer(token), bits: uint64(UserDataKind)}
+	runtime.KeepAlive(data)
+	return value
 }
 
 // Data returns the Go payload. Reading the payload remains safe after the
 // owning State closes. Userdata reserved for a runtime library has no public
 // payload and returns nil.
 func (data *UserData) Data() any {
-	if data == nil {
+	object := data.runtimeObject()
+	if object == nil {
 		return nil
 	}
-	return data.payload
+	payload := object.payload
+	runtime.KeepAlive(data)
+	return payload
 }
 
 // SetData replaces the Go payload. Runtime-owned userdata returns
 // ErrReadOnlyUserData.
 func (data *UserData) SetData(payload any) error {
-	if data == nil || data.owner == nil || data.owner.closed.Load() {
+	token := data.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.owner.closed.Load() ||
+		token.object == nil ||
+		token.kind != UserDataKind {
 		return ErrClosed
 	}
-	if data.resource != nil {
+	object := (*userDataObject)(token.object)
+	if object.resource != nil {
 		return ErrReadOnlyUserData
 	}
-	data.payload = payload
+	object.payload = payload
+	runtime.KeepAlive(data)
 	return nil
+}
+
+func (data *UserData) token() *hostToken {
+	return (*hostToken)(data)
+}
+
+func (data *UserData) runtimeObject() *userDataObject {
+	token := data.token()
+	if token == nil ||
+		token.kind != UserDataKind ||
+		token.object == nil {
+		return nil
+	}
+	return (*userDataObject)(token.object)
+}
+
+func (data *userDataObject) owningHandle() *UserData {
+	if data == nil {
+		return nil
+	}
+	token := data.objectHeader.owningToken(
+		UserDataKind,
+		unsafe.Pointer(data),
+	)
+	return (*UserData)(token)
+}
+
+func (data *userDataObject) owningValue() Value {
+	handle := data.owningHandle()
+	return handle.Value()
+}
+
+func userDataObjectFromSlot(value slot) *userDataObject {
+	if !value.isUserData() {
+		panic("lua: slot is not userdata")
+	}
+	return (*userDataObject)(value.ref)
+}
+
+func userDataHandleFromSlot(value slot) *UserData {
+	return userDataObjectFromSlot(value).owningHandle()
 }

@@ -73,7 +73,7 @@ func metatableForSlot(thread *Thread, value slot) *Table {
 	case TableKind:
 		return (*Table)(value.ref).metatable
 	case UserDataKind:
-		return (*UserData)(value.ref).metatable
+		return userDataObjectFromSlot(value).metatable
 	default:
 		kind := value.kind()
 		if kind < NilKind || kind > TableKind {

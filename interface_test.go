@@ -47,6 +47,47 @@ func TestFriendlyObjectInterface(t *testing.T) {
 	}
 }
 
+func TestPublicUserDataRoundTripKeepsIdentityAndOwnership(t *testing.T) {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := state.NewUserData("payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetGlobal("data", data.Value()); err != nil {
+		t.Fatal(err)
+	}
+	global, err := state.Global("data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, ok := global.UserData()
+	if !ok || published != data {
+		t.Fatalf(
+			"global userdata = (%p, %v); want (%p, true)",
+			published,
+			ok,
+			data,
+		)
+	}
+	if same, applicable := global.SameObject(data.Value()); !applicable || !same {
+		t.Fatalf(
+			"userdata identity = (%v, %v); want (true, true)",
+			same,
+			applicable,
+		)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if payload := published.Data(); payload != "payload" {
+		t.Fatalf("post-close payload = %v; want payload", payload)
+	}
+}
+
 func TestZeroPublicObjectsAreNotCanonical(t *testing.T) {
 	if (lua.Value{}).Valid() {
 		t.Fatal("zero Value must be invalid")

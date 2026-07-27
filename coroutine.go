@@ -66,11 +66,11 @@ func (thread *Thread) Resume(
 ) (results []Value, status ThreadStatus, err error) {
 	run, err := thread.resumeExternal(resumeArguments{values: arguments})
 	if err != nil {
-		return nil, thread.Status(), err
+		return nil, thread.Status(), exposeLuaError(err)
 	}
 	defer run.release()
 	if run.failure != nil {
-		return nil, run.status, run.failure
+		return nil, run.status, run.failure.exposeValue()
 	}
 	if run.count == 0 {
 		return nil, run.status, nil
@@ -102,7 +102,7 @@ func (thread *Thread) ResumeContext(
 		resumeArguments{values: arguments},
 	)
 	if err != nil {
-		return nil, thread.Status(), err
+		return nil, thread.Status(), exposeLuaError(err)
 	}
 	return collectResumeResults(&run)
 }
@@ -115,7 +115,7 @@ func collectResumeResults(
 	}
 	defer run.release()
 	if run.failure != nil {
-		return nil, run.status, run.failure
+		return nil, run.status, run.failure.exposeValue()
 	}
 	if run.count == 0 {
 		return nil, run.status, nil
@@ -141,11 +141,11 @@ func (thread *Thread) ResumeInto(
 ) (count int, status ThreadStatus, err error) {
 	run, err := thread.resumeExternal(resumeArguments{values: arguments})
 	if err != nil {
-		return 0, thread.Status(), err
+		return 0, thread.Status(), exposeLuaError(err)
 	}
 	defer run.release()
 	if run.failure != nil {
-		return 0, run.status, run.failure
+		return 0, run.status, run.failure.exposeValue()
 	}
 	if run.count > len(destination) {
 		return run.count, run.status, &ResultCapacityError{
@@ -177,7 +177,7 @@ func (thread *Thread) ResumeIntoContext(
 		resumeArguments{values: arguments},
 	)
 	if err != nil {
-		return 0, thread.Status(), err
+		return 0, thread.Status(), exposeLuaError(err)
 	}
 	return copyResumeResults(&run, destination)
 }
@@ -191,7 +191,7 @@ func copyResumeResults(
 	}
 	defer run.release()
 	if run.failure != nil {
-		return 0, run.status, run.failure
+		return 0, run.status, run.failure.exposeValue()
 	}
 	if run.count > len(destination) {
 		return run.count, run.status, &ResultCapacityError{
