@@ -257,7 +257,7 @@ func newClosedUpvalue(value slot) *upvalue {
 	return created
 }
 
-func (thread *Thread) captureUpvalue(index int) *upvalue {
+func (thread *threadObject) captureUpvalue(index int) *upvalue {
 	if thread == nil || index < 0 || index >= len(thread.values) {
 		panic("lua: invalid open upvalue index")
 	}
@@ -289,7 +289,7 @@ func (upvalue *upvalue) stackIndex() int {
 	return int(upvalue.storage.bits)
 }
 
-func (thread *Thread) closeUpvalues(from int) {
+func (thread *threadObject) closeUpvalues(from int) {
 	if thread == nil {
 		return
 	}

@@ -56,7 +56,7 @@ func tableSourceOpcode(operation opcode) (opcode, bool) {
 //
 //go:noinline
 func executeRawTableGet(
-	thread *Thread,
+	thread *threadObject,
 	code instruction,
 ) instruction {
 	frame := thread.frames[len(thread.frames)-1]
@@ -110,7 +110,7 @@ func executeRawTableGet(
 //
 //go:noinline
 func executeRawStringTableGet(
-	thread *Thread,
+	thread *threadObject,
 	code instruction,
 ) instruction {
 	frame := thread.frames[len(thread.frames)-1]
@@ -157,7 +157,7 @@ func executeRawStringTableGet(
 //
 //go:noinline
 func executeRawTableSet(
-	thread *Thread,
+	thread *threadObject,
 	code instruction,
 ) instruction {
 	frame := thread.frames[len(thread.frames)-1]
@@ -221,7 +221,7 @@ func executeRawTableSet(
 //
 //go:noinline
 func executeRawStringTableSet(
-	thread *Thread,
+	thread *threadObject,
 	code instruction,
 ) instruction {
 	frame := thread.frames[len(thread.frames)-1]
@@ -275,7 +275,7 @@ func executeRawStringTableSet(
 
 //go:noinline
 func slowTableGet(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -406,7 +406,7 @@ func slowTableGet(
 
 //go:noinline
 func slowTableSet(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -566,7 +566,7 @@ func slowTableSet(
 }
 
 func invalidTableWriteKey(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	instructionPC int,
 	status tableKeyStatus,
@@ -593,7 +593,7 @@ func invalidTableWriteKey(
 
 //go:noinline
 func executeNewTable(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) {
@@ -619,7 +619,7 @@ func tableCapacityHint(encoded int) int {
 
 //go:noinline
 func executeSetList(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {

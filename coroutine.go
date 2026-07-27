@@ -27,12 +27,15 @@ func (state *State) NewThread(callable Value) (*Thread, error) {
 	if err := state.runtime.accept(callable); err != nil {
 		return nil, err
 	}
-	thread, err := state.newThread(slotFromValue(callable))
+	thread, err := state.newThreadObject(slotFromValue(callable))
 	runtime.KeepAlive(callable)
-	return thread, err
+	if err != nil {
+		return nil, err
+	}
+	return thread.owningHandle(), nil
 }
 
-func (state *State) newThread(callable slot) (*Thread, error) {
+func (state *State) newThreadObject(callable slot) (*threadObject, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -53,7 +56,7 @@ func (state *State) newThread(callable slot) (*Thread, error) {
 	if capacity > state.options.MaxValues {
 		capacity = state.options.MaxValues
 	}
-	thread := &Thread{
+	thread := &threadObject{
 		objectHeader: objectHeader{owner: state.runtime},
 		state:        state,
 		globals:      parent.globals,
@@ -76,21 +79,32 @@ func (state *State) newThread(callable slot) (*Thread, error) {
 func (thread *Thread) Resume(
 	arguments ...Value,
 ) (results []Value, status ThreadStatus, err error) {
-	run, err := thread.resumeExternal(resumeArguments{values: arguments})
+	object := thread.runtimeObject()
+	if object == nil {
+		return nil, ThreadClosed, ErrClosed
+	}
+	run, err := object.resumeExternal(resumeArguments{values: arguments})
 	if err != nil {
-		return nil, thread.Status(), exposeLuaError(err)
+		status := object.currentStatus()
+		exposed := exposeLuaError(err)
+		runtime.KeepAlive(thread)
+		return nil, status, exposed
 	}
 	defer run.release()
 	if run.failure != nil {
-		return nil, run.status, run.failure.exposeValue()
+		failure := run.failure.exposeValue()
+		runtime.KeepAlive(thread)
+		return nil, run.status, failure
 	}
 	if run.count == 0 {
+		runtime.KeepAlive(thread)
 		return nil, run.status, nil
 	}
 	results = make([]Value, run.count)
 	for index := range results {
 		results[index] = run.thread.values[run.first+index].owningValue()
 	}
+	runtime.KeepAlive(thread)
 	return results, run.status, nil
 }
 
@@ -109,14 +123,23 @@ func (thread *Thread) ResumeContext(
 	if ctx == nil {
 		return nil, thread.Status(), ErrNilContext
 	}
-	run, err := thread.resumeExternalContext(
+	object := thread.runtimeObject()
+	if object == nil {
+		return nil, ThreadClosed, ErrClosed
+	}
+	run, err := object.resumeExternalContext(
 		ctx,
 		resumeArguments{values: arguments},
 	)
 	if err != nil {
-		return nil, thread.Status(), exposeLuaError(err)
+		status := object.currentStatus()
+		exposed := exposeLuaError(err)
+		runtime.KeepAlive(thread)
+		return nil, status, exposed
 	}
-	return collectResumeResults(&run)
+	results, status, err = collectResumeResults(&run)
+	runtime.KeepAlive(thread)
+	return results, status, err
 }
 
 func collectResumeResults(
@@ -151,24 +174,36 @@ func (thread *Thread) ResumeInto(
 	arguments []Value,
 	destination []Value,
 ) (count int, status ThreadStatus, err error) {
-	run, err := thread.resumeExternal(resumeArguments{values: arguments})
+	object := thread.runtimeObject()
+	if object == nil {
+		return 0, ThreadClosed, ErrClosed
+	}
+	run, err := object.resumeExternal(resumeArguments{values: arguments})
 	if err != nil {
-		return 0, thread.Status(), exposeLuaError(err)
+		status := object.currentStatus()
+		exposed := exposeLuaError(err)
+		runtime.KeepAlive(thread)
+		return 0, status, exposed
 	}
 	defer run.release()
 	if run.failure != nil {
-		return 0, run.status, run.failure.exposeValue()
+		failure := run.failure.exposeValue()
+		runtime.KeepAlive(thread)
+		return 0, run.status, failure
 	}
 	if run.count > len(destination) {
-		return run.count, run.status, &ResultCapacityError{
+		failure := &ResultCapacityError{
 			Required:  run.count,
 			Available: len(destination),
 		}
+		runtime.KeepAlive(thread)
+		return run.count, run.status, failure
 	}
 	for index := 0; index < run.count; index++ {
 		destination[index] =
 			run.thread.values[run.first+index].owningValue()
 	}
+	runtime.KeepAlive(thread)
 	return run.count, run.status, nil
 }
 
@@ -184,14 +219,23 @@ func (thread *Thread) ResumeIntoContext(
 	if ctx == nil {
 		return 0, thread.Status(), ErrNilContext
 	}
-	run, err := thread.resumeExternalContext(
+	object := thread.runtimeObject()
+	if object == nil {
+		return 0, ThreadClosed, ErrClosed
+	}
+	run, err := object.resumeExternalContext(
 		ctx,
 		resumeArguments{values: arguments},
 	)
 	if err != nil {
-		return 0, thread.Status(), exposeLuaError(err)
+		status := object.currentStatus()
+		exposed := exposeLuaError(err)
+		runtime.KeepAlive(thread)
+		return 0, status, exposed
 	}
-	return copyResumeResults(&run, destination)
+	count, status, err = copyResumeResults(&run, destination)
+	runtime.KeepAlive(thread)
+	return count, status, err
 }
 
 func copyResumeResults(
@@ -247,7 +291,7 @@ func (arguments resumeArguments) copyTo(destination []slot, count int) {
 }
 
 type threadResumeResult struct {
-	thread  *Thread
+	thread  *threadObject
 	failure *Error
 	first   int
 	count   int
@@ -277,7 +321,7 @@ func (result *threadResumeResult) release() {
 	result.thread = nil
 }
 
-func (thread *Thread) resumeExternal(
+func (thread *threadObject) resumeExternal(
 	arguments resumeArguments,
 ) (threadResumeResult, error) {
 	if thread == nil ||
@@ -314,7 +358,7 @@ func (thread *Thread) resumeExternal(
 	return resumeThread(nil, thread, arguments), nil
 }
 
-func (thread *Thread) resumeExternalContext(
+func (thread *threadObject) resumeExternalContext(
 	ctx context.Context,
 	arguments resumeArguments,
 ) (threadResumeResult, error) {
@@ -373,8 +417,8 @@ func (thread *Thread) resumeExternalContext(
 }
 
 func resumeThread(
-	caller *Thread,
-	thread *Thread,
+	caller *threadObject,
+	thread *threadObject,
 	arguments resumeArguments,
 ) threadResumeResult {
 	if thread == nil ||
@@ -527,7 +571,7 @@ func resumeThread(
 	}
 }
 
-func (thread *Thread) preflightExternalResume(argumentCount int) *Error {
+func (thread *threadObject) preflightExternalResume(argumentCount int) *Error {
 	if thread.status != ThreadSuspended {
 		return newCoroutineFailure(
 			thread.state,
@@ -540,7 +584,7 @@ func (thread *Thread) preflightExternalResume(argumentCount int) *Error {
 	return thread.preflightResume(argumentCount)
 }
 
-func (thread *Thread) preflightResume(argumentCount int) *Error {
+func (thread *threadObject) preflightResume(argumentCount int) *Error {
 	if argumentCount < 0 {
 		panic("lua: negative coroutine argument count")
 	}
@@ -567,7 +611,7 @@ func (thread *Thread) preflightResume(argumentCount int) *Error {
 	return nil
 }
 
-func (thread *Thread) startCoroutine(arguments resumeArguments) *Error {
+func (thread *threadObject) startCoroutine(arguments resumeArguments) *Error {
 	if thread.top != 1 || thread.frameExtent != 0 {
 		panic("lua: invalid initial coroutine stack")
 	}
@@ -601,7 +645,7 @@ func (thread *Thread) startCoroutine(arguments resumeArguments) *Error {
 	return newCoroutineFailure(thread.state, message)
 }
 
-func (thread *Thread) continueCoroutine(arguments resumeArguments) *Error {
+func (thread *threadObject) continueCoroutine(arguments resumeArguments) *Error {
 	frame := &thread.frames[len(thread.frames)-1]
 	if frame.function == nil || frame.function.prototype != nil {
 		panic("lua: coroutine did not suspend in a native activation")
@@ -627,7 +671,7 @@ func (thread *Thread) continueCoroutine(arguments resumeArguments) *Error {
 	return nil
 }
 
-func (thread *Thread) discardCoroutineExecution() {
+func (thread *threadObject) discardCoroutineExecution() {
 	previousExtent := thread.liveValueExtent()
 	if len(thread.frames) != 0 {
 		thread.unwindCalls(0)
@@ -652,7 +696,7 @@ func (thread *Thread) discardCoroutineExecution() {
 	thread.continuations = nil
 }
 
-func coroutineStatusName(current, thread *Thread) string {
+func coroutineStatusName(current, thread *threadObject) string {
 	if thread == current || thread.status == ThreadRunning {
 		return "running"
 	}

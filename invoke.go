@@ -217,7 +217,7 @@ func (state *State) callMain(
 func (state *State) prepareMainCall(
 	callable Value,
 	arguments []Value,
-) (*Thread, error) {
+) (*threadObject, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func (state *State) prepareMainCall(
 	return thread, nil
 }
 
-func (thread *Thread) startMainCall() *Error {
+func (thread *threadObject) startMainCall() *Error {
 	callable := thread.values[0]
 	if function, direct := functionSlot(callable); direct {
 		return thread.pushFunctionCall(
@@ -292,7 +292,7 @@ func (thread *Thread) startMainCall() *Error {
 	}
 }
 
-func (thread *Thread) resetMainCall() {
+func (thread *threadObject) resetMainCall() {
 	extent := thread.liveValueExtent()
 	if len(thread.frames) != 0 {
 		thread.unwindCalls(0)

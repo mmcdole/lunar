@@ -5,7 +5,451 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+	"unsafe"
+	"weak"
 )
+
+func TestThreadRepresentationsAndCanonicalPublication(t *testing.T) {
+	handleSize := unsafe.Sizeof(Thread{})
+	wantHandleSize := 3 * unsafe.Sizeof(uintptr(0))
+	if handleSize != wantHandleSize ||
+		handleSize != unsafe.Sizeof(hostToken{}) {
+		t.Fatalf(
+			"Thread size = %d; want %d and host token size %d",
+			handleSize,
+			wantHandleSize,
+			unsafe.Sizeof(hostToken{}),
+		)
+	}
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		if size := unsafe.Sizeof(threadObject{}); size != 136 {
+			t.Fatalf("thread object size = %d; want 136", size)
+		}
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		ThreadKind,
+	); entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"new State published its main thread: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+
+	main := state.MainThread()
+	if main == nil {
+		t.Fatal("MainThread returned nil")
+	}
+	token := main.token()
+	object := main.runtimeObject()
+	if token == nil || object == nil {
+		t.Fatal("main thread lost its public or compact representation")
+	}
+	if unsafe.Pointer(main) != unsafe.Pointer(token) {
+		t.Fatal("Thread is not an offset-zero host-token view")
+	}
+	if unsafe.Pointer(&object.objectHeader) != unsafe.Pointer(object) {
+		t.Fatal("thread object header is not at offset zero")
+	}
+	if unsafe.Pointer(main) == unsafe.Pointer(object) {
+		t.Fatal("public Thread exposed the compact thread object")
+	}
+	key := weak.Make(&object.objectHeader)
+	if state.runtime.hosts.entries[key].Value() != token {
+		t.Fatal("thread object does not have its live token in the directory")
+	}
+
+	public := main.Value()
+	if public.bits != uint64(ThreadKind) {
+		t.Fatalf("public Thread bits = %#x; want ThreadKind", public.bits)
+	}
+	compact := slotFromValue(public)
+	if compact != slotFromThreadObject(object) {
+		t.Fatal("Thread Value did not restore the compact thread slot")
+	}
+	if compact.ref == public.ref {
+		t.Fatal("public Thread Value exposed the compact object pointer")
+	}
+	fromValue, ok := public.Thread()
+	if !ok || fromValue != main {
+		t.Fatalf(
+			"Thread Value round trip = (%p, %v); want (%p, true)",
+			fromValue,
+			ok,
+			main,
+		)
+	}
+	if state.MainThread() != main {
+		t.Fatal("MainThread did not return its canonical live handle")
+	}
+	fromCompact, ok := compact.owningValue().Thread()
+	if !ok || fromCompact != main {
+		t.Fatalf(
+			"compact Thread publication = (%p, %v); want (%p, true)",
+			fromCompact,
+			ok,
+			main,
+		)
+	}
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		ThreadKind,
+	); entries != 1 || keys != 1 || stale != 0 {
+		t.Fatalf(
+			"main Thread directory = entries:%d keys:%d stale:%d; want 1/1/0",
+			entries,
+			keys,
+			stale,
+		)
+	}
+	runtime.KeepAlive(main)
+}
+
+func TestWarmThreadPublicationDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	entry := compileTestFunction(
+		t,
+		state,
+		"@warm-thread-publication.lua",
+		`return`,
+	)
+	object, err := state.newThreadObject(slotFromFunctionObject(entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := object.owningHandle()
+	compact := slotFromThreadObject(object)
+
+	var published *Thread
+	allocations := testing.AllocsPerRun(1_000, func() {
+		value := compact.owningValue()
+		published, _ = value.Thread()
+	})
+	if allocations != 0 {
+		t.Fatalf(
+			"warm thread publication allocated %.2f times",
+			allocations,
+		)
+	}
+	if published != first {
+		t.Fatalf(
+			"warm thread publication = %p; want %p",
+			published,
+			first,
+		)
+	}
+	runtime.KeepAlive(first)
+}
+
+func TestThreadRepublishAfterOwningTokenDies(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	object, token := rootedThreadWithoutHandle(t, state)
+	index := newTable(state.runtime, 0, 1)
+	index.rawSetSlot(slotFromThreadObject(object), numberSlot(73))
+	waitForWeakThreadToken(t, object, token)
+
+	first, ok := state.registry.rawGetStringValue("rooted thread").Thread()
+	if !ok || first.runtimeObject() != object {
+		t.Fatal("re-publication changed compact thread identity")
+	}
+	second, ok := state.registry.rawGetStringValue("rooted thread").Thread()
+	if !ok || second != first {
+		t.Fatalf(
+			"second re-publication = (%p, %v); want (%p, true)",
+			second,
+			ok,
+			first,
+		)
+	}
+	stored, err := index.rawGetValue(first.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if number, ok := stored.AsNumber(); !ok || number != 73 {
+		t.Fatalf(
+			"thread-key lookup after token replacement = (%v, %v); want 73",
+			number,
+			ok,
+		)
+	}
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		ThreadKind,
+	); entries != 1 || keys != 1 || stale != 0 {
+		t.Fatalf(
+			"thread directory = entries:%d keys:%d stale:%d; want 1/1/0",
+			entries,
+			keys,
+			stale,
+		)
+	}
+
+	results, status, err := first.Resume()
+	if err != nil || status != ThreadDead {
+		t.Fatalf(
+			"re-published thread resume = (status=%v, err=%v)",
+			status,
+			err,
+		)
+	}
+	assertTestValues(t, results, Number(42))
+	runtime.KeepAlive(first)
+}
+
+func TestHostDirectoryDoesNotPinCyclicThread(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	object, token := weakCyclicThreadPublication(t, state)
+	waitForWeakThread(t, object, token)
+	state.runtime.hosts.prune()
+	if entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		ThreadKind,
+	); entries != 0 || keys != 0 || stale != 0 {
+		t.Fatalf(
+			"dead thread remains in host directory: entries=%d keys=%d stale=%d",
+			entries,
+			keys,
+			stale,
+		)
+	}
+	runtime.KeepAlive(state)
+}
+
+func TestThreadHandleSupportsObservationAfterClose(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := state.MainThread()
+	entry := compileTestFunction(
+		t,
+		state,
+		"@retained-thread.lua",
+		`return 9`,
+	)
+	child, err := state.NewThread(entry.owningValue())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainValue := main.Value()
+	childValue := child.Value()
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if main.Status() != ThreadClosed || child.Status() != ThreadClosed {
+		t.Fatalf(
+			"closed statuses = (%v, %v); want closed/closed",
+			main.Status(),
+			child.Status(),
+		)
+	}
+	if !main.IsMain() || child.IsMain() {
+		t.Fatal("State close changed main-thread identity")
+	}
+	if main.State() != state || child.State() != state {
+		t.Fatal("State close detached a retained Thread handle")
+	}
+	if state.MainThread() != main {
+		t.Fatal("post-close MainThread publication changed identity")
+	}
+	publishedMain, mainOK := mainValue.Thread()
+	publishedChild, childOK := childValue.Thread()
+	if !mainOK || publishedMain != main ||
+		!childOK || publishedChild != child {
+		t.Fatalf(
+			"post-close Value round trips = (%p, %v), (%p, %v)",
+			publishedMain,
+			mainOK,
+			publishedChild,
+			childOK,
+		)
+	}
+	if same, applicable := childValue.SameObject(
+		child.Value(),
+	); !applicable || !same {
+		t.Fatalf(
+			"post-close child identity = (%v, %v); want (true, true)",
+			same,
+			applicable,
+		)
+	}
+	if _, status, resumeErr := child.Resume(); status != ThreadClosed ||
+		!errors.Is(resumeErr, ErrClosed) {
+		t.Fatalf(
+			"post-close resume = (status=%v, err=%v); want closed/ErrClosed",
+			status,
+			resumeErr,
+		)
+	}
+	if _, environmentErr := state.ThreadEnvironment(
+		child,
+	); !errors.Is(environmentErr, ErrClosed) {
+		t.Fatalf(
+			"post-close ThreadEnvironment = %v; want ErrClosed",
+			environmentErr,
+		)
+	}
+	runtime.KeepAlive(main)
+	runtime.KeepAlive(child)
+}
+
+func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	environment, err := state.NewTable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+
+	var zero Thread
+	for name, thread := range map[string]*Thread{
+		"nil":  nil,
+		"zero": &zero,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if thread.Value().Valid() {
+				t.Fatal("invalid Thread manufactured a valid Value")
+			}
+			if thread.State() != nil ||
+				thread.Status() != ThreadClosed ||
+				thread.IsMain() {
+				t.Fatal("invalid Thread exposed live metadata")
+			}
+			if _, threadErr := state.ThreadEnvironment(
+				thread,
+			); !errors.Is(threadErr, ErrInvalidValue) {
+				t.Fatalf(
+					"ThreadEnvironment = %v; want ErrInvalidValue",
+					threadErr,
+				)
+			}
+			if threadErr := state.SetThreadEnvironment(
+				thread,
+				environment,
+			); !errors.Is(threadErr, ErrInvalidValue) {
+				t.Fatalf(
+					"SetThreadEnvironment = %v; want ErrInvalidValue",
+					threadErr,
+				)
+			}
+			if _, status, resumeErr := thread.Resume(); status != ThreadClosed ||
+				!errors.Is(resumeErr, ErrClosed) {
+				t.Fatalf(
+					"Resume = (status=%v, err=%v); want closed/ErrClosed",
+					status,
+					resumeErr,
+				)
+			}
+		})
+	}
+
+	foreign := other.MainThread()
+	if _, threadErr := state.ThreadEnvironment(
+		foreign,
+	); !errors.Is(threadErr, ErrForeignValue) {
+		t.Fatalf(
+			"foreign ThreadEnvironment = %v; want ErrForeignValue",
+			threadErr,
+		)
+	}
+	if threadErr := state.SetThreadEnvironment(
+		foreign,
+		environment,
+	); !errors.Is(threadErr, ErrForeignValue) {
+		t.Fatalf(
+			"foreign SetThreadEnvironment = %v; want ErrForeignValue",
+			threadErr,
+		)
+	}
+	if threadErr := state.SetGlobal(
+		"foreign_thread",
+		foreign.Value(),
+	); !errors.Is(threadErr, ErrForeignValue) {
+		t.Fatalf(
+			"foreign Thread Value storage = %v; want ErrForeignValue",
+			threadErr,
+		)
+	}
+}
+
+func TestLuaOnlyCoroutinesDoNotPublishThreadHandles(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.OpenBase(); err != nil {
+		t.Fatal(err)
+	}
+	assertThreadHandleCount(t, state, "opening base and coroutine libraries", 0)
+
+	chunk := compileTestFunction(t, state, "@compact-coroutines.lua", `
+local main=coroutine.running()
+local thread
+thread=coroutine.create(function(first)
+	local self=coroutine.running()
+	local resumed=coroutine.yield(
+		self==thread,
+		coroutine.status(self),
+		first
+	)
+	return resumed+1
+end)
+local firstOK,same,running,first=coroutine.resume(thread,40)
+local suspended=coroutine.status(thread)
+local secondOK,result=coroutine.resume(thread,41)
+local dead=coroutine.status(thread)
+local wrapped=coroutine.wrap(function(value)
+	return coroutine.running()~=nil,value+1
+end)
+local wrappedRunning,wrappedResult=wrapped(41)
+return main==nil and
+	firstOK and same and running=="running" and first==40 and
+	suspended=="suspended" and secondOK and result==42 and
+	dead=="dead" and wrappedRunning and wrappedResult==42
+`)
+	handle := chunk.owningHandle()
+	results, err := state.Call(handle.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(true))
+	assertThreadHandleCount(t, state, "Lua-only coroutine execution", 0)
+	runtime.KeepAlive(handle)
+}
 
 func TestThreadResumePreservesYieldAndResumeValues(t *testing.T) {
 	state, err := New(Options{})
@@ -42,17 +486,18 @@ return a, b, c
 		Nil(),
 		Number(20),
 	)
-	if len(thread.frames) == 0 ||
-		thread.openUpvalues != nil ||
-		thread.activeNativeToken != 0 ||
-		thread.nativeCallDepth != 0 {
+	object := thread.runtimeObject()
+	if len(object.frames) == 0 ||
+		object.openUpvalues != nil ||
+		object.activeNativeToken != 0 ||
+		object.nativeCallDepth != 0 {
 		t.Fatal("yielded coroutine did not retain clean executable state")
 	}
-	if retained := thread.frames[len(thread.frames)-1]; thread.frameExtent !=
+	if retained := object.frames[len(object.frames)-1]; object.frameExtent !=
 		int(retained.callerExtent) {
 		t.Fatalf(
 			"suspended extent = %d; want caller extent %d",
-			thread.frameExtent,
+			object.frameExtent,
 			retained.callerExtent,
 		)
 	}
@@ -342,7 +787,7 @@ return value
 	if status != ThreadSuspended || len(results) != 0 || retained == nil {
 		t.Fatalf("initial yield = (%v, %v), closure=%p", status, results, retained)
 	}
-	if thread.openUpvalues == nil {
+	if thread.runtimeObject().openUpvalues == nil {
 		t.Fatal("yield closed a live upvalue")
 	}
 
@@ -360,7 +805,7 @@ return value
 		t.Fatalf("final status = %v", status)
 	}
 	assertTestValues(t, results, Number(6))
-	if thread.openUpvalues != nil {
+	if thread.runtimeObject().openUpvalues != nil {
 		t.Fatal("return retained an open upvalue")
 	}
 	results, err = state.Call(retained.Value())
@@ -655,7 +1100,8 @@ return 2, nil, 4
 					argumentError.want,
 				)
 			}
-			if thread.top != 1 || len(thread.frames) != 0 {
+			if thread.runtimeObject().top != 1 ||
+				len(thread.runtimeObject().frames) != 0 {
 				t.Fatal("rejected argument changed the initial coroutine")
 			}
 		})
@@ -739,7 +1185,8 @@ func TestThreadConstructionAndResumePreflight(t *testing.T) {
 		failure.Error() != "too many arguments to resume" {
 		t.Fatalf("oversized resume failure = %#v", err)
 	}
-	if thread.top != 1 || len(thread.frames) != 0 {
+	if thread.runtimeObject().top != 1 ||
+		len(thread.runtimeObject().frames) != 0 {
 		t.Fatal("resume preflight changed the suspended coroutine")
 	}
 	if results, status, err := thread.Resume(Number(1)); err != nil ||
@@ -771,7 +1218,7 @@ func TestCoroutineNativeDepthIsBoundAcrossThreads(t *testing.T) {
 		}
 		run := resumeThread(
 			frame.thread,
-			child,
+			child.runtimeObject(),
 			resumeArguments{},
 		)
 		defer run.release()
@@ -872,6 +1319,193 @@ end
 	}
 }
 
+func BenchmarkWarmThreadPublication(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	entry := compileTestFunction(
+		b,
+		state,
+		"@benchmark-thread-publication.lua",
+		`return`,
+	)
+	object, err := state.newThreadObject(slotFromFunctionObject(entry))
+	if err != nil {
+		b.Fatal(err)
+	}
+	first := object.owningHandle()
+	compact := slotFromThreadObject(object)
+
+	var published Value
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		published = compact.owningValue()
+	}
+	runtime.KeepAlive(published)
+	runtime.KeepAlive(first)
+}
+
+func BenchmarkNewThread(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = state.Close()
+	})
+	entry, err := state.NewNativeFunction(func(Frame) Outcome {
+		return Outcome{}
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	var thread *Thread
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		thread, err = state.NewThread(entry.Value())
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	runtime.KeepAlive(thread)
+	runtime.KeepAlive(entry)
+}
+
+func rootedThreadWithoutHandle(
+	t *testing.T,
+	state *State,
+) (*threadObject, weak.Pointer[hostToken]) {
+	t.Helper()
+	entry := compileTestFunction(
+		t,
+		state,
+		"@rooted-thread.lua",
+		`return 42`,
+	)
+	object, err := state.newThreadObject(slotFromFunctionObject(entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.registry.rawSetStringSlot(
+		"rooted thread",
+		slotFromThreadObject(object),
+	); err != nil {
+		t.Fatal(err)
+	}
+	handle := object.owningHandle()
+	token := weak.Make(handle.token())
+	runtime.KeepAlive(handle)
+	return object, token
+}
+
+func weakCyclicThreadPublication(
+	t *testing.T,
+	state *State,
+) (
+	weak.Pointer[threadObject],
+	weak.Pointer[hostToken],
+) {
+	t.Helper()
+	entry := compileTestFunction(
+		t,
+		state,
+		"@cyclic-thread.lua",
+		`return`,
+	)
+	object, err := state.newThreadObject(slotFromFunctionObject(entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	object.values = append(object.values, slotFromThreadObject(object))
+	object.top = len(object.values)
+	object.captureUpvalue(1)
+	handle := object.owningHandle()
+	objectReference := weak.Make(object)
+	tokenReference := weak.Make(handle.token())
+	runtime.KeepAlive(handle)
+	return objectReference, tokenReference
+}
+
+func waitForWeakThreadToken(
+	t *testing.T,
+	object *threadObject,
+	token weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		if token.Value() == nil {
+			if object == nil || object.owner == nil {
+				t.Fatal("Lua-rooted compact thread disappeared with its token")
+			}
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("discarded thread owning token remained reachable")
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForWeakThread(
+	t *testing.T,
+	object weak.Pointer[threadObject],
+	token weak.Pointer[hostToken],
+) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		runtime.GC()
+		if object.Value() == nil && token.Value() == nil {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("weak host directory pinned a discarded cyclic thread")
+		case <-ticker.C:
+		}
+	}
+}
+
+func assertThreadHandleCount(
+	t *testing.T,
+	state *State,
+	operation string,
+	want int,
+) {
+	t.Helper()
+	entries, keys, stale := hostDirectoryKindCounts(
+		&state.runtime.hosts,
+		ThreadKind,
+	)
+	if entries != want || keys != want || stale != 0 {
+		t.Fatalf(
+			"%s thread handles: entries=%d keys=%d stale=%d; want %d/%d/0",
+			operation,
+			entries,
+			keys,
+			stale,
+			want,
+			want,
+		)
+	}
+}
+
 func installYieldTestFunction(t testing.TB, state *State) *Function {
 	t.Helper()
 	yield, err := state.NewNativeFunction(func(frame Frame) Outcome {
@@ -888,38 +1522,42 @@ func installYieldTestFunction(t testing.TB, state *State) *Function {
 
 func assertDeadCoroutineClean(t *testing.T, thread *Thread) {
 	t.Helper()
-	if thread.status != ThreadDead ||
-		thread.top != 0 ||
-		thread.frameExtent != 0 ||
-		len(thread.frames) != 0 ||
-		len(thread.continuations) != 0 ||
-		thread.openUpvalues != nil ||
-		thread.activeNativeToken != 0 ||
-		thread.nativeCallDepth != 0 ||
-		thread.errorHandlerDepth != 0 ||
-		cap(thread.values) != 0 ||
-		cap(thread.frames) != 0 ||
-		cap(thread.continuations) != 0 {
+	object := thread.runtimeObject()
+	if object == nil {
+		t.Fatal("dead coroutine lost its compact object")
+	}
+	if object.status != ThreadDead ||
+		object.top != 0 ||
+		object.frameExtent != 0 ||
+		len(object.frames) != 0 ||
+		len(object.continuations) != 0 ||
+		object.openUpvalues != nil ||
+		object.activeNativeToken != 0 ||
+		object.nativeCallDepth != 0 ||
+		object.errorHandlerDepth != 0 ||
+		cap(object.values) != 0 ||
+		cap(object.frames) != 0 ||
+		cap(object.continuations) != 0 {
 		t.Fatalf(
 			"dead coroutine retained execution: status=%v top=%d extent=%d "+
 				"values=%d/%d frames=%d/%d continuations=%d/%d "+
 				"upvalues=%p token=%d native=%d handler=%d",
-			thread.status,
-			thread.top,
-			thread.frameExtent,
-			len(thread.values),
-			cap(thread.values),
-			len(thread.frames),
-			cap(thread.frames),
-			len(thread.continuations),
-			cap(thread.continuations),
-			thread.openUpvalues,
-			thread.activeNativeToken,
-			thread.nativeCallDepth,
-			thread.errorHandlerDepth,
+			object.status,
+			object.top,
+			object.frameExtent,
+			len(object.values),
+			cap(object.values),
+			len(object.frames),
+			cap(object.frames),
+			len(object.continuations),
+			cap(object.continuations),
+			object.openUpvalues,
+			object.activeNativeToken,
+			object.nativeCallDepth,
+			object.errorHandlerDepth,
 		)
 	}
-	for index, value := range thread.values {
+	for index, value := range object.values {
 		if value != (slot{}) {
 			t.Fatalf("dead coroutine slot %d retained %v", index, value.owningValue())
 		}
@@ -939,7 +1577,7 @@ func assertStateExecutionIdle(t *testing.T, state *State) {
 			state.limits,
 		)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func assertCoroutineErrorContains(t *testing.T, err error, text string) {

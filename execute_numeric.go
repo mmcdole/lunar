@@ -44,7 +44,7 @@ func arithmeticMetamethod(operation opcode) metamethod {
 
 //go:noinline
 func slowArithmetic(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -128,7 +128,7 @@ func slowArithmetic(
 
 //go:noinline
 func slowEquality(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -187,7 +187,7 @@ func slowEquality(
 
 //go:noinline
 func slowOrder(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -278,7 +278,7 @@ func slowOrder(
 
 //go:noinline
 func prepareNumericFor(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {

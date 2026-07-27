@@ -231,7 +231,7 @@ func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
 		table.Value(),
 		state.String("last"),
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	runtime.GC()
 	resultTable, ok := results[2].Table()
@@ -324,7 +324,7 @@ return inner()
 			t.Fatalf("tail-call traceback = %#v", traceback)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	success := mustLoadString(t, state, "@success.lua", `return 42`)
 	results, err := state.Call(success.Value())
@@ -342,7 +342,7 @@ return inner()
 			t.Fatalf("non-callable error = %#v", callErr)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestStateCallValidatesIngressBeforeMutation(t *testing.T) {
@@ -361,7 +361,7 @@ func TestStateCallValidatesIngressBeforeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread := state.MainThread()
+	thread := state.main
 
 	for _, test := range []struct {
 		name     string
@@ -478,7 +478,7 @@ return 1, 2, 3
 		t.Fatal(err)
 	}
 	assertTestValue(t, sideEffect, Number(1))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestStateCallIntoLeavesDestinationUntouchedOnFailure(t *testing.T) {
@@ -497,7 +497,7 @@ func TestStateCallIntoLeavesDestinationUntouchedOnFailure(t *testing.T) {
 		t.Fatalf("failed call = (%d, %v)", count, callErr)
 	}
 	assertTestValues(t, destination, Number(80), Number(81))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestLoadPrototypeInitializesRootUpvalues(t *testing.T) {
@@ -646,7 +646,7 @@ func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
 			t.Fatalf("native root failure = %#v", callErr)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestStateCallCleansRootExecutionAfterNativePanic(t *testing.T) {
@@ -683,7 +683,7 @@ host()
 	if recovered != "host panic" {
 		t.Fatalf("recovered panic = %#v", recovered)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	saved, err := state.Global("saved")
 	if err != nil {
@@ -782,7 +782,7 @@ func TestStateCallResourceFailureLeavesMainThreadReusable(t *testing.T) {
 			t.Fatalf("resource error value = %q, %v", message, ok)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	small := mustLoadString(t, state, "@small.lua", `return 1`)
 	results, err := state.Call(small.Value())
@@ -980,7 +980,7 @@ return target.missing
 				Line:   3,
 			},
 		)
-		assertRootThreadReady(t, state.MainThread())
+		assertRootThreadReady(t, state.main)
 	})
 
 	t.Run("native result called by Lua", func(t *testing.T) {
@@ -1314,7 +1314,7 @@ func mustLoadString(
 	return function
 }
 
-func assertRootThreadReady(t *testing.T, thread *Thread) {
+func assertRootThreadReady(t *testing.T, thread *threadObject) {
 	t.Helper()
 	if thread.status != ThreadReady ||
 		thread.top != 0 ||

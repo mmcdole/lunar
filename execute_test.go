@@ -415,7 +415,7 @@ end
 	}
 	defer state.Close()
 	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
-	thread := state.MainThread()
+	thread := state.main
 	setTestCall(
 		thread,
 		0,
@@ -492,7 +492,7 @@ func TestExecutorRunsNot(t *testing.T) {
 				state.main.globals,
 				nil,
 			)
-			thread := state.MainThread()
+			thread := state.main
 			setTestCall(thread, 0, function, test.arg)
 			if callErr := thread.pushFunctionCall(
 				function,
@@ -546,7 +546,7 @@ func TestExecutorRunsOperandValuedLogicalExpressions(t *testing.T) {
 			state.main.globals,
 			nil,
 		)
-		thread := state.MainThread()
+		thread := state.main
 		setTestCall(thread, 0, function, test.arg)
 		if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
 			t.Fatal(callErr)
@@ -619,7 +619,7 @@ func TestExecutorRunsTestSetAndPreservesDestination(t *testing.T) {
 				state.main.globals,
 				nil,
 			)
-			thread := state.MainThread()
+			thread := state.main
 			setTestCall(
 				thread,
 				0,
@@ -660,7 +660,7 @@ func TestExecutorHonorsLoadBoolSkip(t *testing.T) {
 	}
 	defer state.Close()
 	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
-	thread := state.MainThread()
+	thread := state.main
 	setTestCall(thread, 0, function)
 	if callErr := thread.pushFunctionCall(function, 0, 0, 1); callErr != nil {
 		t.Fatal(callErr)
@@ -1052,7 +1052,7 @@ func TestExecutionFailureFinalizationPreservesSuspendedCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 	failing := compileTestFunction(t, state, "@failing.lua", `
 local value = ...
@@ -1141,7 +1141,7 @@ return result`
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	caller := newTestLuaFunction(t, state, 0, 6, 0, 0)
 	child := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
 
@@ -1321,7 +1321,7 @@ func TestExecutorWarmScalarReturnDoesNotAllocate(t *testing.T) {
 	}
 	defer state.Close()
 	function := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(8)
 	thread.reserveFrames(1)
 
@@ -1608,7 +1608,7 @@ return function()
 	return captured
 end
 	`)
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(8)
 	benchmarkRunExecutor(
@@ -1628,7 +1628,7 @@ func executeTestChunk(
 	t *testing.T,
 	source string,
 	arguments ...Value,
-) (*State, *Thread, executionResult) {
+) (*State, *threadObject, executionResult) {
 	t.Helper()
 	prototype, syntaxError := compileSource("@test.lua", source)
 	if syntaxError != nil {
@@ -1644,7 +1644,7 @@ func executeTestChunk(
 		state.main.globals,
 		nil,
 	)
-	thread := state.MainThread()
+	thread := state.main
 	setTestCall(thread, 0, function, arguments...)
 	if callErr := thread.pushFunctionCall(
 		function,
@@ -1677,9 +1677,9 @@ func executeTestFunction(
 	state *State,
 	function *functionObject,
 	arguments ...Value,
-) (*Thread, executionResult) {
+) (*threadObject, executionResult) {
 	t.Helper()
-	thread := state.MainThread()
+	thread := state.main
 	if len(thread.frames) != 0 {
 		t.Fatal("test thread still has active calls")
 	}
@@ -1710,7 +1710,7 @@ func benchmarkExecutorFunction(
 	for index, argument := range arguments {
 		argumentSlots[index] = slotFromValue(argument)
 	}
-	thread := state.MainThread()
+	thread := state.main
 	required := 1 + len(argumentSlots)
 	thread.reserveValues(max(required, 32))
 	thread.reserveFrames(8)
@@ -1764,7 +1764,7 @@ func benchmarkExecutorSource(
 }
 
 func benchmarkRunExecutor(
-	thread *Thread,
+	thread *threadObject,
 	function *functionObject,
 	arguments []slot,
 ) {
@@ -1798,7 +1798,7 @@ func assertExecutionReturned(t *testing.T, result executionResult) {
 	}
 }
 
-func assertExecutionValues(t *testing.T, thread *Thread, expected ...Value) {
+func assertExecutionValues(t *testing.T, thread *threadObject, expected ...Value) {
 	t.Helper()
 	if thread.top != len(expected) {
 		t.Fatalf("result count = %d; want %d", thread.top, len(expected))

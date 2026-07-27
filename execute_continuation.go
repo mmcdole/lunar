@@ -26,7 +26,7 @@ type executionContinuation struct {
 
 //go:noinline
 func startMetamethodCall(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	instructionPC int,
 	callable slot,
@@ -141,7 +141,7 @@ func startMetamethodCall(
 //
 //go:noinline
 func startIteratorCall(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -212,7 +212,7 @@ func startIteratorCall(
 }
 
 //go:noinline
-func resumeExecutionContinuation(thread *Thread) *Error {
+func resumeExecutionContinuation(thread *threadObject) *Error {
 	last := len(thread.continuations) - 1
 	continuation := thread.continuations[last]
 	if int(continuation.frameDepth) != len(thread.frames) {
@@ -278,7 +278,7 @@ func resumeExecutionContinuation(thread *Thread) *Error {
 }
 
 func resumeIteratorContinuation(
-	thread *Thread,
+	thread *threadObject,
 	continuation executionContinuation,
 ) {
 	frameIndex := int(continuation.frameDepth) - 1
@@ -299,7 +299,7 @@ func resumeIteratorContinuation(
 }
 
 func setComparisonPC(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	followerPC int,
 	code instruction,

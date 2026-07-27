@@ -1047,7 +1047,7 @@ func TestNativeFramePreflightsResultsAndLimits(t *testing.T) {
 			t.Fatal(err)
 		}
 		caller := compileTestFunction(t, state, "@caller.lua", `return 0`)
-		thread := state.MainThread()
+		thread := state.main
 		thread.reserveValues(int(caller.prototype.registers))
 		thread.values[0] = slotFromFunctionObject(caller)
 		thread.top = 1
@@ -1212,7 +1212,7 @@ return result
 				"@native-panic.lua",
 				test.source,
 			)
-			thread := state.MainThread()
+			thread := state.main
 			thread.reserveValues(int(caller.prototype.registers))
 			thread.values[0] = slotFromFunctionObject(caller)
 			thread.top = 1
@@ -1534,7 +1534,7 @@ func TestWarmNativeFrameCallDoesNotAllocate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(16)
 	thread.reserveFrames(8)
 	functionObject := function.runtimeObject()
@@ -1679,7 +1679,7 @@ func BenchmarkNativeFrameOutcomes(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			thread := state.MainThread()
+			thread := state.main
 			thread.reserveValues(16)
 			thread.reserveFrames(8)
 			functionObject := function.runtimeObject()
@@ -1721,9 +1721,9 @@ func stageNativeTestCall(
 	function *Function,
 	wantedResults int,
 	arguments ...Value,
-) *Thread {
+) *threadObject {
 	t.Helper()
-	thread := state.MainThread()
+	thread := state.main
 	if len(thread.frames) != 0 || thread.activeNativeToken != 0 {
 		t.Fatal("test Thread has active native work")
 	}
@@ -1754,7 +1754,7 @@ func stageNativeTestCall(
 
 func assertNativeTestResults(
 	t *testing.T,
-	thread *Thread,
+	thread *threadObject,
 	expected ...Value,
 ) {
 	t.Helper()

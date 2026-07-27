@@ -40,7 +40,7 @@ func captureExecutionCheckpoint(frame Frame) executionCheckpoint {
 // It closes escaped stack cells before clearing their former storage. The
 // returned extent bounds all scratch slots that were live before restoration.
 func (checkpoint executionCheckpoint) restore(
-	thread *Thread,
+	thread *threadObject,
 	clearScratch bool,
 ) int {
 	if thread == nil ||
@@ -83,15 +83,15 @@ func (checkpoint executionCheckpoint) restore(
 	return previousExtent
 }
 
-func (thread *Thread) valueLimit() int {
+func (thread *threadObject) valueLimit() int {
 	return thread.state.limits.values
 }
 
-func (thread *Thread) frameLimit() int {
+func (thread *threadObject) frameLimit() int {
 	return thread.state.limits.frames
 }
 
-func (thread *Thread) nativeCallLimit() int {
+func (thread *threadObject) nativeCallLimit() int {
 	if thread.errorHandlerDepth != 0 {
 		return protectedResourceLimit(
 			maxNativeCallDepth,
@@ -113,7 +113,7 @@ func protectedResourceLimit(limit, minimumReserve int) int {
 	return limit + reserve
 }
 
-func (thread *Thread) enterErrorHandler() {
+func (thread *threadObject) enterErrorHandler() {
 	if thread.errorHandlerDepth == ^uint16(0) {
 		panic("lua: protected error-handler nesting overflow")
 	}
@@ -132,7 +132,7 @@ func (thread *Thread) enterErrorHandler() {
 	thread.errorHandlerDepth++
 }
 
-func (thread *Thread) leaveErrorHandler() {
+func (thread *threadObject) leaveErrorHandler() {
 	if thread.errorHandlerDepth == 0 {
 		panic("lua: protected error-handler nesting underflow")
 	}
@@ -325,7 +325,7 @@ type callArguments struct {
 }
 
 func startNestedCall(
-	thread *Thread,
+	thread *threadObject,
 	callable slot,
 	arguments callArguments,
 	wantedResults int,

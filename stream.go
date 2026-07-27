@@ -534,7 +534,7 @@ type readFailureRecorder struct {
 	pending       *recordedReadFailure
 	deferred      *recordedReadFailure
 	replay        []byte
-	contextThread *Thread
+	contextThread *threadObject
 }
 
 type recordedReadFailure struct {

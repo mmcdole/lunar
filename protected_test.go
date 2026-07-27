@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 )
 
 func TestProtectedFailureClosesScratchUpvaluesAndPreservesMutations(t *testing.T) {
@@ -35,7 +34,7 @@ return ok, retained, escaped()
 		Number(7),
 		Number(42),
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestProtectedFailureRemovesOnlyItsContinuations(t *testing.T) {
@@ -117,7 +116,7 @@ return ok, continuation_count(), nested_index.missing, continuation_count()
 		Number(55),
 		Number(0),
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestProtectedFailureRestoresEveryContinuationMode(t *testing.T) {
@@ -231,7 +230,7 @@ return newindexOK, newindexCount,
 		Bool(false),
 		Number(0),
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestXPCallHandlerRunsOverTheLiveFailureStack(t *testing.T) {
@@ -289,7 +288,7 @@ return xpcall(outer, inspect_failure)
 			observedFailingFrames,
 		)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestProtectedCallsRestoreAfterNativePanics(t *testing.T) {
@@ -339,7 +338,7 @@ return xpcall(
 			if recovered != panicValue {
 				t.Fatalf("recovered panic = %#v; want %#v", recovered, panicValue)
 			}
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 
 			after := mustLoadString(t, state, "@after-panic.lua", `return 23`)
 			results, callErr := state.Call(after.Value())
@@ -383,7 +382,7 @@ return firstOK, first, secondOK, second, thirdOK, third
 		Bool(false),
 		state.String("handled"),
 	)
-	thread := state.MainThread()
+	thread := state.main
 	if cap(thread.frames) > frameLimit {
 		t.Fatalf(
 			"frame capacity after handler = %d; configured limit is %d",
@@ -427,7 +426,7 @@ return firstOK, first, secondOK, second
 		Bool(false),
 		state.String("error in error handling"),
 	)
-	thread := state.MainThread()
+	thread := state.main
 	if cap(thread.frames) > frameLimit {
 		t.Fatalf(
 			"frame capacity after exhausted handler = %d; limit is %d",
@@ -458,7 +457,7 @@ func TestProtectedEntryResourceFailureIsPositionedAndCatchable(t *testing.T) {
 		Bool(false),
 		state.String("protected-entry-resource.lua:1: stack overflow"),
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestXPCallUsesAndThenRemovesEmergencyValueHeadroom(t *testing.T) {
@@ -493,7 +492,7 @@ return xpcall(target, handler)
 		Bool(false),
 		state.String("handled"),
 	)
-	thread := state.MainThread()
+	thread := state.main
 	if cap(thread.values) > valueLimit {
 		t.Fatalf(
 			"value capacity after handler = %d; configured limit is %d",
@@ -547,7 +546,7 @@ return outerOK, innerOK, value, caughtOK, caught
 	if results[4].Truth() {
 		t.Fatalf("inner xpcall status = %v; want false", results[4])
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestProtectedCallsDoNotCatchHostContextFailures(t *testing.T) {
@@ -633,7 +632,7 @@ return xpcall(
 					)
 				}
 			}
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 		})
 	}
 }
@@ -672,7 +671,7 @@ return xpcall(recurse, native_depth_handler)
 			Bool(true),
 			state.String("handled C stack overflow"),
 		)
-		assertRootThreadReady(t, state.MainThread())
+		assertRootThreadReady(t, state.main)
 	}
 	if handlerCalls != 3 {
 		t.Fatalf("native depth handler calls = %d; want 3", handlerCalls)
@@ -718,7 +717,7 @@ func TestProtectedOpenResultsMayCrossTheCheckpointBoundary(t *testing.T) {
 	for index, value := range values {
 		assertTestValue(t, results[index+1], value)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestCaughtFailureDoesNotCaptureATraceback(t *testing.T) {
@@ -817,7 +816,7 @@ return ok
 		t.Fatal(err)
 	}
 	assertTestValues(t, results, Bool(false))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 	return state, collected
 }
 
@@ -874,14 +873,6 @@ return xpcall(
 		t.Fatal(err)
 	}
 	assertTestValues(t, results, Bool(true), Bool(true))
-}
-
-func TestProtectedRuntimeStateRemainsCompact(t *testing.T) {
-	if unsafe.Sizeof(uintptr(0)) == 8 {
-		if size := unsafe.Sizeof(Thread{}); size != 136 {
-			t.Fatalf("Thread size = %d; want 136", size)
-		}
-	}
 }
 
 func TestWarmPCallSuccessDoesNotAllocate(t *testing.T) {

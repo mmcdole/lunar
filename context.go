@@ -52,7 +52,7 @@ func (state *State) endExecutionContext() {
 	state.execution = executionControl{}
 }
 
-func (thread *Thread) resetContextBudget() {
+func (thread *threadObject) resetContextBudget() {
 	if thread.state.execution.done == nil {
 		thread.contextBudget = 0
 		return
@@ -60,7 +60,7 @@ func (thread *Thread) resetContextBudget() {
 	thread.contextBudget = contextPollInterval
 }
 
-func (thread *Thread) contextStepDue() bool {
+func (thread *threadObject) contextStepDue() bool {
 	budget := thread.contextBudget
 	if budget == 0 {
 		return false
@@ -70,7 +70,7 @@ func (thread *Thread) contextStepDue() bool {
 	return budget == 0
 }
 
-func pollExecutionContext(thread *Thread) *Error {
+func pollExecutionContext(thread *threadObject) *Error {
 	thread.resetContextBudget()
 	execution := &thread.state.execution
 	if execution.done == nil || !contextChannelClosed(execution.done) {

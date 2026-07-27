@@ -285,7 +285,7 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, found := metamethodSlot(
-		state.MainThread(),
+		state.main,
 		slotFromTableObject(target),
 		metaIndex,
 	); found || table.absentMetamethods&metaIndex.bit() == 0 {
@@ -319,7 +319,7 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 		t.Fatal("metamethod insertion did not invalidate cached absence")
 	}
 	method, found := metamethodSlot(
-		state.MainThread(),
+		state.main,
 		slotFromTableObject(target),
 		metaIndex,
 	)
@@ -333,7 +333,7 @@ func TestTableMetamethodAbsenceCache(t *testing.T) {
 		t.Fatal("metamethod deletion retained stale absence state")
 	}
 	if _, found := metamethodSlot(
-		state.MainThread(),
+		state.main,
 		slotFromTableObject(target),
 		metaIndex,
 	); found || table.absentMetamethods&metaIndex.bit() == 0 {

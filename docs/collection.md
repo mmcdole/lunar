@@ -36,7 +36,8 @@ representation. Scalars and strings remain direct values.
 
 For migrated reference kinds, a public `Value` points at the host token rather
 than the compact object. The current implementation covers `*UserData`,
-`*Table`, and `*Function`; threads follow before the object ledger is enabled.
+`*Table`, `*Function`, and `*Thread`; the ownership boundary is complete before
+the object ledger is enabled.
 Each public handle is an opaque named view of the common token representation,
 and its methods unwrap the compact object at the boundary. The weak directory
 returns the same live Go pointer on repeated publication without repeated
@@ -66,6 +67,14 @@ directory entries whose object or token has disappeared.
 Reference identity is the compact object's identity, not the address of a
 temporary Go view. `SameObject` compares that identity. No public operation
 may expose an untracked pointer to the compact object.
+
+A thread is also an executable capability. Its compact object retains the
+owning `State` needed for resume, limits, context, and active-executor
+coordination. Consequently a retained `*Thread` keeps that State shell alive,
+as the receiver-based API requires. It does not keep a public wrapper in the
+executor. `Close` clears State roots and resources before retained thread
+handles become read-only; the object ledger will make every suspended thread
+enumerable for close-time stack release.
 
 ## Collected objects
 

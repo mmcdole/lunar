@@ -278,8 +278,8 @@ type State struct {
 	streams         *standardStreams
 	location        *time.Location
 	now             func() time.Time
-	active          *Thread
-	main            *Thread
+	active          *threadObject
+	main            *threadObject
 	registry        *tableObject
 	packageSentinel *userDataObject
 	resources       *nativeResourceRegistry
@@ -336,7 +336,7 @@ func New(options Options) (*State, error) {
 		},
 	}
 	globals := newTable(rt, 0, 0)
-	state.main = &Thread{
+	state.main = &threadObject{
 		objectHeader: objectHeader{owner: rt},
 		state:        state,
 		globals:      globals,
@@ -409,10 +409,10 @@ func (state *State) Close() error {
 
 // MainThread returns the canonical main Thread.
 func (state *State) MainThread() *Thread {
-	if state == nil {
+	if state == nil || state.main == nil {
 		return nil
 	}
-	return state.main
+	return state.main.owningHandle()
 }
 
 // String returns an owning Lua string Value.
@@ -468,7 +468,7 @@ func (state *State) Registry() (*Table, error) {
 	return state.registry.owningHandle(), nil
 }
 
-func (state *State) currentThread() *Thread {
+func (state *State) currentThread() *threadObject {
 	if state.active != nil {
 		return state.active
 	}
@@ -602,10 +602,13 @@ func (state *State) SetFunctionEnvironment(function *Function, environment *Tabl
 
 // ThreadEnvironment returns thread's Lua 5.1 global environment.
 func (state *State) ThreadEnvironment(thread *Thread) (*Table, error) {
-	if err := state.checkThread(thread); err != nil {
+	object, err := state.acceptThread(thread)
+	if err != nil {
 		return nil, err
 	}
-	return thread.globals.owningHandle(), nil
+	environment := object.globals.owningHandle()
+	runtime.KeepAlive(thread)
+	return environment, nil
 }
 
 // SetThreadEnvironment replaces thread's Lua 5.1 global environment.
@@ -613,14 +616,16 @@ func (state *State) SetThreadEnvironment(
 	thread *Thread,
 	environment *Table,
 ) error {
-	if err := state.checkThread(thread); err != nil {
+	object, err := state.acceptThread(thread)
+	if err != nil {
 		return err
 	}
 	compactEnvironment, err := state.acceptTable(environment)
 	if err != nil {
 		return err
 	}
-	thread.globals = compactEnvironment
+	object.globals = compactEnvironment
+	runtime.KeepAlive(thread)
 	runtime.KeepAlive(environment)
 	return nil
 }
@@ -700,17 +705,25 @@ func (state *State) acceptFunction(
 	return object, nil
 }
 
-func (state *State) checkThread(thread *Thread) error {
+func (state *State) acceptThread(
+	thread *Thread,
+) (*threadObject, error) {
 	if err := state.checkOpen(); err != nil {
-		return err
+		return nil, err
 	}
-	if thread == nil || thread.owner == nil {
-		return ErrInvalidValue
+	token := thread.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.kind != ThreadKind ||
+		token.object == nil {
+		return nil, ErrInvalidValue
 	}
-	if thread.owner != state.runtime {
-		return ErrForeignValue
+	if token.owner != state.runtime {
+		return nil, ErrForeignValue
 	}
-	return nil
+	object := (*threadObject)(token.object)
+	runtime.KeepAlive(thread)
+	return object, nil
 }
 
 func (state *State) checkUserData(data *UserData) error {
@@ -769,14 +782,17 @@ const (
 	ThreadClosed
 )
 
-// Thread is the canonical object for a Lua thread.
+// Thread is an opaque owning handle for a Lua thread.
 //
-// The main thread and coroutines use the same representation. Execution
-// registers and activation records remain private. Resume operations must be
-// serialized with every other operation on the owning State.
+// Repeated publication of the same live Lua thread returns the same handle
+// pointer. Execution slots retain the compact thread directly and do not pass
+// through this handle. Resume operations must be serialized with every other
+// operation on the owning State.
 //
 // A Thread must not be copied after first use. Retain and pass its pointer.
-type Thread struct {
+type Thread hostToken
+
+type threadObject struct {
 	objectHeader
 	state             *State
 	globals           *tableObject
@@ -796,37 +812,92 @@ type Thread struct {
 
 // Value returns the owning Lua value for thread.
 func (thread *Thread) Value() Value {
-	if thread == nil || thread.owner == nil {
+	token := thread.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.object == nil ||
+		token.kind != ThreadKind {
 		return Value{}
 	}
-	return slotFromThread(thread).owningValue()
+	value := Value{ref: unsafe.Pointer(token), bits: uint64(ThreadKind)}
+	runtime.KeepAlive(thread)
+	return value
 }
 
-func slotFromThread(thread *Thread) slot {
+func (thread *Thread) token() *hostToken {
+	return (*hostToken)(thread)
+}
+
+func (thread *Thread) runtimeObject() *threadObject {
+	token := thread.token()
+	if token == nil ||
+		token.kind != ThreadKind ||
+		token.object == nil {
+		return nil
+	}
+	return (*threadObject)(token.object)
+}
+
+func (thread *threadObject) owningHandle() *Thread {
+	if thread == nil {
+		return nil
+	}
+	token := thread.objectHeader.owningToken(
+		ThreadKind,
+		unsafe.Pointer(thread),
+	)
+	return (*Thread)(token)
+}
+
+func (thread *threadObject) owningValue() Value {
+	handle := thread.owningHandle()
+	return handle.Value()
+}
+
+func slotFromThreadObject(thread *threadObject) slot {
 	if thread == nil || thread.owner == nil {
 		panic("lua: invalid canonical thread")
 	}
 	return objectSlot(ThreadKind, unsafe.Pointer(thread))
 }
 
-func threadFromSlot(value slot) *Thread {
+func threadObjectFromSlot(value slot) *threadObject {
 	if !value.isThread() {
 		panic("lua: slot is not a thread")
 	}
-	return (*Thread)(value.ref)
+	return (*threadObject)(value.ref)
+}
+
+func threadHandleFromSlot(value slot) *Thread {
+	return threadObjectFromSlot(value).owningHandle()
 }
 
 // State returns the State that owns thread.
 func (thread *Thread) State() *State {
-	if thread == nil {
+	object := thread.runtimeObject()
+	if object == nil {
 		return nil
 	}
-	return thread.state
+	state := object.state
+	runtime.KeepAlive(thread)
+	return state
 }
 
 // Status returns thread's current status.
 func (thread *Thread) Status() ThreadStatus {
-	if thread == nil || thread.owner == nil || thread.owner.closed.Load() {
+	object := thread.runtimeObject()
+	if object == nil {
+		return ThreadClosed
+	}
+	status := object.currentStatus()
+	runtime.KeepAlive(thread)
+	return status
+}
+
+func (thread *threadObject) currentStatus() ThreadStatus {
+	if thread == nil ||
+		thread.owner == nil ||
+		thread.owner.closed.Load() {
 		return ThreadClosed
 	}
 	return thread.status
@@ -834,7 +905,13 @@ func (thread *Thread) Status() ThreadStatus {
 
 // IsMain reports whether thread is its State's main thread.
 func (thread *Thread) IsMain() bool {
-	return thread != nil && thread.main
+	object := thread.runtimeObject()
+	if object == nil {
+		return false
+	}
+	main := object.main
+	runtime.KeepAlive(thread)
+	return main
 }
 
 // UserData is an opaque owning handle for a Lua userdata object holding a Go

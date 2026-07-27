@@ -628,11 +628,12 @@ between separate days is perfectly stationary.
 ### 12. Host ownership checkpoints
 
 The semantic-collection boundary separates public handles from compact
-userdata, table, and function objects. Lua slots, tables, native captures,
-activations, and the standard libraries retain the 48-byte compact userdata,
-80-byte compact table, or 32-byte compact function directly. A State-local
-weak directory canonicalizes a public handle only when an object actually
-crosses into Go; it adds no field to every compact object.
+userdata, table, function, and thread objects. Lua slots, tables, native
+captures, activations, coroutine transfers, and the standard libraries retain
+the 48-byte compact userdata, 80-byte compact table, 32-byte compact function,
+or 136-byte compact thread directly. A State-local weak directory canonicalizes
+a public handle only when an object actually crosses into Go; it adds no field
+to every compact object.
 
 On the same Apple M3 Pro, first publication through `State.NewUserData`
 measures four allocations per object, compared with one allocation for the
@@ -670,15 +671,26 @@ capacity cannot hide untraced Lua ownership edges. Paired internal-call
 measurements remain neutral within low-single-digit variation and
 allocation-free.
 
+Threads now complete the same boundary. The main executor, nested coroutine
+resumes, `coroutine.create`, `running`, `resume`, `status`, and `wrap` all use
+private thread objects and compact slots. Opening and exercising the Lua
+coroutine library without returning a thread to Go creates no thread handle.
+The public 24-byte token is paid only when `MainThread`, `NewThread`,
+`Frame.Thread`, `Frame.LuaThread`, or a returned `Value` exposes a thread.
+`State.NewThread`, which publishes immediately, moves from about 68 ns, 400
+bytes, and two allocations to about 0.71 microseconds, 440 bytes, and five
+allocations. Repeated publication is allocation-free at about 28 ns. Warm
+public `ResumeInto` remains allocation-free and measures about 85 ns versus 83
+ns before the split; the Lua `coroutine.resume`/yield loop remains neutral at
+about 202 ns.
+
 This is an explicit trade: boundary-created objects pay more so every Lua-only
-table or function avoids a permanent handle-cache word and its allocator
-size-class cost. Threads should use the same rule because their boundary
-frequency is lower and their internal paths remain compact. Bulk Go-side graph
-construction needs the planned low-level builder rather than thousands of
-friendly owning publications. If representative embedding workloads show that
-first-publication cost dominates despite that interface, change
-canonicalization as one coherent representation decision rather than adding
-per-kind shortcuts.
+table, function, or thread avoids a permanent handle-cache word and its
+allocator size-class cost. Bulk Go-side graph construction needs the planned
+low-level builder rather than thousands of friendly owning publications. If
+representative embedding workloads show that first-publication cost dominates
+despite that interface, change canonicalization as one coherent
+representation decision rather than adding per-kind shortcuts.
 
 ## Gates
 

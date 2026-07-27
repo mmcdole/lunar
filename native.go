@@ -61,7 +61,7 @@ type Outcome struct {
 // terminal Return, Raise, ArgError, or Yield method is called, or until the
 // NativeFunc returns.
 type Frame struct {
-	thread *Thread
+	thread *threadObject
 	token  uint64
 	depth  int
 }
@@ -254,7 +254,15 @@ func (frame Frame) LuaThread(index int) (*Thread, bool) {
 	if !present || !value.isThread() {
 		return nil, false
 	}
-	return (*Thread)(value.ref), true
+	return threadHandleFromSlot(value), true
+}
+
+func (frame Frame) threadObject(index int) (*threadObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isThread() {
+		return nil, false
+	}
+	return threadObjectFromSlot(value), true
 }
 
 // State returns the State executing this callback.
@@ -266,7 +274,7 @@ func (frame Frame) State() *State {
 // Thread returns the Thread executing this callback.
 func (frame Frame) Thread() *Thread {
 	frame.activation()
-	return frame.thread
+	return frame.thread.owningHandle()
 }
 
 // Environment returns the executing native Function's Lua 5.1 environment.
@@ -446,7 +454,7 @@ func (frame Frame) returnStringBytes(value []byte) Outcome {
 // resultWriter publishes a native result window one compact value at a time,
 // allowing variable scalar result counts without constructing a slice.
 type resultWriter struct {
-	thread      *Thread
+	thread      *threadObject
 	base        int
 	outputCount int
 	written     int
@@ -847,7 +855,7 @@ func (frame Frame) seal() {
 	frame.thread.activeNativeToken = frame.token | nativeTerminalBit
 }
 
-func invokeNativeCall(thread *Thread) *Error {
+func invokeNativeCall(thread *threadObject) *Error {
 	if thread == nil ||
 		thread.state == nil ||
 		thread.owner == nil ||
@@ -931,7 +939,7 @@ func invokeNativeCall(thread *Thread) *Error {
 }
 
 func validateNativeOutcome(
-	thread *Thread,
+	thread *threadObject,
 	outcome Outcome,
 	token uint64,
 	nativeFrameDepth int,
@@ -970,7 +978,7 @@ func validateNativeOutcome(
 	)
 }
 
-func (thread *Thread) nextNativeToken() uint64 {
+func (thread *threadObject) nextNativeToken() uint64 {
 	if thread.owner.nativeSequence >= nativeTokenMask {
 		panic("lua: native callback token space exhausted")
 	}
@@ -978,7 +986,7 @@ func (thread *Thread) nextNativeToken() uint64 {
 	return thread.owner.nativeSequence
 }
 
-func newNativeRuntimeError(thread *Thread, message string) *Error {
+func newNativeRuntimeError(thread *threadObject, message string) *Error {
 	return &Error{
 		value:       thread.state.String(message),
 		description: message,

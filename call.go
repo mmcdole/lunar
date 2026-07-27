@@ -33,7 +33,7 @@ type callLayout struct {
 	wantedResults int
 }
 
-func (thread *Thread) pushFunctionCall(
+func (thread *threadObject) pushFunctionCall(
 	function *functionObject,
 	resultBase int,
 	argumentCount int,
@@ -72,7 +72,7 @@ func (thread *Thread) pushFunctionCall(
 // live extent and consequently has no dead suffix to clear.
 //
 //go:noinline
-func (thread *Thread) tryEnterFixedLuaCall(
+func (thread *threadObject) tryEnterFixedLuaCall(
 	callerBase int,
 	code instruction,
 ) bool {
@@ -122,7 +122,7 @@ func (thread *Thread) tryEnterFixedLuaCall(
 	return true
 }
 
-func (thread *Thread) pushFunctionMetamethodCall(
+func (thread *threadObject) pushFunctionMetamethodCall(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -158,7 +158,7 @@ func (thread *Thread) pushFunctionMetamethodCall(
 	return nil
 }
 
-func (thread *Thread) commitFunctionCall(
+func (thread *threadObject) commitFunctionCall(
 	function *functionObject,
 	layout callLayout,
 	oldExtent int,
@@ -174,7 +174,7 @@ func (thread *Thread) commitFunctionCall(
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) publishFunctionCall(
+func (thread *threadObject) publishFunctionCall(
 	function *functionObject,
 	base int,
 	resultBase int,
@@ -196,7 +196,7 @@ func (thread *Thread) publishFunctionCall(
 	}
 }
 
-func (thread *Thread) replaceFunctionCall(
+func (thread *threadObject) replaceFunctionCall(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -229,7 +229,7 @@ func (thread *Thread) replaceFunctionCall(
 	return nil
 }
 
-func (thread *Thread) replaceFunctionMetamethodCall(
+func (thread *threadObject) replaceFunctionMetamethodCall(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -270,7 +270,7 @@ func (thread *Thread) replaceFunctionMetamethodCall(
 	return nil
 }
 
-func (thread *Thread) commitTailCall(
+func (thread *threadObject) commitTailCall(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -304,7 +304,7 @@ func (thread *Thread) commitTailCall(
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
+func (thread *threadObject) finishLuaCall(firstResult, resultCount int) {
 	if len(thread.frames) == 0 {
 		panic("lua: return without an activation")
 	}
@@ -346,7 +346,7 @@ func (thread *Thread) finishLuaCall(firstResult, resultCount int) {
 
 // finishNativeCall publishes results already written at resultBase by a
 // terminal Frame method and removes the native activation.
-func (thread *Thread) finishNativeCall(outputCount int) {
+func (thread *threadObject) finishNativeCall(outputCount int) {
 	if len(thread.frames) == 0 {
 		panic("lua: native return without an activation")
 	}
@@ -390,7 +390,7 @@ func (thread *Thread) finishNativeCall(outputCount int) {
 // checked executor path.
 //
 //go:noinline
-func (thread *Thread) tryCompleteFixedLuaReturn(
+func (thread *threadObject) tryCompleteFixedLuaReturn(
 	postDepth int,
 	code instruction,
 ) bool {
@@ -419,7 +419,7 @@ func (thread *Thread) tryCompleteFixedLuaReturn(
 // validation. Result sources may overlap their destination.
 //
 //go:noinline
-func (thread *Thread) completeLuaReturn(
+func (thread *threadObject) completeLuaReturn(
 	firstResult int,
 	resultCount int,
 	outputCount int,
@@ -461,7 +461,7 @@ func (thread *Thread) completeLuaReturn(
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) unwindCalls(stopDepth int) {
+func (thread *threadObject) unwindCalls(stopDepth int) {
 	if stopDepth < 0 || stopDepth > len(thread.frames) {
 		panic("lua: invalid call unwind depth")
 	}
@@ -494,7 +494,7 @@ func (thread *Thread) unwindCalls(stopDepth int) {
 	thread.clearDeadSuffix(oldExtent)
 }
 
-func (thread *Thread) planFunctionCall(
+func (thread *threadObject) planFunctionCall(
 	function *functionObject,
 	callBase int,
 	resultBase int,
@@ -510,7 +510,7 @@ func (thread *Thread) planFunctionCall(
 	)
 }
 
-func (thread *Thread) planFunctionCallLayout(
+func (thread *threadObject) planFunctionCallLayout(
 	function *functionObject,
 	resultBase int,
 	argumentCount int,
@@ -571,7 +571,7 @@ func (thread *Thread) planFunctionCallLayout(
 	}, nil
 }
 
-func (thread *Thread) checkFunctionCall(
+func (thread *threadObject) checkFunctionCall(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -590,7 +590,7 @@ func (thread *Thread) checkFunctionCall(
 	}
 }
 
-func (thread *Thread) checkFunctionCallWindow(
+func (thread *threadObject) checkFunctionCallWindow(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -619,7 +619,7 @@ func (thread *Thread) checkFunctionCallWindow(
 	}
 }
 
-func (thread *Thread) insertCallMetamethod(
+func (thread *threadObject) insertCallMetamethod(
 	function *functionObject,
 	callBase int,
 	argumentCount int,
@@ -634,7 +634,7 @@ func (thread *Thread) insertCallMetamethod(
 	)
 }
 
-func (thread *Thread) setupFunctionCall(
+func (thread *threadObject) setupFunctionCall(
 	function *functionObject,
 	layout callLayout,
 ) {
@@ -677,7 +677,7 @@ func (thread *Thread) setupFunctionCall(
 	)
 }
 
-func (thread *Thread) setupFixedLuaCall(
+func (thread *threadObject) setupFixedLuaCall(
 	prototype *Prototype,
 	base int,
 	frameEnd int,
@@ -691,7 +691,7 @@ func (thread *Thread) setupFixedLuaCall(
 	thread.fillNil(base+preserved, frameEnd)
 }
 
-func (thread *Thread) makeLegacyArgTable(
+func (thread *threadObject) makeLegacyArgTable(
 	prototype *Prototype,
 	layout callLayout,
 ) slot {
@@ -715,7 +715,7 @@ func (thread *Thread) makeLegacyArgTable(
 	return slotFromTableObject(table)
 }
 
-func (thread *Thread) reserveValues(required int) {
+func (thread *threadObject) reserveValues(required int) {
 	limit := thread.valueLimit()
 	if required < 0 || required > limit {
 		panic("lua: invalid value stack reservation")
@@ -757,7 +757,7 @@ func (thread *Thread) reserveValues(required int) {
 	}
 }
 
-func (thread *Thread) reserveFrames(required int) {
+func (thread *threadObject) reserveFrames(required int) {
 	limit := thread.frameLimit()
 	if required < 0 || required > limit {
 		panic("lua: invalid call frame reservation")
@@ -792,13 +792,13 @@ func (thread *Thread) reserveFrames(required int) {
 	thread.frames = grown
 }
 
-func (thread *Thread) fillNil(from, to int) {
+func (thread *threadObject) fillNil(from, to int) {
 	for index := from; index < to; index++ {
 		thread.values[index] = nilSlot
 	}
 }
 
-func (thread *Thread) clearInactive(from, to int) {
+func (thread *threadObject) clearInactive(from, to int) {
 	if from < 0 {
 		from = 0
 	}
@@ -810,14 +810,14 @@ func (thread *Thread) clearInactive(from, to int) {
 	}
 }
 
-func (thread *Thread) liveValueExtent() int {
+func (thread *threadObject) liveValueExtent() int {
 	if thread.frameExtent > thread.top {
 		return thread.frameExtent
 	}
 	return thread.top
 }
 
-func (thread *Thread) clearDeadSuffix(previousExtent int) {
+func (thread *threadObject) clearDeadSuffix(previousExtent int) {
 	liveExtent := thread.liveValueExtent()
 	if liveExtent < previousExtent {
 		thread.clearInactive(liveExtent, previousExtent)
@@ -843,7 +843,7 @@ const (
 // records. Level zero is the current activation. Replaced Lua tail calls
 // occupy logical levels between their surviving activation and the next
 // physical frame.
-func (thread *Thread) logicalFrame(
+func (thread *threadObject) logicalFrame(
 	level int,
 ) (*activation, logicalFrameStatus) {
 	if level < 0 {

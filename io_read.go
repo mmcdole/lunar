@@ -26,7 +26,7 @@ type ioReadEngine struct {
 	strings *stringPool
 	limit   int
 
-	contextThread *Thread
+	contextThread *threadObject
 	contextBytes  uint32
 }
 
@@ -44,7 +44,7 @@ func newIOReadEngine(
 // bindContext makes a potentially long native read cooperative with the
 // active public call. Raw calls leave contextThread nil, so their byte loops
 // pay only one predictable branch.
-func (engine *ioReadEngine) bindContext(thread *Thread) bool {
+func (engine *ioReadEngine) bindContext(thread *threadObject) bool {
 	if engine.input == nil ||
 		thread == nil ||
 		thread.state.execution.done == nil {

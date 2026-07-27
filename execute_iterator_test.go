@@ -554,7 +554,7 @@ end
 				state.main.globals,
 				nil,
 			)
-			thread := state.MainThread()
+			thread := state.main
 			setTestCall(thread, 0, caller, generator)
 			if callErr := thread.pushFunctionCall(
 				caller,
@@ -615,7 +615,7 @@ return sum
 		slotFromFunctionObject(iterator),
 		numberSlot(100),
 	}
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(64)
 	thread.reserveFrames(8)
 	benchmarkRunExecutor(thread, caller, arguments)

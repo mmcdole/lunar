@@ -15,7 +15,7 @@ func TestLuaCallPlacesFixedArguments(t *testing.T) {
 	defer state.Close()
 
 	function := newTestLuaFunction(t, state, 2, 5, 0, 0)
-	thread := state.MainThread()
+	thread := state.main
 
 	setTestCall(thread, 0, function, Number(10))
 	if callErr := thread.pushFunctionCall(function, 0, 1, 1); callErr != nil {
@@ -62,7 +62,7 @@ func TestLuaCallUsesPaddedVarargLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 
 	function := newTestLuaFunction(
 		t,
@@ -132,7 +132,7 @@ func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 
 	legacy := newTestLuaFunction(
 		t,
@@ -229,7 +229,7 @@ func TestLuaCallAdjustsOverlappingResults(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer state.Close()
-			thread := state.MainThread()
+			thread := state.main
 			function := newTestLuaFunction(t, state, 0, 6, 0, 0)
 
 			setTestCall(thread, 0, function)
@@ -274,7 +274,7 @@ func TestLuaCallPreservesSuspendedCallerRegisters(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	caller := newTestLuaFunction(t, state, 0, 8, 0, 0)
 	callee := newTestLuaFunction(t, state, 1, 2, 0, 0)
 
@@ -339,7 +339,7 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	first := newTestLuaFunction(t, state, 0, 8, 0, 0)
 	second := newTestLuaFunction(t, state, 2, 4, 0, 0)
 	third := newTestLuaFunction(
@@ -418,7 +418,7 @@ func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	caller := newTestLuaFunction(t, state, 0, 3, 0, 0)
 	large := newTestLuaFunction(t, state, 0, 64, 0, 0)
 
@@ -456,7 +456,7 @@ func TestValueStackGrowthRetargetsOpenUpvalueCells(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	thread.values = make([]slot, 4, 4)
 	lowValue := state.String("low")
 	highValue := state.String("high")
@@ -506,7 +506,7 @@ func TestLuaCallUnwindClosesOnlyRemovedFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	function := newTestLuaFunction(t, state, 0, 6, 0, 0)
 
 	setTestCall(thread, 0, function)
@@ -571,7 +571,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		valueData   *slot
 		frameData   *activation
 	}
-	takeSnapshot := func(thread *Thread) snapshot {
+	takeSnapshot := func(thread *threadObject) snapshot {
 		before := snapshot{
 			values:      slices.Clone(thread.values),
 			frames:      slices.Clone(thread.frames),
@@ -588,7 +588,7 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		}
 		return before
 	}
-	assertUnchanged := func(t *testing.T, thread *Thread, before snapshot) {
+	assertUnchanged := func(t *testing.T, thread *threadObject, before snapshot) {
 		t.Helper()
 		if thread.top != before.top ||
 			thread.frameExtent != before.frameExtent ||
@@ -607,13 +607,13 @@ func TestFixedLuaCallFastMissIsAtomic(t *testing.T) {
 		t *testing.T,
 		options Options,
 		calleeRegisters int,
-	) (*State, *Thread, *functionObject, int, instruction) {
+	) (*State, *threadObject, *functionObject, int, instruction) {
 		t.Helper()
 		state, err := New(options)
 		if err != nil {
 			t.Fatal(err)
 		}
-		thread := state.MainThread()
+		thread := state.main
 		caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 		callee := newTestLuaFunction(t, state, 0, calleeRegisters, 0, 0)
 		setTestCall(thread, 0, caller)
@@ -796,8 +796,8 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 				0,
 				0,
 			)
-			stage := func() (*Thread, int) {
-				thread := &Thread{
+			stage := func() (*threadObject, int) {
+				thread := &threadObject{
 					objectHeader: objectHeader{owner: state.runtime},
 					state:        state,
 					values:       make([]slot, 0, 64),
@@ -908,8 +908,8 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			stage := func() (*Thread, int, *upvalue) {
-				thread := &Thread{
+			stage := func() (*threadObject, int, *upvalue) {
+				thread := &threadObject{
 					objectHeader: objectHeader{owner: state.runtime},
 					state:        state,
 					values:       make([]slot, 0, 64),
@@ -1006,7 +1006,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		thread := state.MainThread()
+		thread := state.main
 		function := newTestLuaFunction(t, state, 0, 5, 0, 0)
 		setTestCall(thread, 0, function)
 		before := slices.Clone(thread.values)
@@ -1029,7 +1029,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		thread := state.MainThread()
+		thread := state.main
 		caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 		callee := newTestLuaFunction(t, state, 0, 2, 0, 0)
 		setTestCall(thread, 0, caller)
@@ -1059,7 +1059,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		thread := state.MainThread()
+		thread := state.main
 		function := newTestLuaFunction(t, state, 0, 2, 0, 0)
 		setTestCall(thread, 0, function)
 		before := slices.Clone(thread.values)
@@ -1082,7 +1082,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		thread := state.MainThread()
+		thread := state.main
 		current := newTestLuaFunction(t, state, 0, 4, 0, 0)
 		tooLarge := newTestLuaFunction(
 			t,
@@ -1123,7 +1123,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		thread := state.MainThread()
+		thread := state.main
 		handler := newTestLuaFunction(t, state, 0, 1, 0, 0)
 		target, err := state.NewTable(0, 0)
 		if err != nil {
@@ -1159,7 +1159,7 @@ func TestLuaCallTracksDeepFrameExtentExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	function := newTestLuaFunction(t, state, 0, 2, 0, 0)
 
 	setTestCall(thread, 0, function)
@@ -1204,7 +1204,7 @@ func TestLuaCallFoundationStaysCompactAndAllocationFreeWhenWarm(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	first := newTestLuaFunction(t, state, 2, 4, 0, 0)
 	tail := newTestLuaFunction(t, state, 1, 3, 0, 0)
 	thread.reserveValues(16)
@@ -1263,7 +1263,7 @@ func newTestLuaFunction(
 }
 
 func setTestCall(
-	thread *Thread,
+	thread *threadObject,
 	callBase int,
 	function *functionObject,
 	arguments ...Value,
@@ -1291,7 +1291,7 @@ func assertTestValue(t *testing.T, got, want Value) {
 	}
 }
 
-func assertTestThreadStateEqual(t *testing.T, got, want *Thread) {
+func assertTestThreadStateEqual(t *testing.T, got, want *threadObject) {
 	t.Helper()
 	if got.top != want.top ||
 		got.frameExtent != want.frameExtent ||

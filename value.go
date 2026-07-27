@@ -251,7 +251,13 @@ func (value Value) Thread() (*Thread, bool) {
 	if value.Kind() != ThreadKind {
 		return nil, false
 	}
-	return (*Thread)(value.ref), true
+	token := (*hostToken)(value.ref)
+	if token.kind != ThreadKind || token.object == nil {
+		return nil, false
+	}
+	thread := (*Thread)(token)
+	runtime.KeepAlive(value)
+	return thread, true
 }
 
 // SameObject reports reference identity.
@@ -333,7 +339,7 @@ func slotFromUserDataObject(data *userDataObject) slot {
 
 func (value Value) objectIdentity() unsafe.Pointer {
 	switch value.Kind() {
-	case FunctionKind, UserDataKind, TableKind:
+	case FunctionKind, UserDataKind, ThreadKind, TableKind:
 		token := (*hostToken)(value.ref)
 		if token.kind != value.Kind() {
 			return nil
@@ -362,7 +368,7 @@ func (value Value) owner() *runtimeState {
 	case UserDataKind:
 		return (*hostToken)(value.ref).owner
 	case ThreadKind:
-		return (*Thread)(value.ref).owner
+		return (*hostToken)(value.ref).owner
 	case TableKind:
 		return (*hostToken)(value.ref).owner
 	default:
@@ -386,7 +392,7 @@ func slotFromValue(value Value) slot {
 		result := slotFromFunctionObject((*functionObject)(token.object))
 		runtime.KeepAlive(value)
 		return result
-	case UserDataKind, TableKind:
+	case UserDataKind, ThreadKind, TableKind:
 		token := (*hostToken)(value.ref)
 		if token.kind != value.Kind() || token.object == nil {
 			panic("lua: invalid reference host token")
@@ -411,6 +417,9 @@ func (value slot) owningValue() Value {
 	}
 	if value.isFunction() {
 		return functionObjectFromSlot(value).owningValue()
+	}
+	if value.isThread() {
+		return threadObjectFromSlot(value).owningValue()
 	}
 	return Value{ref: value.ref, bits: value.bits}
 }
@@ -470,7 +479,7 @@ func (value slot) owner() *runtimeState {
 	case UserDataKind:
 		return (*userDataObject)(value.ref).owner
 	case ThreadKind:
-		return (*Thread)(value.ref).owner
+		return (*threadObject)(value.ref).owner
 	case TableKind:
 		return (*tableObject)(value.ref).owner
 	default:

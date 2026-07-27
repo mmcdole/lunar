@@ -65,17 +65,17 @@ func coroutineCreate(frame Frame) Outcome {
 			"Lua function expected",
 		)
 	}
-	thread, err := frame.thread.state.newThread(
+	thread, err := frame.thread.state.newThreadObject(
 		slotFromFunctionObject(function),
 	)
 	if err != nil {
 		return frame.RaiseString(err.Error())
 	}
-	return frame.returnOne(frame.activation(), slotFromThread(thread))
+	return frame.returnOne(frame.activation(), slotFromThreadObject(thread))
 }
 
 func coroutineResume(frame Frame) Outcome {
-	thread, ok := frame.LuaThread(0)
+	thread, ok := frame.threadObject(0)
 	if !ok {
 		return baseArgumentError(
 			frame,
@@ -114,17 +114,17 @@ func coroutineResume(frame Frame) Outcome {
 }
 
 func coroutineRunning(frame Frame) Outcome {
-	if frame.Thread().main {
+	if frame.thread.main {
 		return frame.ReturnNil()
 	}
 	return frame.returnOne(
 		frame.activation(),
-		slotFromThread(frame.Thread()),
+		slotFromThreadObject(frame.thread),
 	)
 }
 
 func coroutineStatus(frame Frame) Outcome {
-	thread, ok := frame.LuaThread(0)
+	thread, ok := frame.threadObject(0)
 	if !ok {
 		return baseArgumentError(
 			frame,
@@ -146,7 +146,7 @@ func coroutineWrap(frame Frame) Outcome {
 			"Lua function expected",
 		)
 	}
-	thread, err := frame.thread.state.newThread(
+	thread, err := frame.thread.state.newThreadObject(
 		slotFromFunctionObject(function),
 	)
 	if err != nil {
@@ -154,7 +154,7 @@ func coroutineWrap(frame Frame) Outcome {
 	}
 	wrapper, err := frame.thread.state.newNativeFunctionObject(
 		coroutineWrappedResume,
-		[]slot{slotFromThread(thread)},
+		[]slot{slotFromThreadObject(thread)},
 	)
 	if err != nil {
 		return frame.RaiseString(err.Error())
@@ -174,7 +174,7 @@ func coroutineWrappedResume(frame Frame) Outcome {
 	if !threadValue.isThread() {
 		panic("lua: coroutine wrapper lost its thread")
 	}
-	thread := threadFromSlot(threadValue)
+	thread := threadObjectFromSlot(threadValue)
 	call := frame.activation()
 	base := int(call.base)
 	parent := frame.thread

@@ -1136,7 +1136,7 @@ func TestExecutorMetamethodLimitFailuresAreAtomic(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer state.Close()
-			thread := state.MainThread()
+			thread := state.main
 			caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 			handler := newTestLuaFunction(
 				t,
@@ -1192,7 +1192,7 @@ func TestExecutorUnwindClearsSuspendedContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	caller := newTestLuaFunction(t, state, 0, 4, 0, 0)
 	handler := compileTestFunction(t, state, "@handler.lua", `
 local invalid = 1
@@ -1255,7 +1255,7 @@ for value = 1, 20 do
 end
 return total
 `)
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(4)
 
@@ -1300,7 +1300,7 @@ func TestExecutorWarmMetamethodContinuationDoesNotAllocate(t *testing.T) {
 		slotFromValue(left.Value()),
 		slotFromValue(right.Value()),
 	}
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(32)
 	thread.reserveFrames(8)
 

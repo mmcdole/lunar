@@ -21,7 +21,7 @@ type executionResult struct {
 // execute runs activations until the stack returns to stopDepth. It keeps
 // the current frame's hot state in Go locals and publishes only at seams that
 // can replace a frame, grow the value stack, or leave the executor.
-func execute(thread *Thread, stopDepth int) executionResult {
+func execute(thread *threadObject, stopDepth int) executionResult {
 	result := driveExecution(thread, stopDepth)
 	if result.kind == executionFailed {
 		finalizeExecutionFailure(thread, stopDepth, result.err)
@@ -32,7 +32,7 @@ func execute(thread *Thread, stopDepth int) executionResult {
 // driveExecution stops at stopDepth or at the first Lua failure. Failure
 // leaves execution state live so a protected caller may inspect it before
 // choosing when to unwind.
-func driveExecution(thread *Thread, stopDepth int) executionResult {
+func driveExecution(thread *threadObject, stopDepth int) executionResult {
 	if thread == nil ||
 		stopDepth < 0 ||
 		stopDepth > len(thread.frames) {
@@ -343,7 +343,7 @@ func operandSlot(
 // runInstructions owns the compact dispatch frame. Operations that need
 // coercion or metamethod machinery publish their PC and return to execute,
 // keeping cold semantic state out of this function's register allocation.
-func runInstructions(thread *Thread, stopDepth int) instruction {
+func runInstructions(thread *threadObject, stopDepth int) instruction {
 reload:
 	function := thread.frames[len(thread.frames)-1].function
 	prototype := function.prototype
@@ -746,7 +746,7 @@ dispatch:
 //
 //go:noinline
 func installClosure(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 	bindingPC int,
@@ -787,7 +787,7 @@ func installClosure(
 //
 //go:noinline
 func prepareOpenVararg(
-	thread *Thread,
+	thread *threadObject,
 	destination int,
 	resultCount int,
 ) *Error {
@@ -813,7 +813,7 @@ func prepareOpenVararg(
 }
 
 func executeVararg(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -864,7 +864,7 @@ func functionSlot(value slot) (*functionObject, bool) {
 //
 //go:noinline
 func enterCallMetamethod(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	instructionPC int,
 	callBase int,
@@ -909,7 +909,7 @@ func enterCallMetamethod(
 }
 
 func newExecutionRuntimeError(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	pc int,
 	format string,
@@ -926,7 +926,7 @@ func newExecutionRuntimeError(
 }
 
 func newExecutionTypeError(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	pc int,
 	register int,
@@ -964,7 +964,7 @@ func operandRegister(operand int) int {
 	return operand
 }
 
-func stopExecution(thread *Thread, failure *Error) executionResult {
+func stopExecution(thread *threadObject, failure *Error) executionResult {
 	if failure == nil {
 		panic("lua: executor failed without an error")
 	}
@@ -976,7 +976,7 @@ func stopExecution(thread *Thread, failure *Error) executionResult {
 }
 
 func finalizeExecutionFailure(
-	thread *Thread,
+	thread *threadObject,
 	stopDepth int,
 	failure *Error,
 ) {
@@ -985,7 +985,7 @@ func finalizeExecutionFailure(
 }
 
 func snapshotExecutionFailure(
-	thread *Thread,
+	thread *threadObject,
 	stopDepth int,
 	failure *Error,
 ) {
@@ -1000,7 +1000,7 @@ func snapshotExecutionFailure(
 }
 
 func positionExecutionFailure(
-	thread *Thread,
+	thread *threadObject,
 	failure *Error,
 ) {
 	if failure == nil ||
@@ -1026,7 +1026,7 @@ func positionExecutionFailure(
 
 func appendExecutionTraceback(
 	prefix []TraceFrame,
-	thread *Thread,
+	thread *threadObject,
 	stopDepth int,
 ) []TraceFrame {
 	if stopDepth < 0 || stopDepth > len(thread.frames) {

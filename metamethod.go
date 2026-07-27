@@ -68,7 +68,7 @@ func (event metamethod) bit() uint32 {
 	return uint32(1) << event
 }
 
-func metatableForSlot(thread *Thread, value slot) *tableObject {
+func metatableForSlot(thread *threadObject, value slot) *tableObject {
 	switch value.kind() {
 	case TableKind:
 		return (*tableObject)(value.ref).metatable
@@ -84,7 +84,7 @@ func metatableForSlot(thread *Thread, value slot) *tableObject {
 }
 
 func metamethodSlot(
-	thread *Thread,
+	thread *threadObject,
 	value slot,
 	event metamethod,
 ) (slot, bool) {
@@ -108,7 +108,7 @@ func metamethodSlot(
 }
 
 func binaryMetamethod(
-	thread *Thread,
+	thread *threadObject,
 	left slot,
 	right slot,
 	event metamethod,
@@ -120,7 +120,7 @@ func binaryMetamethod(
 }
 
 func matchingMetamethod(
-	thread *Thread,
+	thread *threadObject,
 	left slot,
 	right slot,
 	event metamethod,
@@ -136,7 +136,7 @@ func matchingMetamethod(
 	return leftMethod, true
 }
 
-func callMetamethodFunction(thread *Thread, value slot) *functionObject {
+func callMetamethodFunction(thread *threadObject, value slot) *functionObject {
 	method, found := metamethodSlot(thread, value, metaCall)
 	if !found {
 		return nil

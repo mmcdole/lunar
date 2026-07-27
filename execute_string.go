@@ -15,7 +15,7 @@ func writeTableLength(destination *slot, table *tableObject) {
 
 //go:noinline
 func slowLength(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -79,7 +79,7 @@ func slowLength(
 //
 //go:noinline
 func slowConcat(
-	thread *Thread,
+	thread *threadObject,
 	frameIndex int,
 	code instruction,
 ) *Error {
@@ -170,7 +170,7 @@ func isDirectConcatValue(value slot) bool {
 }
 
 func concatDirectValues(
-	thread *Thread,
+	thread *threadObject,
 	values []slot,
 ) (slot, bool) {
 	onlyText := -1

@@ -771,7 +771,7 @@ local left, right = ...
 return left .. right
 `)
 
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(64)
 	thread.reserveFrames(8)
 	tests := []struct {

@@ -876,11 +876,12 @@ return value`)
 		t.Fatalf("first resume contexts = %#v", seen)
 	}
 	cancelFirst()
-	if state.execution != (executionControl{}) || thread.contextBudget != 0 {
+	if state.execution != (executionControl{}) ||
+		thread.runtimeObject().contextBudget != 0 {
 		t.Fatalf(
 			"yield retained execution context: state=%+v budget=%d",
 			state.execution,
-			thread.contextBudget,
+			thread.runtimeObject().contextBudget,
 		)
 	}
 
@@ -955,12 +956,12 @@ return ok, value`)
 		t.Fatalf("parent/child inherited contexts = %#v", seen)
 	}
 	if child.Status() != ThreadSuspended ||
-		child.contextBudget != 0 ||
+		child.runtimeObject().contextBudget != 0 ||
 		state.execution != (executionControl{}) {
 		t.Fatalf(
 			"internally yielded child retained context state: status=%v budget=%d state=%+v",
 			child.Status(),
-			child.contextBudget,
+			child.runtimeObject().contextBudget,
 			state.execution,
 		)
 	}
@@ -1017,7 +1018,9 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 		)
 	}
 	assertTestValues(t, destination, Number(70), Number(71))
-	if calls != 0 || thread.top != 1 || len(thread.frames) != 0 {
+	if calls != 0 ||
+		thread.runtimeObject().top != 1 ||
+		len(thread.runtimeObject().frames) != 0 {
 		t.Fatal("nil context changed the initial coroutine")
 	}
 
@@ -1047,7 +1050,9 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 		)
 	}
 	assertTestValues(t, destination, Number(70), Number(71))
-	if calls != 0 || thread.top != 1 || len(thread.frames) != 0 {
+	if calls != 0 ||
+		thread.runtimeObject().top != 1 ||
+		len(thread.runtimeObject().frames) != 0 {
 		t.Fatal("rejected resume argument changed the suspended coroutine")
 	}
 
@@ -1079,8 +1084,8 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 	assertTestValues(t, destination, Number(70), Number(71))
 	if calls != 0 ||
 		thread.Status() != ThreadSuspended ||
-		thread.top != 1 ||
-		len(thread.frames) != 0 {
+		thread.runtimeObject().top != 1 ||
+		len(thread.runtimeObject().frames) != 0 {
 		t.Fatal("pre-cancelled resume changed the suspended coroutine")
 	}
 
@@ -1391,10 +1396,10 @@ after_context_limit = true`)
 			t.Fatal(err)
 		}
 		assertTestValue(t, after, Nil())
-		if cap(state.MainThread().frames) > frameLimit {
+		if cap(state.main.frames) > frameLimit {
 			t.Fatalf(
 				"context handler frame capacity = %d; limit %d",
-				cap(state.MainThread().frames),
+				cap(state.main.frames),
 				frameLimit,
 			)
 		}
@@ -1514,7 +1519,8 @@ func suspendedContextLifetimeFixture(
 			err,
 		)
 	}
-	if state.execution != (executionControl{}) || thread.contextBudget != 0 {
+	if state.execution != (executionControl{}) ||
+		thread.runtimeObject().contextBudget != 0 {
 		state.Close()
 		t.Fatal("suspended coroutine retained active context machinery")
 	}
@@ -1583,9 +1589,6 @@ func waitForContextCollection(
 func TestContextRuntimeRecordsStayCompact(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit runtime size contract")
-	}
-	if size := unsafe.Sizeof(Thread{}); size != 136 {
-		t.Fatalf("Thread size = %d; want 136", size)
 	}
 	if size := unsafe.Sizeof(activation{}); size != 32 {
 		t.Fatalf("activation size = %d; want 32", size)
@@ -2053,10 +2056,10 @@ func assertContextStateIdle(t *testing.T, state *State) {
 	if state.execution != (executionControl{}) {
 		t.Fatalf("state retained execution context: %+v", state.execution)
 	}
-	if state.MainThread().contextBudget != 0 {
+	if state.main.contextBudget != 0 {
 		t.Fatalf(
 			"main thread retained context budget %d",
-			state.MainThread().contextBudget,
+			state.main.contextBudget,
 		)
 	}
 }

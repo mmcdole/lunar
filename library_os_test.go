@@ -290,7 +290,7 @@ after_exit = true
 		t.Fatalf("call after exit request: %v", err)
 	}
 	assertTestValues(t, results, Number(42))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	description := failure.Error()
 	value := failure.Value()
@@ -343,7 +343,7 @@ func TestOSExitStatusConversionAndArgumentFailure(t *testing.T) {
 			)
 			_, err := state.Call(chunk.Value())
 			requireExitRequest(t, err, test.want)
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 		})
 	}
 
@@ -455,7 +455,7 @@ wrap_continued = true
 				t.Fatal(globalErr)
 			}
 			assertTestValue(t, value, Bool(false))
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 		})
 	}
 
@@ -537,7 +537,7 @@ native_followup_ran = true
 	}
 	_, err = state.Call(invalid.Value())
 	requireExitRequest(t, err, 42)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestOSExitAtExternalCoroutineAndContextBoundaries(t *testing.T) {

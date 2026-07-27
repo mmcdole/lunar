@@ -21,9 +21,10 @@ embedding stack made from Go interface values.
 4. Prototypes are immutable after verification. Functions have fixed
    executable kind and upvalue shape; Lua-visible environments and upvalue
    contents remain controllably mutable.
-5. A `State` directly owns runtime-wide resources and one main `Thread`.
-   Coroutines are additional canonical Threads sharing that State. Each
-   Thread has one Lua 5.1 global-environment pointer.
+5. A `State` directly owns runtime-wide resources and one private main thread
+   object. Coroutines are additional thread objects sharing that State. Each
+   has one Lua 5.1 global-environment pointer; an opaque public `Thread` is
+   published only at the Go boundary.
 6. A State has one active executor. Consumers serialize execution and
    mutation.
 7. Standalone Table operations are raw. Operations that may invoke Lua live on
@@ -131,7 +132,7 @@ Files are organized by substantial runtime concepts:
   `LoadContext`, `LoadFile`, and `LoadFileContext` boundaries;
 - `invoke.go`: protected main-Thread calls and owning or caller-supplied result
   egress;
-- `coroutine.go`: canonical Thread construction, compact resume transfer,
+- `coroutine.go`: private thread construction, compact resume transfer,
   suspension lifecycle, and State-wide execution ownership;
 - `context.go`: operation-scoped host control, context ownership, polling
   budgets, cancellation failures, and terminal exit requests;
@@ -255,8 +256,9 @@ use the current vararg expression.
 
 ## Calls and activations
 
-Every Thread owns one contiguous compact-slot stack shared by all active Lua
-calls. An activation stores only a pointer to the private function object,
+Every private thread object owns one contiguous compact-slot stack shared by
+all of its active Lua calls. An activation stores only a pointer to the
+private function object,
 register base, result destination, published program counter, compressed
 eliminated-tail-call count, the caller's saved frame high-water mark, and
 requested result count. On 64-bit systems it is 32 bytes. Register windows are
@@ -937,13 +939,13 @@ its frozen performance; its private two-representation argument staging adds
 
 ### Coroutines and suspension
 
-A coroutine is another canonical `Thread` owned by the same `State`; it does
-not use a Go goroutine, scheduler channel, alternate stack representation, or
-second executor. The active Thread pointer moves at a resume boundary while
-the parent becomes `normal`, then returns to the parent when the child yields,
-returns, or fails. Aggregate native depth remains State-wide across this
-switch, preventing a chain of coroutine resumes from bypassing the Go-stack
-limit.
+A coroutine is another private thread object owned by the same `State`; it
+does not use a Go goroutine, scheduler channel, alternate stack
+representation, or second executor. The active thread-object pointer moves at
+a resume boundary while the parent becomes `normal`, then returns to the
+parent when the child yields, returns, or fails. Aggregate native depth
+remains State-wide across this switch, preventing a chain of coroutine
+resumes from bypassing the Go-stack limit.
 
 Yield leaves Lua activations, registers, and open upvalues intact. The
 outermost yielding native activation itself is the suspension record: yielded
@@ -955,12 +957,15 @@ all reusable stack, activation, and continuation backing storage because it can
 never execute again.
 
 Lua's `coroutine.resume` and `coroutine.wrap` transfer slots directly between
-Threads. Only the public Go `Thread.Resume` boundary materializes owning
-`Value` results; `ResumeInto` accepts caller storage and remains allocation-free
-when warm. Arbitrary error Values retain identity, including nil and reference
-objects. The Lua library derives argument names and wrapper source prefixes
-from the immediate call site, including tail calls, rather than keeping
-diagnostic provenance in the hot representation.
+private thread objects. Only the public Go `Thread.Resume` boundary
+materializes owning `Value` results; `ResumeInto` accepts caller storage and
+remains allocation-free when warm. Public `Thread` handles are 24-byte
+canonical ownership tokens; the 136-byte stack and scheduler object remains
+private and is never reached through the handle by the executor. Arbitrary
+error Values retain identity, including nil and reference objects. The Lua
+library derives argument names and wrapper source prefixes from the immediate
+call site, including tail calls, rather than keeping diagnostic provenance in
+the hot representation.
 
 New coroutines inherit the creating Thread's global-environment pointer.
 Changing either Thread's pointer later is isolated, while mutations to an

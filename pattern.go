@@ -78,7 +78,7 @@ type matchState struct {
 	level          int
 	depth          int
 	failure        string
-	thread         *Thread
+	thread         *threadObject
 	contextBudget  uint16
 	contextFailure *Error
 	captures       [maxPatternCaptures]patternCapture
@@ -99,7 +99,7 @@ func (state *matchState) reset(source, pattern string) {
 
 // bindContext makes matcher work cooperative with a context-aware call. Raw
 // calls leave thread nil, so their hot path pays only one predictable branch.
-func (state *matchState) bindContext(thread *Thread) {
+func (state *matchState) bindContext(thread *threadObject) {
 	if thread == nil || thread.state.execution.done == nil {
 		return
 	}

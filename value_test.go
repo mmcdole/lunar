@@ -1514,8 +1514,8 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	if state.main.globals != nil || state.registry != nil {
 		t.Fatal("Close retained global runtime roots")
 	}
-	if state.MainThread().Status() != ThreadClosed {
-		t.Fatalf("main thread status = %v, want ThreadClosed", state.MainThread().Status())
+	if main.Status() != ThreadClosed {
+		t.Fatalf("main thread status = %v, want ThreadClosed", main.Status())
 	}
 	if got := table.RawGetString("answer"); got.String() != "42" {
 		t.Fatalf("retained table read = %v, want 42", got)
@@ -1595,7 +1595,7 @@ func TestZeroStateRejectsOperations(t *testing.T) {
 	if err := state.Close(); err != nil {
 		t.Fatalf("zero State Close: %v", err)
 	}
-	if state.MainThread() != nil {
+	if state.main != nil {
 		t.Fatal("zero State has a main thread")
 	}
 	if state.String("x").Valid() {
@@ -1666,6 +1666,7 @@ func TestValueSlotConversionDoesNotAllocate(t *testing.T) {
 		Number(1.25),
 		state.String("cached"),
 		function.Value(),
+		state.MainThread().Value(),
 		table.Value(),
 	}
 

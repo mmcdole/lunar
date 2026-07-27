@@ -140,7 +140,7 @@ return indexed, added, ordered, joined, total
 	if !frameValid {
 		t.Fatal("continuation call did not restore the outer Frame")
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallClosesFailedCalleeUpvaluesAndPreservesCallerUpvalues(
@@ -221,7 +221,7 @@ return closed, open, view()
 	if nestedFailure == nil {
 		t.Fatal("nested upvalue failure was not observed")
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallPropagatesGoPanicAndRestoresExecution(t *testing.T) {
@@ -268,7 +268,7 @@ func TestFrameCallPropagatesGoPanicAndRestoresExecution(t *testing.T) {
 	if recovered != marker {
 		t.Fatalf("recovered panic = %#v; want %#v", recovered, marker)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 
 	recovery := mustLoadString(t, state, "@after-nested-panic.lua", `return 42`)
 	results, err := state.Call(recovery.Value())
@@ -329,7 +329,7 @@ func TestFrameCallRestoresOuterFrameBeforePropagatingPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertTestValues(t, results, Number(73))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 	runtime.KeepAlive(marker)
 }
 
@@ -379,7 +379,7 @@ func TestFrameCallInvalidatesOuterFrameDuringNestedCallback(t *testing.T) {
 		t.Fatal("nested callback could access its caller's borrowed Frame")
 	}
 	assertTestValues(t, results, Number(41))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallRejectsSameThreadYieldThenOuterFrameRecoversAndYields(
@@ -586,7 +586,7 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 			failure.Error() != "stack overflow" {
 			t.Fatalf("frame-limit failure = %#v", failure)
 		}
-		assertRootThreadReady(t, state.MainThread())
+		assertRootThreadReady(t, state.main)
 	})
 
 	t.Run("callable staging and result placement", func(t *testing.T) {
@@ -660,7 +660,7 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 		if calls != 1 {
 			t.Fatalf("nested target calls = %d; want 1", calls)
 		}
-		assertRootThreadReady(t, state.MainThread())
+		assertRootThreadReady(t, state.main)
 	})
 
 	t.Run("aggregate native depth", func(t *testing.T) {
@@ -706,7 +706,7 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 				maxNativeCallDepth,
 			)
 		}
-		assertRootThreadReady(t, state.MainThread())
+		assertRootThreadReady(t, state.main)
 		recovery, err := state.NewNativeFunction(func(frame Frame) Outcome {
 			return frame.ReturnNumber(7)
 		})

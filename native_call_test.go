@@ -139,7 +139,7 @@ return first, middle, last, nil
 				t.Fatal("outer Frame was not restored after nested call")
 			}
 			assertTestValues(t, results, test.want...)
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 		})
 	}
 }
@@ -547,7 +547,7 @@ func TestFrameCallRejectsInputsAtomically(t *testing.T) {
 				Number(70),
 				Number(71),
 			)
-			assertRootThreadReady(t, state.MainThread())
+			assertRootThreadReady(t, state.main)
 		})
 	}
 }
@@ -681,7 +681,7 @@ return nil + 1
 		t.Fatal(err)
 	}
 	assertTestValue(t, sideEffect, Number(27))
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallSurvivesStackRelocationAndRejectsStateReentry(t *testing.T) {
@@ -761,7 +761,7 @@ return grow(...)
 	if !frameValid {
 		t.Fatal("stack relocation invalidated outer arguments or captures")
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
@@ -839,7 +839,7 @@ func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
 			t.Fatalf("noncallable nested failure = %#v", nestedError)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameRaiseErrorPreservesFailureAndAppendsOuterTrace(t *testing.T) {
@@ -954,7 +954,7 @@ return invoke()
 		outerTrace[1].TailCalls != 1 {
 		t.Fatalf("outer traceback = %+v", outerTrace)
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameCallLetsNestedPCallAndXPCallCatchLuaErrors(t *testing.T) {
@@ -1016,7 +1016,7 @@ return pcallOK, pcallValue, xpcallOK, xpcallValue
 			)
 		}
 	}
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestFrameRaiseErrorAppendsEachNestedTraceSegmentOnce(t *testing.T) {
@@ -1136,7 +1136,7 @@ return value
 		middleTrace,
 		"@trace-outer.lua",
 	)
-	assertRootThreadReady(t, state.MainThread())
+	assertRootThreadReady(t, state.main)
 }
 
 func TestWarmFrameCallIntoDoesNotAllocate(t *testing.T) {

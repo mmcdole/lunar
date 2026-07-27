@@ -1712,7 +1712,7 @@ return target
 		},
 	}
 
-	thread := state.MainThread()
+	thread := state.main
 	thread.reserveValues(64)
 	thread.reserveFrames(8)
 	for _, test := range tests {

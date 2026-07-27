@@ -20,7 +20,7 @@ func TestCompactUpvalueLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	thread := state.MainThread()
+	thread := state.main
 	thread.values = []slot{
 		nilSlot,
 		slotFromValue(Number(10)),
@@ -801,7 +801,7 @@ func TestStateClosePreservesRetainedOpenUpvalue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread := state.MainThread()
+	thread := state.main
 	retained, err := state.NewTable(0, 0)
 	if err != nil {
 		t.Fatal(err)

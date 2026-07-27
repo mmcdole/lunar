@@ -242,7 +242,7 @@ func TestIOReadAllRegularFileContextKeepsBoundedAdmission(t *testing.T) {
 		)
 	}
 
-	engine.contextThread = new(Thread)
+	engine.contextThread = new(threadObject)
 	engine.contextBytes = ioReadContextPollBytes
 	if capacity := engine.readAllInitialCapacity(
 		reader.Size(),
