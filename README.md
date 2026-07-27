@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/lugo.png" alt="" width="220">
+  <img src="assets/lugo.png" alt="Lugo" width="220">
 </p>
 
 <h1 align="center">Lugo</h1>
@@ -13,25 +13,22 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
-Lugo is a pure-Go implementation of the Lua 5.1 compiler, bytecode VM,
-coroutines, binary chunks, and standard libraries. Owned `Value`s,
-caller-buffered `CallInto`, and borrowed `Frame` callbacks use the same runtime
-objects and VM.
+Lugo is a Lua 5.1 implementation written entirely in Go: compiler, bytecode VM,
+coroutines, binary chunks, and standard libraries.
 
-## Design
+It is aimed at Go programs that run scripts as part of normal operation, where
+the host decides what those scripts can reach and what they are allowed to cost.
 
-- Reference objects and execution values use private compact types. Publishing
-  an object as an owned `Value` does not create another mutable object.
-- The compiler, VM, libraries, patterns, and binary chunks are checked against
-  the [Lua 5.1.5 reference implementation](https://www.lua.org/ftp/).
-- Warm `CallInto`, fixed Lua calls, scalar native callbacks, and common table
-  and numeric loops can execute without allocations.
-- Libraries are installed explicitly. Streams and time policy belong to a
-  State. Operation-scoped contexts can stop execution. `os.exit` returns an
-  error to the host.
-- A State-local collector determines Lua reachability, weak-table clearing,
-  userdata finalization, and logical heap accounting. Go reclaims the backing
-  allocations.
+The compiler, VM, libraries, and patterns are checked against the
+[reference implementation](https://www.lua.org/ftp/), including weak tables,
+finalizers, and PUC-compatible bytecode. A new State has no libraries until you
+open them, any call can be cancelled while it runs, and a script cannot
+terminate the host process. Loading a 9 MB object graph costs 72 MiB of live
+heap against GopherLua's 544 MiB, and interpreter-bound programs run up to 3x
+faster.
+
+The public embedding API is still stabilizing. See
+[Architecture](docs/architecture.md) for the runtime model.
 
 ## Comparison
 
@@ -46,7 +43,7 @@ objects and VM.
 | `os.exit` | Returns a host-handled `*ExitRequest` | Terminates the Go process | Terminates the Go process |
 | Binary chunks | Reads and writes native-ABI PUC-compatible Lua 5.1 chunks | No PUC-compatible chunk I/O; Lua `string.dump` unsupported | Reads and writes Lua 5.2 chunks through its Go API; Lua `string.dump` unavailable |
 
-Competitor versions are pinned in the
+Versions used in this comparison are pinned in the
 [benchmark module](benchmarks/README.md#runtime-versions).
 
 ## Quick start
@@ -99,7 +96,7 @@ Performance is measured in separate groups:
 - interpreter microbenchmarks for numeric, call, table, and string execution;
 - embedding benchmarks for Go-to-Lua calls, Lua-to-Go callbacks, strings, and
   host-built tables; and
-- a deterministic 9,208,046-byte CBOR graph for fresh-process allocation and
+- a deterministic 9 MB CBOR graph for fresh-process allocation and
   retained-memory measurements.
 
 ### Results
@@ -136,8 +133,8 @@ in the CBOR table because its pinned standard IO library does not implement
 The program inputs are scaled local inputs, not official Benchmarks Game
 scores. Compilation, library setup, warmup, and result validation are outside
 the timed region. Every comparison uses protected calls and identical Lua
-source. The CBOR load runs in fresh processes and validates 183,513 tables,
-938,452 entries, and a canonical structural digest.
+source. The CBOR load runs in fresh processes and validates roughly 184,000
+tables, 938,000 entries, and a canonical structural digest.
 
 The [benchmark protocol](benchmarks/README.md) records runtime versions,
 commands, timing boundaries, environment controls, raw-output requirements,
@@ -151,7 +148,7 @@ checksums, metric definitions, process isolation, and paired sampling.
 The Lua 5.1 compiler, VM, coroutines, binary chunks, Lua-visible collection,
 and standard runtime are implemented apart from the limits below. Optional
 oracle tests can re-run recorded cases against a Lua 5.1.5 executable named by
-`LUGO_LUA51`. The public embedding API is still stabilizing.
+`LUGO_LUA51`.
 
 Current intentional limits and remaining work:
 
@@ -166,14 +163,14 @@ One State has one active executor. Separate States may run concurrently.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — runtime representation, compiler, VM,
+- [Architecture](docs/architecture.md): runtime representation, compiler, VM,
   and API boundaries
-- [Embedding](docs/embedding.md) — State setup, calls, callbacks, values,
+- [Embedding](docs/embedding.md): State setup, calls, callbacks, values,
   contexts, errors, and lifecycle
-- [Collection](docs/collection.md) — Lua reachability, weak tables, and
+- [Collection](docs/collection.md): Lua reachability, weak tables, and
   finalization
-- [Performance](docs/performance.md) — measurement groups and regression policy
-- [Third-party notices](THIRD_PARTY_NOTICES.md) — provenance for adapted
+- [Performance](docs/performance.md): measurement groups and regression policy
+- [Third-party notices](THIRD_PARTY_NOTICES.md): provenance for adapted
   reference algorithms
 
 Lugo is available under the [MIT License](LICENSE).
