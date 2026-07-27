@@ -1255,7 +1255,7 @@ func newTestLuaFunction(
 		upvalues[index] = newClosedUpvalue(nilSlot)
 	}
 	return newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		upvalues,

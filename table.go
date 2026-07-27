@@ -122,14 +122,19 @@ type tableObject struct {
 	// exponent means all known integer records exceed the array limit.
 	// Deletion may leave a conservative lower value; zero means none.
 	recordIntegerFloor uint8
+	gcMark             objectMark
 }
 
-func newTable(owner *runtimeState, arrayHint, recordHint int) *tableObject {
-	table := &tableObject{objectHeader: objectHeader{owner: owner}}
+func newTable(state *State, arrayHint, recordHint int) *tableObject {
+	if state == nil || state.runtime == nil {
+		panic("lua: invalid table state")
+	}
+	table := &tableObject{}
 	if arrayHint > 0 {
 		table.array = makeTableVector[slot](0, arrayHint)
 	}
 	table.store.init(recordHint)
+	state.registerTable(table)
 	return table
 }
 

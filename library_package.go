@@ -49,9 +49,9 @@ func (state *State) OpenPackage() error {
 	if err != nil {
 		return err
 	}
-	library := newTable(state.runtime, 0, 8)
-	preload := newTable(state.runtime, 0, 0)
-	loaders := newTable(state.runtime, 4, 0)
+	library := newTable(state, 0, 8)
+	preload := newTable(state, 0, 0)
+	loaders := newTable(state, 4, 0)
 	sentinel := state.ensurePackageSentinel()
 
 	loadlib, err := state.newPackageFunction(
@@ -190,7 +190,7 @@ func (state *State) ensureLoadedModules() (*tableObject, error) {
 		}
 		return (*tableObject)(value.ref), nil
 	}
-	loaded := newTable(state.runtime, 0, 8)
+	loaded := newTable(state, 0, 8)
 	state.registry.rawSetSlot(key, slotFromTableObject(loaded))
 	return loaded, nil
 }
@@ -203,9 +203,7 @@ func (state *State) ensurePackageSentinel() *userDataObject {
 	// Lua the same stable, exact identity across package reopenings without
 	// deriving identity from its host-mutable payload. It deliberately has no
 	// environment, so retaining the marker cannot retain the global graph.
-	object := &userDataObject{
-		objectHeader: objectHeader{owner: state.runtime},
-	}
+	object := newUserDataObject(state, nil, nil, nil)
 	state.packageSentinel = object
 	return object
 }
@@ -764,7 +762,7 @@ func packageModuleTable(
 		table := (*tableObject)(current.ref)
 		next, found := table.rawSlot(key)
 		if !found || next.isNil() {
-			next = slotFromTableObject(newTable(frame.thread.owner, 0, 1))
+			next = slotFromTableObject(newTable(frame.thread.state, 0, 1))
 			if failure := frame.setIndexCompact(
 				current,
 				key,
@@ -790,7 +788,7 @@ func packageSeeAll(frame Frame) Outcome {
 	}
 	metatable := module.metatable
 	if metatable == nil {
-		metatable = newTable(frame.thread.owner, 0, 1)
+		metatable = newTable(frame.thread.state, 0, 1)
 		module.metatable = metatable
 	}
 	if failure := frame.setIndexCompact(

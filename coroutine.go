@@ -57,14 +57,14 @@ func (state *State) newThreadObject(callable slot) (*threadObject, error) {
 		capacity = state.options.MaxValues
 	}
 	thread := &threadObject{
-		objectHeader: objectHeader{owner: state.runtime},
-		state:        state,
-		globals:      parent.globals,
-		values:       make([]slot, 1, capacity),
-		top:          1,
-		status:       ThreadSuspended,
+		state:   state,
+		globals: parent.globals,
+		values:  make([]slot, 1, capacity),
+		top:     1,
+		status:  ThreadSuspended,
 	}
 	writeSlot(&thread.values[0], callable)
+	state.registerThread(thread)
 	return thread, nil
 }
 
@@ -330,7 +330,7 @@ func (thread *threadObject) resumeExternal(
 		thread.owner.closed.Load() {
 		return threadResumeResult{}, ErrClosed
 	}
-	if thread.main {
+	if thread.isMain() {
 		return threadResumeResult{}, ErrMainThread
 	}
 	state := thread.state
@@ -368,7 +368,7 @@ func (thread *threadObject) resumeExternalContext(
 		thread.owner.closed.Load() {
 		return threadResumeResult{}, ErrClosed
 	}
-	if thread.main {
+	if thread.isMain() {
 		return threadResumeResult{}, ErrMainThread
 	}
 	state := thread.state
@@ -706,7 +706,7 @@ func coroutineStatusName(current, thread *threadObject) string {
 	case ThreadSuspended:
 		return "suspended"
 	case ThreadReady:
-		if thread.main {
+		if thread.isMain() {
 			return "dead"
 		}
 		return "suspended"

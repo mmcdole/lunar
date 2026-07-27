@@ -540,7 +540,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 		}
 		defer state.Close()
 		function := newLuaFunction(
-			state.runtime,
+			state,
 			prototype,
 			state.main.globals,
 			nil,
@@ -591,7 +591,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 			t.Fatal(err)
 		}
 		function := newLuaFunction(
-			state.runtime,
+			state,
 			prototype,
 			state.main.globals,
 			nil,

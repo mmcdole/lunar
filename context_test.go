@@ -1832,7 +1832,7 @@ func BenchmarkContextDispatch256Moves(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	target := newLuaFunction(state.runtime, prototype, state.main.globals, nil)
+	target := newLuaFunction(state, prototype, state.main.globals, nil)
 	targetValue := target.owningValue()
 	destination := make([]Value, 1)
 	active, cancel := context.WithCancel(context.Background())

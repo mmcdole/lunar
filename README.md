@@ -5,7 +5,8 @@ one compact runtime representation, opaque canonical objects, and two ways to
 embed Lua:
 
 - a friendly typed Go interface for ordinary applications; and
-- a low-level frame and table interface for allocation-sensitive code.
+- a low-level `Frame`/`CallInto` interface for allocation-sensitive callbacks
+  and calls, with borrowed table traversal and bulk construction planned.
 
 Both interfaces operate on the same values, tables, functions, and threads.
 Executable state has one authoritative representation.

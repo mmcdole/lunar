@@ -116,7 +116,7 @@ func TestTableDenseLayoutIsInsertionOrderIndependent(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer state.Close()
-			table := newTable(state.runtime, 0, 0)
+			table := newTable(state, 0, 0)
 			for _, key := range test.order {
 				table.rawSetIntegerSlot(
 					key,
@@ -743,7 +743,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 
 		for key := 1; key <= 10; key++ {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
@@ -788,7 +788,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 
 		table.growArray(10)
 		array := table.array.values()
@@ -876,7 +876,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 		for key := 1; key <= 8; key++ {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
 		}
@@ -938,7 +938,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 		for key := 1; key <= 8; key++ {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
 		}
@@ -1019,7 +1019,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 		for key := 1; key <= 4; key++ {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
 		}
@@ -1088,7 +1088,7 @@ func TestTableRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer state.Close()
-		table := newTable(state.runtime, 0, 0)
+		table := newTable(state, 0, 0)
 		for key := 1; key <= 4; key++ {
 			table.rawSetIntegerSlot(key, numberSlot(float64(key)))
 		}

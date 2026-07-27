@@ -641,6 +641,7 @@ return true
 				baseline,
 			)
 		}
+		state.collectUnreachable()
 		runtime.GC()
 		runtime.Gosched()
 	}

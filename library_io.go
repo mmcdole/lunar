@@ -85,10 +85,10 @@ func (state *State) OpenIO() error {
 		return err
 	}
 
-	environment := newTable(state.runtime, 2, 1)
-	standardEnvironment := newTable(state.runtime, 0, 1)
+	environment := newTable(state, 2, 1)
+	standardEnvironment := newTable(state, 0, 1)
 	library := newTable(
-		state.runtime,
+		state,
 		0,
 		len(ioLibraryFunctions)+3,
 	)
@@ -227,7 +227,7 @@ func (state *State) ensureFileMetatable() (*tableObject, error) {
 		return (*tableObject)(existing.ref), nil
 	}
 	metatable := newTable(
-		state.runtime,
+		state,
 		0,
 		len(fileLibraryFunctions)+1,
 	)

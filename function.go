@@ -21,6 +21,7 @@ type functionObject struct {
 	prototype   *Prototype
 	environment *tableObject
 	body        unsafe.Pointer
+	gcMark      objectMark
 }
 
 type nativeFunctionData struct {
@@ -37,13 +38,13 @@ type nativeFunctionAllocation struct {
 }
 
 func newLuaFunction(
-	owner *runtimeState,
+	state *State,
 	prototype *Prototype,
 	environment *tableObject,
 	upvalues []*upvalue,
 ) *functionObject {
 	return newLuaFunctionOwned(
-		owner,
+		state,
 		prototype,
 		environment,
 		exactSlice(upvalues),
@@ -51,15 +52,18 @@ func newLuaFunction(
 }
 
 func newLuaFunctionOwned(
-	owner *runtimeState,
+	state *State,
 	prototype *Prototype,
 	environment *tableObject,
 	upvalues []*upvalue,
 ) *functionObject {
-	if owner == nil || prototype == nil || !prototype.sealed {
+	if state == nil ||
+		state.runtime == nil ||
+		prototype == nil ||
+		!prototype.sealed {
 		panic("lua: invalid Lua function")
 	}
-	if environment == nil || environment.owner != owner {
+	if environment == nil || environment.owner != state.runtime {
 		panic("lua: invalid Lua function environment")
 	}
 	if len(upvalues) != int(prototype.upvalues) {
@@ -70,34 +74,37 @@ func newLuaFunctionOwned(
 			panic("lua: Lua function has an invalid upvalue")
 		}
 	}
+	if len(upvalues) != cap(upvalues) {
+		upvalues = exactSlice(upvalues)
+	}
 	created := &functionObject{
-		objectHeader: objectHeader{owner: owner},
-		prototype:    prototype,
-		environment:  environment,
+		prototype:   prototype,
+		environment: environment,
 	}
 	if len(upvalues) != 0 {
 		created.body = unsafe.Pointer(unsafe.SliceData(upvalues))
 	}
+	state.registerFunction(created)
 	return created
 }
 
 func newNativeFunctionOwned(
-	owner *runtimeState,
+	state *State,
 	environment *tableObject,
 	entry NativeFunc,
 	captures []slot,
 ) *functionObject {
-	if owner == nil || entry == nil {
+	if state == nil || state.runtime == nil || entry == nil {
 		panic("lua: invalid native function")
 	}
 	if len(captures) > maxNativeCaptures {
 		panic("lua: native function capture limit exceeded")
 	}
-	if environment == nil || environment.owner != owner {
+	if environment == nil || environment.owner != state.runtime {
 		panic("lua: invalid native function environment")
 	}
 	for _, capture := range captures {
-		if err := owner.acceptSlot(capture); err != nil {
+		if err := state.runtime.acceptSlot(capture); err != nil {
 			panic("lua: invalid native function capture")
 		}
 	}
@@ -106,8 +113,7 @@ func newNativeFunctionOwned(
 	}
 	allocation := &nativeFunctionAllocation{
 		functionObject: functionObject{
-			objectHeader: objectHeader{owner: owner},
-			environment:  environment,
+			environment: environment,
 		},
 		data: nativeFunctionData{
 			entry:    entry,
@@ -115,6 +121,7 @@ func newNativeFunctionOwned(
 		},
 	}
 	allocation.functionObject.body = unsafe.Pointer(&allocation.data)
+	state.registerFunction(&allocation.functionObject)
 	return &allocation.functionObject
 }
 

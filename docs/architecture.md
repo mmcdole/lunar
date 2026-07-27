@@ -70,6 +70,8 @@ Files are organized by substantial runtime concepts:
 
 - `value.go`: compact values, kinds, scalar semantics, and object identity;
 - `state.go`: runtime ownership, lifecycle, globals, userdata, and errors;
+- `collection.go`: the State-local object ledger, centralized graph tracer,
+  synchronous sweep, close-time detachment, and logical heap accounting;
 - `string.go`: State-neutral immutable strings, stable hashing, and bounded
   runtime-local short-string reuse;
 - `table.go`: dense-array storage, raw table semantics, mutation accounting,
@@ -670,10 +672,11 @@ An executor benchmark making 1,000 calls from Lua measures the Go callback
 and an equivalent tiny Lua closure at roughly 49–50 microseconds each; recent
 samples put the Go callback about 3% ahead, but the defensible conclusion is
 parity within low-single-digit measurement variation. Both paths allocate
-zero bytes. The private Lua function object is 32 bytes, and its native
-allocation plus the entry and capture-slice header is 64 bytes before capture
-backing storage. A public `Function` is a separate 24-byte canonical owning
-token, created only when the function crosses into Go.
+zero bytes. The private Lua function object is 40 bytes, and its native
+allocation plus the entry and capture-slice header is 72 bytes before capture
+backing storage. Its State-owned ledger entry is one additional pointer. A
+public `Function` is a separate 24-byte canonical owning token, created only
+when the function crosses into Go.
 
 ### Public-call checkpoint
 
@@ -816,16 +819,17 @@ four-slot array class and already-reserved array capacity are deliberate Go
 allocation adaptations; neither changes the global density rule at a fresh
 allocation.
 
-On 64-bit Go, the private `tableObject` header is 80 bytes and occupies the
-80-byte allocator class. The public `Table` is a 24-byte canonical owning
-token published only when a table crosses into Go. Its array and record vectors
-each use a typed backing pointer plus 32-bit length and capacity fields, a
-16-byte private descriptor rather than a 24-byte Go slice header. The typed
-pointer keeps the backing allocation and its pointer bitmap visible to the
-collector. Checked point access stays inlined; bulk walks construct one
-fixed-capacity slice view. A pointer or view cannot survive growth,
-redistribution, or rehash. The same descriptor is 12 bytes on 32-bit Go, equal
-to a native slice header there.
+On 64-bit Go, the private `tableObject` is 80 bytes and occupies the 80-byte
+allocator class. Its State-owned semantic-ledger entry is one additional
+pointer. The public
+`Table` is a 24-byte canonical owning token published only when a table
+crosses into Go. Its array and record vectors each use a typed backing pointer
+plus 32-bit length and capacity fields, a 16-byte private descriptor rather
+than a 24-byte Go slice header. The typed pointer keeps the backing allocation
+and its pointer bitmap visible to the collector. Checked point access stays
+inlined; bulk walks construct one fixed-capacity slice view. A pointer or view
+cannot survive growth, redistribution, or rehash. The same descriptor is 12
+bytes on 32-bit Go, equal to a native slice header there.
 
 The Table contains only ownership, the two storage descriptors and their
 accounting, the metatable, the metamethod absence cache, and the conservative
@@ -932,7 +936,7 @@ child coroutine resumed by the nested call may suspend normally.
 On arm64, warmed one-result `Frame.CallInto` calls take about 114 ns for a Lua
 target, 116 ns for a native target, and 126 ns for a callable table on the
 qualification machine, all with zero allocations. `Frame.Call` allocates only
-its nonempty owning result slice. Persistent object sizes and the 160-byte
+its nonempty owning result slice. Activation layout and the 160-byte
 `runInstructions` frame are unchanged. The shared protected-call path retains
 its frozen performance; its private two-representation argument staging adds
 16 transient stack bytes at a nested call boundary.
@@ -960,9 +964,10 @@ Lua's `coroutine.resume` and `coroutine.wrap` transfer slots directly between
 private thread objects. Only the public Go `Thread.Resume` boundary
 materializes owning `Value` results; `ResumeInto` accepts caller storage and
 remains allocation-free when warm. Public `Thread` handles are 24-byte
-canonical ownership tokens; the 136-byte stack and scheduler object remains
-private and is never reached through the handle by the executor. Arbitrary
-error Values retain identity, including nil and reference objects. The Lua
+canonical ownership tokens; the private stack and scheduler object is 144
+bytes of logical accounted storage: a 136-byte object plus one pointer in the
+State-owned ledger. It is never reached through the handle by the executor.
+Arbitrary error Values retain identity, including nil and reference objects. The Lua
 library derives argument names and wrapper source prefixes from the immediate
 call site, including tail calls, rather than keeping diagnostic provenance in
 the hot representation.
@@ -1081,12 +1086,13 @@ reference. Borrowed standard streams use the same lifecycle record with a
 no-close release policy and are never closed.
 
 Finalizers in this layer may release only a private native resource; they
-never enter Lua. This is intentionally not an implementation of Lua
-`__gc`, weak tables, or `collectgarbage`. Those require a later State-local
-semantic collector that can identify host-retained owning handles, order Lua
-finalizers, and process resurrection synchronously. The collector design and
-the required owning-versus-borrowed public boundary are specified in
-[collection.md](collection.md).
+never enter Lua. The State-local semantic ledger and internal synchronous
+mark/sweep collector now identify host-retained owning handles, unlink
+semantically unreachable Lua graphs, and clear their storage so Go can reclaim
+the backing allocations. Lua `__gc`, weak-table clearing, resurrection,
+and the public `collectgarbage` controls remain deliberately unexposed until
+their ordering rules land together. The design and delivery state are
+specified in [collection.md](collection.md).
 
 ## Standard libraries
 
@@ -1349,9 +1355,10 @@ dispositions. Windows commands use Go's Unicode process interface rather
 than the C runtime's locale-dependent narrow-character conversion.
 
 The remaining base entries are intentionally absent rather than partial
-stubs. `collectgarbage`, `gcinfo`, and `newproxy` require deliberate
-State-local GC, weak-reference, and finalizer semantics rather than
-process-wide Go GC shims.
+stubs. The internal State-local mark/sweep foundation is present, but
+`collectgarbage`, `gcinfo`, and `newproxy` stay absent until weak-reference
+clearing and Lua finalizer ordering make every observable collection
+operation complete. None will be a process-wide Go GC shim.
 
 The package library keeps Lua 5.1's `_LOADED` table in the State registry.
 Reopening package replaces the public package table, its searcher tables, and

@@ -27,7 +27,7 @@ func (state *State) OpenCoroutine() error {
 		return err
 	}
 	library := newTable(
-		state.runtime,
+		state,
 		0,
 		len(coroutineLibraryFunctions),
 	)
@@ -114,7 +114,7 @@ func coroutineResume(frame Frame) Outcome {
 }
 
 func coroutineRunning(frame Frame) Outcome {
-	if frame.thread.main {
+	if frame.thread.isMain() {
 		return frame.ReturnNil()
 	}
 	return frame.returnOne(

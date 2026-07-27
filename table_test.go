@@ -23,7 +23,7 @@ func newTableObjectForTest(
 	if arrayHint > maxTableHint || recordHint > maxTableHint {
 		return nil, ErrCapacity
 	}
-	return newTable(state.runtime, arrayHint, recordHint), nil
+	return newTable(state, arrayHint, recordHint), nil
 }
 
 func TestTableRawScalarAccess(t *testing.T) {

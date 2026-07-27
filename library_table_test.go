@@ -486,8 +486,8 @@ func TestSparseTableInsertShiftMatchesTheRawLoop(t *testing.T) {
 	)
 	for mask := 0; mask < 1<<keyCount; mask++ {
 		for position := firstKey - 1; position <= lastKey+2; position++ {
-			reference := newTable(state.runtime, 0, 0)
-			sparse := newTable(state.runtime, 0, 0)
+			reference := newTable(state, 0, 0)
+			sparse := newTable(state, 0, 0)
 			for offset := 0; offset < keyCount; offset++ {
 				if mask&(1<<offset) == 0 {
 					continue
@@ -517,8 +517,8 @@ func TestSparseTableInsertShiftMatchesTheRawLoop(t *testing.T) {
 
 	random := rand.New(rand.NewSource(0x51))
 	for caseIndex := 0; caseIndex < 1_000; caseIndex++ {
-		reference := newTable(state.runtime, 0, 0)
-		sparse := newTable(state.runtime, 0, 0)
+		reference := newTable(state, 0, 0)
+		sparse := newTable(state, 0, 0)
 		for mutation := 0; mutation < 100; mutation++ {
 			key := random.Intn(97) - 32
 			value := nilSlot
@@ -552,7 +552,7 @@ func TestTableInsertAtMinimumIntegerCompletesWithLua51Mapping(t *testing.T) {
 	defer state.Close()
 
 	const minimumPosition = -1 << 31
-	probe := newTable(state.runtime, 0, 0)
+	probe := newTable(state, 0, 0)
 	for index := 1; index <= 3; index++ {
 		probe.rawSetIntegerSlot(index, numberSlot(float64(index)))
 	}
@@ -614,7 +614,7 @@ func TestSparseTableInsertShiftDoesNotAllocateForSmallStorage(t *testing.T) {
 	defer state.Close()
 
 	const minimumPosition = -1 << 31
-	baseline := newTable(state.runtime, 8, 64)
+	baseline := newTable(state, 8, 64)
 	for key, value := range map[int]float64{
 		minimumPosition:     1,
 		minimumPosition + 1: 2,
@@ -720,7 +720,7 @@ func BenchmarkTableInsertSparseShift(b *testing.B) {
 			defer state.Close()
 			b.ReportAllocs()
 			for range b.N {
-				table := newTable(state.runtime, 8, 16)
+				table := newTable(state, 8, 16)
 				for key := 1; key <= 3; key++ {
 					table.rawSetIntegerSlot(
 						key,

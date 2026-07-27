@@ -38,8 +38,8 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(hostToken{}); size != 24 {
 			t.Fatalf("host token size = %d, want 24", size)
 		}
-		if size := unsafe.Sizeof(userDataObject{}); size != 48 {
-			t.Fatalf("compact userdata size = %d, want 48", size)
+		if size := unsafe.Sizeof(userDataObject{}); size != 56 {
+			t.Fatalf("compact userdata size = %d, want 56", size)
 		}
 		if size := unsafe.Sizeof(stringRef{}); size != 16 {
 			t.Fatalf("stringRef size = %d, want 16", size)
@@ -651,7 +651,7 @@ func TestWarmTablePublicationDoesNotAllocate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	object := newTable(state.runtime, 0, 0)
+	object := newTable(state, 0, 0)
 	first := object.owningHandle()
 	compact := slotFromTableObject(object)
 
@@ -684,7 +684,7 @@ func TestTableRepublishAfterOwningTokenDies(t *testing.T) {
 	defer state.Close()
 
 	object, token := rootedTableWithoutHandle(t, state)
-	index := newTable(state.runtime, 0, 1)
+	index := newTable(state, 0, 1)
 	index.rawSetSlot(slotFromTableObject(object), numberSlot(91))
 	waitForWeakTableToken(t, object, token)
 
@@ -735,7 +735,7 @@ func TestHostDirectoryDoesNotPinCyclicTable(t *testing.T) {
 	defer state.Close()
 
 	object, token := weakTablePublication(t, state)
-	waitForWeakTable(t, object, token)
+	waitForWeakTable(t, state, object, token)
 	state.runtime.hosts.prune()
 	entries, keys, stale := hostDirectoryKindCounts(
 		&state.runtime.hosts,
@@ -762,7 +762,7 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	outerObject := outer.runtimeObject()
-	inner := newTable(state.runtime, 0, 1)
+	inner := newTable(state, 0, 1)
 	inner.rawSetIntegerSlot(1, numberSlot(17))
 	outerObject.rawSetIntegerSlot(1, numberSlot(11))
 	if err := outerObject.rawSetStringSlot(
@@ -1006,7 +1006,7 @@ func TestHostDirectoryDoesNotPinUserData(t *testing.T) {
 	defer state.Close()
 
 	object, token := weakUserDataPublication(t, state)
-	waitForWeakUserData(t, []weak.Pointer[userDataObject]{object},
+	waitForWeakUserData(t, state, []weak.Pointer[userDataObject]{object},
 		[]weak.Pointer[hostToken]{token})
 	state.runtime.hosts.prune()
 	if len(state.runtime.hosts.entries) != 0 {
@@ -1123,7 +1123,7 @@ func TestHostDirectoryIncrementalMaintenanceBoundsStaleMetadata(
 	for index := range objects {
 		objects[index], tokens[index] = weakUserDataPublication(t, state)
 	}
-	waitForWeakUserData(t, objects, tokens)
+	waitForWeakUserData(t, state, objects, tokens)
 
 	live := make([]*UserData, 0, abandoned*2)
 	previousStale := abandoned
@@ -1231,7 +1231,7 @@ func rootedTableWithoutHandle(
 	state *State,
 ) (*tableObject, weak.Pointer[hostToken]) {
 	t.Helper()
-	object := newTable(state.runtime, 0, 0)
+	object := newTable(state, 0, 0)
 	if err := state.registry.rawSetStringSlot(
 		"rooted table",
 		slotFromTableObject(object),
@@ -1249,7 +1249,7 @@ func weakTablePublication(
 	state *State,
 ) (weak.Pointer[tableObject], weak.Pointer[hostToken]) {
 	t.Helper()
-	object := newTable(state.runtime, 0, 1)
+	object := newTable(state, 0, 1)
 	if err := object.rawSetStringSlot(
 		"self",
 		slotFromTableObject(object),
@@ -1265,6 +1265,7 @@ func weakTablePublication(
 
 func waitForWeakTable(
 	t *testing.T,
+	state *State,
 	object weak.Pointer[tableObject],
 	token weak.Pointer[hostToken],
 ) {
@@ -1275,6 +1276,9 @@ func waitForWeakTable(
 	defer ticker.Stop()
 	for {
 		runtime.GC()
+		if token.Value() == nil {
+			state.collectUnreachable()
+		}
 		if object.Value() == nil && token.Value() == nil {
 			return
 		}
@@ -1362,6 +1366,7 @@ func waitForWeakUserDataToken(
 
 func waitForWeakUserData(
 	t *testing.T,
+	state *State,
 	objects []weak.Pointer[userDataObject],
 	tokens []weak.Pointer[hostToken],
 ) {
@@ -1372,6 +1377,16 @@ func waitForWeakUserData(
 	defer ticker.Stop()
 	for {
 		runtime.GC()
+		allTokensDead := true
+		for _, token := range tokens {
+			if token.Value() != nil {
+				allTokensDead = false
+				break
+			}
+		}
+		if allTokensDead {
+			state.collectUnreachable()
+		}
 		allDead := true
 		for index := range objects {
 			if objects[index].Value() != nil ||
@@ -1745,7 +1760,7 @@ func BenchmarkWarmTablePublication(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer state.Close()
-	object := newTable(state.runtime, 0, 0)
+	object := newTable(state, 0, 0)
 	first := object.owningHandle()
 	compact := slotFromTableObject(object)
 

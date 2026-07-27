@@ -163,7 +163,7 @@ func TestThreadRepublishAfterOwningTokenDies(t *testing.T) {
 	defer state.Close()
 
 	object, token := rootedThreadWithoutHandle(t, state)
-	index := newTable(state.runtime, 0, 1)
+	index := newTable(state, 0, 1)
 	index.rawSetSlot(slotFromThreadObject(object), numberSlot(73))
 	waitForWeakThreadToken(t, object, token)
 
@@ -223,7 +223,7 @@ func TestHostDirectoryDoesNotPinCyclicThread(t *testing.T) {
 	defer state.Close()
 
 	object, token := weakCyclicThreadPublication(t, state)
-	waitForWeakThread(t, object, token)
+	waitForWeakThread(t, state, object, token)
 	state.runtime.hosts.prune()
 	if entries, keys, stale := hostDirectoryKindCounts(
 		&state.runtime.hosts,
@@ -1461,6 +1461,7 @@ func waitForWeakThreadToken(
 
 func waitForWeakThread(
 	t *testing.T,
+	state *State,
 	object weak.Pointer[threadObject],
 	token weak.Pointer[hostToken],
 ) {
@@ -1471,6 +1472,9 @@ func waitForWeakThread(
 	defer ticker.Stop()
 	for {
 		runtime.GC()
+		if token.Value() == nil {
+			state.collectUnreachable()
+		}
 		if object.Value() == nil && token.Value() == nil {
 			return
 		}

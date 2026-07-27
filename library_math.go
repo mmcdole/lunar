@@ -76,7 +76,7 @@ func (state *State) OpenMath() error {
 	}
 	const constantCount = 3 // pi, huge, and the mod alias.
 	library := newTable(
-		state.runtime,
+		state,
 		0,
 		len(mathLibraryFunctions)+
 			len(mathLibraryRandomFunctions)+

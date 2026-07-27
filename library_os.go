@@ -31,7 +31,7 @@ func (state *State) OpenOS() error {
 	if err != nil {
 		return err
 	}
-	library := newTable(state.runtime, 0, len(osLibraryFunctions))
+	library := newTable(state, 0, len(osLibraryFunctions))
 	for _, definition := range osLibraryFunctions {
 		function, functionErr := state.newNativeFunctionObject(
 			definition.entry,

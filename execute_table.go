@@ -599,7 +599,7 @@ func executeNewTable(
 ) {
 	frame := thread.frames[frameIndex]
 	table := newTable(
-		thread.owner,
+		thread.state,
 		tableCapacityHint(code.b()),
 		tableCapacityHint(code.c()),
 	)

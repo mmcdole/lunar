@@ -94,7 +94,7 @@ func osDate(frame Frame) Outcome {
 }
 
 func returnDateTable(frame Frame, date time.Time) Outcome {
-	table := newTable(frame.thread.owner, 0, 9)
+	table := newTable(frame.thread.state, 0, 9)
 	fields := [...]struct {
 		name  string
 		value slot

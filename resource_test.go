@@ -105,6 +105,7 @@ func TestManagedNativeResourceFinalizerClosesAndUnregisters(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	state.collectUnreachable()
 	waitForNativeCleanup(t, probe.done)
 	if probe.count.Load() != 1 {
 		t.Fatalf("finalizer cleanup count = %d; want 1", probe.count.Load())
@@ -167,6 +168,7 @@ func TestCompactUserDataKeepsNativeResourceAlive(t *testing.T) {
 	}
 
 	state.registry.rawSetSlot(key, nilSlot)
+	state.collectUnreachable()
 	waitForNativeCleanup(t, probe.done)
 }
 

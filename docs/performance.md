@@ -627,13 +627,13 @@ between separate days is perfectly stationary.
 
 ### 12. Host ownership checkpoints
 
-The semantic-collection boundary separates public handles from compact
-userdata, table, function, and thread objects. Lua slots, tables, native
-captures, activations, coroutine transfers, and the standard libraries retain
-the 48-byte compact userdata, 80-byte compact table, 32-byte compact function,
-or 136-byte compact thread directly. A State-local weak directory canonicalizes
-a public handle only when an object actually crosses into Go; it adds no field
-to every compact object.
+The host-ownership checkpoint, measured before the semantic object ledger,
+separates public handles from compact userdata, table, function, and thread
+objects. Lua slots, tables, native captures, activations, coroutine transfers,
+and the standard libraries retain the 48-byte userdata, 80-byte table,
+32-byte function, or 136-byte thread of that checkpoint directly. A
+State-local weak directory canonicalizes a public handle only when an object
+actually crosses into Go; it adds no host-only field to every compact object.
 
 On the same Apple M3 Pro, first publication through `State.NewUserData`
 measures four allocations per object, compared with one allocation for the
@@ -664,12 +664,12 @@ to about 0.8 microseconds, 106 bytes, and four allocations. Repeated publication
 of an existing function is allocation-free at about 27 ns. Opening and
 exercising every standard library creates no function handle: roughly 122
 native library functions, dynamically created iterators, coroutine wrappers,
-and internal protected calls stay compact. A private Lua function object
-remains 32 bytes; the 24-byte public token is paid only by functions observed
-from Go. Native capture backing is copied to exact length so unused Go slice
-capacity cannot hide untraced Lua ownership edges. Paired internal-call
-measurements remain neutral within low-single-digit variation and
-allocation-free.
+and internal protected calls stay compact. At that checkpoint a private Lua
+function object remained 32 bytes; the 24-byte public token was paid only by
+functions observed from Go. Native capture backing is copied to exact length
+so unused Go slice capacity cannot hide untraced Lua ownership edges. Paired
+internal-call measurements remained neutral within low-single-digit variation
+and allocation-free.
 
 Threads now complete the same boundary. The main executor, nested coroutine
 resumes, `coroutine.create`, `running`, `resume`, `status`, and `wrap` all use
@@ -691,6 +691,49 @@ low-level builder rather than thousands of friendly owning publications. If
 representative embedding workloads show that first-publication cost dominates
 despite that interface, change canonicalization as one coherent
 representation decision rather than adding per-kind shortcuts.
+
+### 13. Semantic-ledger checkpoint
+
+State-local Lua collection uses four State-owned typed pointer vectors rather
+than an intrusive peer link. Compact objects carry only their lightweight
+runtime owner and one mark bit in existing padding. A retained table therefore
+does not retain its State or unrelated ledger peers, and collection enumerates
+contiguous pointer storage rather than chasing a linked list.
+
+On 64-bit Go the compact object requests are 56 bytes for userdata, 80 for a
+table, 40 for a Lua function, 72 for the combined native-function allocation,
+and 136 for a thread. Their allocator classes are 64, 80, 48, 80, and 144
+bytes. Each registered object also occupies one eight-byte vector entry.
+Logical accounting therefore reports 64, 88, 48, 80, and 144 bytes before
+subordinate storage. Compared with the rejected intrusive design, tables save
+about eight physical bytes each while functions, userdata, and threads spend
+about eight more on their side-vector entry because their object allocation
+class does not shrink. This is an ownership and traversal design, not a claim
+of a universal per-object memory win; constructor and representative workload
+measurements remain gates.
+
+A dedicated internal churn benchmark creates unexposed tables, performs a
+full semantic collection every 1,024 creations, and keeps only the State
+roots. On the standing Apple M3 Pro it measures 23.2 ns, 98 allocated bytes,
+and one allocation per table. The 80-byte object plus geometrically grown
+ledger storage accounts for the bytes without adding another per-object
+allocation.
+
+Registration occasionally grows one typed vector but adds no table mutation
+or executor-instruction barrier while collection remains synchronous. Sweep
+compacts vectors stably, drops excessive capacity, and clears every discarded
+pointer. Four typed mark stacks retain at most a bounded ordinary frontier;
+larger spikes are released. Marking uses one resettable bit, so a failed
+internal trace can cleanly retry instead of carrying a half-colored graph.
+`State.Close` drops every object vector, work buffer, and accounting map.
+
+Tests cover every object-edge kind, State and host roots, cyclic graphs of all
+four kinds, collection inside a live execution frame, escaped upvalue closure,
+two-State isolation, retained-table ownership isolation, tracing-panic retry,
+post-close handles and scratch release, and zero-allocation warm collections.
+Public collection timing and accounting comparisons wait for weak tables and
+Lua finalizers so the measured operation is the one consumers will actually
+receive.
 
 ## Gates
 

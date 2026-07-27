@@ -544,7 +544,7 @@ func (state *State) loadPrototypeObject(
 		}
 	}
 	return newLuaFunctionOwned(
-		state.runtime,
+		state,
 		prototype,
 		state.globalEnvironment(),
 		upvalues,

@@ -49,7 +49,7 @@ func (state *State) OpenString() error {
 	}
 	const aliasCount = 1 // gfind
 	library := newTable(
-		state.runtime,
+		state,
 		0,
 		len(stringLibraryFunctions)+aliasCount,
 	)
@@ -79,7 +79,7 @@ func (state *State) OpenString() error {
 		return err
 	}
 
-	metatable := newTable(state.runtime, 0, 1)
+	metatable := newTable(state, 0, 1)
 	if err := metatable.rawSetStringSlot(
 		"__index",
 		slotFromTableObject(library),

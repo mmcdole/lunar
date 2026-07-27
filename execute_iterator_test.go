@@ -549,7 +549,7 @@ end
 				t.Fatal("iterator limit fixture is not one fixed child")
 			}
 			caller := newLuaFunction(
-				state.runtime,
+				state,
 				root.children[0],
 				state.main.globals,
 				nil,

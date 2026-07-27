@@ -48,7 +48,7 @@ func (state *State) OpenTable() error {
 	if err != nil {
 		return err
 	}
-	library := newTable(state.runtime, 0, len(tableLibraryFunctions))
+	library := newTable(state, 0, len(tableLibraryFunctions))
 	for _, definition := range tableLibraryFunctions {
 		function, functionErr := state.newNativeFunctionObject(
 			definition.entry,

@@ -102,7 +102,7 @@ func (state *State) NewNativeFunction(
 		}
 	}
 	function := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.constructionEnvironment(),
 		entry,
 		compact,
@@ -129,7 +129,7 @@ func (state *State) newNativeFunctionObject(
 		}
 	}
 	return newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.constructionEnvironment(),
 		entry,
 		captures,
@@ -767,7 +767,7 @@ func (frame Frame) prepareYield(
 		panic("lua: negative native yield count")
 	}
 	thread := frame.thread
-	if thread.main ||
+	if thread.isMain() ||
 		thread.status != ThreadRunning ||
 		thread.nativeCallDepth != 1 ||
 		len(thread.continuations) != 0 {

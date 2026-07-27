@@ -234,11 +234,12 @@ func (state *State) newRuntimeUserData(
 	if err != nil {
 		return nil, err
 	}
-	data := &userDataObject{
-		objectHeader: objectHeader{owner: state.runtime},
-		environment:  state.constructionEnvironment(),
-		resource:     token,
-	}
+	data := newUserDataObject(
+		state,
+		nil,
+		state.constructionEnvironment(),
+		token,
+	)
 	return data, nil
 }
 

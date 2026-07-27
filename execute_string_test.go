@@ -208,7 +208,7 @@ func TestExecutorLengthDestinationMayOverlapSource(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -644,7 +644,7 @@ func TestExecutorConcatDestinationMayOverlapOperands(t *testing.T) {
 				t.Fatal(syntaxError)
 			}
 			function := newLuaFunction(
-				state.runtime,
+				state,
 				prototype,
 				state.main.globals,
 				nil,

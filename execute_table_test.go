@@ -1203,7 +1203,7 @@ return target:method(7)
 		t.Fatal(syntaxError)
 	}
 	overlapField := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1240,7 +1240,7 @@ return target:method(7)
 		t.Fatal(syntaxError)
 	}
 	overlap := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1316,7 +1316,7 @@ func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1341,7 +1341,7 @@ func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	function = newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1390,7 +1390,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	}
 	defer state.Close()
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1429,7 +1429,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	function = newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1484,7 +1484,7 @@ return invalid()
 		t.Fatal(syntaxError)
 	}
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1532,7 +1532,7 @@ func TestExecutorOpenSetListChecksIndexBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,

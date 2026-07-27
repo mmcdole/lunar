@@ -699,7 +699,7 @@ func (thread *threadObject) makeLegacyArgTable(
 	if extraCount < 0 {
 		extraCount = 0
 	}
-	table := newTable(thread.owner, extraCount, 1)
+	table := newTable(thread.state, extraCount, 1)
 	first := layout.resultBase + 1 + int(prototype.parameters)
 	for index := 0; index < extraCount; index++ {
 		table.setInteger(index+1, thread.values[first+index])

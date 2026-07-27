@@ -771,7 +771,7 @@ func installClosure(
 		}
 	}
 	closure := newLuaFunctionOwned(
-		thread.owner,
+		thread.state,
 		child,
 		parent.environment,
 		bindings,

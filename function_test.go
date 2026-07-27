@@ -95,7 +95,7 @@ func TestLuaFunctionRejectsInvalidUpvalueCell(t *testing.T) {
 		}
 	}()
 	newLuaFunctionOwned(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		[]*upvalue{{}},
@@ -114,7 +114,7 @@ func TestFunctionRepresentations(t *testing.T) {
 		)
 	}
 	functionSize := unsafe.Sizeof(functionObject{})
-	wantFunctionSize := 4 * pointerSize
+	wantFunctionSize := 5 * pointerSize
 	if functionSize != wantFunctionSize {
 		t.Fatalf(
 			"function object size = %d bytes; want %d",
@@ -157,7 +157,7 @@ func TestFunctionRepresentations(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	luaFunction := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -183,7 +183,7 @@ func TestFunctionRepresentations(t *testing.T) {
 		slotFromValue(state.String("capture")),
 	}
 	native := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.main.globals,
 		entry,
 		captures,
@@ -265,7 +265,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	function := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
 		[]slot{slotFromValue(retained.Value())},
@@ -293,7 +293,7 @@ func TestWarmFunctionPublicationDoesNotAllocate(t *testing.T) {
 	}
 	defer state.Close()
 	function := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
 		nil,
@@ -330,7 +330,7 @@ func TestFunctionRepublishAfterOwningTokenDies(t *testing.T) {
 	defer state.Close()
 
 	function, token := rootedFunctionWithoutHandle(t, state)
-	index := newTable(state.runtime, 0, 1)
+	index := newTable(state, 0, 1)
 	index.rawSetSlot(slotFromFunctionObject(function), numberSlot(37))
 	waitForWeakFunctionToken(t, function, token)
 
@@ -384,7 +384,7 @@ func TestHostDirectoryDoesNotPinCyclicFunction(t *testing.T) {
 	defer state.Close()
 
 	function, token := weakFunctionPublication(t, state)
-	waitForWeakFunction(t, function, token)
+	waitForWeakFunction(t, state, function, token)
 	state.runtime.hosts.prune()
 	entries, keys, stale := hostDirectoryKindCounts(
 		&state.runtime.hosts,
@@ -467,7 +467,7 @@ func TestNativeFunctionDiscardsUnusedCaptureCapacity(t *testing.T) {
 			cap(body.captures),
 		)
 	}
-	waitForWeakCaptureTail(t, hidden, function)
+	waitForWeakCaptureTail(t, state, hidden, function)
 }
 
 func TestLuaOnlyLibrariesDoNotPublishFunctionHandles(t *testing.T) {
@@ -563,7 +563,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		owner       *runtimeState
+		state       *State
 		environment *tableObject
 		entry       NativeFunc
 		captures    []slot
@@ -575,23 +575,23 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 		},
 		{
 			name:  "nil environment",
-			owner: state.runtime,
+			state: state,
 			entry: entry,
 		},
 		{
 			name:        "foreign environment",
-			owner:       state.runtime,
+			state:       state,
 			environment: other.main.globals,
 			entry:       entry,
 		},
 		{
 			name:        "nil entry",
-			owner:       state.runtime,
+			state:       state,
 			environment: state.main.globals,
 		},
 		{
 			name:        "foreign capture",
-			owner:       state.runtime,
+			state:       state,
 			environment: state.main.globals,
 			entry:       entry,
 			captures:    []slot{slotFromValue(foreign.Value())},
@@ -605,7 +605,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 				}
 			}()
 			newNativeFunctionOwned(
-				test.owner,
+				test.state,
 				test.environment,
 				test.entry,
 				test.captures,
@@ -677,11 +677,11 @@ func nativeFunctionWithHiddenCaptureTail(
 	t.Helper()
 	captures := make([]slot, 2)
 	captures[0] = numberSlot(1)
-	hidden := newTable(state.runtime, 0, 0)
+	hidden := newTable(state, 0, 0)
 	captures[1] = slotFromTableObject(hidden)
 	reference := weak.Make(hidden)
 	function := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
 		captures[:1],
@@ -718,6 +718,7 @@ func waitForWeakFunctionToken(
 
 func waitForWeakFunction(
 	t *testing.T,
+	state *State,
 	function weak.Pointer[functionObject],
 	token weak.Pointer[hostToken],
 ) {
@@ -728,6 +729,9 @@ func waitForWeakFunction(
 	defer ticker.Stop()
 	for {
 		runtime.GC()
+		if token.Value() == nil {
+			state.collectUnreachable()
+		}
 		if function.Value() == nil && token.Value() == nil {
 			return
 		}
@@ -741,18 +745,21 @@ func waitForWeakFunction(
 
 func waitForWeakCaptureTail(
 	t *testing.T,
+	state *State,
 	hidden weak.Pointer[tableObject],
 	function *functionObject,
 ) {
 	t.Helper()
+	handle := function.owningHandle()
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
 	for {
+		state.collectUnreachable()
 		runtime.GC()
 		if hidden.Value() == nil {
-			runtime.KeepAlive(function)
+			runtime.KeepAlive(handle)
 			return
 		}
 		select {
@@ -853,7 +860,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	function := newLuaFunction(
-		state.runtime,
+		state,
 		prototype,
 		state.main.globals,
 		nil,
@@ -1076,7 +1083,7 @@ func BenchmarkWarmFunctionPublication(b *testing.B) {
 	}
 	defer state.Close()
 	function := newNativeFunctionOwned(
-		state.runtime,
+		state,
 		state.main.globals,
 		func(Frame) Outcome { return Outcome{} },
 		nil,

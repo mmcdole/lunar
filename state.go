@@ -273,6 +273,7 @@ type runtimeState struct {
 type State struct {
 	noCopy          noCopy
 	runtime         *runtimeState
+	objects         objectLedger
 	options         Options
 	limits          resourceLimits
 	streams         *standardStreams
@@ -335,15 +336,15 @@ func New(options Options) (*State, error) {
 			frames: options.MaxFrames,
 		},
 	}
-	globals := newTable(rt, 0, 0)
+	globals := newTable(state, 0, 0)
 	state.main = &threadObject{
-		objectHeader: objectHeader{owner: rt},
-		state:        state,
-		globals:      globals,
-		status:       ThreadReady,
-		main:         true,
+		state:   state,
+		globals: globals,
+		status:  ThreadReady,
+		flags:   threadFlagMain,
 	}
-	state.registry = newTable(rt, 0, 0)
+	state.registerThread(state.main)
+	state.registry = newTable(state, 0, 0)
 	return state, nil
 }
 
@@ -385,16 +386,7 @@ func (state *State) Close() error {
 		state.resources = nil
 	}
 	state.runtime.strings.close()
-	if state.main != nil {
-		state.main.closeUpvalues(0)
-		state.main.values = nil
-		state.main.frames = nil
-		state.main.continuations = nil
-		state.main.top = 0
-		state.main.frameExtent = 0
-		state.main.globals = nil
-		state.main.status = ThreadClosed
-	}
+	state.detachObjectsForClose()
 	state.registry = nil
 	state.packageSentinel = nil
 	state.options.Stdin = nil
@@ -439,7 +431,7 @@ func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
 	if arrayHint > maxTableHint || recordHint > maxTableHint {
 		return nil, ErrCapacity
 	}
-	return newTable(state.runtime, arrayHint, recordHint).owningHandle(), nil
+	return newTable(state, arrayHint, recordHint).owningHandle(), nil
 }
 
 // NewUserData constructs canonical userdata holding payload. Its initial
@@ -449,11 +441,12 @@ func (state *State) NewUserData(payload any) (*UserData, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
-	data := &userDataObject{
-		objectHeader: objectHeader{owner: state.runtime},
-		payload:      payload,
-		environment:  state.constructionEnvironment(),
-	}
+	data := newUserDataObject(
+		state,
+		payload,
+		state.constructionEnvironment(),
+		nil,
+	)
 	return data.owningHandle(), nil
 }
 
@@ -807,7 +800,7 @@ type threadObject struct {
 	errorHandlerDepth uint16
 	contextBudget     uint16
 	status            ThreadStatus
-	main              bool
+	flags             threadFlags
 }
 
 // Value returns the owning Lua value for thread.
@@ -909,7 +902,7 @@ func (thread *Thread) IsMain() bool {
 	if object == nil {
 		return false
 	}
-	main := object.main
+	main := object.isMain()
 	runtime.KeepAlive(thread)
 	return main
 }
@@ -932,6 +925,27 @@ type userDataObject struct {
 	metatable   *tableObject
 	environment *tableObject
 	resource    *nativeResourceToken
+	gcMark      objectMark
+}
+
+func newUserDataObject(
+	state *State,
+	payload any,
+	environment *tableObject,
+	resource *nativeResourceToken,
+) *userDataObject {
+	if state == nil ||
+		state.runtime == nil ||
+		environment != nil && environment.owner != state.runtime {
+		panic("lua: invalid userdata construction")
+	}
+	data := &userDataObject{
+		payload:     payload,
+		environment: environment,
+		resource:    resource,
+	}
+	state.registerUserData(data)
+	return data
 }
 
 // Value returns the owning Lua value for userdata.
