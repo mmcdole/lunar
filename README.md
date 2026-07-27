@@ -67,7 +67,8 @@ directory, and actual standard descriptors. The debug library remains under
 construction.
 
 See [the architecture](docs/architecture.md) for the invariants and build
-order, and [the performance work](docs/performance.md) for current evidence
+order, [semantic collection](docs/collection.md) for the ownership and Lua GC
+design, and [the performance work](docs/performance.md) for current evidence
 and qualification gates.
 
 Adapted reference algorithms retain their original permissive license in

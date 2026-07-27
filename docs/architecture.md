@@ -1060,7 +1060,9 @@ Finalizers in this layer may release only a private native resource; they
 never enter Lua. This is intentionally not an implementation of Lua
 `__gc`, weak tables, or `collectgarbage`. Those require a later State-local
 semantic collector that can identify host-retained owning handles, order Lua
-finalizers, and process resurrection synchronously.
+finalizers, and process resurrection synchronously. The collector design and
+the required owning-versus-borrowed public boundary are specified in
+[collection.md](collection.md).
 
 ## Standard libraries
 
@@ -1466,8 +1468,9 @@ one.
 9. Standard libraries and embedding operations.
 10. Close the measured table, string, and allocation gap described in
     [performance.md](performance.md).
-11. State-local Lua collection, weak tables, finalization, and the Lua 5.1
-    collection controls.
+11. The owning-handle boundary and State-local Lua collection described in
+    [collection.md](collection.md), including weak tables, finalization, and
+    the Lua 5.1 collection controls.
 12. Debug facilities and optional extensions.
 13. Profile-driven quickening, inline caches, and executor specialization.
 
