@@ -571,6 +571,7 @@ func stringGSub(frame Frame) Outcome {
 				built.Grow(len(subject))
 			}
 			built.WriteString(subject[copiedThrough:position])
+			copiedThrough = position
 			count++
 			failure := frame.appendReplacement(
 				&built,

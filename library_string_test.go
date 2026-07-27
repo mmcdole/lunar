@@ -1165,6 +1165,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		want:   "ok 'aaa' 0",
 	},
 	{
+		name:   "gsub_empty_pattern_limit",
+		source: "return ('abc'):gsub('', '-', 2)",
+		want:   "ok '-a-bc' 2",
+	},
+	{
 		name:   "gsub_captures",
 		source: "return ('hello world'):gsub('(%w+)', '<%1>')",
 		want:   "ok '<hello> <world>' 2",
@@ -1213,6 +1218,11 @@ var stringLibraryLua51Cases = []lua51Case{
 		name:   "gsub_anchor_no_match",
 		source: "return ('baa'):gsub('^a', 'X')",
 		want:   "ok 'baa' 0",
+	},
+	{
+		name:   "gsub_empty_end_anchor",
+		source: "return ('abc'):gsub('$', '!')",
+		want:   "ok 'abc!' 1",
 	},
 	{
 		name:   "gsub_function",
