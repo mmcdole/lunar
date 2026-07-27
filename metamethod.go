@@ -88,7 +88,13 @@ func metamethodSlot(
 	value slot,
 	event metamethod,
 ) (slot, bool) {
-	metatable := metatableForSlot(thread, value)
+	return metatableEventSlot(metatableForSlot(thread, value), event)
+}
+
+func metatableEventSlot(
+	metatable *tableObject,
+	event metamethod,
+) (slot, bool) {
 	if metatable == nil {
 		return nilSlot, false
 	}

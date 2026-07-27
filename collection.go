@@ -9,6 +9,18 @@ type objectMark uint8
 
 const objectMarked objectMark = 1
 
+type weakMode uint8
+
+const (
+	weakKeys weakMode = 1 << iota
+	weakValues
+)
+
+type weakTable struct {
+	table *tableObject
+	mode  weakMode
+}
+
 type threadFlags uint8
 
 const (
@@ -41,6 +53,7 @@ type objectLedger struct {
 	functionWork []*functionObject
 	threadWork   []*threadObject
 	userDataWork []*userDataObject
+	weakTables   []weakTable
 	upvalues     map[*upvalue]struct{}
 
 	phase collectionPhase
@@ -208,6 +221,7 @@ func (state *State) collectUnreachable() collectionResult {
 
 	var result collectionResult
 	ledger.phase = collectionSweeping
+	state.clearWeakTables()
 	result.threads = state.sweepThreads()
 	result.functions = state.sweepFunctions()
 	result.tables = state.sweepTables()
@@ -440,8 +454,17 @@ func popObject[T any](work *[]*T) *T {
 
 func (state *State) traceTable(table *tableObject) {
 	state.markTable(table.metatable)
-	for _, value := range table.array.values() {
-		state.markSlot(value)
+	mode := tableWeakMode(table)
+	if mode != 0 {
+		state.objects.weakTables = append(
+			state.objects.weakTables,
+			weakTable{table: table, mode: mode},
+		)
+	}
+	if mode&weakValues == 0 {
+		for _, value := range table.array.values() {
+			state.markSlot(value)
+		}
 	}
 	entries := table.store.entries.values()
 	for index := range entries {
@@ -453,8 +476,107 @@ func (state *State) traceTable(table *tableObject) {
 			retireDeletedReferenceKey(entry)
 			continue
 		}
-		state.markSlot(entry.key)
-		state.markSlot(entry.value)
+		if mode&weakKeys == 0 {
+			state.markSlot(entry.key)
+		}
+		if mode&weakValues == 0 {
+			state.markSlot(entry.value)
+		}
+	}
+}
+
+func tableWeakMode(table *tableObject) weakMode {
+	if table == nil || table.metatable == nil {
+		return 0
+	}
+	value, found := metatableEventSlot(table.metatable, metaMode)
+	if !found || !value.isString() {
+		return 0
+	}
+	var mode weakMode
+	text := stringSlotText(value)
+	for index := 0; index < len(text) && text[index] != 0; index++ {
+		switch text[index] {
+		case 'k':
+			mode |= weakKeys
+		case 'v':
+			mode |= weakValues
+		}
+		if mode == (weakKeys | weakValues) {
+			return mode
+		}
+	}
+	return mode
+}
+
+func (state *State) clearWeakTables() {
+	for _, weak := range state.objects.weakTables {
+		table := weak.table
+		if table == nil ||
+			table.owner != state.runtime ||
+			table.gcMark != objectMarked ||
+			weak.mode == 0 {
+			panic("lua: invalid weak table")
+		}
+		if weak.mode&weakValues != 0 {
+			array := table.array.values()
+			for index := range array {
+				if array[index].isNil() ||
+					!state.unmarkedReference(array[index]) {
+					continue
+				}
+				writeSlot(&array[index], nilSlot)
+				table.arrayUsed--
+			}
+		}
+		entries := table.store.entries.values()
+		for index := range entries {
+			entry := &entries[index]
+			// Lua 5.1 checks both record sides. During ordinary marking
+			// the configured strong side is already marked; finalization
+			// additionally clears finalized userdata values while keeping
+			// them as keys for one cycle.
+			if entry.hash == entryHashEmpty ||
+				entry.value.isNil() ||
+				!state.unmarkedReference(entry.key) &&
+					!state.unmarkedReference(entry.value) {
+				continue
+			}
+			table.store.deleteAt(index)
+			table.recordIntegerDeleted()
+			retireDeletedReferenceKey(entry)
+		}
+	}
+}
+
+func (state *State) unmarkedReference(value slot) bool {
+	switch value.kind() {
+	case TableKind:
+		table := (*tableObject)(value.ref)
+		if table.owner != state.runtime {
+			panic("lua: foreign table in weak table")
+		}
+		return table.gcMark != objectMarked
+	case FunctionKind:
+		function := (*functionObject)(value.ref)
+		if function.owner != state.runtime {
+			panic("lua: foreign function in weak table")
+		}
+		return function.gcMark != objectMarked
+	case ThreadKind:
+		thread := (*threadObject)(value.ref)
+		if thread.owner != state.runtime {
+			panic("lua: foreign thread in weak table")
+		}
+		return thread.collectionMark() != objectMarked
+	case UserDataKind:
+		data := (*userDataObject)(value.ref)
+		if data.owner != state.runtime {
+			panic("lua: foreign userdata in weak table")
+		}
+		return data.gcMark != objectMarked
+	default:
+		return false
 	}
 }
 
@@ -623,11 +745,12 @@ func (ledger *objectLedger) clearWork() {
 	clearCollectionWork(&ledger.functionWork)
 	clearCollectionWork(&ledger.threadWork)
 	clearCollectionWork(&ledger.userDataWork)
+	clearCollectionWork(&ledger.weakTables)
 }
 
 const maximumRetainedCollectionWork = 1024
 
-func clearCollectionWork[T any](work *[]*T) {
+func clearCollectionWork[T any](work *[]T) {
 	clear(*work)
 	if cap(*work) > maximumRetainedCollectionWork {
 		*work = nil

@@ -10,9 +10,9 @@ resources and never execute Lua.
 
 The ownership boundary, State-owned object ledger, centralized tracer,
 logical accounting, close detachment, internal synchronous sweep, and
-non-owning deleted-reference continuations are implemented. Weak-table
-classification and clearing, Lua `__gc`, automatic or incremental policy,
-and the public collection functions are not yet implemented or exposed.
+Lua 5.1 weak-table classification and clearing are implemented. Lua `__gc`,
+automatic or incremental policy, and the public collection functions are not
+yet implemented or exposed.
 
 ## Ownership boundary
 
@@ -104,10 +104,12 @@ finalization state.
 
 Current mark work uses four reusable State-owned typed slices. Oversized work
 frontiers are discarded after a pass, and object vectors release excess slack
-after sweeping. Weak-table work and pending finalizers will use State-owned
-queues when implemented. Objects do not carry gray links, cached weak modes,
-per-object reference counts, or host-handle cache fields. Host metadata is
-paid only by objects that cross the Go boundary.
+after sweeping. Weak tables use a State-owned queue of table/mode pairs that
+is cleared after every pass and discarded after an oversized frontier.
+Pending finalizers will likewise use State-owned queues. Objects do not carry
+gray links, cached weak modes, per-object reference counts, or host-handle
+cache fields. Host metadata is paid only by objects that cross the Go
+boundary.
 
 The ledger and centralized tracer now support internal synchronous full
 collection at executor safe points. Every canonical constructor registers
@@ -118,10 +120,10 @@ collector-scratch backing allocation while preserving documented post-close
 observations of owning handles. Thread execution backing is deliberately
 released.
 
-The internal collector remains unexposed while weak clearing and Lua
-finalization are incomplete. Incremental barriers are added only with the
-incremental collector; the synchronous collector does not burden every table
-write with an unfinished tri-color protocol.
+The internal collector remains unexposed while Lua finalization is incomplete.
+Incremental barriers are added only with the incremental collector; the
+synchronous collector does not burden every table write with an unfinished
+tri-color protocol.
 
 Logical accounting counts one pointer-sized ledger entry per registered object
 plus retained subordinate backing capacities, including deduplicated
@@ -178,22 +180,32 @@ The raw string value of a metatable's `__mode` field controls weakness:
 
 Implicit integer array keys are not objects, so weak keys do not weaken array
 values. The metatable itself is always strong. A non-string mode or a mode
-without either character is strong. Lua 5.1 leaves changing `__mode` after a
-table has used that metatable undefined.
+without either character is strong. Lookup is raw and respects the ordinary
+metamethod-absence cache; inherited or coerced values do not count. Matching
+is case-sensitive and, like Lua 5.1's C-string scan, stops at the first
+embedded NUL. Lua 5.1 leaves changing `__mode` after a table has used that
+metatable undefined.
 
 Lua 5.1 weak keys are not ephemerons. A weak-key table still marks every
 value unconditionally. If a value points back to its weak key, that reference
 can keep the key alive. Badger must not import Lua 5.2's later ephemeron
 algorithm into the 5.1 runtime.
 
-Weak entries are cleared after marking and before finalizers run. Clearing a
-record entry removes both key and value as semantic edges. When traversal
-continuation requires the old key identity, the store retains only a
-non-owning dead-key token; an ordinary `slot` tombstone would keep the object
-alive through Go's collector. The token contains Go's supported weak pointer,
-not a dangling `unsafe.Pointer` or integerized address. It is installed during
-collection so ordinary deletion remains allocation-free, and revival restores
-the canonical strong key before any table rehash. Array entries clear to nil.
+Reachable weak tables are classified while marking. Array values are skipped
+only for `v`; record keys and values are skipped according to their respective
+mode bits. Once the mark frontier is fully drained, weak entries are cleared
+before sweeping. As in PUC Lua 5.1, record clearing checks both sides: the
+configured strong side was already marked, while finalization will add the
+special finalized-userdata rule. Clearing removes both key and value as
+semantic edges and updates array occupancy and sparse-integer metadata.
+
+When traversal continuation requires the old key identity, the record store
+retains only a non-owning dead-key token; an ordinary `slot` tombstone would
+keep the object alive through Go's collector. The token contains Go's
+supported weak pointer, not a dangling `unsafe.Pointer` or integerized
+address. It is installed during collection so ordinary deletion remains
+allocation-free, and revival restores the canonical strong key before any
+table rehash. Array entries clear to nil.
 
 Strings and scalar values are never weak-cleared. Unreachable reference
 values are. Deleted reference keys already use the non-owning continuation
@@ -266,8 +278,9 @@ fresh registered metatable while a valid proxy shares its exact metatable.
    logical accounting, centralized tracing, and an internal synchronous sweep.
    Root/edge, cycle, safe-point, upvalue, close-lifetime, and warm-allocation
    tests qualify the foundation.
-3. **In progress.** Non-owning deleted reference keys and continuation
-   revival are complete. Add weak-table classification and post-mark clearing.
+3. **Complete.** Add non-owning deleted reference keys, raw `__mode`
+   classification, Lua 5.1 strong-side marking, post-mark clearing, and
+   traversal-safe tombstones.
 4. Add userdata separation, finalizer execution, resurrection, errors, and
    close-time draining.
 5. Expose synchronous collection and count controls after the weak and
@@ -278,10 +291,12 @@ fresh registered metatable while a valid proxy shares its exact metatable.
 
 The current ledger suite covers registration, every object-edge kind, State
 and host roots, cycles, execution safe points, escaped upvalues, State
-isolation, close detachment, logical accounting, and warm collection. The
-completed qualification suite will compare the remaining semantics with PUC
-Lua 5.1.5 and cover the `k`/`v`/`kv` matrix, strings in weak tables, Lua 5.1's
-value-to-weak-key cycle, traversal after collector deletion, reverse
+isolation, close detachment, logical accounting, warm collection, the
+`k`/`v`/`kv` matrix, strings and scalars in weak tables, Lua 5.1's
+value-to-weak-key cycles, every reference kind, sparse integer metadata,
+collision chains, host roots, traversal after collector deletion, retry and
+poison failure phases, and bounded scratch. The completed qualification suite
+will compare the public behavior with PUC Lua 5.1.5 and cover reverse
 finalization order, resurrection, dynamic handler replacement, finalizer
 errors, close-time draining, two-State isolation, and every collection-control
 return type.

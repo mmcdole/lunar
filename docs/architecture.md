@@ -71,7 +71,8 @@ Files are organized by substantial runtime concepts:
 - `value.go`: compact values, kinds, scalar semantics, and object identity;
 - `state.go`: runtime ownership, lifecycle, globals, userdata, and errors;
 - `collection.go`: the State-local object ledger, centralized graph tracer,
-  synchronous sweep, close-time detachment, and logical heap accounting;
+  Lua 5.1 weak-table processing, synchronous sweep, close-time detachment,
+  and logical heap accounting;
 - `string.go`: State-neutral immutable strings, stable hashing, and bounded
   runtime-local short-string reuse;
 - `table.go`: dense-array storage, raw table semantics, mutation accounting,

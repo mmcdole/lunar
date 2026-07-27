@@ -746,6 +746,14 @@ holder. Deleted string keys remain content-bearing tombstones because strings
 are value-equal and are not independent objects in the current semantic
 ledger.
 
+Weakness adds no field to a table and no write barrier to mutation. Each full
+pass classifies `__mode` once for every reachable table, queues only the tables
+that are actually weak, and reuses bounded State-owned queue storage. The mode
+travels with the queue entry rather than becoming persistent table state.
+Warm collection of a stable weak table is allocation-free. Clearing mutates
+array and chained-record storage in place, preserving collision links and
+deferring compaction to the same insertion seams used by ordinary deletion.
+
 ## Gates
 
 Every tranche must pass the full semantic, race, checkptr, vet, and supported
