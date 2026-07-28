@@ -7,14 +7,14 @@ benchmark groups:
 | --- | --- |
 | `BenchmarkPrograms` | Four established Lua programs, invoked once from Go |
 | `BenchmarkInterpreter` | Numeric loops, Lua calls, table access, and string construction inside Lua |
-| `BenchmarkEmbedding` | Go-to-Lua calls, Lua-to-Go callbacks, string exchange, and host-built tables |
+| `BenchmarkEmbedding` | Go-to-Lua calls, Lua-to-Go callbacks, string conversion, and new or reused host-built tables |
 
 The large synthetic CBOR graph has a separate fresh-process harness under
 [`cbor/`](cbor/README.md). Retained memory from that harness is not combined
 with the Go benchmark allocation counters.
 
 Published raw output and summaries are under
-[`results/2026-07-27-darwin-arm64-m3-pro/`](results/2026-07-27-darwin-arm64-m3-pro/).
+[`results/2026-07-28-darwin-arm64-m3-pro/`](results/2026-07-28-darwin-arm64-m3-pro/).
 
 ## Runtime versions
 
@@ -48,6 +48,15 @@ comparisons use:
 - a fixed benchmark duration;
 - a clean, recorded Git revision; and
 - raw Go benchmark output retained with the result.
+
+The embedding table cases separate passing an already-built table from
+creating, filling, and passing a new table. This keeps table access distinct
+from construction and public-handle publication.
+
+Every current row remains in the canonical suite. Rows with similar times
+cover different execution paths and can still differ in allocation traffic.
+Small time differences on one machine are reported as near parity rather than
+as a general runtime ranking.
 
 The four program sources, local input sizes, output oracles, exact upstream
 commit, file hashes, and license are recorded in

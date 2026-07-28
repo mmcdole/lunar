@@ -102,29 +102,30 @@ Performance is measured in separate groups:
 ### Results
 
 The following medians come from 15 samples on an Apple M3 Pro with Go 1.25.1
-at source revision `1a50139`. Lower is better.
+at source revision `1d43aec`. Lower is better.
 
 | Established Lua program | Lugo | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | 172.9 ms | 176.5 ms | 186.0 ms |
-| fannkuch-redux | 24.25 ms | 33.67 ms | 41.33 ms |
-| n-body | 61.30 ms | 195.59 ms | 204.94 ms |
-| spectral-norm | 55.63 ms | 166.21 ms | 157.80 ms |
+| binary-trees | **162.2 ms** | 172.4 ms | 179.8 ms |
+| fannkuch-redux | **23.63 ms** | 33.17 ms | 40.14 ms |
+| n-body | **59.03 ms** | 193.39 ms | 197.77 ms |
+| spectral-norm | **52.82 ms** | 160.14 ms | 153.66 ms |
 
 | Embedding operation | Lugo | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go to Lua, scalars | 64.25 ns | 63.00 ns | 153.90 ns |
-| Lua to Go callback, 1,000 calls | 63.65 µs | 103.13 µs | 86.96 µs |
-| Go string echo, 128 bytes | 89.04 ns | 85.51 ns | 148.50 ns |
-| Go-built table, 16 array and 4 record fields | 2.327 µs | 1.434 µs | 1.679 µs |
+| Go to Lua, scalars | **61.21 ns** | 61.51 ns | 146.80 ns |
+| Lua to Go callback, 1,000 calls | **62.49 µs** | 99.58 µs | 84.37 µs |
+| Convert 128-byte Go string and echo from Lua | 86.20 ns | **81.41 ns** | 144.00 ns |
+| Pass prebuilt table and checksum in Lua | **312.4 ns** | 578.3 ns | 972.9 ns |
+| Create, fill, pass, and checksum table | 2.230 µs | **1.405 µs** | 1.645 µs |
 
 | CBOR load memory | Lugo | GopherLua |
 | --- | ---: | ---: |
-| Allocation traffic | 107.5 MB | 784.6 MB |
-| Baseline-subtracted retained heap increase | 72.24 MiB | 542.26 MiB |
-| Absolute live Go heap after forced GC | 72.53 MiB | 543.83 MiB |
+| Allocation traffic | **107.5 MB** | 784.6 MB |
+| Baseline-subtracted retained heap increase | **72.24 MiB** | 542.26 MiB |
+| Absolute live Go heap after forced GC | **72.53 MiB** | 543.83 MiB |
 
-The [result archive](benchmarks/results/2026-07-27-darwin-arm64-m3-pro/)
+The [result archive](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
 contains confidence intervals, allocation counts, interpreter microbenchmarks,
 raw Go benchmark output, and paired CBOR JSONL records. Shopify go-lua is not
 in the CBOR table because its pinned standard IO library does not implement
