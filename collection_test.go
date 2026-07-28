@@ -762,6 +762,115 @@ func TestSemanticSweepCompactsStableVectorsAndClearsTail(t *testing.T) {
 	}
 }
 
+func TestObjectVectorRetentionSlackPolicies(t *testing.T) {
+	const wantTableSlack = 16 * 1024
+	if maximumRetainedTableVectorSlack != wantTableSlack {
+		t.Fatalf(
+			"table-vector fixed slack = %d; want %d",
+			maximumRetainedTableVectorSlack,
+			wantTableSlack,
+		)
+	}
+
+	table := &tableObject{}
+	for _, test := range []struct {
+		name   string
+		live   int
+		slack  int
+		retain bool
+	}{
+		{name: "empty at limit", slack: wantTableSlack, retain: true},
+		{name: "empty over limit", slack: wantTableSlack + 1},
+		{
+			name:   "live at limit",
+			live:   1,
+			slack:  wantTableSlack,
+			retain: true,
+		},
+		{name: "live over limit", live: 1, slack: wantTableSlack + 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			objects := make(
+				[]*tableObject,
+				test.live,
+				test.live+test.slack,
+			)
+			if test.live != 0 {
+				objects[0] = table
+			}
+			retained := retainTableObjectVector(objects)
+			if len(retained) != test.live {
+				t.Fatalf(
+					"retained length = %d; want %d",
+					len(retained),
+					test.live,
+				)
+			}
+			if test.live != 0 && retained[0] != table {
+				t.Fatal("compaction discarded the live table")
+			}
+			sameCapacity := cap(retained) == cap(objects)
+			if sameCapacity != test.retain {
+				t.Fatalf(
+					"capacity retained = %v; want %v",
+					sameCapacity,
+					test.retain,
+				)
+			}
+		})
+	}
+
+	emptyOverGeneralLimit := make(
+		[]*functionObject,
+		0,
+		maximumRetainedObjectVectorSlack+1,
+	)
+	if retained := retainObjectVector(
+		emptyOverGeneralLimit,
+	); retained != nil {
+		t.Fatalf(
+			"non-table vector over general limit retained capacity %d",
+			cap(retained),
+		)
+	}
+}
+
+func TestWarmDeadTableChurnAllocatesOnlyTableObjects(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	const tablesPerCycle = 1024
+	runCycle := func() {
+		for range tablesPerCycle {
+			newTable(state, 0, 0)
+		}
+		result, failure := state.collectAndFinalize()
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		if result.tables != tablesPerCycle {
+			t.Fatalf(
+				"semantic table sweep = %d; want %d",
+				result.tables,
+				tablesPerCycle,
+			)
+		}
+	}
+
+	runCycle()
+	if allocations := testing.AllocsPerRun(
+		100,
+		runCycle,
+	); allocations != tablesPerCycle {
+		t.Fatalf(
+			"warm dead-table churn allocations = %v; want %d",
+			allocations,
+			tablesPerCycle,
+		)
+	}
+}
+
 func TestOwningTableDoesNotRetainStateLedgerPeers(t *testing.T) {
 	table, stateReference, peerReference := tableFromDiscardedState(t)
 	deadline := time.NewTimer(2 * time.Second)

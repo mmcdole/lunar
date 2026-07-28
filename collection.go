@@ -1257,7 +1257,7 @@ func (state *State) sweepTables() int {
 	}
 	swept := len(ledger.tables) - len(live)
 	clear(ledger.tables[len(live):])
-	ledger.tables = retainObjectVector(live)
+	ledger.tables = retainTableObjectVector(live)
 	return swept
 }
 
@@ -1279,26 +1279,52 @@ func (state *State) sweepUserData() int {
 	return swept
 }
 
-const maximumRetainedObjectVectorSlack = 1024
+const (
+	maximumRetainedObjectVectorSlack = 1024
+	// Tables commonly churn by thousands between semantic collections.
+	// A larger fixed allowance of 16K pointer entries avoids repeated ledger
+	// compaction and regrowth without enlarging table objects or retaining
+	// swept tables.
+	maximumRetainedTableVectorSlack = 16 << 10
+)
 
 func retainObjectVector[T any](objects []*T) []*T {
+	return retainObjectVectorWithSlack(
+		objects,
+		maximumRetainedObjectVectorSlack,
+	)
+}
+
+func retainTableObjectVector(
+	objects []*tableObject,
+) []*tableObject {
+	return retainObjectVectorWithSlack(
+		objects,
+		maximumRetainedTableVectorSlack,
+	)
+}
+
+func retainObjectVectorWithSlack[T any](
+	objects []*T,
+	maximumSlack int,
+) []*T {
 	if len(objects) == 0 {
-		if cap(objects) <= maximumRetainedObjectVectorSlack {
+		if cap(objects) <= maximumSlack {
 			return objects
 		}
 		return nil
 	}
 	slackCapacity := cap(objects) - len(objects)
 	if slackCapacity <= len(objects) ||
-		slackCapacity <= maximumRetainedObjectVectorSlack {
+		slackCapacity <= maximumSlack {
 		return objects
 	}
 	slack := len(objects) / 4
 	if slack < 16 {
 		slack = 16
 	}
-	if slack > maximumRetainedObjectVectorSlack {
-		slack = maximumRetainedObjectVectorSlack
+	if slack > maximumSlack {
+		slack = maximumSlack
 	}
 	compacted := make([]*T, len(objects), len(objects)+slack)
 	copy(compacted, objects)
