@@ -69,7 +69,13 @@ func BenchmarkEmbedding(b *testing.B) {
 			goLua:     benchmarkGoStringEchoGoLua,
 		},
 		{
-			name:      "go_table_16_4_to_lua",
+			name:      "prebuilt_go_table_16_4_to_lua",
+			lugo:      benchmarkPrebuiltGoTableToLuaLugo,
+			gopherLua: benchmarkPrebuiltGoTableToLuaGopherLua,
+			goLua:     benchmarkPrebuiltGoTableToLuaGoLua,
+		},
+		{
+			name:      "create_fill_go_table_16_4_to_lua",
 			lugo:      benchmarkGoTableToLuaLugo,
 			gopherLua: benchmarkGoTableToLuaGopherLua,
 			goLua:     benchmarkGoTableToLuaGoLua,
@@ -503,6 +509,104 @@ var tableRecordFields = [...]struct {
 	{name: "delta", value: 20},
 }
 
+func benchmarkPrebuiltGoTableToLuaLugo(b *testing.B) {
+	state, function := loadLugoFunction(b, tableChecksumSource)
+	table, err := state.NewTable(16, 4)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := fillLugoBenchmarkTable(table); err != nil {
+		b.Fatal(err)
+	}
+	arguments := [...]lugo.Value{table.Value()}
+	var results [1]lugo.Value
+	var count int
+	var result float64
+	var resultOK bool
+	run := func() error {
+		var callErr error
+		count, callErr = state.CallInto(function, arguments[:], results[:])
+		if callErr != nil {
+			return callErr
+		}
+		result, resultOK = results[0].AsNumber()
+		return nil
+	}
+	if err := run(); err != nil {
+		b.Fatal(err)
+	}
+	validateLugoNumberResult(b, result, resultOK, count, 210)
+
+	runtime.GC()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	validateLugoNumberResult(b, result, resultOK, count, 210)
+}
+
+func benchmarkPrebuiltGoTableToLuaGopherLua(b *testing.B) {
+	state, function := loadGopherLuaFunction(b, tableChecksumSource)
+	call := gopherlua.P{Fn: function, NRet: 1, Protect: true}
+	table := state.CreateTable(16, 4)
+	fillGopherLuaBenchmarkTable(table)
+	var result gopherlua.LNumber
+	var resultOK bool
+	run := func() error {
+		if err := state.CallByParam(call, table); err != nil {
+			return err
+		}
+		result, resultOK = state.Get(-1).(gopherlua.LNumber)
+		state.Pop(1)
+		return nil
+	}
+	if err := run(); err != nil {
+		b.Fatal(err)
+	}
+	validateGopherLuaNumberResult(b, result, resultOK, 210)
+
+	runtime.GC()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	validateGopherLuaNumberResult(b, result, resultOK, 210)
+}
+
+func benchmarkPrebuiltGoTableToLuaGoLua(b *testing.B) {
+	state, functionIndex := loadGoLuaFunction(b, tableChecksumSource)
+	tableIndex := pushGoLuaBenchmarkTable(state)
+	var result float64
+	var resultOK bool
+	run := func() error {
+		state.PushValue(functionIndex)
+		state.PushValue(tableIndex)
+		if err := state.ProtectedCall(1, 1, 0); err != nil {
+			return err
+		}
+		result, resultOK = state.ToNumber(-1)
+		state.Pop(1)
+		return nil
+	}
+	if err := run(); err != nil {
+		b.Fatal(err)
+	}
+	validateGoLuaNumberResult(b, result, resultOK, 210)
+
+	runtime.GC()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	validateGoLuaNumberResult(b, result, resultOK, 210)
+}
+
 func benchmarkGoTableToLuaLugo(b *testing.B) {
 	state, function := loadLugoFunction(b, tableChecksumSource)
 	var arguments [1]lugo.Value
@@ -516,15 +620,8 @@ func benchmarkGoTableToLuaLugo(b *testing.B) {
 		if tableErr != nil {
 			return tableErr
 		}
-		for index := 1; index <= 16; index++ {
-			if tableErr := table.RawSetInt(index, lugo.Number(float64(index))); tableErr != nil {
-				return tableErr
-			}
-		}
-		for _, field := range tableRecordFields {
-			if tableErr := table.RawSetString(field.name, lugo.Number(field.value)); tableErr != nil {
-				return tableErr
-			}
+		if tableErr := fillLugoBenchmarkTable(table); tableErr != nil {
+			return tableErr
 		}
 		arguments[0] = table.Value()
 		count, err = state.CallInto(function, arguments[:], results[:])
@@ -556,12 +653,7 @@ func benchmarkGoTableToLuaGopherLua(b *testing.B) {
 	var resultOK bool
 	run := func() error {
 		table := state.CreateTable(16, 4)
-		for index := 1; index <= 16; index++ {
-			table.RawSetInt(index, gopherlua.LNumber(index))
-		}
-		for _, field := range tableRecordFields {
-			table.RawSetString(field.name, gopherlua.LNumber(field.value))
-		}
+		fillGopherLuaBenchmarkTable(table)
 		if err := state.CallByParam(call, table); err != nil {
 			return err
 		}
@@ -590,17 +682,7 @@ func benchmarkGoTableToLuaGoLua(b *testing.B) {
 	var resultOK bool
 	run := func() error {
 		state.PushValue(functionIndex)
-		state.CreateTable(16, 4)
-		tableIndex := state.Top()
-		for index := 1; index <= 16; index++ {
-			state.PushNumber(float64(index))
-			state.RawSetInt(tableIndex, index)
-		}
-		for _, field := range tableRecordFields {
-			state.PushString(field.name)
-			state.PushNumber(field.value)
-			state.RawSet(tableIndex)
-		}
+		pushGoLuaBenchmarkTable(state)
 		if err := state.ProtectedCall(1, 1, 0); err != nil {
 			return err
 		}
@@ -621,6 +703,50 @@ func benchmarkGoTableToLuaGoLua(b *testing.B) {
 		}
 	}
 	validateGoLuaNumberResult(b, result, resultOK, 210)
+}
+
+func fillLugoBenchmarkTable(table *lugo.Table) error {
+	for index := 1; index <= 16; index++ {
+		if err := table.RawSetInt(
+			index,
+			lugo.Number(float64(index)),
+		); err != nil {
+			return err
+		}
+	}
+	for _, field := range tableRecordFields {
+		if err := table.RawSetString(
+			field.name,
+			lugo.Number(field.value),
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func fillGopherLuaBenchmarkTable(table *gopherlua.LTable) {
+	for index := 1; index <= 16; index++ {
+		table.RawSetInt(index, gopherlua.LNumber(index))
+	}
+	for _, field := range tableRecordFields {
+		table.RawSetString(field.name, gopherlua.LNumber(field.value))
+	}
+}
+
+func pushGoLuaBenchmarkTable(state *golua.State) int {
+	state.CreateTable(16, 4)
+	tableIndex := state.Top()
+	for index := 1; index <= 16; index++ {
+		state.PushNumber(float64(index))
+		state.RawSetInt(tableIndex, index)
+	}
+	for _, field := range tableRecordFields {
+		state.PushString(field.name)
+		state.PushNumber(field.value)
+		state.RawSet(tableIndex)
+	}
+	return tableIndex
 }
 
 func validateLugoNumberResult(
