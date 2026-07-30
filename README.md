@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/lunik.png" alt="Lunik gopher orbiting the Moon" width="240">
+  <img src="assets/lunik.png" alt="Lunar gopher orbiting the Moon" width="240">
 </p>
 
-<h1 align="center">Lunik</h1>
+<h1 align="center">Lunar</h1>
 
 <p align="center">
   A fast, memory-efficient Lua 5.1 runtime for Go.
@@ -13,7 +13,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
-Lunik implements Lua 5.1 entirely in Go: compiler, bytecode VM, coroutines,
+Lunar implements Lua 5.1 entirely in Go: compiler, bytecode VM, coroutines,
 binary chunks, and standard libraries. Its compiler, VM, libraries, and
 pattern engine are checked against the
 [Lua 5.1 reference implementation](https://www.lua.org/ftp/).
@@ -90,7 +90,7 @@ total, _ := results[0].AsNumber()
 fmt.Printf("%.2f\n", total)
 ```
 
-See [Embedding Lunik](docs/embedding.md) for callbacks, tables, contexts,
+See [Embedding Lunar](docs/embedding.md) for callbacks, tables, contexts,
 errors, coroutines, and lifecycle management.
 
 ## Performance
@@ -98,14 +98,14 @@ errors, coroutines, and lifecycle management.
 These results are medians from 15 runs on an Apple M3 Pro with Go 1.25.1.
 Lower is better.
 
-| Established Lua program | Lunik | GopherLua | go-lua |
+| Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
 | binary-trees | **162.2 ms** | 172.4 ms | 179.8 ms |
 | fannkuch-redux | **23.63 ms** | 33.17 ms | 40.14 ms |
 | n-body | **59.03 ms** | 193.39 ms | 197.77 ms |
 | spectral-norm | **52.82 ms** | 160.14 ms | 153.66 ms |
 
-| Embedding operation | Lunik | GopherLua | go-lua |
+| Embedding operation | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
 | Go calls Lua with scalar arguments | **61.21 ns** | 61.51 ns | 146.80 ns |
 | Lua calls Go 1,000 times | **62.49 µs** | 99.58 µs | 84.37 µs |
@@ -113,7 +113,7 @@ Lower is better.
 | Lua checksums a reused Go-built table | **312.4 ns** | 578.3 ns | 972.9 ns |
 | Build a table in Go, then checksum it in Lua | 2.230 µs | **1.405 µs** | 1.645 µs |
 
-| Loading a 9 MB CBOR graph | Lunik | GopherLua |
+| Loading a 9 MB CBOR graph | Lunar | GopherLua |
 | --- | ---: | ---: |
 | Total memory allocated while loading | **107.5 MB** | 784.6 MB |
 | Live heap added after garbage collection | **72.24 MiB** | 542.26 MiB |
@@ -125,7 +125,7 @@ runtime versions.
 
 ## Compatibility
 
-| | Lunik | [GopherLua](https://github.com/yuin/gopher-lua) | [Shopify go-lua](https://github.com/Shopify/go-lua) |
+| | Lunar | [GopherLua](https://github.com/yuin/gopher-lua) | [Shopify go-lua](https://github.com/Shopify/go-lua) |
 | --- | --- | --- | --- |
 | Lua version | Lua 5.1 | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
 | Go API | Functions return typed values; callbacks use typed `Frame` accessors | Values are `LValue` objects; callbacks pass arguments and results through an `LState` stack | Mirrors the Lua C API; values are addressed by numeric stack position |
@@ -164,4 +164,4 @@ The public embedding API is still stabilizing.
 - [Third-party notices](THIRD_PARTY_NOTICES.md): adapted algorithms, artwork,
   and benchmark sources
 
-Lunik is available under the [MIT License](LICENSE).
+Lunar is available under the [MIT License](LICENSE).
