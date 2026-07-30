@@ -242,6 +242,49 @@ if err := state.SetGlobal("host_multiply", multiply.Value()); err != nil {
 }
 ```
 
+Use the helper whose name matches the contract you want:
+
+- `Number` and `String` require the exact Lua kind.
+- `CoerceNumber` additionally accepts a complete numeric string.
+- `CoerceString` additionally spells a number as Lua would.
+- `Integer` requires an exact, finite, integral number representable by
+  `int64`.
+- `IntegerInRange` adds an inclusive caller-supplied range.
+- `IsMissingOrNil` lets optional arguments share one explicit default path.
+
+For example, this callback accepts a string-or-number label and an optional
+bounded integer:
+
+```go
+describe, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+	label, ok := frame.CoerceString(0)
+	if !ok {
+		return frame.ArgTypeError(
+			0,
+			lua.StringKind,
+			lua.NumberKind,
+		)
+	}
+
+	limit := int64(25)
+	if !frame.IsMissingOrNil(1) {
+		limit, ok = frame.IntegerInRange(1, 1, 100)
+		if !ok {
+			return frame.ArgError(
+				1,
+				"integer from 1 through 100 expected",
+			)
+		}
+	}
+	return frame.ReturnString(fmt.Sprintf("%s:%d", label, limit))
+})
+```
+
+These methods report invalid Lua input with `ok == false`; they do not panic
+or silently truncate it. `ArgTypeError` accepts one or more distinct expected
+kinds and translates the zero-based Go index to a one-based Lua argument
+ordinal.
+
 A callback must return an `Outcome` created by its current Frame:
 
 - `Return*` publishes results;
@@ -260,6 +303,29 @@ function's private runtime storage.
 A Go panic is not converted into a Lua error. It propagates to Go after Lunar
 restores the Frame. Use `Raise*`, `ArgError`, or `ArgTypeError` for failures
 that Lua should be able to catch.
+
+Use `RaiseError(err)` for an ordinary host failure. Lunar raises `err.Error()`
+as the Lua value and retains `err` as the Go cause, so a later host caller can
+use `errors.Is` or `errors.As`. Use `Reraise(failure)` for a `*lua.Error`
+returned by a nested Frame operation; it preserves the original arbitrary Lua
+value, category, cause, and traceback. A direct `*lua.Error` passed to
+`RaiseError` is defensively reraised, but explicit `Reraise` documents the
+intended boundary.
+
+```go
+results, err := frame.Call(callback, arguments...)
+if err != nil {
+	var failure *lua.Error
+	if errors.As(err, &failure) {
+		return frame.Reraise(failure)
+	}
+	return frame.RaiseError(err)
+}
+return frame.ReturnValues(results...)
+```
+
+`ReturnArguments` is the allocation-conscious echo path when a callback wants
+to return every argument unchanged.
 
 ## Cancellation
 

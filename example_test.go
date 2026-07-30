@@ -106,3 +106,47 @@ func ExampleState_NewNativeFunction() {
 	// Output:
 	// 42
 }
+
+func ExampleFrame_IntegerInRange() {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		panic(err)
+	}
+	defer state.Close()
+
+	describe, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+		label, ok := frame.CoerceString(0)
+		if !ok {
+			return frame.ArgTypeError(
+				0,
+				lua.StringKind,
+				lua.NumberKind,
+			)
+		}
+
+		limit := int64(25)
+		if !frame.IsMissingOrNil(1) {
+			limit, ok = frame.IntegerInRange(1, 1, 100)
+			if !ok {
+				return frame.ArgError(
+					1,
+					"integer from 1 through 100 expected",
+				)
+			}
+		}
+		return frame.ReturnString(fmt.Sprintf("%s:%d", label, limit))
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	results, err := state.Call(describe.Value(), lua.Number(42))
+	if err != nil {
+		panic(err)
+	}
+	text, _ := results[0].AsString()
+	fmt.Println(text)
+
+	// Output:
+	// 42:25
+}

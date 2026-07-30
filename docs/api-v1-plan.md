@@ -157,12 +157,27 @@ for:
 - missing-or-nil defaults; and
 - diagnostics accepting one of several Kinds.
 
+Decisions:
+
+- `CoerceNumber` accepts exact numbers and complete numeric strings;
+- `CoerceString` accepts exact strings and primitive numbers, without
+  invoking `__tostring`;
+- `Integer` accepts only exact, finite, integral numbers representable by
+  `int64`;
+- `IntegerInRange` applies an inclusive range and rejects an inverted range;
+- `IsMissingOrNil` composes with every exact or coercing helper instead of
+  multiplying the API into `Optional*` variants; and
+- variadic `ArgTypeError` requires one or more distinct valid Kinds and
+  preserves caller order in its diagnostic.
+
 Do not expose the standard libraries' truncating or saturating integer
 compatibility behavior until a concrete module needs it.
 
 Rename the current `Frame.RaiseError(*Error)` to `Frame.Reraise(*Error)`. Add
 `Frame.RaiseError(error)` to preserve an ordinary Go error as the cause of a
-Lua runtime error, and export `Frame.ReturnArguments`.
+Lua runtime error, and export `Frame.ReturnArguments`. A direct `*Error`
+passed to `RaiseError` is reraised defensively; code handling a nested Lua
+failure should still say `Reraise` explicitly.
 
 Exit criteria:
 

@@ -188,6 +188,10 @@ interface over the same runtime:
 - `Frame.Call` and `Frame.CallInto` make protected reentrant calls.
 - `Frame.Index` and `Frame.SetIndex` perform Lua indexing from a callback.
 
+Frame argument indexes are zero-based. Exact typed accessors never coerce;
+explicitly named coercion, strict-integer, range, and missing-or-nil helpers
+cover common native-module validation without panic control flow.
+
 `CallInto` does not write a partial result when its destination is too small.
 It returns the required count in `ResultCapacityError`; Lua side effects from
 the completed call are not rolled back.
@@ -195,7 +199,9 @@ the completed call are not rolled back.
 Native callbacks return through `Frame.Return*`, `Frame.Raise*`, or
 `Frame.Yield*`. An `Outcome` is tied to the invocation that created it. A
 callback may retain owning values read from the Frame, but it must not retain
-the Frame itself.
+the Frame itself. `RaiseError` converts an ordinary Go error and preserves it
+as the cause; `Reraise` propagates an existing Lua error without losing its
+value, category, or nested traceback.
 
 See [Embedding Lunar](embedding.md) for examples and lifecycle guidance.
 
