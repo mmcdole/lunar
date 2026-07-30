@@ -13,15 +13,15 @@ func TestFrameCallCompletesMetamethodAndIteratorContinuations(t *testing.T) {
 	}
 	defer state.Close()
 
-	object, err := state.NewTable(0, 0)
+	object, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := state.NewTable(0, 0)
+	other, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 5)
+	metatable, err := state.NewTableWithCapacity(0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,10 +74,10 @@ func TestFrameCallCompletesMetamethodAndIteratorContinuations(t *testing.T) {
 	if err := state.SetMetatable(other.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("continued_object", object.Value()); err != nil {
+	if err := state.SetRawGlobal("continued_object", object.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("continued_other", other.Value()); err != nil {
+	if err := state.SetRawGlobal("continued_other", other.Value()); err != nil {
 		t.Fatal(err)
 	}
 	iteration := 0
@@ -95,7 +95,7 @@ func TestFrameCallCompletesMetamethodAndIteratorContinuations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("continued_iterator", iterator.Value()); err != nil {
+	if err := state.SetRawGlobal("continued_iterator", iterator.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-continuations.lua", `
@@ -158,7 +158,7 @@ func TestFrameCallClosesFailedCalleeUpvaluesAndPreservesCallerUpvalues(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_upvalue_fail", fail.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_upvalue_fail", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-upvalues.lua", `
@@ -181,7 +181,7 @@ inner = 99
 		if !errors.As(callErr, &nestedFailure) {
 			return frame.RaiseString("nested upvalue target did not fail")
 		}
-		escaped, globalErr := state.Global("nested_escaped")
+		escaped, globalErr := state.RawGlobal("nested_escaped")
 		if globalErr != nil {
 			return frame.RaiseString(globalErr.Error())
 		}
@@ -198,7 +198,7 @@ inner = 99
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_upvalue_bridge", bridge.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_upvalue_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@outer-upvalues.lua", `
@@ -241,7 +241,7 @@ func TestFrameCallPropagatesGoPanicAndRestoresExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_panic", panicking.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_panic", panicking.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(
@@ -400,14 +400,14 @@ func TestFrameCallRejectsSameThreadYieldThenOuterFrameRecoversAndYields(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_yield", yielding.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_yield", yielding.Value()); err != nil {
 		t.Fatal(err)
 	}
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	callableMetatable, err := state.NewTable(0, 1)
+	callableMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ return coroutine.yield("child-yield")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_child", child.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_child", child.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-child-resume.lua", `
@@ -608,11 +608,11 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		callable, err := state.NewTable(0, 0)
+		callable, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}

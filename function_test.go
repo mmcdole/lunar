@@ -210,7 +210,7 @@ func TestFunctionRepresentations(t *testing.T) {
 			nativeValue.bits,
 		)
 	}
-	fromValue, ok := nativeValue.Function()
+	fromValue, ok := nativeValue.AsFunction()
 	if !ok || fromValue != nativeHandle {
 		t.Fatal("native function did not round-trip through its canonical Value")
 	}
@@ -230,7 +230,7 @@ func TestFunctionRepresentations(t *testing.T) {
 	if body.entry == nil {
 		t.Fatal("native function lost its entry point")
 	}
-	environment, err := state.NewTable(0, 0)
+	environment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	retained, err := state.NewTable(0, 0)
+	retained, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 	for range 3 {
 		runtime.GC()
 	}
-	capture, ok := function.nativeBody().captures[0].owningValue().Table()
+	capture, ok := function.nativeBody().captures[0].owningValue().AsTable()
 	if !ok {
 		t.Fatal("native capture did not retain its table")
 	}
@@ -304,7 +304,7 @@ func TestWarmFunctionPublicationDoesNotAllocate(t *testing.T) {
 	var published *Function
 	allocations := testing.AllocsPerRun(1_000, func() {
 		value := compact.owningValue()
-		published, _ = value.Function()
+		published, _ = value.AsFunction()
 	})
 	if allocations != 0 {
 		t.Fatalf(
@@ -335,13 +335,13 @@ func TestFunctionRepublishAfterOwningTokenDies(t *testing.T) {
 	waitForWeakFunctionToken(t, function, token)
 
 	firstValue := state.registry.rawGetStringValue("rooted function")
-	first, ok := firstValue.Function()
+	first, ok := firstValue.AsFunction()
 	if !ok || first.runtimeObject() != function {
 		t.Fatal("re-publication changed compact function identity")
 	}
 	second, ok := state.registry.rawGetStringValue(
 		"rooted function",
-	).Function()
+	).AsFunction()
 	if !ok || second != first {
 		t.Fatalf(
 			"second re-publication = (%p, %v); want (%p, true)",
@@ -406,7 +406,7 @@ func TestFunctionHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outer, err := state.NewTable(0, 1)
+	outer, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,16 +416,16 @@ func TestFunctionHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	first, ok := outer.RawGetString("function").Function()
+	first, ok := outer.RawGetString("function").AsFunction()
 	if !ok || first.runtimeObject() != function {
 		t.Fatal("post-close nested function was not published")
 	}
-	second, ok := outer.RawGetString("function").Function()
+	second, ok := outer.RawGetString("function").AsFunction()
 	if !ok || second != first {
 		t.Fatal("post-close nested function publication was not canonical")
 	}
 	value := first.Value()
-	roundTrip, ok := value.Function()
+	roundTrip, ok := value.AsFunction()
 	if !ok || roundTrip != first {
 		t.Fatal("post-close function did not round-trip through its Value")
 	}
@@ -555,7 +555,7 @@ func TestNativeFunctionRejectsInvalidConstruction(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -809,7 +809,7 @@ func TestStateClosePreservesRetainedOpenUpvalue(t *testing.T) {
 		t.Fatal(err)
 	}
 	thread := state.main
-	retained, err := state.NewTable(0, 0)
+	retained, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +827,7 @@ func TestStateClosePreservesRetainedOpenUpvalue(t *testing.T) {
 	}
 
 	runtime.GC()
-	value, ok := upvalue.read().owningValue().Table()
+	value, ok := upvalue.read().owningValue().AsTable()
 	if !ok || value != retained {
 		t.Fatalf("closed upvalue retained (%p, %v); want %p", value, ok, retained)
 	}
@@ -845,7 +845,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 	}
 	defer other.Close()
 
-	environment, err := state.NewTable(0, 0)
+	environment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -875,7 +875,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 		t.Fatalf("FunctionEnvironment = (%p, %v)", got, err)
 	}
 
-	foreignEnvironment, err := other.NewTable(0, 0)
+	foreignEnvironment, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,11 +973,11 @@ func TestControlledObjectMetadata(t *testing.T) {
 		)
 	}
 
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 0)
+	metatable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1010,7 +1010,7 @@ func TestFunctionOwningHandleEnforcesStateOwnership(t *testing.T) {
 	}
 	defer other.Close()
 
-	environment, err := state.NewTable(0, 0)
+	environment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

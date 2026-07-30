@@ -25,11 +25,11 @@ return first, middle, last, nil
 	if err != nil {
 		t.Fatal(err)
 	}
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	callableMetatable, err := state.NewTable(0, 1)
+	callableMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ return first, middle, last, nil
 							rawEqual(before, after) &&
 							frame.ArgumentCount() == 1 &&
 							frame.State() == state &&
-							frame.Thread() == state.MainThread()
+							frame.CurrentThread() == state.MainThread()
 					if callErr != nil {
 						return frame.RaiseString(callErr.Error())
 					}
@@ -152,25 +152,25 @@ func TestFrameIndexAppliesLuaTableSemantics(t *testing.T) {
 	}
 	defer state.Close()
 
-	direct, err := state.NewTable(0, 1)
+	direct, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := direct.RawSetString("key", Number(41)); err != nil {
 		t.Fatal(err)
 	}
-	fallback, err := state.NewTable(0, 1)
+	fallback, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := fallback.RawSetString("key", Number(42)); err != nil {
 		t.Fatal(err)
 	}
-	chained, err := state.NewTable(0, 0)
+	chained, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chainedMetatable, err := state.NewTable(0, 1)
+	chainedMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,11 +188,11 @@ func TestFrameIndexAppliesLuaTableSemantics(t *testing.T) {
 local target, key = ...
 return "handled:" .. key
 `)
-	computed, err := state.NewTable(0, 0)
+	computed, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	computedMetatable, err := state.NewTable(0, 1)
+	computedMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestFrameSetIndexAppliesLuaTableSemantics(t *testing.T) {
 	}
 	defer state.Close()
 
-	direct, err := state.NewTable(0, 2)
+	direct, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,15 +296,15 @@ func TestFrameSetIndexAppliesLuaTableSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fallback, err := state.NewTable(0, 1)
+	fallback, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chained, err := state.NewTable(0, 0)
+	chained, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chainedMetatable, err := state.NewTable(0, 1)
+	chainedMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,11 +318,11 @@ func TestFrameSetIndexAppliesLuaTableSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sink, err := state.NewTable(0, 1)
+	sink, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("setIndexSink", sink.Value()); err != nil {
+	if err := state.SetRawGlobal("setIndexSink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	handlerChunk := mustLoadString(t, state, "@frame-set-index.lua", `
@@ -335,15 +335,15 @@ end
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, ok := handlerResults[0].Function()
+	handler, ok := handlerResults[0].AsFunction()
 	if !ok {
 		t.Fatalf("handler = %v; want Function", handlerResults[0])
 	}
-	computed, err := state.NewTable(0, 0)
+	computed, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	computedMetatable, err := state.NewTable(0, 1)
+	computedMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestFrameCallRejectsInputsAtomically(t *testing.T) {
 	}
 	defer foreignState.Close()
 
-	foreign, err := foreignState.NewTable(0, 0)
+	foreign, err := foreignState.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +602,7 @@ func TestFrameCallIntoHandlesOverlapAndCapacityAtomically(t *testing.T) {
 nested_side_effect = nested_side_effect + 1
 return 1, nil, 3
 `)
-	if err := state.SetGlobal("nested_side_effect", Number(0)); err != nil {
+	if err := state.SetRawGlobal("nested_side_effect", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	destination := []Value{Number(80), Number(81)}
@@ -639,7 +639,7 @@ return 1, nil, 3
 		)
 	}
 	assertTestValues(t, destination, Number(80), Number(81))
-	sideEffect, err := state.Global("nested_side_effect")
+	sideEffect, err := state.RawGlobal("nested_side_effect")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,7 +676,7 @@ return nil + 1
 		Number(60),
 		Number(61),
 	)
-	sideEffect, err = state.Global("nested_failure_side_effect")
+	sideEffect, err = state.RawGlobal("nested_failure_side_effect")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,7 +705,7 @@ local function grow(depth, payload)
 end
 return grow(...)
 `)
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,15 +771,15 @@ func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
 	}
 	defer state.Close()
 
-	plain, err := state.NewTable(0, 0)
+	plain, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recursiveHandler, err := state.NewTable(0, 0)
+	recursiveHandler, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recursiveMetatable, err := state.NewTable(0, 1)
+	recursiveMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,11 +795,11 @@ func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	outer, err := state.NewTable(0, 0)
+	outer, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	outerMetatable, err := state.NewTable(0, 1)
+	outerMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,7 +849,7 @@ func TestFrameRaiseErrorPreservesFailureAndAppendsOuterTrace(t *testing.T) {
 	}
 	defer state.Close()
 
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -866,7 +866,7 @@ func TestFrameRaiseErrorPreservesFailureAndAppendsOuterTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_raise", raiser.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_raise", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 	nested := mustLoadString(t, state, "@nested-trace.lua", `
@@ -891,7 +891,7 @@ return 1
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_bridge", bridge.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@outer-trace.lua", `
@@ -918,7 +918,7 @@ return invoke()
 		!same {
 		t.Fatal("RaiseError lost arbitrary error Value identity")
 	}
-	sideEffect, err := state.Global("nested_trace_side_effect")
+	sideEffect, err := state.RawGlobal("nested_trace_side_effect")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +967,7 @@ func TestFrameCallLetsNestedPCallAndXPCallCatchLuaErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,7 +977,7 @@ func TestFrameCallLetsNestedPCallAndXPCallCatchLuaErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_protected_raise", raiser.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_protected_raise", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-protected-call.lua", `
@@ -1032,7 +1032,7 @@ func TestFrameRaiseErrorAppendsEachNestedTraceSegmentOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_trace_fail", fail.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_trace_fail", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := mustLoadString(t, state, "@trace-inner.lua", `
@@ -1053,7 +1053,7 @@ return value
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_trace_bridge_one", bridgeOne.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_trace_bridge_one", bridgeOne.Value()); err != nil {
 		t.Fatal(err)
 	}
 	middle := mustLoadString(t, state, "@trace-middle.lua", `
@@ -1074,7 +1074,7 @@ return value
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested_trace_bridge_two", bridgeTwo.Value()); err != nil {
+	if err := state.SetRawGlobal("nested_trace_bridge_two", bridgeTwo.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@trace-outer.lua", `
@@ -1411,11 +1411,11 @@ func BenchmarkFrameNestedCall(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}

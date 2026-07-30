@@ -445,6 +445,41 @@ func (table *tableObject) setStringSlot(key string, value slot) error {
 	return nil
 }
 
+// Next returns the table field after after in Lua's raw traversal order.
+//
+// Pass Nil() to begin a traversal, then pass each returned key to the next
+// call. If no field remains, ok is false and key and value are Nil. Next does
+// not invoke metamethods.
+//
+// Deleting the current field or changing an existing field's value is
+// permitted between calls. Adding a new field during traversal makes the
+// traversal order and visited set undefined. A continuation key that Lua
+// cannot locate returns ErrInvalidNextKey.
+func (table *Table) Next(
+	after Value,
+) (key, value Value, ok bool, err error) {
+	object := table.runtimeObject()
+	if object == nil ||
+		object.owner == nil ||
+		object.owner.closed.Load() {
+		runtime.KeepAlive(table)
+		return Value{}, Value{}, false, ErrClosed
+	}
+	if err := object.owner.accept(after); err != nil {
+		runtime.KeepAlive(table)
+		return Value{}, Value{}, false, err
+	}
+	nextKey, nextValue, found, err := object.next(slotFromValue(after))
+	runtime.KeepAlive(table)
+	if err != nil {
+		return Value{}, Value{}, false, err
+	}
+	if !found {
+		return Nil(), Nil(), false, nil
+	}
+	return nextKey.owningValue(), nextValue.owningValue(), true, nil
+}
+
 // RawLen returns a valid Lua border for table without invoking __len.
 //
 // As in Lua 5.1, the result is undefined when a table has more than one
@@ -509,7 +544,7 @@ func (table *tableObject) rawLen() int {
 }
 
 func (table *tableObject) next(previous slot) (key, value slot, found bool, err error) {
-	if table == nil || table.owner == nil {
+	if table == nil || table.owner == nil || table.owner.closed.Load() {
 		return nilSlot, nilSlot, false, ErrClosed
 	}
 

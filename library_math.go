@@ -469,7 +469,7 @@ func mathRandomSeed(source *randomSource) NativeFunc {
 //
 // Lua 5.1 delegates math.random to C rand(), whose sequence, period, and
 // resolution are implementation-defined and whose seed is process-global.
-// Reproducing that is neither possible nor desirable, so Lunik uses
+// Reproducing that is neither possible nor desirable, so Lunar uses
 // xoshiro256** seeded through SplitMix64: the sequence is identical on every
 // platform, a seeded run is reproducible, the whole 53-bit mantissa is
 // significant, and two States cannot disturb each other's stream.

@@ -22,7 +22,7 @@ return os.execute(""),
   os.execute("exit 0"),
   os.execute("exit 7"),
   os.execute("kill -TERM $$"),
-  os.execute("command_that_does_not_exist_lunik 2>/dev/null"),
+  os.execute("command_that_does_not_exist_lunar 2>/dev/null"),
   os.execute("exit 0\000exit 9", "ignored")
 `)
 	results, err := state.Call(chunk.Value())
@@ -42,7 +42,7 @@ return os.execute(""),
 }
 
 func TestOSExecuteUsesTheRawShellAndProcessEnvironment(t *testing.T) {
-	const environmentName = "LUNIK_LUA_EXECUTE_VALUE"
+	const environmentName = "LUNAR_LUA_EXECUTE_VALUE"
 	const environmentValue = "value with spaces"
 	t.Setenv(environmentName, environmentValue)
 
@@ -198,7 +198,7 @@ func TestOSExecuteCancellationTerminatesAndReapsRoot(
 	}
 	defer terminateDetachedTestProcess(t, pids[1])
 	waitForProcessGone(t, pids[0])
-	continued, err := state.Global("execute_continued")
+	continued, err := state.RawGlobal("execute_continued")
 	if err != nil {
 		t.Fatal(err)
 	}

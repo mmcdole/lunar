@@ -251,7 +251,7 @@ func TestBaseLoadPropagatesContextCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("cancelReader", reader.Value()); err != nil {
+	if err := state.SetRawGlobal("cancelReader", reader.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(

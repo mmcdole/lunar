@@ -1,6 +1,6 @@
 # Performance policy
 
-Lunik tracks four separate dimensions:
+Lunar tracks four separate dimensions:
 
 - Lua execution time;
 - Go allocation traffic;

@@ -16,7 +16,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	}
 	defer state.Close()
 
-	before, err := state.Global("string")
+	before, err := state.RawGlobal("string")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +38,11 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("string")
+	libraryValue, err := state.RawGlobal("string")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("string = %v; want table", libraryValue)
 	}
@@ -116,17 +116,17 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	assertTestValues(t, results, state.String("ABC"))
 
 	// Reopening replaces the table, every Function, and the metatable.
-	if err := state.SetGlobal("string", Number(1)); err != nil {
+	if err := state.SetRawGlobal("string", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenString(); err != nil {
 		t.Fatal(err)
 	}
-	reopenedValue, err := state.Global("string")
+	reopenedValue, err := state.RawGlobal("string")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, ok := reopenedValue.Table()
+	reopened, ok := reopenedValue.AsTable()
 	if !ok {
 		t.Fatalf("reopened string = %v; want table", reopenedValue)
 	}
@@ -174,7 +174,7 @@ return add, string.dump(add), pcall(string.dump, string.len)
 	if len(results) != 4 {
 		t.Fatalf("string.dump test returned %d values; want 4", len(results))
 	}
-	function, ok := results[0].Function()
+	function, ok := results[0].AsFunction()
 	if !ok {
 		t.Fatalf("first result = %v; want Function", results[0])
 	}
@@ -209,7 +209,7 @@ func TestStringLibraryMatchesLua51(t *testing.T) {
 // to an integer type. That cast is undefined for a negative value and for a
 // magnitude the type cannot hold, and the mainstream architectures disagree:
 // arm64 saturates, x86-64 wraps. Every case below is one C leaves undefined,
-// so it describes Lunik's rule rather than any interpreter's output.
+// so it describes Lunar's rule rather than any interpreter's output.
 func TestStringLibraryDefinesCUndefinedFormatting(t *testing.T) {
 	testCases := []struct {
 		name   string

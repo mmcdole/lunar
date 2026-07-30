@@ -10,14 +10,14 @@ load and save JSONL files. From the nested module (`benchmarks/cbor`):
 
 ```sh
 go run ./cmd/generate \
-  -preset large -output /tmp/lunik-cbor-large.cbor
+  -preset large -output /tmp/lunar-cbor-large.cbor
 
 shasum -a 256 /opt/lua-5.1.5/bin/lua
 shasum -a 256 /opt/luajit-2.1/bin/luajit
 
 go run ./cmd/native \
   -qualification \
-  -data /tmp/lunik-cbor-large.cbor \
+  -data /tmp/lunar-cbor-large.cbor \
   -lua51 /opt/lua-5.1.5/bin/lua \
   -luajit /opt/luajit-2.1/bin/luajit \
   -expect-lua51-sha256 PUC_LUA_5_1_BINARY_SHA256 \
@@ -27,7 +27,7 @@ go run ./cmd/native \
 
 go run ./cmd/native \
   -qualification \
-  -data /tmp/lunik-cbor-large.cbor \
+  -data /tmp/lunar-cbor-large.cbor \
   -lua51 /opt/lua-5.1.5/bin/lua \
   -luajit /opt/luajit-2.1/bin/luajit \
   -expect-lua51-sha256 PUC_LUA_5_1_BINARY_SHA256 \

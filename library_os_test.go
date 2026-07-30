@@ -18,7 +18,7 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 	}
 	defer state.Close()
 
-	before, err := state.Global("os")
+	before, err := state.RawGlobal("os")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,11 +35,11 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("os")
+	libraryValue, err := state.RawGlobal("os")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("os = %v; want table", libraryValue)
 	}
@@ -57,17 +57,17 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 	}
 	assertTestValues(t, results, Number(5))
 
-	if err := state.SetGlobal("os", Number(1)); err != nil {
+	if err := state.SetRawGlobal("os", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenOS(); err != nil {
 		t.Fatal(err)
 	}
-	reopenedValue, err := state.Global("os")
+	reopenedValue, err := state.RawGlobal("os")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, ok := reopenedValue.Table()
+	reopened, ok := reopenedValue.AsTable()
 	if !ok {
 		t.Fatalf("reopened os = %v; want table", reopenedValue)
 	}
@@ -94,15 +94,15 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 }
 
 func TestOSLibraryEnvironmentAndFilesystemOperations(t *testing.T) {
-	const environmentName = "LUNIK_LUA_OS_TEST_VALUE"
+	const environmentName = "LUNAR_LUA_OS_TEST_VALUE"
 	t.Setenv(environmentName, "")
 
 	state := newStateWithOS(t)
 	defer state.Close()
 	chunk := mustLoadString(t, state, "@environment.lua", `
-local empty = os.getenv("LUNIK_LUA_OS_TEST_VALUE")
-local missing = os.getenv("LUNIK_LUA_OS_TEST_MISSING")
-local truncated = os.getenv("LUNIK_LUA_OS_TEST_VALUE\000ignored")
+local empty = os.getenv("LUNAR_LUA_OS_TEST_VALUE")
+local missing = os.getenv("LUNAR_LUA_OS_TEST_MISSING")
+local truncated = os.getenv("LUNAR_LUA_OS_TEST_VALUE\000ignored")
 return empty, missing, truncated
 `)
 	results, err := state.Call(chunk.Value())
@@ -273,11 +273,11 @@ after_exit = true
 		t.Fatalf("request description = %q", request.Error())
 	}
 
-	before, err := state.Global("before_exit")
+	before, err := state.RawGlobal("before_exit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := state.Global("after_exit")
+	after, err := state.RawGlobal("after_exit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +450,7 @@ wrap_continued = true
 			)
 			_, err := state.Call(chunk.Value())
 			requireExitRequest(t, err, test.code)
-			value, globalErr := state.Global(test.untouched)
+			value, globalErr := state.RawGlobal(test.untouched)
 			if globalErr != nil {
 				t.Fatal(globalErr)
 			}
@@ -459,16 +459,16 @@ wrap_continued = true
 		})
 	}
 
-	handlerCalls, err := state.Global("xpcall_handler_calls")
+	handlerCalls, err := state.RawGlobal("xpcall_handler_calls")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertTestValue(t, handlerCalls, Number(0))
-	coroutineValue, err := state.Global("exit_coroutine")
+	coroutineValue, err := state.RawGlobal("exit_coroutine")
 	if err != nil {
 		t.Fatal(err)
 	}
-	coroutine, ok := coroutineValue.Thread()
+	coroutine, ok := coroutineValue.AsThread()
 	if !ok || coroutine.Status() != ThreadDead {
 		t.Fatalf("exit coroutine = (%v, %v); want dead", coroutine, ok)
 	}
@@ -484,7 +484,7 @@ load_continued = true
 `)
 	_, err := state.Call(load.Value())
 	requireExitRequest(t, err, 41)
-	continued, err := state.Global("load_continued")
+	continued, err := state.RawGlobal("load_continued")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +522,7 @@ native_followup_ran = true
 			failure,
 		)
 	}
-	followupRan, err := state.Global("native_followup_ran")
+	followupRan, err := state.RawGlobal("native_followup_ran")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,9 +749,9 @@ return t.sec, t.min, t.hour, t.day, t.month, t.year,
 	},
 	{
 		name:   "setlocale rejects an unknown category",
-		source: `return os.setlocale(nil, "lunik")`,
+		source: `return os.setlocale(nil, "lunar")`,
 		want: "error 'case:1: bad argument #2 to 'setlocale' " +
-			"(invalid option 'lunik')'",
+			"(invalid option 'lunar')'",
 	},
 	{
 		name:   "setlocale exposes the C locale",

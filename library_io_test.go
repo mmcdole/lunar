@@ -48,7 +48,7 @@ func TestOpenIOBuildsCanonicalFilesAndPrivateDefaults(t *testing.T) {
 		TableKind {
 		t.Fatalf("FILE* __index = %v", index)
 	} else {
-		table, _ := index.Table()
+		table, _ := index.AsTable()
 		if table != metatable {
 			t.Fatal("FILE* __index is not the metatable itself")
 		}
@@ -481,7 +481,7 @@ return file,message,code,before,text,closed,after,closedText,
 	if len(results) != 15 {
 		t.Fatalf("result count = %d, want 15", len(results))
 	}
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("io.open result = %v", results[0])
 	}
@@ -574,7 +574,7 @@ func TestIOFileClassificationCannotBeForged(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("forged_file", unrelated.Value()); err != nil {
+	if err := state.SetRawGlobal("forged_file", unrelated.Value()); err != nil {
 		t.Fatal(err)
 	}
 	results := runIOChunk(t, state, `
@@ -588,7 +588,7 @@ return io.type(forged_file),ok,message
 	}
 
 	stdin := ioFileField(t, library, "stdin")
-	other, err := state.NewTable(0, 0)
+	other, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,7 +603,7 @@ return io.type(forged_file),ok,message
 	results = runIOChunk(t, state, `return io.type(io.stdin)`)
 	assertTestValues(t, results, state.String("file"))
 
-	replacement, err := state.NewTable(0, 0)
+	replacement, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestIOOwnedCloseEnvironmentNeverUsesTheDefaultOutput(t *testing.T) {
 	results := runIOChunk(t, state, `
 return io.open(`+luaTestQuote(path)+`,"w")
 `)
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("io.open result = %v", results[0])
 	}
@@ -645,10 +645,10 @@ return io.open(`+luaTestQuote(path)+`,"w")
 	if closeValue.Kind() != FunctionKind {
 		t.Fatalf("regular file __close = %v", closeValue)
 	}
-	if err := state.SetGlobal("owned_close", closeValue); err != nil {
+	if err := state.SetRawGlobal("owned_close", closeValue); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("owned_file", data.Value()); err != nil {
+	if err := state.SetRawGlobal("owned_file", data.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -719,13 +719,13 @@ func TestIOOpenModesAndFailureTuples(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := state.SetGlobal(
+	if err := state.SetRawGlobal(
 		"nul_path",
 		state.String(path+"\x00ignored"),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal(
+	if err := state.SetRawGlobal(
 		"nul_mode",
 		state.String("w\x00ignored"),
 	); err != nil {
@@ -735,7 +735,7 @@ func TestIOOpenModesAndFailureTuples(t *testing.T) {
 local file,message,code=io.open(nul_path,nul_mode)
 return file,message,code
 `)
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("NUL-truncated open = %v, %v, %v", results[0], results[1], results[2])
 	}
@@ -805,7 +805,7 @@ return assert(io.open(`+luaTestQuote(path)+`,"r")),
 		{true, true},
 	}
 	for index, result := range results {
-		data, ok := result.UserData()
+		data, ok := result.AsUserData()
 		if !ok {
 			t.Fatalf("file %d = %v", index, result)
 		}
@@ -841,7 +841,7 @@ func TestIOAppendModeUsesOperatingSystemAppend(t *testing.T) {
 	results := runIOChunk(t, state, `
 return io.open(`+luaTestQuote(path)+`,"a+")
 `)
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("io.open(a+) = %v", results)
 	}
@@ -877,7 +877,7 @@ func TestIOTemporaryFileIsOwnedAndRemovedOnClose(t *testing.T) {
 	defer state.Close()
 
 	results := runIOChunk(t, state, `return io.tmpfile()`)
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("io.tmpfile result = %v", results)
 	}
@@ -896,7 +896,7 @@ func TestIOTemporaryFileIsOwnedAndRemovedOnClose(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("temporary file before close: %v", err)
 	}
-	if err := state.SetGlobal("temporary_file", data.Value()); err != nil {
+	if err := state.SetRawGlobal("temporary_file", data.Value()); err != nil {
 		t.Fatal(err)
 	}
 	results = runIOChunk(t, state, `
@@ -1014,7 +1014,7 @@ func TestIOOwnedFilesCloseWithStateWhileStandardsStayBorrowed(t *testing.T) {
 	results := runIOChunk(t, state, `
 return io.open(`+luaTestQuote(path)+`,"w")
 `)
-	data, ok := results[0].UserData()
+	data, ok := results[0].AsUserData()
 	if !ok {
 		t.Fatalf("owned open = %v", results)
 	}
@@ -1142,11 +1142,11 @@ func runIOChunk(t *testing.T, state *State, source string) []Value {
 
 func ioLibraryTable(t testing.TB, state *State) *Table {
 	t.Helper()
-	value, err := state.Global("io")
+	value, err := state.RawGlobal("io")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := value.Table()
+	library, ok := value.AsTable()
 	if !ok {
 		t.Fatalf("global io = %v", value)
 	}
@@ -1156,7 +1156,7 @@ func ioLibraryTable(t testing.TB, state *State) *Table {
 func fileMetatable(t testing.TB, state *State) *Table {
 	t.Helper()
 	value := state.registry.rawGetStringValue(luaFileHandleRegistryKey)
-	metatable, ok := value.Table()
+	metatable, ok := value.AsTable()
 	if !ok {
 		t.Fatalf("registry FILE* = %v", value)
 	}
@@ -1166,7 +1166,7 @@ func fileMetatable(t testing.TB, state *State) *Table {
 func ioFileField(t testing.TB, library *Table, name string) *UserData {
 	t.Helper()
 	value := library.RawGetString(name)
-	data, ok := value.UserData()
+	data, ok := value.AsUserData()
 	if !ok {
 		t.Fatalf("io.%s = %v", name, value)
 	}
@@ -1176,7 +1176,7 @@ func ioFileField(t testing.TB, library *Table, name string) *UserData {
 func ioFunctionField(t testing.TB, library *Table, name string) *Function {
 	t.Helper()
 	value := library.RawGetString(name)
-	function, ok := value.Function()
+	function, ok := value.AsFunction()
 	if !ok {
 		t.Fatalf("io.%s = %v", name, value)
 	}

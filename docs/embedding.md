@@ -1,4 +1,4 @@
-# Embedding Lunik
+# Embedding Lunar
 
 ## Create a State
 
@@ -64,7 +64,7 @@ loaded, err := state.Call(chunk.Value())
 if err != nil {
 	return err
 }
-price, ok := loaded[0].Function()
+price, ok := loaded[0].AsFunction()
 if !ok {
 	return fmt.Errorf("chunk did not return a function")
 }
@@ -112,7 +112,7 @@ Use `state.String` for strings. A `Value` can expose its exact kind or convert
 to a typed object handle.
 
 ```go
-table, err := state.NewTable(4, 2)
+table, err := state.NewTableWithCapacity(4, 2)
 if err != nil {
 	return err
 }
@@ -175,7 +175,7 @@ Captured values can be supplied after the callback argument to
 `NewNativeFunction` and read with `Frame.Capture`. Captures are copied into the
 function's private runtime storage.
 
-A Go panic is not converted into a Lua error. It propagates to Go after Lunik
+A Go panic is not converted into a Lua error. It propagates to Go after Lunar
 restores the Frame. Use `Raise*`, `ArgError`, or `ArgTypeError` for failures
 that Lua should be able to catch.
 
@@ -192,7 +192,7 @@ Use the context-aware methods when a host request must be interruptible:
 The supplied context is available to native callbacks through
 `Frame.Context`. Cancellation returns a `*lua.Error` in the
 `lua.ContextError` category. Lua `pcall` cannot catch host cancellation.
-Ordinary non-context methods do not install cancellation polling. Lunik cannot
+Ordinary non-context methods do not install cancellation polling. Lunar cannot
 preempt a callback while it is running Go code; blocking or long-running
 callbacks must observe `Frame.Context()` themselves.
 

@@ -85,23 +85,9 @@ func (state *State) NewNativeFunction(
 	if entry == nil {
 		return nil, ErrInvalidNativeFunction
 	}
-	if len(captures) > maxNativeCaptures {
-		return nil, ErrNativeCaptureLimit
-	}
-
-	var compact []slot
-	if len(captures) != 0 {
-		for _, capture := range captures {
-			if err := state.runtime.accept(capture); err != nil {
-				return nil, err
-			}
-		}
-		compact = make([]slot, len(captures))
-		for index, capture := range captures {
-			compact[index] = state.runtime.importAcceptedSlot(
-				slotFromValue(capture),
-			)
-		}
+	compact, err := state.compactNativeCaptures(captures)
+	if err != nil {
+		return nil, err
 	}
 	function := newNativeFunctionOwned(
 		state,
@@ -110,6 +96,29 @@ func (state *State) NewNativeFunction(
 		compact,
 	)
 	return function.owningHandle(), nil
+}
+
+func (state *State) compactNativeCaptures(
+	captures []Value,
+) ([]slot, error) {
+	if len(captures) > maxNativeCaptures {
+		return nil, ErrNativeCaptureLimit
+	}
+	for _, capture := range captures {
+		if err := state.runtime.accept(capture); err != nil {
+			return nil, err
+		}
+	}
+	if len(captures) == 0 {
+		return nil, nil
+	}
+	compact := make([]slot, len(captures))
+	for index, capture := range captures {
+		compact[index] = state.runtime.importAcceptedSlot(
+			slotFromValue(capture),
+		)
+	}
+	return compact, nil
 }
 
 func (state *State) newNativeFunctionObject(
@@ -247,11 +256,8 @@ func (frame Frame) userDataObject(index int) (*userDataObject, bool) {
 	return userDataObjectFromSlot(value), true
 }
 
-// LuaThread returns argument index and whether it is exactly a Lua thread.
-//
-// The name distinguishes an argument containing a Thread from Thread, which
-// returns the Thread executing this callback.
-func (frame Frame) LuaThread(index int) (*Thread, bool) {
+// Thread returns argument index and whether it is exactly a Lua thread.
+func (frame Frame) Thread(index int) (*Thread, bool) {
 	value, present := frame.argument(index)
 	if !present || !value.isThread() {
 		return nil, false
@@ -273,8 +279,8 @@ func (frame Frame) State() *State {
 	return frame.thread.state
 }
 
-// Thread returns the Thread executing this callback.
-func (frame Frame) Thread() *Thread {
+// CurrentThread returns the Thread executing this callback.
+func (frame Frame) CurrentThread() *Thread {
 	frame.activation()
 	return frame.thread.owningHandle()
 }

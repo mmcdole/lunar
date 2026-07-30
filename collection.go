@@ -528,6 +528,10 @@ func (state *State) markCollectionRoots() {
 	state.markThread(state.active)
 	state.markTable(state.registry)
 	state.markUserData(state.packageSentinel)
+	state.markTable(state.modulePreloads)
+	for _, bridge := range state.operationBridges {
+		state.markFunction(bridge)
+	}
 	for _, metatable := range state.typeMetatables {
 		state.markTable(metatable)
 	}

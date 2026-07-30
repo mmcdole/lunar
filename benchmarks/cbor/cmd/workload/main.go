@@ -19,8 +19,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mmcdole/lunik/benchmarks/cbor/internal/fixture"
-	lua "github.com/mmcdole/lunik/benchmarks/cbor/internal/luabridge"
+	"github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture"
+	lua "github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge"
 )
 
 const stagedData = "data/graph.cbor"
@@ -122,7 +122,7 @@ func execute(opts options) (result, error) {
 	if err != nil {
 		return result{}, fmt.Errorf("hash shared input: %w", err)
 	}
-	workdir, err := os.MkdirTemp("", "lunik-cbor-bench-")
+	workdir, err := os.MkdirTemp("", "lunar-cbor-bench-")
 	if err != nil {
 		return result{}, fmt.Errorf("create work directory: %w", err)
 	}
@@ -372,7 +372,7 @@ func installFixture(
 	verbose bool,
 ) error {
 	if err := L.SetGlobal(
-		"LUNIK_CBOR_DATA_PATH",
+		"LUNAR_CBOR_DATA_PATH",
 		L.String(filepath.Join(
 			fixtureRoot,
 			filepath.FromSlash(stagedData),
@@ -384,7 +384,7 @@ func installFixture(
 	if err != nil {
 		return fmt.Errorf("construct logger: %w", err)
 	}
-	if err := L.SetGlobal("LUNIK_CBOR_LOG", logger); err != nil {
+	if err := L.SetGlobal("LUNAR_CBOR_LOG", logger); err != nil {
 		return fmt.Errorf("install logger: %w", err)
 	}
 	if err := L.PrependPackagePath(fixtureRoot); err != nil {
@@ -485,11 +485,11 @@ func inspectGraphFile(codecRoot, dataPath string) (oracle, error) {
 	}
 	if err := L.DoString(
 		"@load-cbor.lua",
-		`__lunik_cbor_codec = require "cbor"`,
+		`__lunar_cbor_codec = require "cbor"`,
 	); err != nil {
 		return oracle{}, err
 	}
-	moduleValue, err := L.Global("__lunik_cbor_codec")
+	moduleValue, err := L.Global("__lunar_cbor_codec")
 	if err != nil {
 		return oracle{}, err
 	}

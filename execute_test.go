@@ -742,14 +742,14 @@ func TestExecutorHonorsLuaCallMetamethods(t *testing.T) {
 		}
 		defer state.Close()
 		handler := compileTestFunction(t, state, "@handler.lua", `return ...`)
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 			t.Fatal(err)
 		}
-		target, err := state.NewTable(0, 0)
+		target, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -781,7 +781,7 @@ return a, b, c, d
 		}
 		defer state.Close()
 		handler := compileTestFunction(t, state, "@handler.lua", `return ...`)
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -824,7 +824,7 @@ return target("value")
 			"@trap.lua",
 			`return "metamethod"`,
 		)
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -851,7 +851,7 @@ return target()
 		}
 		defer state.Close()
 		handler := compileTestFunction(t, state, "@handler.lua", `return true`)
-		numberMetatable, err := state.NewTable(0, 1)
+		numberMetatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -861,14 +861,14 @@ return target()
 		if err := state.SetMetatable(Number(0), numberMetatable); err != nil {
 			t.Fatal(err)
 		}
-		targetMetatable, err := state.NewTable(0, 1)
+		targetMetatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := targetMetatable.RawSetString("__call", Number(7)); err != nil {
 			t.Fatal(err)
 		}
-		target, err := state.NewTable(0, 0)
+		target, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -939,14 +939,14 @@ func TestExecutorTracksCallMetamethodTailCalls(t *testing.T) {
 local _, value = ...
 return value()
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1832,11 +1832,11 @@ func benchmarkExecutorSource(
 		thread.top != 0 {
 		b.Fatalf("benchmark initialization = %+v", result)
 	}
-	value, valueErr := state.Global("benchmark_kernel")
+	value, valueErr := state.RawGlobal("benchmark_kernel")
 	if valueErr != nil {
 		b.Fatal(valueErr)
 	}
-	function, ok := value.Function()
+	function, ok := value.AsFunction()
 	if !ok {
 		b.Fatal("benchmark did not publish benchmark_kernel")
 	}

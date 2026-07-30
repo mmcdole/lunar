@@ -568,7 +568,7 @@ func stringSetLocation(hash stringHash, shardCount int) (shard, set int) {
 
 // hashString uses Lua 5.1's bounded sampling policy: short strings are hashed
 // completely, while long strings sample a fixed number of bytes. A small
-// finalizer supplies the low-bit distribution required by Lunik's
+// finalizer supplies the low-bit distribution required by Lunar's
 // power-of-two table and cache indexing. Equality always checks contents.
 func hashString(text string) stringHash {
 	hash := stringHash(len(text))

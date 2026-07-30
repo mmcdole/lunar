@@ -28,7 +28,7 @@ const (
 
 // ExitRequest reports that Lua called os.exit.
 //
-// Lunik never terminates the Go process itself. An os.exit call returns an
+// Lunar never terminates the Go process itself. An os.exit call returns an
 // *Error that unwraps to *ExitRequest, allowing the application to apply its
 // own process, service, or request-lifecycle policy.
 type ExitRequest struct {

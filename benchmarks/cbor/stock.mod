@@ -1,4 +1,4 @@
-module github.com/mmcdole/lunik/benchmarks/cbor
+module github.com/mmcdole/lunar/benchmarks/cbor
 
 go 1.24
 

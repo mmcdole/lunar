@@ -14,7 +14,7 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 	}
 	defer state.Close()
 
-	before, err := state.Global("table")
+	before, err := state.RawGlobal("table")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,11 +31,11 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("table")
+	libraryValue, err := state.RawGlobal("table")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("table = %v; want table", libraryValue)
 	}
@@ -84,17 +84,17 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 	}
 	assertTestValues(t, results, state.String("1-2-3"))
 
-	if err := state.SetGlobal("table", Number(1)); err != nil {
+	if err := state.SetRawGlobal("table", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenTable(); err != nil {
 		t.Fatal(err)
 	}
-	reopenedValue, err := state.Global("table")
+	reopenedValue, err := state.RawGlobal("table")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, ok := reopenedValue.Table()
+	reopened, ok := reopenedValue.AsTable()
 	if !ok {
 		t.Fatalf("reopened table = %v; want table", reopenedValue)
 	}
@@ -277,11 +277,11 @@ func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("table")
+	libraryValue, err := state.RawGlobal("table")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("table = %v; want table", libraryValue)
 	}
@@ -686,7 +686,7 @@ end
 	if err != nil {
 		b.Fatal(err)
 	}
-	function, ok := results[0].Function()
+	function, ok := results[0].AsFunction()
 	if !ok {
 		b.Fatal("loader did not return a function")
 	}

@@ -142,7 +142,7 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 		assertExecutionReturned(t, result)
 		assertExecutionValues(t, thread, state.String("left"))
 
-		plain, err := state.NewTable(0, 0)
+		plain, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +207,7 @@ func TestExecutorArithmeticMetamethodSelection(t *testing.T) {
 			"@trap.lua",
 			`return "metamethod"`,
 		)
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -268,7 +268,7 @@ func TestExecutorArithmeticMetamethodEvents(t *testing.T) {
 				test.event,
 				handler.owningValue(),
 			)
-			right, err := state.NewTable(0, 0)
+			right, err := state.NewTableWithCapacity(0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -307,7 +307,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 		)
 		callable := metamethodTestTable(t, state, "__call", callHandler.owningValue())
 		left := metamethodTestTable(t, state, "__add", callable.Value())
-		right, err := state.NewTable(0, 0)
+		right, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +371,7 @@ func TestExecutorArithmeticMetamethodCallProtocol(t *testing.T) {
 			"@caller.lua",
 			`local left, right = ...; return left + right`,
 		)
-		right, err := state.NewTable(0, 0)
+		right, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -442,7 +442,7 @@ return result
 		}
 
 		left := metamethodTestTable(t, state, "__add", handler.owningValue())
-		right, err := state.NewTable(0, 0)
+		right, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -483,7 +483,7 @@ return finish(right)
 			t.Fatal("handler did not compile a tail call")
 		}
 		left := metamethodTestTable(t, state, "__add", handler.owningValue())
-		right, err := state.NewTable(0, 0)
+		right, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -573,7 +573,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 			"@sub.lua",
 			`local _, right = ...; return right`,
 		)
-		metatable, err := state.NewTable(0, 2)
+		metatable, err := state.NewTableWithCapacity(0, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -583,7 +583,7 @@ func TestExecutorNumericRegisterAndConstantOperands(t *testing.T) {
 		if err := metatable.RawSetString("__sub", sub.owningValue()); err != nil {
 			t.Fatal(err)
 		}
-		value, err := state.NewTable(0, 0)
+		value, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -626,7 +626,7 @@ func TestExecutorNestedArithmeticContinuation(t *testing.T) {
 		"@equal.lua",
 		`return "equal"`,
 	)
-	metatable, err := state.NewTable(0, 2)
+	metatable, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,11 +636,11 @@ func TestExecutorNestedArithmeticContinuation(t *testing.T) {
 	if err := metatable.RawSetString("__eq", equalHandler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	left, err := state.NewTable(0, 0)
+	left, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +776,7 @@ return left == right, left ~= right
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Bool(false), Bool(true))
 
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1073,7 +1073,7 @@ local invalid = 1
 return invalid()
 `)
 	left := metamethodTestTable(t, state, "__add", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1288,7 +1288,7 @@ func TestExecutorWarmMetamethodContinuationDoesNotAllocate(t *testing.T) {
 		`return 42`,
 	)
 	left := metamethodTestTable(t, state, "__add", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1349,14 +1349,14 @@ func metamethodTestTable(
 	method Value,
 ) *Table {
 	t.Helper()
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := metatable.RawSetString(event, method); err != nil {
 		t.Fatal(err)
 	}
-	value, err := state.NewTable(0, 0)
+	value, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

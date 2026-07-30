@@ -234,7 +234,7 @@ func TestContextCancellationAfterNativeReturnIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("context_cancel_now", cancelNow.Value()); err != nil {
+	if err := state.SetRawGlobal("context_cancel_now", cancelNow.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@context-atomic.lua", `before_cancel = 17
@@ -266,11 +266,11 @@ return 1, 2`)
 		Number(71),
 		Number(72),
 	)
-	before, err := state.Global("before_cancel")
+	before, err := state.RawGlobal("before_cancel")
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := state.Global("after_cancel")
+	after, err := state.RawGlobal("after_cancel")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestContextInterruptsLuaLoopsAndBlockingNativeCallbacks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("context_loop_started", start.Value()); err != nil {
+		if err := state.SetRawGlobal("context_loop_started", start.Value()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -599,7 +599,7 @@ func TestNestedFrameCallInheritsContextAndAppendsTraceOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("context_nested_cancel", cancelNow.Value()); err != nil {
+	if err := state.SetRawGlobal("context_nested_cancel", cancelNow.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := mustLoadString(t, state, "@context-inner.lua", `local function inner()
@@ -627,7 +627,7 @@ inner()`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("context_nested_bridge", bridge.Value()); err != nil {
+	if err := state.SetRawGlobal("context_nested_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(
@@ -791,7 +791,7 @@ after_protected_context = true`,
 				"context_cancel_handler": handler,
 				"context_handler_called": observeHandler,
 			} {
-				if err := state.SetGlobal(name, function.Value()); err != nil {
+				if err := state.SetRawGlobal(name, function.Value()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -811,7 +811,7 @@ after_protected_context = true`,
 					":"+contextTraceTopLuaLine(test.trace)+
 					": context canceled",
 			)
-			after, err := state.Global("after_protected_context")
+			after, err := state.RawGlobal("after_protected_context")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -848,7 +848,7 @@ func TestCoroutineContextsAreInheritedAndScopedPerResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("context_probe", probe.Value()); err != nil {
+	if err := state.SetRawGlobal("context_probe", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
 	entry := mustLoadString(t, state, "@context-resume.lua", `context_probe()
@@ -927,7 +927,7 @@ return value`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("context_inherited_child", child.Value()); err != nil {
+	if err := state.SetRawGlobal("context_inherited_child", child.Value()); err != nil {
 		t.Fatal(err)
 	}
 	parent := mustLoadString(t, state, "@context-parent-inherit.lua", `context_probe()
@@ -1031,7 +1031,7 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1134,7 +1134,7 @@ func TestContextCancellationPropagatesAcrossCoroutines(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal(
+		if err := state.SetRawGlobal(
 			"context_child_cancel",
 			cancelNow.Value(),
 		); err != nil {
@@ -1151,7 +1151,7 @@ child_after_context = true`,
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("context_cancel_child", child.Value()); err != nil {
+		if err := state.SetRawGlobal("context_cancel_child", child.Value()); err != nil {
 			t.Fatal(err)
 		}
 		parent := mustLoadString(
@@ -1188,11 +1188,11 @@ parent_after_context = true`,
 			t.Fatalf("cancelled child status = %v; want dead", child.Status())
 		}
 		assertDeadCoroutineClean(t, child)
-		childAfter, err := state.Global("child_after_context")
+		childAfter, err := state.RawGlobal("child_after_context")
 		if err != nil {
 			t.Fatal(err)
 		}
-		parentAfter, err := state.Global("parent_after_context")
+		parentAfter, err := state.RawGlobal("parent_after_context")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1215,7 +1215,7 @@ parent_after_context = true`,
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("context_wrap_cancel", cancelNow.Value()); err != nil {
+		if err := state.SetRawGlobal("context_wrap_cancel", cancelNow.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := mustLoadString(t, state, "@context-wrap.lua", `local wrapped = coroutine.wrap(function()
@@ -1231,7 +1231,7 @@ after_wrapped_context = true`)
 			context.Canceled,
 			"context-wrap.lua:2: context canceled",
 		)
-		after, err := state.Global("after_wrapped_context")
+		after, err := state.RawGlobal("after_wrapped_context")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1374,7 +1374,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("context_limit_handler", handler.Value()); err != nil {
+		if err := state.SetRawGlobal("context_limit_handler", handler.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := mustLoadString(t, state, "@context-limit.lua", `local function recurse()
@@ -1391,7 +1391,7 @@ after_context_limit = true`)
 			context.Canceled,
 			"context-limit.lua:2: context canceled",
 		)
-		after, err := state.Global("after_context_limit")
+		after, err := state.RawGlobal("after_context_limit")
 		if err != nil {
 			t.Fatal(err)
 		}

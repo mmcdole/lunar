@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	golua "github.com/Shopify/go-lua"
-	lunik "github.com/mmcdole/lunik"
+	lunar "github.com/mmcdole/lunar"
 	gopherlua "github.com/yuin/gopher-lua"
 )
 
@@ -78,8 +78,8 @@ end
 func BenchmarkInterpreter(b *testing.B) {
 	for _, workload := range runtimeWorkloads {
 		b.Run("case="+workload.name, func(b *testing.B) {
-			b.Run("runtime=lunik", func(b *testing.B) {
-				benchmarkLunik(b, workload)
+			b.Run("runtime=lunar", func(b *testing.B) {
+				benchmarkLunar(b, workload)
 			})
 			b.Run("runtime=gopherlua", func(b *testing.B) {
 				benchmarkGopherLua(b, workload)
@@ -91,8 +91,8 @@ func BenchmarkInterpreter(b *testing.B) {
 	}
 }
 
-func benchmarkLunik(b *testing.B, workload workload) {
-	state, err := lunik.New(lunik.Options{})
+func benchmarkLunar(b *testing.B, workload workload) {
+	state, err := lunar.New(lunar.Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -108,14 +108,14 @@ func benchmarkLunik(b *testing.B, workload workload) {
 	if _, err := state.CallInto(chunk.Value(), nil, nil); err != nil {
 		b.Fatal(err)
 	}
-	function, err := state.Global("benchmark")
+	function, err := state.RawGlobal("benchmark")
 	if err != nil {
 		b.Fatal(err)
 	}
 	if _, err := state.CallInto(function, nil, nil); err != nil {
 		b.Fatal(err)
 	}
-	validateLunikResult(b, state, workload)
+	validateLunarResult(b, state, workload)
 
 	runtime.GC()
 	b.ReportAllocs()
@@ -125,16 +125,16 @@ func benchmarkLunik(b *testing.B, workload workload) {
 			b.Fatal(err)
 		}
 	}
-	validateLunikResult(b, state, workload)
+	validateLunarResult(b, state, workload)
 }
 
-func validateLunikResult(
+func validateLunarResult(
 	b *testing.B,
-	state *lunik.State,
+	state *lunar.State,
 	workload workload,
 ) {
 	b.Helper()
-	result, err := state.Global("benchmark_result")
+	result, err := state.RawGlobal("benchmark_result")
 	if err != nil {
 		b.Fatal(err)
 	}

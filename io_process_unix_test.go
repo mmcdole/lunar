@@ -242,7 +242,7 @@ func TestIOPopenCancellationInterruptsBlockedReadAndReapsRoot(
 	}
 	defer terminateDetachedTestProcess(t, pids[1])
 	waitForProcessGone(t, pids[0])
-	continued, err := state.Global("popen_continued")
+	continued, err := state.RawGlobal("popen_continued")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestIOPopenCancellationInterruptsBlockedWriteAndReapsRoot(
 	}
 	defer terminateDetachedTestProcess(t, pids[1])
 	waitForProcessGone(t, pids[0])
-	continued, err := state.Global("popen_write_continued")
+	continued, err := state.RawGlobal("popen_write_continued")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestIOPopenCancellationInterruptsBlockedFlushAndReapsRoot(
 	}
 	defer terminateDetachedTestProcess(t, pids[1])
 	waitForProcessGone(t, pids[0])
-	continued, err := state.Global("popen_flush_continued")
+	continued, err := state.RawGlobal("popen_flush_continued")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestIOPopenCancellationInterruptsCloseAndReapsRoot(
 	}
 	defer terminateDetachedTestProcess(t, pids[1])
 	waitForProcessGone(t, pids[0])
-	continued, err := state.Global("popen_close_continued")
+	continued, err := state.RawGlobal("popen_close_continued")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -436,10 +436,10 @@ func TestFlatStringSurvivesGCStateCloseAndCrossState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	if err := consumer.SetGlobal("shared", value); err != nil {
+	if err := consumer.SetRawGlobal("shared", value); err != nil {
 		t.Fatalf("cross-State string: %v", err)
 	}
-	got, err := consumer.Global("shared")
+	got, err := consumer.RawGlobal("shared")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,6 +449,37 @@ func TestFlatStringSurvivesGCStateCloseAndCrossState(t *testing.T) {
 	}
 	if origin.String("").ref != consumer.String("").ref {
 		t.Fatal("empty string is not canonical across States")
+	}
+}
+
+func TestPackageStringIsStateNeutral(t *testing.T) {
+	text := strings.Clone(strings.Repeat("package-", 128))
+	value := String(text)
+	text = ""
+
+	for range 3 {
+		runtime.GC()
+	}
+	want := strings.Repeat("package-", 128)
+	if got, ok := value.AsString(); !ok || got != want {
+		t.Fatalf("package string = (%q, %v)", got, ok)
+	}
+
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.SetRawGlobal("shared", value); err != nil {
+		t.Fatalf("share package String with State: %v", err)
+	}
+	got, err := state.RawGlobal("shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if equal, err := state.RawEqual(got, state.String(want)); err != nil ||
+		!equal {
+		t.Fatalf("cross-State equality = (%v, %v)", equal, err)
 	}
 }
 
@@ -468,12 +499,12 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 	}
 	defer state.Close()
 
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	tableValue := table.Value()
-	gotTable, ok := tableValue.Table()
+	gotTable, ok := tableValue.AsTable()
 	if !ok || gotTable != table {
 		t.Fatalf("table round trip = (%p, %v), want %p", gotTable, ok, table)
 	}
@@ -485,19 +516,19 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotData, ok := data.Value().UserData()
+	gotData, ok := data.Value().AsUserData()
 	if !ok || gotData != data || gotData.Data() != "payload" {
 		t.Fatalf("userdata round trip failed")
 	}
 
 	main := state.MainThread()
-	gotThread, ok := main.Value().Thread()
+	gotThread, ok := main.Value().AsThread()
 	if !ok || gotThread != main || !main.IsMain() || main.State() != state {
 		t.Fatal("main thread is not canonical")
 	}
 
 	runtime.GC()
-	if got, ok := tableValue.Table(); !ok || got != table {
+	if got, ok := tableValue.AsTable(); !ok || got != table {
 		t.Fatal("Value did not retain its canonical object across GC")
 	}
 
@@ -506,7 +537,7 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	otherTable, err := other.NewTable(0, 0)
+	otherTable, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,14 +602,14 @@ func TestUserDataOwningHandleRepresentation(t *testing.T) {
 		t.Fatal("public userdata Value exposed the compact object pointer")
 	}
 
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := table.RawSetString("data", public); err != nil {
 		t.Fatal(err)
 	}
-	fromTable, ok := table.RawGetString("data").UserData()
+	fromTable, ok := table.RawGetString("data").AsUserData()
 	if !ok || fromTable != data {
 		t.Fatalf(
 			"re-published userdata = (%p, %v); want (%p, true)",
@@ -604,7 +635,7 @@ func TestTableOwningHandleRepresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +663,7 @@ func TestTableOwningHandleRepresentation(t *testing.T) {
 	if compact.ref == public.ref {
 		t.Fatal("public table Value exposed the compact object pointer")
 	}
-	published, ok := compact.owningValue().Table()
+	published, ok := compact.owningValue().AsTable()
 	if !ok || published != table {
 		t.Fatalf(
 			"re-published table = (%p, %v); want (%p, true)",
@@ -658,7 +689,7 @@ func TestWarmTablePublicationDoesNotAllocate(t *testing.T) {
 	var published *Table
 	allocations := testing.AllocsPerRun(1_000, func() {
 		value := compact.owningValue()
-		published, _ = value.Table()
+		published, _ = value.AsTable()
 	})
 	if allocations != 0 {
 		t.Fatalf(
@@ -688,11 +719,11 @@ func TestTableRepublishAfterOwningTokenDies(t *testing.T) {
 	index.rawSetSlot(slotFromTableObject(object), numberSlot(91))
 	waitForWeakTableToken(t, object, token)
 
-	first, ok := state.registry.rawGetStringValue("rooted table").Table()
+	first, ok := state.registry.rawGetStringValue("rooted table").AsTable()
 	if !ok || first.runtimeObject() != object {
 		t.Fatal("re-publication changed compact table identity")
 	}
-	second, ok := state.registry.rawGetStringValue("rooted table").Table()
+	second, ok := state.registry.rawGetStringValue("rooted table").AsTable()
 	if !ok || second != first {
 		t.Fatalf(
 			"second re-publication = (%p, %v); want (%p, true)",
@@ -757,7 +788,7 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outer, err := state.NewTable(1, 1)
+	outer, err := state.NewTableWithCapacity(1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -788,11 +819,11 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if number, ok := outer.RawGetInt(1).AsNumber(); !ok || number != 11 {
 		t.Fatalf("post-close scalar = (%v, %v); want 11", number, ok)
 	}
-	first, ok := outer.RawGetString("inner").Table()
+	first, ok := outer.RawGetString("inner").AsTable()
 	if !ok || first.runtimeObject() != inner {
 		t.Fatal("post-close nested table was not published")
 	}
-	second, ok := outer.RawGetString("inner").Table()
+	second, ok := outer.RawGetString("inner").AsTable()
 	if !ok || second != first {
 		t.Fatal("post-close nested table publication was not canonical")
 	}
@@ -896,7 +927,7 @@ func TestUserDataOwningHandleEnforcesStateOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -965,7 +996,7 @@ func TestWarmUserDataPublicationDoesNotAllocate(t *testing.T) {
 	var published *UserData
 	allocations := testing.AllocsPerRun(1000, func() {
 		value := compact.owningValue()
-		published, _ = value.UserData()
+		published, _ = value.AsUserData()
 	})
 	if allocations != 0 {
 		t.Fatalf(
@@ -988,7 +1019,7 @@ func TestUserDataHandleIdentitySurvivesStateClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -999,7 +1030,7 @@ func TestUserDataHandleIdentitySurvivesStateClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	published, ok := table.RawGetString("data").UserData()
+	published, ok := table.RawGetString("data").AsUserData()
 	if !ok || published != data {
 		t.Fatalf(
 			"post-close userdata = (%p, %v); want (%p, true)",
@@ -1040,14 +1071,14 @@ func TestUserDataRepublishAfterOwningTokenDies(t *testing.T) {
 	table, object, token := rootedUserDataWithoutHandle(t, state)
 	waitForWeakUserDataToken(t, object, token)
 
-	first, ok := table.rawGetStringValue("data").UserData()
+	first, ok := table.rawGetStringValue("data").AsUserData()
 	if !ok {
 		t.Fatal("re-published compact userdata is not userdata")
 	}
 	if first.runtimeObject() != object.Value() {
 		t.Fatal("re-publication changed compact userdata identity")
 	}
-	second, ok := table.rawGetStringValue("data").UserData()
+	second, ok := table.rawGetStringValue("data").AsUserData()
 	if !ok || second != first {
 		t.Fatalf(
 			"second re-publication = (%p, %v); want (%p, true)",
@@ -1093,7 +1124,7 @@ func TestConcurrentUserDataRepublishAfterStateClose(t *testing.T) {
 			defer group.Done()
 			<-start
 			value := table.rawGetStringValue("data")
-			data, ok := value.UserData()
+			data, ok := value.AsUserData()
 			if !ok {
 				return
 			}
@@ -1518,7 +1549,7 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1572,7 +1603,7 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	if err := data.SetData("changed"); !errors.Is(err, ErrClosed) {
 		t.Fatalf("userdata mutation after close = %v, want ErrClosed", err)
 	}
-	if _, err := state.NewTable(0, 0); !errors.Is(err, ErrClosed) {
+	if _, err := state.NewTableWithCapacity(0, 0); !errors.Is(err, ErrClosed) {
 		t.Fatalf("NewTable after close = %v, want ErrClosed", err)
 	}
 }
@@ -1603,14 +1634,14 @@ func closeStateWithUnrelatedRoot(collected chan<- struct{}) Value {
 	if err != nil {
 		panic(err)
 	}
-	unrelated, err := state.NewTable(0, 0)
+	unrelated, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		panic(err)
 	}
 	runtime.SetFinalizer(unrelated, func(*Table) {
 		collected <- struct{}{}
 	})
-	if err := state.SetGlobal("unrelated", unrelated.Value()); err != nil {
+	if err := state.SetRawGlobal("unrelated", unrelated.Value()); err != nil {
 		panic(err)
 	}
 	retained := state.String("retained")
@@ -1631,13 +1662,19 @@ func TestZeroStateRejectsOperations(t *testing.T) {
 	if state.String("x").Valid() {
 		t.Fatal("zero State constructed a valid string")
 	}
-	if _, err := state.NewTable(0, 0); !errors.Is(err, ErrClosed) {
+	if _, err := state.NewTable(); !errors.Is(err, ErrClosed) {
 		t.Fatalf("zero State NewTable = %v, want ErrClosed", err)
+	}
+	if _, err := state.NewTableWithCapacity(0, 0); !errors.Is(
+		err,
+		ErrClosed,
+	) {
+		t.Fatalf("zero State NewTableWithCapacity = %v, want ErrClosed", err)
 	}
 	if _, err := state.NewUserData(nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("zero State NewUserData = %v, want ErrClosed", err)
 	}
-	if _, err := state.Global("x"); !errors.Is(err, ErrClosed) {
+	if _, err := state.RawGlobal("x"); !errors.Is(err, ErrClosed) {
 		t.Fatalf("zero State Global = %v, want ErrClosed", err)
 	}
 }
@@ -1664,10 +1701,10 @@ func TestInvalidOptions(t *testing.T) {
 		state.options.MaxLoadBytes != 64<<20 {
 		t.Fatalf("default options = %+v", state.options)
 	}
-	if _, err := state.NewTable(maxTableHint+1, 0); !errors.Is(err, ErrCapacity) {
+	if _, err := state.NewTableWithCapacity(maxTableHint+1, 0); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("large array hint error = %v, want ErrCapacity", err)
 	}
-	if _, err := state.NewTable(0, maxTableHint+1); !errors.Is(err, ErrCapacity) {
+	if _, err := state.NewTableWithCapacity(0, maxTableHint+1); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("large record hint error = %v, want ErrCapacity", err)
 	}
 }
@@ -1679,7 +1716,7 @@ func TestValueSlotConversionDoesNotAllocate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1817,7 +1854,7 @@ func BenchmarkNewTable(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		table, err = state.NewTable(0, 0)
+		table, err = state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			b.Fatal(err)
 		}

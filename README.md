@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/lunik.png" alt="Lunar gopher orbiting the Moon" width="240">
+  <img src="assets/lunar.png" alt="Lunar gopher orbiting the Moon" width="240">
 </p>
 
 <h1 align="center">Lunar</h1>
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pkg.go.dev/github.com/mmcdole/lunik"><img src="https://pkg.go.dev/badge/github.com/mmcdole/lunik.svg" alt="Go Reference"></a>
+  <a href="https://pkg.go.dev/github.com/mmcdole/lunar"><img src="https://pkg.go.dev/badge/github.com/mmcdole/lunar.svg" alt="Go Reference"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
@@ -26,7 +26,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/mmcdole/lunik"
+	"github.com/mmcdole/lunar"
 )
 
 func main() {

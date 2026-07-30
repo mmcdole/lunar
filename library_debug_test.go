@@ -17,7 +17,7 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 	}
 	defer state.Close()
 
-	before, err := state.Global("debug")
+	before, err := state.RawGlobal("debug")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +34,11 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("debug")
+	libraryValue, err := state.RawGlobal("debug")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("debug = %v; want table", libraryValue)
 	}
@@ -57,12 +57,12 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("getregistry result count = %d; want 1", len(results))
 	}
-	registry, ok := results[0].Table()
+	registry, ok := results[0].AsTable()
 	if !ok || registry.runtimeObject() != state.registry {
 		t.Fatal("debug.getregistry did not return the canonical registry")
 	}
 	loaded := state.registry.rawGetStringValue(loadedModulesRegistryKey)
-	loadedTable, ok := loaded.Table()
+	loadedTable, ok := loaded.AsTable()
 	if !ok {
 		t.Fatalf("registry _LOADED = %v; want table", loaded)
 	}
@@ -73,17 +73,17 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 		t.Fatal("_LOADED.debug does not identify the debug library")
 	}
 
-	if err := state.SetGlobal("debug", Number(1)); err != nil {
+	if err := state.SetRawGlobal("debug", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenDebug(); err != nil {
 		t.Fatal(err)
 	}
-	reopenedValue, err := state.Global("debug")
+	reopenedValue, err := state.RawGlobal("debug")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, ok := reopenedValue.Table()
+	reopened, ok := reopenedValue.AsTable()
 	if !ok {
 		t.Fatalf("reopened debug = %v; want table", reopenedValue)
 	}
@@ -187,7 +187,7 @@ func TestDebugUpvaluesPreserveExactArityAndNativePrivacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("captured_native", native.Value()); err != nil {
+	if err := state.SetRawGlobal("captured_native", native.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +238,7 @@ func TestDebugInfoCoversFunctionsCallsLinesAndTailFrames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("debug_native", native.Value()); err != nil {
+	if err := state.SetRawGlobal("debug_native", native.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -639,11 +639,11 @@ func TestDebugLibraryMatchesLua51Cases(t *testing.T) {
 }
 
 // TestDebugLibraryCasesMatchLua51Oracle re-derives every recorded expectation
-// from an actual Lua 5.1 interpreter when LUNIK_LUA51 is set.
+// from an actual Lua 5.1 interpreter when LUNAR_LUA51 is set.
 func TestDebugLibraryCasesMatchLua51Oracle(t *testing.T) {
-	binary := os.Getenv("LUNIK_LUA51")
+	binary := os.Getenv("LUNAR_LUA51")
 	if binary == "" {
-		t.Skip("set LUNIK_LUA51 to a Lua 5.1 interpreter to verify")
+		t.Skip("set LUNAR_LUA51 to a Lua 5.1 interpreter to verify")
 	}
 
 	driver := &strings.Builder{}
@@ -672,7 +672,7 @@ func TestDebugLibraryCasesMatchLua51Oracle(t *testing.T) {
 			output,
 		)
 	}
-	record := os.Getenv("LUNIK_LUA51_RECORD") != ""
+	record := os.Getenv("LUNAR_LUA51_RECORD") != ""
 	for index, test := range debugLibraryLua51Cases {
 		if record {
 			t.Logf("%s: %q", test.name, lines[index])

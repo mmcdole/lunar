@@ -1,3 +1,3 @@
-module github.com/mmcdole/lunik
+module github.com/mmcdole/lunar
 
 go 1.24

@@ -137,6 +137,15 @@ func Number(value float64) Value {
 	return Value{ref: numberMarkerPointer, bits: math.Float64bits(value)}
 }
 
+// String returns a State-neutral Lua string.
+//
+// The returned Value may be shared among States and remains valid after any
+// State is closed. State.String may reuse a State's short-string cache when
+// constructing strings repeatedly.
+func String(text string) Value {
+	return stringValue(newStringRef(text))
+}
+
 // Valid reports whether value contains a Lua value.
 func (value Value) Valid() bool {
 	return value.ref != nil
@@ -204,8 +213,8 @@ func (value Value) AsString() (string, bool) {
 	return stringSlotText(slotFromValue(value)), true
 }
 
-// Table returns the canonical table and whether value is a table.
-func (value Value) Table() (*Table, bool) {
+// AsTable returns the canonical table and whether value is a table.
+func (value Value) AsTable() (*Table, bool) {
 	if value.Kind() != TableKind {
 		return nil, false
 	}
@@ -218,8 +227,8 @@ func (value Value) Table() (*Table, bool) {
 	return table, true
 }
 
-// Function returns the canonical function and whether value is a function.
-func (value Value) Function() (*Function, bool) {
+// AsFunction returns the canonical function and whether value is a function.
+func (value Value) AsFunction() (*Function, bool) {
 	if value.Kind() != FunctionKind {
 		return nil, false
 	}
@@ -232,8 +241,8 @@ func (value Value) Function() (*Function, bool) {
 	return function, true
 }
 
-// UserData returns the canonical userdata and whether value is userdata.
-func (value Value) UserData() (*UserData, bool) {
+// AsUserData returns the canonical userdata and whether value is userdata.
+func (value Value) AsUserData() (*UserData, bool) {
 	if value.Kind() != UserDataKind {
 		return nil, false
 	}
@@ -246,8 +255,8 @@ func (value Value) UserData() (*UserData, bool) {
 	return data, true
 }
 
-// Thread returns the canonical thread and whether value is a thread.
-func (value Value) Thread() (*Thread, bool) {
+// AsThread returns the canonical thread and whether value is a thread.
+func (value Value) AsThread() (*Thread, bool) {
 	if value.Kind() != ThreadKind {
 		return nil, false
 	}

@@ -151,7 +151,7 @@ func TestStateLoadStreamsSourceAndBinaryChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("marker", Number(73)); err != nil {
+	if err := state.SetRawGlobal("marker", Number(73)); err != nil {
 		t.Fatal(err)
 	}
 	binaryReader := &fixedWidthReader{text: dumped, width: 1}

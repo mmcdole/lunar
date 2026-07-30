@@ -272,22 +272,24 @@ type runtimeState struct {
 //
 // A State must not be copied after first use. Retain and pass its pointer.
 type State struct {
-	noCopy          noCopy
-	runtime         *runtimeState
-	objects         objectLedger
-	options         Options
-	limits          resourceLimits
-	streams         *standardStreams
-	location        *time.Location
-	now             func() time.Time
-	closeContext    *stateCloseContext
-	active          *threadObject
-	main            *threadObject
-	registry        *tableObject
-	packageSentinel *userDataObject
-	resources       *nativeResourceRegistry
-	execution       executionControl
-	typeMetatables  [TableKind + 1]*tableObject
+	noCopy           noCopy
+	runtime          *runtimeState
+	objects          objectLedger
+	options          Options
+	limits           resourceLimits
+	streams          *standardStreams
+	location         *time.Location
+	now              func() time.Time
+	closeContext     *stateCloseContext
+	active           *threadObject
+	main             *threadObject
+	registry         *tableObject
+	packageSentinel  *userDataObject
+	modulePreloads   *tableObject
+	resources        *nativeResourceRegistry
+	execution        executionControl
+	operationBridges [luaOperationCount]*functionObject
+	typeMetatables   [TableKind + 1]*tableObject
 }
 
 // New constructs an empty State.
@@ -408,6 +410,9 @@ func (state *State) Close() error {
 	state.detachObjectsForClose()
 	state.registry = nil
 	state.packageSentinel = nil
+	state.modulePreloads = nil
+	state.operationBridges =
+		[luaOperationCount]*functionObject{}
 	state.options.Stdin = nil
 	state.options.Stdout = nil
 	state.options.Stderr = nil
@@ -453,8 +458,16 @@ func (state *State) String(text string) Value {
 	return stringValue(value)
 }
 
-// NewTable constructs an empty canonical Table using optional capacity hints.
-func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
+// NewTable constructs an empty canonical Table.
+func (state *State) NewTable() (*Table, error) {
+	return state.NewTableWithCapacity(0, 0)
+}
+
+// NewTableWithCapacity constructs an empty canonical Table using capacity
+// hints for its array and record parts.
+func (state *State) NewTableWithCapacity(
+	arrayHint, recordHint int,
+) (*Table, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -513,22 +526,22 @@ func (state *State) constructionEnvironment() *tableObject {
 	return thread.globals
 }
 
-// Global returns a raw value from the current global environment.
+// RawGlobal returns a raw value from the current global environment.
 //
 // During a native callback, current means the executing Thread. Otherwise it
 // means the main Thread.
-func (state *State) Global(name string) (Value, error) {
+func (state *State) RawGlobal(name string) (Value, error) {
 	if err := state.checkOpen(); err != nil {
 		return Value{}, err
 	}
 	return state.globalEnvironment().rawGetStringValue(name), nil
 }
 
-// SetGlobal performs a raw assignment in the current global environment.
+// SetRawGlobal performs a raw assignment in the current global environment.
 //
 // During a native callback, current means the executing Thread. Otherwise it
 // means the main Thread.
-func (state *State) SetGlobal(name string, value Value) error {
+func (state *State) SetRawGlobal(name string, value Value) error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}

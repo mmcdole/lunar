@@ -45,7 +45,7 @@ func TestTableRawScalarAccess(t *testing.T) {
 		{Number(-4), state.String("negative")},
 		{Bool(true), Number(1)},
 		{Bool(false), Number(2)},
-		{state.String("name"), state.String("lunik")},
+		{state.String("name"), state.String("lunar")},
 	}
 	for _, test := range tests {
 		if err := table.rawSetValue(test.key, test.value); err != nil {
@@ -144,7 +144,7 @@ func TestTableRawScalarAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,6 +602,131 @@ func TestTableTraversalContinuesAfterDeletingCurrentKey(t *testing.T) {
 	assertTableStoreInvariant(t, &nested.store)
 }
 
+func TestTableNextPublicTraversal(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTableWithCapacity(4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := []struct {
+		key   Value
+		value Value
+	}{
+		{Number(1), String("one")},
+		{Number(3), String("three")},
+		{String("north"), Number(10)},
+		{Bool(true), Number(20)},
+	}
+	for _, field := range fields {
+		if err := table.RawSet(field.key, field.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seen := make(map[string]Value, len(fields))
+	after := Nil()
+	for {
+		key, value, ok, err := table.Next(after)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			if !key.IsNil() || !value.IsNil() {
+				t.Fatalf(
+					"completed Next = (%v, %v), want nil values",
+					key,
+					value,
+				)
+			}
+			break
+		}
+		identity := key.String()
+		if _, duplicate := seen[identity]; duplicate {
+			t.Fatalf("Next repeated key %v", key)
+		}
+		seen[identity] = value
+
+		// Lua permits removing the current field before continuing from its
+		// key.
+		if err := table.RawSet(key, Nil()); err != nil {
+			t.Fatal(err)
+		}
+		after = key
+	}
+	if len(seen) != len(fields) {
+		t.Fatalf("Next visited %d fields, want %d", len(seen), len(fields))
+	}
+	for _, field := range fields {
+		got, found := seen[field.key.String()]
+		if !found {
+			t.Fatalf("Next missed key %v", field.key)
+		}
+		equal, err := state.RawEqual(got, field.value)
+		if err != nil || !equal {
+			t.Fatalf(
+				"Next value for %v = %v, want %v",
+				field.key,
+				got,
+				field.value,
+			)
+		}
+	}
+}
+
+func TestTableNextErrors(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := state.NewTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := table.Next(Value{}); !errors.Is(
+		err,
+		ErrInvalidValue,
+	) {
+		t.Fatalf("invalid continuation error = %v, want ErrInvalidValue", err)
+	}
+	if _, _, _, err := table.Next(String("missing")); !errors.Is(
+		err,
+		ErrInvalidNextKey,
+	) {
+		t.Fatalf(
+			"missing continuation error = %v, want ErrInvalidNextKey",
+			err,
+		)
+	}
+
+	other, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := other.NewTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := table.Next(foreign.Value()); !errors.Is(
+		err,
+		ErrForeignValue,
+	) {
+		t.Fatalf("foreign continuation error = %v, want ErrForeignValue", err)
+	}
+	if err := other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := table.Next(Nil()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("closed table Next error = %v, want ErrClosed", err)
+	}
+}
+
 func TestTableTraversalContinuesAfterUpdatingExistingKey(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -859,7 +984,7 @@ func BenchmarkTableRawInteger(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(1, 0)
+	table, err := state.NewTableWithCapacity(1, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -882,7 +1007,7 @@ func BenchmarkTableRawString(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}

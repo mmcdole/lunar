@@ -22,7 +22,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	before, err := state.Global("pcall")
+	before, err := state.RawGlobal("pcall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 		"xpcall",
 	}
 	for _, name := range baseFunctions {
-		value, globalErr := state.Global(name)
+		value, globalErr := state.RawGlobal(name)
 		if globalErr != nil {
 			t.Fatal(globalErr)
 		}
@@ -77,7 +77,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 			t.Fatalf("%s = %v; want function", name, value)
 		}
 	}
-	global, err := state.Global("_G")
+	global, err := state.RawGlobal("_G")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	); !applicable || !same {
 		t.Fatal("_G does not identify the canonical global environment")
 	}
-	version, err := state.Global("_VERSION")
+	version, err := state.RawGlobal("_VERSION")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,19 +102,19 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 
 	oldFunctions := make(map[string]Value, len(baseFunctions))
 	for _, name := range baseFunctions {
-		oldFunctions[name], _ = state.Global(name)
+		oldFunctions[name], _ = state.RawGlobal(name)
 	}
-	if err := state.SetGlobal("pcall", Number(1)); err != nil {
+	if err := state.SetRawGlobal("pcall", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("_G", Nil()); err != nil {
+	if err := state.SetRawGlobal("_G", Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenBase(); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range baseFunctions {
-		current, getErr := state.Global(name)
+		current, getErr := state.RawGlobal(name)
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -125,7 +125,7 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 			t.Fatalf("reopened %s did not receive a fresh function", name)
 		}
 	}
-	global, _ = state.Global("_G")
+	global, _ = state.RawGlobal("_G")
 	if same, applicable := global.SameObject(
 		state.main.globals.owningValue(),
 	); !applicable || !same {
@@ -144,7 +144,7 @@ func TestNewProxyConstructionAndRegistry(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	newProxy, err := state.Global("newproxy")
+	newProxy, err := state.RawGlobal("newproxy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestNewProxyConstructionAndRegistry(t *testing.T) {
 	if err := state.OpenBase(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := state.Global("newproxy")
+	reopened, err := state.RawGlobal("newproxy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestNewProxyRegistryDoesNotRootMetatables(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	newProxy, err := state.Global("newproxy")
+	newProxy, err := state.RawGlobal("newproxy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestNewProxySurvivesAutomaticCollectionAtReturn(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	newProxy, err := state.Global("newproxy")
+	newProxy, err := state.RawGlobal("newproxy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,11 +333,11 @@ func TestBaseCollectionControlsShareTheSemanticHeap(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	collector, err := state.Global("collectgarbage")
+	collector, err := state.RawGlobal("collectgarbage")
 	if err != nil {
 		t.Fatal(err)
 	}
-	gcinfo, err := state.Global("gcinfo")
+	gcinfo, err := state.RawGlobal("gcinfo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,8 +434,8 @@ func TestBaseCollectionControlPolicyIsStateLocal(t *testing.T) {
 	second := newStateWithBase(t, Options{})
 	defer second.Close()
 
-	firstCollector, _ := first.Global("collectgarbage")
-	secondCollector, _ := second.Global("collectgarbage")
+	firstCollector, _ := first.RawGlobal("collectgarbage")
+	secondCollector, _ := second.RawGlobal("collectgarbage")
 	firstPause, err := first.Call(
 		firstCollector,
 		first.String("setpause"),
@@ -522,7 +522,7 @@ func TestSuccessfulFinalizerRestoresOuterCollectionSchedule(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	collector, err := state.Global("collectgarbage")
+	collector, err := state.RawGlobal("collectgarbage")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +590,7 @@ func TestSuccessfulFinalizerRestoresOuterCollectionSchedule(t *testing.T) {
 func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
-	collector, err := state.Global("collectgarbage")
+	collector, err := state.RawGlobal("collectgarbage")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +613,7 @@ func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 	before := count()
 	text := strings.Repeat("retained string ", 1<<16)
 	value := state.String(text)
-	if err := state.SetGlobal("largeRetainedString", value); err != nil {
+	if err := state.SetRawGlobal("largeRetainedString", value); err != nil {
 		t.Fatal(err)
 	}
 	after := count()
@@ -625,7 +625,7 @@ func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 		)
 	}
 
-	if err := state.SetGlobal("largeRetainedString", Nil()); err != nil {
+	if err := state.SetRawGlobal("largeRetainedString", Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.Collect(); err != nil {
@@ -661,7 +661,7 @@ func TestBaseCollectionControlsValidateEveryAmountBeforeAction(t *testing.T) {
 		),
 		nil,
 	)
-	collector, err := state.Global("collectgarbage")
+	collector, err := state.RawGlobal("collectgarbage")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -817,7 +817,7 @@ func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
 	originalPCall := original.RawGetString("pcall")
 	originalCoroutine := original.RawGetString("coroutine")
 
-	replacement, err := state.NewTable(0, 24)
+	replacement, err := state.NewTableWithCapacity(0, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -831,14 +831,14 @@ func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	global, err := state.Global("_G")
+	global, err := state.RawGlobal("_G")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if same, applicable := global.SameObject(replacement.Value()); !applicable || !same {
 		t.Fatal("reopened _G does not identify the replacement environment")
 	}
-	reopenedPCall, err := state.Global("pcall")
+	reopenedPCall, err := state.RawGlobal("pcall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +848,7 @@ func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
 	if same, applicable := reopenedPCall.SameObject(originalPCall); !applicable || same {
 		t.Fatal("reopening reused the old environment's pcall")
 	}
-	reopenedFunction, _ := reopenedPCall.Function()
+	reopenedFunction, _ := reopenedPCall.AsFunction()
 	if environment, environmentErr := state.FunctionEnvironment(
 		reopenedFunction,
 	); environmentErr != nil || environment != replacement {
@@ -961,7 +961,7 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,7 +973,7 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -983,11 +983,11 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 	if err := state.SetMetatable(callable.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("callable", callable.Value()); err != nil {
+	if err := state.SetRawGlobal("callable", callable.Value()); err != nil {
 		t.Fatal(err)
 	}
 
-	marker, err := state.NewTable(0, 1)
+	marker, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -997,7 +997,7 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("raise_marker", raiser.Value()); err != nil {
+	if err := state.SetRawGlobal("raise_marker", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1129,7 +1129,7 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1139,11 +1139,11 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("raise_marker", raiser.Value()); err != nil {
+	if err := state.SetRawGlobal("raise_marker", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 
-	callableHandler, err := state.NewTable(0, 0)
+	callableHandler, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1153,7 +1153,7 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlerMetatable, err := state.NewTable(0, 1)
+	handlerMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1163,7 +1163,7 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 	if err := state.SetMetatable(callableHandler.Value(), handlerMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("callable_handler", callableHandler.Value()); err != nil {
+	if err := state.SetRawGlobal("callable_handler", callableHandler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1215,7 +1215,7 @@ func TestBaseXPCallDiscardsExtraArgumentsBeforeCallingTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	xpcall, err := state.Global("xpcall")
+	xpcall, err := state.RawGlobal("xpcall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1254,10 +1254,10 @@ func TestProtectedCallsPreserveAnExplicitNilError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("raise_nil", raiser.Value()); err != nil {
+	if err := state.SetRawGlobal("raise_nil", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("handle_nil", handler.Value()); err != nil {
+	if err := state.SetRawGlobal("handle_nil", handler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1284,11 +1284,11 @@ func TestBaseErrorPreservesObjectIdentityAndHonorsLuaLevels(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("marker", marker.Value()); err != nil {
+	if err := state.SetRawGlobal("marker", marker.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@base-error-level.lua", `local objectOK,object=pcall(function() error(marker) end)
@@ -1327,11 +1327,11 @@ func TestBaseToStringCallsMetamethodWithCanonicalObjects(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1346,7 +1346,7 @@ func TestBaseToStringCallsMetamethodWithCanonicalObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1356,7 +1356,7 @@ func TestBaseToStringCallsMetamethodWithCanonicalObjects(t *testing.T) {
 	if err := state.SetMetatable(target.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	tostring, err := state.Global("tostring")
+	tostring, err := state.RawGlobal("tostring")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1379,15 +1379,15 @@ func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	actual, err := state.NewTable(0, 1)
+	actual, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sentinel, err := state.NewTable(0, 0)
+	sentinel, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1398,7 +1398,7 @@ func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	getmetatable, err := state.Global("getmetatable")
+	getmetatable, err := state.RawGlobal("getmetatable")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1413,7 +1413,7 @@ func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
 		t.Fatal("getmetatable did not preserve the protected sentinel")
 	}
 
-	setmetatable, err := state.Global("setmetatable")
+	setmetatable, err := state.RawGlobal("setmetatable")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1431,7 +1431,7 @@ func TestBaseMetatableProtectionPreservesSentinelIdentity(t *testing.T) {
 }
 
 // Lua 5.1 delegates decimal conversion to the platform strtod, whose handling
-// of embedded NUL and named non-finite values varies. Lunik's decimal grammar
+// of embedded NUL and named non-finite values varies. Lunar's decimal grammar
 // is deliberately byte-complete and deterministic. Explicit nondecimal bases
 // retain strtoul's C-string boundary for Lua 5.1 compatibility.
 func TestBaseToNumberUsesTheDeterministicDecimalGrammar(t *testing.T) {
@@ -1809,9 +1809,9 @@ func newStateWithBase(t testing.TB, options Options) *State {
 // Recorded expectations are verified against a real interpreter by
 // TestLua51OracleMatchesLibraryCases. Regenerate or re-verify with:
 //
-//	LUNIK_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
+//	LUNAR_LUA51=/path/to/lua-5.1.5/src/lua go test -run OracleMatches -v
 //
-// and record new cases with LUNIK_LUA51_RECORD=1 set as well.
+// and record new cases with LUNAR_LUA51_RECORD=1 set as well.
 type lua51Case struct {
 	name   string
 	source string
@@ -1919,12 +1919,12 @@ func runLua51Cases(t *testing.T, cases []lua51Case) {
 }
 
 // TestLua51OracleMatchesLibraryCases re-derives every recorded expectation
-// from a real Lua 5.1 interpreter. It is skipped unless LUNIK_LUA51 names one,
+// from a real Lua 5.1 interpreter. It is skipped unless LUNAR_LUA51 names one,
 // because the reference binary is deliberately not carried in this repository.
 func TestLua51OracleMatchesLibraryCases(t *testing.T) {
-	binary := os.Getenv("LUNIK_LUA51")
+	binary := os.Getenv("LUNAR_LUA51")
 	if binary == "" {
-		t.Skip("set LUNIK_LUA51 to a Lua 5.1 interpreter to verify")
+		t.Skip("set LUNAR_LUA51 to a Lua 5.1 interpreter to verify")
 	}
 	cases := make(
 		[]lua51Case,
@@ -1968,7 +1968,7 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	if len(lines) != len(cases) {
 		t.Fatalf("oracle produced %d lines; want %d", len(lines), len(cases))
 	}
-	record := os.Getenv("LUNIK_LUA51_RECORD") != ""
+	record := os.Getenv("LUNAR_LUA51_RECORD") != ""
 	for index, test := range cases {
 		if record {
 			t.Logf("{\n\tname:   %q,\n\tsource: %q,\n\twant:   %q,\n},", test.name, test.source, lines[index])

@@ -409,11 +409,11 @@ func TestWeakTableHostRootsAndDeletedKeyContinuation(t *testing.T) {
 		state := newCollectorTestState(t)
 		defer state.Close()
 		table, metatable := newWeakTableForTest(t, state, "kv", 0, 1)
-		key, err := state.NewTable(0, 0)
+		key, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		value, err := state.NewTable(0, 0)
+		value, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

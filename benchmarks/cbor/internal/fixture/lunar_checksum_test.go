@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSmallPresetHasPublishedLunikChecksum(t *testing.T) {
+func TestSmallPresetHasPublishedLunarChecksum(t *testing.T) {
 	preset, ok := Lookup("small")
 	if !ok {
 		t.Fatal("small preset is missing")

@@ -26,7 +26,7 @@ func TestSemanticLedgerRegistersEveryCanonicalObject(t *testing.T) {
 		t.Fatalf("initial semantic heap = %+v", initial)
 	}
 
-	table, err := state.NewTable(3, 5)
+	table, err := state.NewTableWithCapacity(3, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -947,7 +947,7 @@ func TestSemanticCollectionAtExecutionSafePointKeepsFrameExtent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("collect_now", collect.Value()); err != nil {
+	if err := state.SetRawGlobal("collect_now", collect.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(
@@ -1018,7 +1018,7 @@ func TestSemanticSweepClosesEscapedUpvalueFromDeadThread(t *testing.T) {
 
 func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 	state := newCollectorTestState(t)
-	table, err := state.NewTable(1, 0)
+	table, err := state.NewTableWithCapacity(1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1524,7 +1524,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 		if got := state.runtime.collection.debt; got != 0 {
 			t.Fatalf("uncached external string charged %d bytes", got)
 		}
-		table, err := state.NewTable(1, 0)
+		table, err := state.NewTableWithCapacity(1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1588,7 +1588,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 		}
 		peer := newCollectorTestState(t)
 		defer peer.Close()
-		peerTable, err := peer.NewTable(1, 0)
+		peerTable, err := peer.NewTableWithCapacity(1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1745,7 +1745,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 			)
 		}
 
-		table, err := state.NewTable(1, 0)
+		table, err := state.NewTableWithCapacity(1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1840,7 +1840,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 
 	longText := strings.Repeat("boundary-read-key-", 5)
 	shortText := "boundary-read-key"
-	table, err := state.NewTable(0, 3)
+	table, err := state.NewTableWithCapacity(0, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1971,11 +1971,11 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatal("read-only lookup admitted the short probe to the probation cache")
 	}
 
-	lookupProxy, err := state.NewTable(0, 0)
+	lookupProxy, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lookupMetatable, err := state.NewTable(0, 1)
+	lookupMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2073,11 +2073,11 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 	if err := table.RawSetString(longText, Nil()); err != nil {
 		t.Fatal(err)
 	}
-	setProxy, err := state.NewTable(0, 0)
+	setProxy, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	setMetatable, err := state.NewTable(0, 1)
+	setMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2219,7 +2219,7 @@ func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
 
 		peer := newCollectorTestState(t)
 		defer peer.Close()
-		foreign, err := peer.NewTable(0, 0)
+		foreign, err := peer.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2251,11 +2251,11 @@ func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		target, err := state.NewTable(0, 0)
+		target, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		metatable, err := state.NewTable(0, 2)
+		metatable, err := state.NewTableWithCapacity(0, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2332,7 +2332,7 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stringMetatable, err := state.NewTable(0, 2)
+	stringMetatable, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2355,11 +2355,11 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source, err := state.NewTable(0, 0)
+	source, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceMetatable, err := state.NewTable(0, 2)
+	sourceMetatable, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2449,7 +2449,7 @@ func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
 	state := newCollectorTestState(t)
 	defer state.Close()
 
-	table, err := state.NewTable(2, 0)
+	table, err := state.NewTableWithCapacity(2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2555,7 +2555,7 @@ func TestAutomaticCollectionRunsOnlyAtRootedExecutorSafePoints(t *testing.T) {
 	if number, ok := results[0].AsNumber(); !ok || number != 41 {
 		t.Fatalf("first rooted result = %v; want 41", results[0])
 	}
-	table, ok := results[1].Table()
+	table, ok := results[1].AsTable()
 	if !ok {
 		t.Fatalf("second rooted result = %v; want table", results[1])
 	}
@@ -2639,7 +2639,7 @@ func TestAutomaticCollectionRootsNativeReturnAtDepthZero(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("native result count = %d; want 1", len(results))
 	}
-	table, ok := results[0].Table()
+	table, ok := results[0].AsTable()
 	if !ok || table.runtimeObject() != returned {
 		t.Fatal("native return did not preserve canonical table identity")
 	}
@@ -2673,7 +2673,7 @@ func tableFromDiscardedState(
 ) (*Table, weak.Pointer[State], weak.Pointer[tableObject]) {
 	t.Helper()
 	state := newCollectorTestState(t)
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2689,7 +2689,7 @@ func liveHostTableRoot(
 	state *State,
 ) (weak.Pointer[tableObject], weak.Pointer[hostToken]) {
 	t.Helper()
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

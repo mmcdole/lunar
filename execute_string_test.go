@@ -14,14 +14,14 @@ func TestExecutorLengthUsesLua51PrimitiveSemantics(t *testing.T) {
 	defer state.Close()
 
 	trap := compileTestFunction(t, state, "@trap.lua", `return 99`)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := metatable.RawSetString("__len", trap.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	table, err := state.NewTable(3, 0)
+	table, err := state.NewTableWithCapacity(3, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ observed_value = value
 observed_nil = fallback == nil
 return marker
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +77,11 @@ return marker
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("marker", marker.Value()); err != nil {
+	if err := state.SetRawGlobal("marker", marker.Value()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(data.Value(), metatable); err != nil {
@@ -101,13 +101,13 @@ return marker
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, marker.Value())
-	if observed, err := state.Global("observed_value"); err != nil {
+	if observed, err := state.RawGlobal("observed_value"); err != nil {
 		t.Fatal(err)
 	} else if same, applicable := observed.SameObject(data.Value()); !applicable ||
 		!same {
 		t.Fatalf("length operand = %v", observed)
 	}
-	if observed, err := state.Global("observed_nil"); err != nil {
+	if observed, err := state.RawGlobal("observed_nil"); err != nil {
 		t.Fatal(err)
 	} else if boolean, ok := observed.AsBool(); !ok || !boolean {
 		t.Fatalf("length fallback argument = %v", observed)
@@ -124,7 +124,7 @@ end
 return count(...)
 `,
 	)
-	countMetatable, err := state.NewTable(0, 1)
+	countMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ return count(...)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(2))
 
-	empty, err := state.NewTable(0, 0)
+	empty, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ end
 phase = -1
 return "bad"
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ return "bad"
 	}
 	values := make([]*Table, 4)
 	for index := range values {
-		values[index], err = state.NewTable(0, 0)
+		values[index], err = state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -295,19 +295,19 @@ return "bad"
 			t.Fatal(err)
 		}
 	}
-	if err := state.SetGlobal("expected_a", values[0].Value()); err != nil {
+	if err := state.SetRawGlobal("expected_a", values[0].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("expected_b", values[1].Value()); err != nil {
+	if err := state.SetRawGlobal("expected_b", values[1].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("expected_c", values[2].Value()); err != nil {
+	if err := state.SetRawGlobal("expected_c", values[2].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("joined", values[3].Value()); err != nil {
+	if err := state.SetRawGlobal("joined", values[3].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("phase", Number(0)); err != nil {
+	if err := state.SetRawGlobal("phase", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `
@@ -324,7 +324,7 @@ return a .. b .. c
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, state.String("done"))
-	if phase, err := state.Global("phase"); err != nil {
+	if phase, err := state.RawGlobal("phase"); err != nil {
 		t.Fatal(err)
 	} else if number, ok := phase.AsNumber(); !ok || number != 2 {
 		t.Fatalf("concat phase = %v", phase)
@@ -341,7 +341,7 @@ func TestExecutorConcatSelectsLeftThenRightMetamethod(t *testing.T) {
 	rightHandler := compileTestFunction(t, state, "@right.lua", `return "right"`)
 	left := metamethodTestTable(t, state, "__concat", leftHandler.owningValue())
 	right := metamethodTestTable(t, state, "__concat", rightHandler.owningValue())
-	plain, err := state.NewTable(0, 0)
+	plain, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestExecutorConcatObservesMetamethodMutationBetweenPairs(t *testing.T) {
 meta.__concat = replacement
 return joined
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ return joined
 	}
 	values := make([]*Table, 4)
 	for index := range values {
-		values[index], err = state.NewTable(0, 0)
+		values[index], err = state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -404,16 +404,16 @@ return joined
 			t.Fatal(err)
 		}
 	}
-	if err := state.SetGlobal("meta", metatable.Value()); err != nil {
+	if err := state.SetRawGlobal("meta", metatable.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal(
+	if err := state.SetRawGlobal(
 		"replacement",
 		replacement.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("joined", values[3].Value()); err != nil {
+	if err := state.SetRawGlobal("joined", values[3].Value()); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `
@@ -474,18 +474,18 @@ phase = 1
 return replacement
 `)
 	right := metamethodTestTable(t, state, "__concat", handler.owningValue())
-	last, err := state.NewTable(0, 0)
+	last, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	replacement, err := state.NewTable(0, 0)
+	replacement, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("phase", Number(0)); err != nil {
+	if err := state.SetRawGlobal("phase", Number(0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("replacement", replacement.Value()); err != nil {
+	if err := state.SetRawGlobal("replacement", replacement.Value()); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `
@@ -508,7 +508,7 @@ return left .. middle .. right
 		) {
 		t.Fatalf("resumed concat failure = %+v", result)
 	}
-	if phase, err := state.Global("phase"); err != nil {
+	if phase, err := state.RawGlobal("phase"); err != nil {
 		t.Fatal(err)
 	} else if number, ok := phase.AsNumber(); !ok || number != 1 {
 		t.Fatalf("earlier concat metamethod phase = %v", phase)
@@ -525,7 +525,7 @@ func TestExecutorPrimitiveConcatIgnoresMetamethods(t *testing.T) {
 	}
 	defer state.Close()
 	trap := compileTestFunction(t, state, "@trap.lua", `return "trap"`)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestExecutorConcatMetamethodMayReturnNil(t *testing.T) {
 	defer state.Close()
 	handler := compileTestFunction(t, state, "@concat.lua", `return`)
 	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ local invalid = 1
 return invalid()
 `)
 	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +708,7 @@ func TestExecutorConcatFrameLimitFailureIsAtomic(t *testing.T) {
 	defer state.Close()
 	handler := compileTestFunction(t, state, "@handler.lua", `return "joined"`)
 	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -741,7 +741,7 @@ func TestExecutorStringOperatorAllocationContracts(t *testing.T) {
 	}
 	defer state.Close()
 
-	table, err := state.NewTable(1, 0)
+	table, err := state.NewTableWithCapacity(1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,7 +762,7 @@ return a .. b .. c .. d
 `)
 	handler := compileTestFunction(t, state, "@handler.lua", `return "joined"`)
 	left := metamethodTestTable(t, state, "__concat", handler.owningValue())
-	right, err := state.NewTable(0, 0)
+	right, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -842,7 +842,7 @@ func BenchmarkExecutorLengthLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(1, 0)
+	table, err := state.NewTableWithCapacity(1, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -861,7 +861,7 @@ return total
 		b,
 		state,
 		function,
-		state.String("lunik"),
+		state.String("lunar"),
 		table.Value(),
 	)
 }

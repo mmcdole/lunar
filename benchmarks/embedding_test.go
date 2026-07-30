@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	golua "github.com/Shopify/go-lua"
-	lunik "github.com/mmcdole/lunik"
+	lunar "github.com/mmcdole/lunar"
 	gopherlua "github.com/yuin/gopher-lua"
 )
 
@@ -46,54 +46,54 @@ var boundaryString = strings.Repeat("0123456789abcdef", 8)
 func BenchmarkEmbedding(b *testing.B) {
 	cases := []struct {
 		name      string
-		lunik     func(*testing.B)
+		lunar     func(*testing.B)
 		gopherLua func(*testing.B)
 		goLua     func(*testing.B)
 	}{
 		{
 			name:      "go_to_lua_scalars",
-			lunik:     benchmarkGoToLuaScalarsLunik,
+			lunar:     benchmarkGoToLuaScalarsLunar,
 			gopherLua: benchmarkGoToLuaScalarsGopherLua,
 			goLua:     benchmarkGoToLuaScalarsGoLua,
 		},
 		{
 			name:      "lua_to_go_scalar_1000",
-			lunik:     benchmarkLuaToGoScalarLunik,
+			lunar:     benchmarkLuaToGoScalarLunar,
 			gopherLua: benchmarkLuaToGoScalarGopherLua,
 			goLua:     benchmarkLuaToGoScalarGoLua,
 		},
 		{
 			name:      "go_string_echo_128B",
-			lunik:     benchmarkGoStringEchoLunik,
+			lunar:     benchmarkGoStringEchoLunar,
 			gopherLua: benchmarkGoStringEchoGopherLua,
 			goLua:     benchmarkGoStringEchoGoLua,
 		},
 		{
 			name:      "prebuilt_go_table_16_4_to_lua",
-			lunik:     benchmarkPrebuiltGoTableToLuaLunik,
+			lunar:     benchmarkPrebuiltGoTableToLuaLunar,
 			gopherLua: benchmarkPrebuiltGoTableToLuaGopherLua,
 			goLua:     benchmarkPrebuiltGoTableToLuaGoLua,
 		},
 		{
 			name:      "create_fill_go_table_16_4_to_lua",
-			lunik:     benchmarkGoTableToLuaLunik,
+			lunar:     benchmarkGoTableToLuaLunar,
 			gopherLua: benchmarkGoTableToLuaGopherLua,
 			goLua:     benchmarkGoTableToLuaGoLua,
 		},
 	}
 	for _, current := range cases {
 		b.Run("case="+current.name, func(b *testing.B) {
-			b.Run("runtime=lunik", current.lunik)
+			b.Run("runtime=lunar", current.lunar)
 			b.Run("runtime=gopherlua", current.gopherLua)
 			b.Run("runtime=golua", current.goLua)
 		})
 	}
 }
 
-func benchmarkGoToLuaScalarsLunik(b *testing.B) {
-	state, function := loadLunikFunction(b, scalarCallSource)
-	arguments := [...]lunik.Value{lunik.Number(40), lunik.Number(2)}
-	var results [2]lunik.Value
+func benchmarkGoToLuaScalarsLunar(b *testing.B) {
+	state, function := loadLunarFunction(b, scalarCallSource)
+	arguments := [...]lunar.Value{lunar.Number(40), lunar.Number(2)}
+	var results [2]lunar.Value
 	var count int
 	var sum, difference float64
 	var sumOK, differenceOK bool
@@ -110,7 +110,7 @@ func benchmarkGoToLuaScalarsLunik(b *testing.B) {
 	if err := run(); err != nil {
 		b.Fatal(err)
 	}
-	validateLunikScalarResults(
+	validateLunarScalarResults(
 		b,
 		sum,
 		sumOK,
@@ -126,7 +126,7 @@ func benchmarkGoToLuaScalarsLunik(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	validateLunikScalarResults(
+	validateLunarScalarResults(
 		b,
 		sum,
 		sumOK,
@@ -136,7 +136,7 @@ func benchmarkGoToLuaScalarsLunik(b *testing.B) {
 	)
 }
 
-func validateLunikScalarResults(
+func validateLunarScalarResults(
 	b *testing.B,
 	sum float64,
 	sumOK bool,
@@ -259,8 +259,8 @@ func validateGoLuaScalarResults(
 	}
 }
 
-func benchmarkLuaToGoScalarLunik(b *testing.B) {
-	state, err := lunik.New(lunik.Options{})
+func benchmarkLuaToGoScalarLunar(b *testing.B) {
+	state, err := lunar.New(lunar.Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func benchmarkLuaToGoScalarLunik(b *testing.B) {
 			b.Error(err)
 		}
 	})
-	hostAdd, err := state.NewNativeFunction(func(frame lunik.Frame) lunik.Outcome {
+	hostAdd, err := state.NewNativeFunction(func(frame lunar.Frame) lunar.Outcome {
 		left, leftOK := frame.Number(0)
 		right, rightOK := frame.Number(1)
 		if !leftOK || !rightOK {
@@ -280,11 +280,11 @@ func benchmarkLuaToGoScalarLunik(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := state.SetGlobal("host_add", hostAdd.Value()); err != nil {
+	if err := state.SetRawGlobal("host_add", hostAdd.Value()); err != nil {
 		b.Fatal(err)
 	}
-	function := loadLunikFunctionInState(b, state, callbackCallSource)
-	var result [1]lunik.Value
+	function := loadLunarFunctionInState(b, state, callbackCallSource)
+	var result [1]lunar.Value
 	var count int
 	var number float64
 	var numberOK bool
@@ -300,7 +300,7 @@ func benchmarkLuaToGoScalarLunik(b *testing.B) {
 	if err := run(); err != nil {
 		b.Fatal(err)
 	}
-	validateLunikNumberResult(b, number, numberOK, count, 502_500)
+	validateLunarNumberResult(b, number, numberOK, count, 502_500)
 
 	runtime.GC()
 	b.ReportAllocs()
@@ -309,7 +309,7 @@ func benchmarkLuaToGoScalarLunik(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	validateLunikNumberResult(b, number, numberOK, count, 502_500)
+	validateLunarNumberResult(b, number, numberOK, count, 502_500)
 }
 
 func benchmarkLuaToGoScalarGopherLua(b *testing.B) {
@@ -392,10 +392,10 @@ func benchmarkLuaToGoScalarGoLua(b *testing.B) {
 	validateGoLuaNumberResult(b, result, resultOK, 502_500)
 }
 
-func benchmarkGoStringEchoLunik(b *testing.B) {
-	state, function := loadLunikFunction(b, stringEchoSource)
-	var arguments [1]lunik.Value
-	var results [1]lunik.Value
+func benchmarkGoStringEchoLunar(b *testing.B) {
+	state, function := loadLunarFunction(b, stringEchoSource)
+	var arguments [1]lunar.Value
+	var results [1]lunar.Value
 	var count int
 	var err error
 	var result string
@@ -509,17 +509,17 @@ var tableRecordFields = [...]struct {
 	{name: "delta", value: 20},
 }
 
-func benchmarkPrebuiltGoTableToLuaLunik(b *testing.B) {
-	state, function := loadLunikFunction(b, tableChecksumSource)
-	table, err := state.NewTable(16, 4)
+func benchmarkPrebuiltGoTableToLuaLunar(b *testing.B) {
+	state, function := loadLunarFunction(b, tableChecksumSource)
+	table, err := state.NewTableWithCapacity(16, 4)
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := fillLunikBenchmarkTable(table); err != nil {
+	if err := fillLunarBenchmarkTable(table); err != nil {
 		b.Fatal(err)
 	}
-	arguments := [...]lunik.Value{table.Value()}
-	var results [1]lunik.Value
+	arguments := [...]lunar.Value{table.Value()}
+	var results [1]lunar.Value
 	var count int
 	var result float64
 	var resultOK bool
@@ -535,7 +535,7 @@ func benchmarkPrebuiltGoTableToLuaLunik(b *testing.B) {
 	if err := run(); err != nil {
 		b.Fatal(err)
 	}
-	validateLunikNumberResult(b, result, resultOK, count, 210)
+	validateLunarNumberResult(b, result, resultOK, count, 210)
 
 	runtime.GC()
 	b.ReportAllocs()
@@ -544,7 +544,7 @@ func benchmarkPrebuiltGoTableToLuaLunik(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	validateLunikNumberResult(b, result, resultOK, count, 210)
+	validateLunarNumberResult(b, result, resultOK, count, 210)
 }
 
 func benchmarkPrebuiltGoTableToLuaGopherLua(b *testing.B) {
@@ -607,20 +607,20 @@ func benchmarkPrebuiltGoTableToLuaGoLua(b *testing.B) {
 	validateGoLuaNumberResult(b, result, resultOK, 210)
 }
 
-func benchmarkGoTableToLuaLunik(b *testing.B) {
-	state, function := loadLunikFunction(b, tableChecksumSource)
-	var arguments [1]lunik.Value
-	var results [1]lunik.Value
+func benchmarkGoTableToLuaLunar(b *testing.B) {
+	state, function := loadLunarFunction(b, tableChecksumSource)
+	var arguments [1]lunar.Value
+	var results [1]lunar.Value
 	var count int
 	var err error
 	var result float64
 	var resultOK bool
 	run := func() error {
-		table, tableErr := state.NewTable(16, 4)
+		table, tableErr := state.NewTableWithCapacity(16, 4)
 		if tableErr != nil {
 			return tableErr
 		}
-		if tableErr := fillLunikBenchmarkTable(table); tableErr != nil {
+		if tableErr := fillLunarBenchmarkTable(table); tableErr != nil {
 			return tableErr
 		}
 		arguments[0] = table.Value()
@@ -634,7 +634,7 @@ func benchmarkGoTableToLuaLunik(b *testing.B) {
 	if err := run(); err != nil {
 		b.Fatal(err)
 	}
-	validateLunikNumberResult(b, result, resultOK, count, 210)
+	validateLunarNumberResult(b, result, resultOK, count, 210)
 
 	runtime.GC()
 	b.ReportAllocs()
@@ -643,7 +643,7 @@ func benchmarkGoTableToLuaLunik(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	validateLunikNumberResult(b, result, resultOK, count, 210)
+	validateLunarNumberResult(b, result, resultOK, count, 210)
 }
 
 func benchmarkGoTableToLuaGopherLua(b *testing.B) {
@@ -705,11 +705,11 @@ func benchmarkGoTableToLuaGoLua(b *testing.B) {
 	validateGoLuaNumberResult(b, result, resultOK, 210)
 }
 
-func fillLunikBenchmarkTable(table *lunik.Table) error {
+func fillLunarBenchmarkTable(table *lunar.Table) error {
 	for index := 1; index <= 16; index++ {
 		if err := table.RawSetInt(
 			index,
-			lunik.Number(float64(index)),
+			lunar.Number(float64(index)),
 		); err != nil {
 			return err
 		}
@@ -717,7 +717,7 @@ func fillLunikBenchmarkTable(table *lunik.Table) error {
 	for _, field := range tableRecordFields {
 		if err := table.RawSetString(
 			field.name,
-			lunik.Number(field.value),
+			lunar.Number(field.value),
 		); err != nil {
 			return err
 		}
@@ -749,7 +749,7 @@ func pushGoLuaBenchmarkTable(state *golua.State) int {
 	return tableIndex
 }
 
-func validateLunikNumberResult(
+func validateLunarNumberResult(
 	b *testing.B,
 	number float64,
 	ok bool,
@@ -792,12 +792,12 @@ func validateGoLuaNumberResult(
 	}
 }
 
-func loadLunikFunction(
+func loadLunarFunction(
 	b *testing.B,
 	source string,
-) (*lunik.State, lunik.Value) {
+) (*lunar.State, lunar.Value) {
 	b.Helper()
-	state, err := lunik.New(lunik.Options{})
+	state, err := lunar.New(lunar.Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -806,14 +806,14 @@ func loadLunikFunction(
 			b.Error(err)
 		}
 	})
-	return state, loadLunikFunctionInState(b, state, source)
+	return state, loadLunarFunctionInState(b, state, source)
 }
 
-func loadLunikFunctionInState(
+func loadLunarFunctionInState(
 	b *testing.B,
-	state *lunik.State,
+	state *lunar.State,
 	source string,
-) lunik.Value {
+) lunar.Value {
 	b.Helper()
 	chunk, err := state.LoadString("@embedding.lua", source)
 	if err != nil {
@@ -822,11 +822,11 @@ func loadLunikFunctionInState(
 	if _, err := state.CallInto(chunk.Value(), nil, nil); err != nil {
 		b.Fatal(err)
 	}
-	function, err := state.Global("benchmark")
+	function, err := state.RawGlobal("benchmark")
 	if err != nil {
 		b.Fatal(err)
 	}
-	if function.Kind() != lunik.FunctionKind {
+	if function.Kind() != lunar.FunctionKind {
 		b.Fatalf("benchmark has kind %s, want function", function.Kind())
 	}
 	return function

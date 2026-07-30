@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	golua "github.com/Shopify/go-lua"
-	lunik "github.com/mmcdole/lunik"
+	lunar "github.com/mmcdole/lunar"
 	gopherlua "github.com/yuin/gopher-lua"
 )
 
@@ -98,7 +98,7 @@ type programEngine struct {
 }
 
 var programEngines = []programEngine{
-	{name: "lunik", prepare: prepareLunikProgram},
+	{name: "lunar", prepare: prepareLunarProgram},
 	{name: "gopherlua", prepare: prepareGopherLuaProgram},
 	{name: "golua", prepare: prepareGoLuaProgram},
 }
@@ -402,13 +402,13 @@ end
 `
 }
 
-func prepareLunikProgram(
+func prepareLunarProgram(
 	spec programSpec,
 	source string,
 ) (*preparedProgram, error) {
-	state, err := lunik.New(lunik.Options{})
+	state, err := lunar.New(lunar.Options{})
 	if err != nil {
-		return nil, fmt.Errorf("create Lunik state: %w", err)
+		return nil, fmt.Errorf("create Lunar state: %w", err)
 	}
 	fail := func(err error) (*preparedProgram, error) {
 		_ = state.Close()
@@ -416,35 +416,35 @@ func prepareLunikProgram(
 	}
 	if spec.libraries&programLibraryBase != 0 {
 		if err := state.OpenBase(); err != nil {
-			return fail(fmt.Errorf("open Lunik base library: %w", err))
+			return fail(fmt.Errorf("open Lunar base library: %w", err))
 		}
 	}
 	if spec.libraries&programLibraryString != 0 {
 		if err := state.OpenString(); err != nil {
-			return fail(fmt.Errorf("open Lunik string library: %w", err))
+			return fail(fmt.Errorf("open Lunar string library: %w", err))
 		}
 	}
 	if spec.libraries&programLibraryMath != 0 {
 		if err := state.OpenMath(); err != nil {
-			return fail(fmt.Errorf("open Lunik math library: %w", err))
+			return fail(fmt.Errorf("open Lunar math library: %w", err))
 		}
 	}
 
 	sourceName := "@programs/wrapped-" + spec.sourceFile
 	chunk, err := state.LoadString(sourceName, source)
 	if err != nil {
-		return fail(fmt.Errorf("load Lunik %s: %w", spec.name, err))
+		return fail(fmt.Errorf("load Lunar %s: %w", spec.name, err))
 	}
 	if _, err := state.CallInto(chunk.Value(), nil, nil); err != nil {
-		return fail(fmt.Errorf("initialize Lunik %s: %w", spec.name, err))
+		return fail(fmt.Errorf("initialize Lunar %s: %w", spec.name, err))
 	}
-	run, err := state.Global("benchmark_program")
+	run, err := state.RawGlobal("benchmark_program")
 	if err != nil {
-		return fail(fmt.Errorf("resolve Lunik benchmark_program: %w", err))
+		return fail(fmt.Errorf("resolve Lunar benchmark_program: %w", err))
 	}
-	if run.Kind() != lunik.FunctionKind {
+	if run.Kind() != lunar.FunctionKind {
 		return fail(fmt.Errorf(
-			"Lunik %s benchmark_program has kind %s, want function",
+			"Lunar %s benchmark_program has kind %s, want function",
 			spec.name,
 			run.Kind(),
 		))
@@ -453,12 +453,12 @@ func prepareLunikProgram(
 	return &preparedProgram{
 		run: func() error {
 			if _, err := state.CallInto(run, nil, nil); err != nil {
-				return fmt.Errorf("Lunik %s: %w", spec.name, err)
+				return fmt.Errorf("Lunar %s: %w", spec.name, err)
 			}
 			return nil
 		},
 		result: func() (string, error) {
-			value, err := state.Global("benchmark_program_result")
+			value, err := state.RawGlobal("benchmark_program_result")
 			if err != nil {
 				return "", err
 			}

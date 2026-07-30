@@ -17,7 +17,7 @@ func TestStateDoStringReturnsOwnedResults(t *testing.T) {
 
 	results, err := state.DoString(
 		"@values.lua",
-		`return nil, true, 42, "lunik"`,
+		`return nil, true, 42, "lunar"`,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestStateDoStringReturnsOwnedResults(t *testing.T) {
 		Nil(),
 		Bool(true),
 		Number(42),
-		state.String("lunik"),
+		state.String("lunar"),
 	)
 
 	if err := state.Close(); err != nil {
@@ -40,7 +40,7 @@ func TestStateDoStringReturnsOwnedResults(t *testing.T) {
 		Nil(),
 		Bool(true),
 		Number(42),
-		state.String("lunik"),
+		state.String("lunar"),
 	)
 }
 
@@ -124,7 +124,7 @@ func TestStateDoContextCoversLoadingAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("probe", probe.Value()); err != nil {
+	if err := state.SetRawGlobal("probe", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
 

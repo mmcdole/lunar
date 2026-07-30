@@ -13,7 +13,7 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 	}
 	defer state.Close()
 
-	before, err := state.Global("math")
+	before, err := state.RawGlobal("math")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,11 +30,11 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	libraryValue, err := state.Global("math")
+	libraryValue, err := state.RawGlobal("math")
 	if err != nil {
 		t.Fatal(err)
 	}
-	library, ok := libraryValue.Table()
+	library, ok := libraryValue.AsTable()
 	if !ok {
 		t.Fatalf("math = %v; want table", libraryValue)
 	}
@@ -102,17 +102,17 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 
 	// Reopening replaces the table and every Function with fresh canonical
 	// objects, as the other library openers do.
-	if err := state.SetGlobal("math", Number(1)); err != nil {
+	if err := state.SetRawGlobal("math", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenMath(); err != nil {
 		t.Fatal(err)
 	}
-	reopenedValue, err := state.Global("math")
+	reopenedValue, err := state.RawGlobal("math")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, ok := reopenedValue.Table()
+	reopened, ok := reopenedValue.AsTable()
 	if !ok {
 		t.Fatalf("reopened math = %v; want table", reopenedValue)
 	}
@@ -204,7 +204,7 @@ func TestMathLibraryIntegerArgumentsAreDefinedEverywhere(t *testing.T) {
 
 // TestMathLibraryRandomIsPerLibraryAndReproducible covers what a differential
 // case cannot: Lua 5.1 delegates math.random to C rand(), so only the
-// interface is portable. The generator itself is Lunik's, and it must be
+// interface is portable. The generator itself is Lunar's, and it must be
 // deterministic from a seed, private to each opened library, and shared by
 // random and randomseed.
 func TestMathLibraryRandomIsPerLibraryAndReproducible(t *testing.T) {
@@ -268,14 +268,14 @@ return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8]
 	// Two libraries in one State draw from separate streams.
 	sixth := newStateWithMath(t)
 	defer sixth.Close()
-	held, err := sixth.Global("math")
+	held, err := sixth.RawGlobal("math")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := sixth.OpenMath(); err != nil {
 		t.Fatal(err)
 	}
-	if err := sixth.SetGlobal("held", held); err != nil {
+	if err := sixth.SetRawGlobal("held", held); err != nil {
 		t.Fatal(err)
 	}
 	independent := sequence(t, sixth, `

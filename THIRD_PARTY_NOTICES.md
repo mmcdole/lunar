@@ -2,7 +2,7 @@
 
 ## Go gopher
 
-The Lunik astronaut logo is an adaptation of the
+The Lunar astronaut logo is an adaptation of the
 [Go gopher designed by Renée French](https://go.dev/blog/gopher). The original
 Go gopher is licensed under the
 [Creative Commons Attribution 4.0 license](https://creativecommons.org/licenses/by/4.0/).

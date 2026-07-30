@@ -112,21 +112,21 @@ if control > limit then
 end
 return control, control * 2
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := metatable.RawSetString("__call", handler.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	generator, err := state.NewTable(0, 0)
+	generator, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(generator.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal(
+	if err := state.SetRawGlobal(
 		"expected_generator",
 		generator.Value(),
 	); err != nil {
@@ -159,7 +159,7 @@ func TestExecutorGenericForRejectsNonCallableGenerators(t *testing.T) {
 		{
 			name: "missing __call",
 			configure: func(t testing.TB, state *State) Value {
-				value, err := state.NewTable(0, 0)
+				value, err := state.NewTableWithCapacity(0, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -169,7 +169,7 @@ func TestExecutorGenericForRejectsNonCallableGenerators(t *testing.T) {
 		{
 			name: "non-function __call",
 			configure: func(t testing.TB, state *State) Value {
-				metatable, err := state.NewTable(0, 1)
+				metatable, err := state.NewTableWithCapacity(0, 1)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -179,7 +179,7 @@ func TestExecutorGenericForRejectsNonCallableGenerators(t *testing.T) {
 				); err != nil {
 					t.Fatal(err)
 				}
-				value, err := state.NewTable(0, 0)
+				value, err := state.NewTableWithCapacity(0, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -332,7 +332,7 @@ return left.value + right.value
 		if err := right.RawSetString("value", Number(4)); err != nil {
 			t.Fatal(err)
 		}
-		iteratorState, err := state.NewTable(0, 2)
+		iteratorState, err := state.NewTableWithCapacity(0, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -510,7 +510,7 @@ func TestExecutorIteratorLimitFailuresDoNotStageCallWindow(t *testing.T) {
 					0,
 					0,
 				)
-				metatable, tableErr := state.NewTable(0, 1)
+				metatable, tableErr := state.NewTableWithCapacity(0, 1)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
@@ -520,7 +520,7 @@ func TestExecutorIteratorLimitFailuresDoNotStageCallWindow(t *testing.T) {
 				); tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				value, tableErr := state.NewTable(0, 0)
+				value, tableErr := state.NewTableWithCapacity(0, 0)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}

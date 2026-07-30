@@ -12,7 +12,7 @@ local function tail()
 	return 3, nil, 5
 end
 local table = {
-	name = "lunik",
+	name = "lunar",
 	[false] = 17,
 	1,
 	2,
@@ -33,7 +33,7 @@ return table[1], table[2], table[3], table[4], table[5],
 		Number(3),
 		Nil(),
 		Number(5),
-		state.String("lunik"),
+		state.String("lunar"),
 		Number(17),
 		Nil(),
 		Nil(),
@@ -91,7 +91,7 @@ func TestExecutorTableWriteRejectsInvalidKeysBeforeMetamethods(t *testing.T) {
 				"@handler.lua",
 				`local invalid = 1; return invalid()`,
 			)
-			metatable, err := state.NewTable(0, 1)
+			metatable, err := state.NewTableWithCapacity(0, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -101,7 +101,7 @@ func TestExecutorTableWriteRejectsInvalidKeysBeforeMetamethods(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			target, err := state.NewTable(0, 0)
+			target, err := state.NewTableWithCapacity(0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -140,11 +140,11 @@ func TestExecutorRawTablePathObservesMetamethodChanges(t *testing.T) {
 	}
 	defer state.Close()
 
-	getterTarget, err := state.NewTable(0, 0)
+	getterTarget, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	getterMetatable, err := state.NewTable(0, 1)
+	getterMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ return target.missing
 		"@replacement-index.lua",
 		`return 42`,
 	)
-	replacementMetatable, err := state.NewTable(0, 1)
+	replacementMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,14 +218,14 @@ return target.missing
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(42))
 
-	setterTarget, err := state.NewTable(0, 1)
+	setterTarget, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := setterTarget.RawSetString("recorded", Number(0)); err != nil {
 		t.Fatal(err)
 	}
-	setterMetatable, err := state.NewTable(0, 1)
+	setterMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,14 +284,14 @@ func TestExecutorIndexMetamethodSemantics(t *testing.T) {
 local target, key = ...
 return key, target
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := metatable.RawSetString("__index", getter.owningValue()); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,14 +350,14 @@ return invalid()
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(42))
 
-	proxy, err := state.NewTable(0, 1)
+	proxy, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := proxy.RawSetString("field", Number(19)); err != nil {
 		t.Fatal(err)
 	}
-	callableMetatable, err := state.NewTable(0, 1)
+	callableMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ return invalid()
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(19))
 
-	proxyMetatable, err := state.NewTable(0, 1)
+	proxyMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ return invalid()
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, proxy.Value())
 
-	scalarMetatable, err := state.NewTable(0, 1)
+	scalarMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,11 +438,11 @@ return invalid()
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Nil())
 
-	plainMetatable, err := state.NewTable(0, 0)
+	plainMetatable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parentMetatable, err := state.NewTable(0, 1)
+	parentMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,11 +482,11 @@ func TestExecutorNewIndexMetamethodSemantics(t *testing.T) {
 	}
 	defer state.Close()
 
-	sink, err := state.NewTable(3, 0)
+	sink, err := state.NewTableWithCapacity(3, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("sink", sink.Value()); err != nil {
+	if err := state.SetRawGlobal("sink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	setter := compileTestFunction(t, state, "@setter.lua", `
@@ -496,7 +496,7 @@ sink[2] = key
 sink[3] = value
 return "ignored", "also ignored"
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +506,7 @@ return "ignored", "also ignored"
 	); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +608,7 @@ return target, key, value
 		t.Fatalf("scalar setter nil key = %v", got)
 	}
 
-	proxy, err := state.NewTable(0, 0)
+	proxy, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +616,7 @@ return target, key, value
 local invalid = 1
 return invalid()
 `)
-	proxyMetatable, err := state.NewTable(0, 2)
+	proxyMetatable, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,13 +716,13 @@ func TestExecutorTableMetamethodDelegationLimit(t *testing.T) {
 					defer state.Close()
 					targets := make([]*Table, limit.targetCount)
 					for index := range targets {
-						targets[index], err = state.NewTable(0, 0)
+						targets[index], err = state.NewTableWithCapacity(0, 0)
 						if err != nil {
 							t.Fatal(err)
 						}
 					}
 					for index := 0; index+1 < len(targets); index++ {
-						metatable, tableErr := state.NewTable(0, 1)
+						metatable, tableErr := state.NewTableWithCapacity(0, 1)
 						if tableErr != nil {
 							t.Fatal(tableErr)
 						}
@@ -805,7 +805,7 @@ func TestExecutorNewIndexFailureClearsContinuation(t *testing.T) {
 local invalid = 1
 return invalid()
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -815,7 +815,7 @@ return invalid()
 	); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -860,11 +860,11 @@ func TestExecutorNewIndexContinuationSupportsNestedAndTailCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	sink, err := state.NewTable(2, 0)
+	sink, err := state.NewTableWithCapacity(2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("sink", sink.Value()); err != nil {
+	if err := state.SetRawGlobal("sink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := compileTestFunction(t, state, "@inner-setter.lua", `
@@ -872,7 +872,7 @@ local target, key, value = ...
 sink[1] = key
 sink[2] = value
 `)
-	innerMetatable, err := state.NewTable(0, 1)
+	innerMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -882,7 +882,7 @@ sink[2] = value
 	); err != nil {
 		t.Fatal(err)
 	}
-	nested, err := state.NewTable(0, 0)
+	nested, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -892,14 +892,14 @@ sink[2] = value
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("nested", nested.Value()); err != nil {
+	if err := state.SetRawGlobal("nested", nested.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := compileTestFunction(t, state, "@outer-setter.lua", `
 local target, key, value = ...
 nested.forwarded = value
 `)
-	outerMetatable, err := state.NewTable(0, 1)
+	outerMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -909,7 +909,7 @@ nested.forwarded = value
 	); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -985,7 +985,7 @@ func TestExecutorGlobalsUseFunctionEnvironment(t *testing.T) {
 answer = ...
 return answer
 `)
-	environment, err := state.NewTable(0, 1)
+	environment, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,7 +1008,7 @@ return answer
 		got != 42 {
 		t.Fatalf("custom environment answer = (%v, %v)", got, ok)
 	}
-	global, err := state.Global("answer")
+	global, err := state.RawGlobal("answer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1016,14 +1016,14 @@ return answer
 		t.Fatalf("state global was changed through custom environment: %v", global)
 	}
 
-	proxy, err := state.NewTable(0, 1)
+	proxy, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := proxy.RawSetString("provided", Number(73)); err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1052,11 +1052,11 @@ return answer
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(73))
 
-	forwarded, err := state.NewTable(0, 1)
+	forwarded, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	forwardingMetatable, err := state.NewTable(0, 2)
+	forwardingMetatable, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1068,7 +1068,7 @@ return answer
 			t.Fatal(err)
 		}
 	}
-	forwardingEnvironment, err := state.NewTable(0, 0)
+	forwardingEnvironment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1114,7 +1114,7 @@ func TestExecutorSelfPreservesReceiverAndPUCOverlapOrder(t *testing.T) {
 local self, argument = ...
 return self, argument
 `)
-	target, err := state.NewTable(0, 2)
+	target, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1137,7 +1137,7 @@ return target:method(7)
 	if err := target.RawSetString("method", Nil()); err != nil {
 		t.Fatal(err)
 	}
-	indexEnvironment, err := state.NewTable(0, 1)
+	indexEnvironment, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1159,7 +1159,7 @@ return target:method(7)
 	); err != nil {
 		t.Fatal(err)
 	}
-	methodMetatable, err := state.NewTable(0, 1)
+	methodMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1267,7 +1267,7 @@ return target:method(7)
 local _, key = ...
 return key
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1294,7 +1294,7 @@ func TestExecutorTableOperandsMayShareRegisters(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	target, err := state.NewTable(0, 1)
+	target, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1397,7 +1397,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	)
 	thread, result := executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
-	table, ok := thread.values[0].owningValue().Table()
+	table, ok := thread.values[0].owningValue().AsTable()
 	if !ok {
 		t.Fatal("NEWTABLE did not return a table")
 	}
@@ -1436,7 +1436,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 	)
 	thread, result = executeTestFunction(t, state, function)
 	assertExecutionReturned(t, result)
-	table, ok = thread.values[0].owningValue().Table()
+	table, ok = thread.values[0].owningValue().AsTable()
 	if !ok {
 		t.Fatal("extended SETLIST did not return a table")
 	}
@@ -1456,7 +1456,7 @@ func TestExecutorSetListIsRaw(t *testing.T) {
 local invalid = 1
 return invalid()
 `)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1466,7 +1466,7 @@ return invalid()
 	); err != nil {
 		t.Fatal(err)
 	}
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1527,7 +1527,7 @@ func TestExecutorOpenSetListChecksIndexBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	target, err := state.NewTable(0, 0)
+	target, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1567,7 +1567,7 @@ func TestExecutorTableKeyClassificationDoesNotUseCapacityLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1602,7 +1602,7 @@ func TestExecutorWarmTablePathsDoNotAllocate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	raw, err := state.NewTable(2, 1)
+	raw, err := state.NewTableWithCapacity(2, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1617,7 +1617,7 @@ func TestExecutorWarmTablePathsDoNotAllocate(t *testing.T) {
 local target, key = ...
 return key
 `)
-	getterMetatable, err := state.NewTable(0, 1)
+	getterMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1627,7 +1627,7 @@ return key
 	); err != nil {
 		t.Fatal(err)
 	}
-	getterTarget, err := state.NewTable(0, 0)
+	getterTarget, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1639,7 +1639,7 @@ return key
 	}
 
 	setter := compileTestFunction(t, state, "@setter.lua", `return`)
-	setterMetatable, err := state.NewTable(0, 1)
+	setterMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1649,7 +1649,7 @@ return key
 	); err != nil {
 		t.Fatal(err)
 	}
-	setterTarget, err := state.NewTable(0, 0)
+	setterTarget, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1746,7 +1746,7 @@ func BenchmarkExecutorDenseTableLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(128, 0)
+	table, err := state.NewTableWithCapacity(128, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1770,7 +1770,7 @@ func BenchmarkExecutorStringFieldLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1794,7 +1794,7 @@ func BenchmarkExecutorDynamicStringKeyLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1825,7 +1825,7 @@ func BenchmarkExecutorStringFieldReadLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1851,7 +1851,7 @@ func BenchmarkExecutorStringFieldWriteLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1876,7 +1876,7 @@ func BenchmarkExecutorMissingFieldLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1899,11 +1899,11 @@ func BenchmarkExecutorPolymorphicFieldLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	left, err := state.NewTable(0, 1)
+	left, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
-	right, err := state.NewTable(0, 1)
+	right, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1943,14 +1943,14 @@ func BenchmarkExecutorIndexMetamethodLoop(b *testing.B) {
 		_ = state.Close()
 	})
 	getter := compileTestFunction(b, state, "@index.lua", `return 1`)
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
 	if err := metatable.RawSetString("__index", getter.owningValue()); err != nil {
 		b.Fatal(err)
 	}
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1976,7 +1976,7 @@ func BenchmarkExecutorSparseTableLoop(b *testing.B) {
 	b.Cleanup(func() {
 		_ = state.Close()
 	})
-	table, err := state.NewTable(0, 128)
+	table, err := state.NewTableWithCapacity(0, 128)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2013,7 +2013,7 @@ func BenchmarkExecutorMethodLoop(b *testing.B) {
 local self, value = ...
 return value
 `)
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		b.Fatal(err)
 	}

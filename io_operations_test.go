@@ -123,7 +123,7 @@ func TestIOWriteStopsBeforeValidatingLaterArguments(t *testing.T) {
 		},
 	)
 	function := ioOperationFunction(t, state, fileWrite)
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -701,7 +701,7 @@ func TestIOOperationClosedAndIdentityDiagnostics(t *testing.T) {
 			output: ioOperationOutput(io.Discard),
 		},
 	)
-	other, err := state.NewTable(0, 0)
+	other, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

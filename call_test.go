@@ -156,7 +156,7 @@ func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
 	}
 	frame := thread.frames[0]
 	argValue := thread.values[int(frame.base)+2].owningValue()
-	arg, ok := argValue.Table()
+	arg, ok := argValue.AsTable()
 	if !ok {
 		t.Fatalf("legacy arg register = %v, want table", argValue)
 	}
@@ -728,7 +728,7 @@ func TestFixedLuaCallMatchesCheckedCallLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	dirty, err := state.NewTable(0, 0)
+	dirty, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -863,15 +863,15 @@ func TestFixedLuaReturnMatchesCheckedReturn(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	dirty, err := state.NewTable(0, 0)
+	dirty, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstReference, err := state.NewTable(0, 0)
+	firstReference, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondReference, err := state.NewTable(0, 0)
+	secondReference, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1125,7 +1125,7 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		defer state.Close()
 		thread := state.main
 		handler := newTestLuaFunction(t, state, 0, 1, 0, 0)
-		target, err := state.NewTable(0, 0)
+		target, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

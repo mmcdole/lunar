@@ -27,10 +27,10 @@ func TestCompileAndLoadPrototypeAcrossStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	if err := first.SetGlobal("marker", Number(1)); err != nil {
+	if err := first.SetRawGlobal("marker", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.SetGlobal("marker", Number(2)); err != nil {
+	if err := second.SetRawGlobal("marker", Number(2)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +74,7 @@ return executions
 	if err != nil {
 		t.Fatal(err)
 	}
-	executions, err := state.Global("executions")
+	executions, err := state.RawGlobal("executions")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestLoadStringAcceptsBinaryChunksAndBoundsInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.SetGlobal("marker", Number(42)); err != nil {
+	if err := state.SetRawGlobal("marker", Number(42)); err != nil {
 		t.Fatal(err)
 	}
 	function, err := state.LoadString("@binary.luac", dumped)
@@ -207,7 +207,7 @@ func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
 	assertRootThreadReady(t, state.main)
 
 	runtime.GC()
-	resultTable, ok := results[2].Table()
+	resultTable, ok := results[2].AsTable()
 	if !ok || resultTable != table {
 		t.Fatal("owning call result did not retain canonical table identity")
 	}
@@ -242,7 +242,7 @@ func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.GC()
-	resultTable, ok = results[2].Table()
+	resultTable, ok = results[2].AsTable()
 	if !ok || resultTable != table {
 		t.Fatal("call result became invalid after state close")
 	}
@@ -263,15 +263,15 @@ end
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, ok := values[0].Function()
+	handler, ok := values[0].AsFunction()
 	if !ok {
 		t.Fatal("chunk did not return the call handler")
 	}
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestStateCallValidatesIngressBeforeMutation(t *testing.T) {
 	}
 	defer other.Close()
 	function := mustLoadString(t, state, "@identity.lua", `return ...`)
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestStateCallIntoHandlesOverlapAndShortDestination(t *testing.T) {
 side_effect = side_effect + 1
 return 1, 2, 3
 `)
-	if err := state.SetGlobal("side_effect", Number(0)); err != nil {
+	if err := state.SetRawGlobal("side_effect", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	destination := make([]Value, 2, 8)
@@ -473,7 +473,7 @@ return 1, 2, 3
 		t.Fatalf("capacity result = (%d, %#v)", count, callErr)
 	}
 	assertTestValues(t, destination, Number(70), Number(71))
-	sideEffect, err := state.Global("side_effect")
+	sideEffect, err := state.RawGlobal("side_effect")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,11 +592,11 @@ func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
 	}
 	assertTestValues(t, results, Number(7), state.String("direct"))
 
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,7 +662,7 @@ func TestStateCallCleansRootExecutionAfterNativePanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("host", host.Value()); err != nil {
+	if err := state.SetRawGlobal("host", host.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@panic.lua", `
@@ -685,7 +685,7 @@ host()
 	}
 	assertRootThreadReady(t, state.main)
 
-	saved, err := state.Global("saved")
+	saved, err := state.RawGlobal("saved")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -897,7 +897,7 @@ end
 		if len(created) != 1 {
 			t.Fatalf("large child count = %d; want 1", len(created))
 		}
-		child, ok := created[0].Function()
+		child, ok := created[0].AsFunction()
 		if !ok {
 			t.Fatalf("large child = %v; want function", created[0])
 		}
@@ -950,14 +950,14 @@ return descend(...)
 		defer state.Close()
 
 		handler := mustLoadString(t, state, "@handler.lua", `return 99`)
-		metatable, err := state.NewTable(0, 1)
+		metatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err = metatable.RawSetString("__index", handler.Value()); err != nil {
 			t.Fatal(err)
 		}
-		target, err := state.NewTable(0, 0)
+		target, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1001,7 +1001,7 @@ return target.missing
 		if err != nil {
 			t.Fatal(err)
 		}
-		callableMetatable, err := state.NewTable(0, 1)
+		callableMetatable, err := state.NewTableWithCapacity(0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1011,7 +1011,7 @@ return target.missing
 		); err != nil {
 			t.Fatal(err)
 		}
-		callable, err := state.NewTable(0, 0)
+		callable, err := state.NewTableWithCapacity(0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -636,7 +636,7 @@ func TestBaseCollectionControlsFinalizerQueue(t *testing.T) {
 		nil,
 	)
 
-	collector, err := state.Global("collectgarbage")
+	collector, err := state.RawGlobal("collectgarbage")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -707,7 +707,7 @@ func TestSuccessfulFinalizerCannotStopOuterCollection(t *testing.T) {
 				if err := state.OpenBase(); err != nil {
 					return err
 				}
-				collector, err := state.Global("collectgarbage")
+				collector, err := state.RawGlobal("collectgarbage")
 				if err != nil {
 					return err
 				}
@@ -724,7 +724,7 @@ func TestSuccessfulFinalizerCannotStopOuterCollection(t *testing.T) {
 				if err := state.OpenBase(); err != nil {
 					return err
 				}
-				collector, err := state.Global("collectgarbage")
+				collector, err := state.RawGlobal("collectgarbage")
 				if err != nil {
 					return err
 				}
@@ -1377,7 +1377,7 @@ func TestAutomaticFinalizerReusesTheActiveExecutor(t *testing.T) {
 		t.Fatal("userdata allocation did not request collection")
 	}
 
-	hostTable, err := state.NewTable(1, 0)
+	hostTable, err := state.NewTableWithCapacity(1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1593,7 +1593,7 @@ func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
 		"@automatic-finalizer-trigger.lua",
 		`local scratch = {}; return 7`,
 	)
-	if err := state.SetGlobal("automatic_trigger", trigger.Value()); err != nil {
+	if err := state.SetRawGlobal("automatic_trigger", trigger.Value()); err != nil {
 		t.Fatal(err)
 	}
 	runner := mustLoadString(
@@ -1602,7 +1602,7 @@ func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
 		"@automatic-finalizer-pcall.lua",
 		`return pcall(automatic_trigger)`,
 	)
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1629,7 +1629,7 @@ func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
 		results[0].Truth() {
 		t.Fatalf("protected automatic finalizer result = %v", results)
 	}
-	got, ok := results[1].Table()
+	got, ok := results[1].AsTable()
 	if !ok || got != marker {
 		t.Fatal("pcall did not preserve the finalizer's arbitrary error value")
 	}
@@ -1658,7 +1658,7 @@ end
 	if len(values) != 1 {
 		t.Fatalf("Lua finalizer factory returned %d values; want 1", len(values))
 	}
-	handler, ok := values[0].Function()
+	handler, ok := values[0].AsFunction()
 	if !ok || handler.runtimeObject().prototype == nil {
 		t.Fatal("finalizer factory did not return a Lua function")
 	}

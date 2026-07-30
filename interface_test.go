@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcdole/lunik"
+	"github.com/mmcdole/lunar"
 )
 
 func TestFriendlyObjectInterface(t *testing.T) {
@@ -17,7 +17,7 @@ func TestFriendlyObjectInterface(t *testing.T) {
 	}
 	defer state.Close()
 
-	config, err := state.NewTable(0, 4)
+	config, err := state.NewTableWithCapacity(0, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestFriendlyObjectInterface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sameTable, ok := global.Table()
+	sameTable, ok := global.AsTable()
 	if !ok || sameTable != config {
 		t.Fatalf("global table = (%p, %v), want %p", sameTable, ok, config)
 	}
@@ -64,7 +64,7 @@ func TestPublicUserDataRoundTripKeepsIdentityAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	published, ok := global.UserData()
+	published, ok := global.AsUserData()
 	if !ok || published != data {
 		t.Fatalf(
 			"global userdata = (%p, %v); want (%p, true)",
@@ -226,7 +226,7 @@ func TestPublicPackageLoadingAndOrdinaryNativeAssignment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := state.NewTable(0, 1)
+	target, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,19 +256,9 @@ func TestPublicPackageLoadingAndOrdinaryNativeAssignment(t *testing.T) {
 		t.Fatalf("assigned value = %v; want 42", value)
 	}
 
-	packageValue, err := state.Global("package")
-	if err != nil {
-		t.Fatal(err)
-	}
-	library, _ := packageValue.Table()
-	preload, _ := library.RawGetString("preload").Table()
-	module, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+	if err := state.PreloadModule("host.module", func(frame lua.Frame) lua.Outcome {
 		return frame.ReturnString("loaded")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := preload.RawSetString("host.module", module.Value()); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	require, err := state.Global("require")

@@ -8,26 +8,26 @@ if [[ $# -ne 1 ]]; then
 fi
 
 output=$1
-samples=${LUNIK_BENCH_SAMPLES:-15}
-benchtime=${LUNIK_BENCH_TIME:-500ms}
-power_policy=${LUNIK_BENCH_POWER_POLICY:-}
-cpu_model=${LUNIK_BENCH_CPU_MODEL:-}
-machine_model=${LUNIK_BENCH_MACHINE_MODEL:-}
+samples=${LUNAR_BENCH_SAMPLES:-15}
+benchtime=${LUNAR_BENCH_TIME:-500ms}
+power_policy=${LUNAR_BENCH_POWER_POLICY:-}
+cpu_model=${LUNAR_BENCH_CPU_MODEL:-}
+machine_model=${LUNAR_BENCH_MACHINE_MODEL:-}
 
 if [[ -e "$output" ]]; then
   echo "refusing to overwrite $output" >&2
   exit 2
 fi
 if [[ ! "$samples" =~ ^[1-9][0-9]*$ ]]; then
-  echo "LUNIK_BENCH_SAMPLES must be a positive integer" >&2
+  echo "LUNAR_BENCH_SAMPLES must be a positive integer" >&2
   exit 2
 fi
 if [[ -z "$power_policy" ]]; then
-  echo "LUNIK_BENCH_POWER_POLICY must describe power and background-load controls" >&2
+  echo "LUNAR_BENCH_POWER_POLICY must describe power and background-load controls" >&2
   exit 2
 fi
 if [[ "$power_policy" == *$'\n'* || "$power_policy" == *$'\r'* ]]; then
-  echo "LUNIK_BENCH_POWER_POLICY must be one line" >&2
+  echo "LUNAR_BENCH_POWER_POLICY must be one line" >&2
   exit 2
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -105,9 +105,9 @@ fi
 
 for ((round = 0; round < samples; round++)); do
   case $((round % 3)) in
-    0) order=(lunik gopherlua golua) ;;
-    1) order=(gopherlua golua lunik) ;;
-    2) order=(golua lunik gopherlua) ;;
+    0) order=(lunar gopherlua golua) ;;
+    1) order=(gopherlua golua lunar) ;;
+    2) order=(golua lunar gopherlua) ;;
   esac
 
   for runtime_name in "${order[@]}"; do

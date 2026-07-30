@@ -514,14 +514,14 @@ func closeStateWithManagedResource(
 	if err != nil {
 		panic(err)
 	}
-	unrelated, err := state.NewTable(0, 0)
+	unrelated, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		panic(err)
 	}
 	runtime.SetFinalizer(unrelated, func(*Table) {
 		collected <- struct{}{}
 	})
-	if err := state.SetGlobal("unrelated", unrelated.Value()); err != nil {
+	if err := state.SetRawGlobal("unrelated", unrelated.Value()); err != nil {
 		panic(err)
 	}
 	object, err := state.newManagedUserData(

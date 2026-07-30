@@ -26,7 +26,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	}
 	defer state.Close()
 
-	table, err := state.NewTable(0, 1)
+	table, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	if got := body.captures[0].owningValue(); !rawEqual(got, Number(7)) {
 		t.Fatalf("capture 0 = %v; want 7", got)
 	}
-	if got, ok := body.captures[1].owningValue().Table(); !ok || got != table {
+	if got, ok := body.captures[1].owningValue().AsTable(); !ok || got != table {
 		t.Fatalf("capture 1 = (%p, %v); want %p", got, ok, table)
 	}
 	environment, err := state.FunctionEnvironment(function)
@@ -66,7 +66,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 	if environment.runtimeObject() != state.main.globals {
 		t.Fatal("native Function did not use the State global environment")
 	}
-	if got, ok := function.Value().Function(); !ok || got != function {
+	if got, ok := function.Value().AsFunction(); !ok || got != function {
 		t.Fatal("native Function did not preserve canonical identity")
 	}
 
@@ -95,7 +95,7 @@ func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer foreign.Close()
-	foreignTable, err := foreign.NewTable(0, 0)
+	foreignTable, err := foreign.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,11 +114,11 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 	}
 	defer state.Close()
 
-	functionEnvironment, err := state.NewTable(0, 0)
+	functionEnvironment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	threadEnvironment, err := state.NewTable(0, 0)
+	threadEnvironment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 	}
 	defer state.Close()
 
-	table, err := state.NewTable(0, 0)
+	table, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,8 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 			if frame.ArgumentCount() != 8 {
 				t.Fatalf("argument count = %d; want 8", frame.ArgumentCount())
 			}
-			if frame.State() != state || frame.Thread() != state.MainThread() {
+			if frame.State() != state ||
+				frame.CurrentThread() != state.MainThread() {
 				t.Fatal("Frame did not expose its executing State and Thread")
 			}
 			if frame.Environment().runtimeObject() != state.main.globals {
@@ -292,8 +293,8 @@ func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
 			if value, ok := frame.UserData(5); !ok || value != data {
 				t.Fatalf("UserData(5) = (%p, %v)", value, ok)
 			}
-			if value, ok := frame.LuaThread(6); !ok || value != state.MainThread() {
-				t.Fatalf("LuaThread(6) = (%p, %v)", value, ok)
+			if value, ok := frame.Thread(6); !ok || value != state.MainThread() {
+				t.Fatalf("Thread(6) = (%p, %v)", value, ok)
 			}
 			if _, ok := frame.Number(0); ok {
 				t.Fatal("typed read coerced a boolean to a number")
@@ -541,7 +542,7 @@ return 9, forward()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetGlobal("host", host.Value()); err != nil {
+			if err := state.SetRawGlobal("host", host.Value()); err != nil {
 				t.Fatal(err)
 			}
 			chunk := compileTestFunction(
@@ -823,7 +824,7 @@ func TestProtectedErrorImportsStateNeutralStringOnDemand(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("raise_host", function.Value()); err != nil {
+		if err := state.SetRawGlobal("raise_host", function.Value()); err != nil {
 			t.Fatal(err)
 		}
 		caller := mustLoadString(
@@ -981,7 +982,7 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetGlobal("host", host.Value()); err != nil {
+		if err := state.SetRawGlobal("host", host.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := compileTestFunction(t, state, "@native-trace.lua", `
@@ -1066,11 +1067,11 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 			}
 			newTable := func(name string) *Table {
 				t.Helper()
-				table, tableErr := state.NewTable(0, 0)
+				table, tableErr := state.NewTableWithCapacity(0, 0)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				if tableErr = state.SetGlobal(
+				if tableErr = state.SetRawGlobal(
 					name,
 					table.Value(),
 				); tableErr != nil {
@@ -1083,7 +1084,7 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 				values ...Value,
 			) {
 				t.Helper()
-				metatable, tableErr := state.NewTable(0, 1)
+				metatable, tableErr := state.NewTableWithCapacity(0, 1)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
@@ -1116,7 +1117,7 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 				newTable("right")
 				install(test.event, left.Value())
 			case "":
-				if err := state.SetGlobal(
+				if err := state.SetRawGlobal(
 					"iterator",
 					failing.Value(),
 				); err != nil {
@@ -1448,15 +1449,15 @@ return result
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetGlobal("host", host.Value()); err != nil {
+			if err := state.SetRawGlobal("host", host.Value()); err != nil {
 				t.Fatal(err)
 			}
 			if test.indexMetamethod {
-				target, tableErr := state.NewTable(0, 0)
+				target, tableErr := state.NewTableWithCapacity(0, 0)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				metatable, tableErr := state.NewTable(0, 1)
+				metatable, tableErr := state.NewTableWithCapacity(0, 1)
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
@@ -1472,7 +1473,7 @@ return result
 				); tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				if tableErr = state.SetGlobal(
+				if tableErr = state.SetRawGlobal(
 					"target",
 					target.Value(),
 				); tableErr != nil {
@@ -1559,7 +1560,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	}
 	installMetamethod := func(value Value, name string, function *Function) {
 		t.Helper()
-		metatable, tableErr := state.NewTable(0, 1)
+		metatable, tableErr := state.NewTableWithCapacity(0, 1)
 		if tableErr != nil {
 			t.Fatal(tableErr)
 		}
@@ -1572,11 +1573,11 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	}
 	newGlobalTable := func(name string) *Table {
 		t.Helper()
-		table, tableErr := state.NewTable(0, 1)
+		table, tableErr := state.NewTableWithCapacity(0, 1)
 		if tableErr != nil {
 			t.Fatal(tableErr)
 		}
-		if tableErr = state.SetGlobal(name, table.Value()); tableErr != nil {
+		if tableErr = state.SetRawGlobal(name, table.Value()); tableErr != nil {
 			t.Fatal(tableErr)
 		}
 		return table
@@ -1647,7 +1648,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("length_value", lengthValue.Value()); err != nil {
+	if err := state.SetRawGlobal("length_value", lengthValue.Value()); err != nil {
 		t.Fatal(err)
 	}
 	installMetamethod(
@@ -1661,7 +1662,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	lessThan := native(func(frame Frame) Outcome {
 		return frame.ReturnBool(true)
 	})
-	compareMetatable, err := state.NewTable(0, 1)
+	compareMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1689,7 +1690,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 			Number(control*2),
 		)
 	})
-	if err := state.SetGlobal("iterator", iterator.Value()); err != nil {
+	if err := state.SetRawGlobal("iterator", iterator.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1775,7 +1776,7 @@ func TestExecutorCallsAndTailCallsNativeFunctions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetGlobal("host_add", add.Value()); err != nil {
+			if err := state.SetRawGlobal("host_add", add.Value()); err != nil {
 				t.Fatal(err)
 			}
 			chunk := compileTestFunction(t, state, "@native.lua", test.source)

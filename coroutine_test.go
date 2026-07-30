@@ -79,7 +79,7 @@ func TestThreadRepresentationsAndCanonicalPublication(t *testing.T) {
 	if compact.ref == public.ref {
 		t.Fatal("public Thread Value exposed the compact object pointer")
 	}
-	fromValue, ok := public.Thread()
+	fromValue, ok := public.AsThread()
 	if !ok || fromValue != main {
 		t.Fatalf(
 			"Thread Value round trip = (%p, %v); want (%p, true)",
@@ -91,7 +91,7 @@ func TestThreadRepresentationsAndCanonicalPublication(t *testing.T) {
 	if state.MainThread() != main {
 		t.Fatal("MainThread did not return its canonical live handle")
 	}
-	fromCompact, ok := compact.owningValue().Thread()
+	fromCompact, ok := compact.owningValue().AsThread()
 	if !ok || fromCompact != main {
 		t.Fatalf(
 			"compact Thread publication = (%p, %v); want (%p, true)",
@@ -137,7 +137,7 @@ func TestWarmThreadPublicationDoesNotAllocate(t *testing.T) {
 	var published *Thread
 	allocations := testing.AllocsPerRun(1_000, func() {
 		value := compact.owningValue()
-		published, _ = value.Thread()
+		published, _ = value.AsThread()
 	})
 	if allocations != 0 {
 		t.Fatalf(
@@ -167,11 +167,11 @@ func TestThreadRepublishAfterOwningTokenDies(t *testing.T) {
 	index.rawSetSlot(slotFromThreadObject(object), numberSlot(73))
 	waitForWeakThreadToken(t, object, token)
 
-	first, ok := state.registry.rawGetStringValue("rooted thread").Thread()
+	first, ok := state.registry.rawGetStringValue("rooted thread").AsThread()
 	if !ok || first.runtimeObject() != object {
 		t.Fatal("re-publication changed compact thread identity")
 	}
-	second, ok := state.registry.rawGetStringValue("rooted thread").Thread()
+	second, ok := state.registry.rawGetStringValue("rooted thread").AsThread()
 	if !ok || second != first {
 		t.Fatalf(
 			"second re-publication = (%p, %v); want (%p, true)",
@@ -277,8 +277,8 @@ func TestThreadHandleSupportsObservationAfterClose(t *testing.T) {
 	if state.MainThread() != main {
 		t.Fatal("post-close MainThread publication changed identity")
 	}
-	publishedMain, mainOK := mainValue.Thread()
-	publishedChild, childOK := childValue.Thread()
+	publishedMain, mainOK := mainValue.AsThread()
+	publishedChild, childOK := childValue.AsThread()
 	if !mainOK || publishedMain != main ||
 		!childOK || publishedChild != child {
 		t.Fatalf(
@@ -324,7 +324,7 @@ func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	environment, err := state.NewTable(0, 0)
+	environment, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
 			threadErr,
 		)
 	}
-	if threadErr := state.SetGlobal(
+	if threadErr := state.SetRawGlobal(
 		"foreign_thread",
 		foreign.Value(),
 	); !errors.Is(threadErr, ErrForeignValue) {
@@ -537,11 +537,11 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("environment_marker", state.String("main")); err != nil {
+	if err := state.SetRawGlobal("environment_marker", state.String("main")); err != nil {
 		t.Fatal(err)
 	}
 
-	childEnvironment, err := state.NewTable(0, 2)
+	childEnvironment, err := state.NewTableWithCapacity(0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,14 +561,14 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 		if frame.GlobalEnvironment() != childEnvironment {
 			return frame.RaiseString("callback did not observe child globals")
 		}
-		marker, globalErr := state.Global("environment_marker")
+		marker, globalErr := state.RawGlobal("environment_marker")
 		if globalErr != nil {
 			return frame.RaiseString(globalErr.Error())
 		}
 		if text, ok := marker.AsString(); !ok || text != "child" {
 			return frame.RaiseString("State.Global did not use child globals")
 		}
-		if globalErr := state.SetGlobal("child_write", Number(42)); globalErr != nil {
+		if globalErr := state.SetRawGlobal("child_write", Number(42)); globalErr != nil {
 			return frame.RaiseString(globalErr.Error())
 		}
 		nested, globalErr = state.NewThread(probe.Value())
@@ -627,7 +627,7 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	if got := mainEnvironment.RawGetString("child_write"); !got.IsNil() {
 		t.Fatalf("child write leaked into main environment: %v", got)
 	}
-	marker, err := state.Global("environment_marker")
+	marker, err := state.RawGlobal("environment_marker")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +766,7 @@ func TestOpenUpvalueSurvivesYieldAndClosesOnReturn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("publish_closure", publish.Value()); err != nil {
+	if err := state.SetRawGlobal("publish_closure", publish.Value()); err != nil {
 		t.Fatal(err)
 	}
 	entry := mustLoadString(t, state, "@yield-upvalue.lua", `
@@ -828,11 +828,11 @@ func TestYieldBoundaryMatchesLua51CallKinds(t *testing.T) {
 		t.Fatalf("main-thread yield error = %v", err)
 	}
 
-	indexed, err := state.NewTable(0, 0)
+	indexed, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -842,7 +842,7 @@ func TestYieldBoundaryMatchesLua51CallKinds(t *testing.T) {
 	if err := state.SetMetatable(indexed.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("indexed_for_yield", indexed.Value()); err != nil {
+	if err := state.SetRawGlobal("indexed_for_yield", indexed.Value()); err != nil {
 		t.Fatal(err)
 	}
 	indexEntry := mustLoadString(
@@ -877,11 +877,11 @@ end
 		t.Fatalf("iterator yield = (%v, %v)", status, resumeErr)
 	}
 
-	callable, err := state.NewTable(0, 0)
+	callable, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	callMetatable, err := state.NewTable(0, 1)
+	callMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1003,7 +1003,7 @@ func TestCoroutineFailureClosesUpvaluesAndPreservesErrorValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker, err := state.NewTable(0, 0)
+	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1013,10 +1013,10 @@ func TestCoroutineFailureClosesUpvaluesAndPreservesErrorValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("publish_closure", publish.Value()); err != nil {
+	if err := state.SetRawGlobal("publish_closure", publish.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("fail_coroutine", fail.Value()); err != nil {
+	if err := state.SetRawGlobal("fail_coroutine", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1079,7 +1079,7 @@ return 2, nil, 4
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1147,7 +1147,7 @@ func TestThreadConstructionAndResumePreflight(t *testing.T) {
 	if _, err := state.NewThread(Value{}); !errors.Is(err, ErrInvalidValue) {
 		t.Fatalf("NewThread with invalid value = %v", err)
 	}
-	foreign, err := other.NewTable(0, 0)
+	foreign, err := other.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1518,7 +1518,7 @@ func installYieldTestFunction(t testing.TB, state *State) *Function {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("native_yield", yield.Value()); err != nil {
+	if err := state.SetRawGlobal("native_yield", yield.Value()); err != nil {
 		t.Fatal(err)
 	}
 	return yield

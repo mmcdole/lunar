@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	engine "github.com/mmcdole/lunik"
+	engine "github.com/mmcdole/lunar"
 )
 
 type (
@@ -16,7 +16,7 @@ type (
 	Table = engine.Table
 )
 
-// State adapts the benchmark operations to Lunik's owned public API.
+// State adapts the benchmark operations to Lunar's owned public API.
 type State struct {
 	state      *engine.State
 	guarded    bool
@@ -105,12 +105,12 @@ func (state *State) Close() error {
 }
 
 func (state *State) RuntimeVersion() string {
-	return "Lunik (Lua 5.1)"
+	return "Lunar (Lua 5.1)"
 }
 
 func (state *State) ConfigureExecution(guarded bool, interval int) error {
 	if interval != 0 {
-		return fmt.Errorf("Lunik uses operation-scoped contexts and does not support configurable polling intervals")
+		return fmt.Errorf("Lunar uses operation-scoped contexts and does not support configurable polling intervals")
 	}
 	state.guarded = guarded
 	return nil
@@ -121,23 +121,23 @@ func (state *State) String(text string) Value {
 }
 
 func (state *State) NewTable(arrayHint, recordHint int) (*Table, error) {
-	return state.state.NewTable(arrayHint, recordHint)
+	return state.state.NewTableWithCapacity(arrayHint, recordHint)
 }
 
 func (state *State) Global(name string) (Value, error) {
-	return state.state.Global(name)
+	return state.state.RawGlobal(name)
 }
 
 func (state *State) SetGlobal(name string, value Value) error {
-	return state.state.SetGlobal(name, value)
+	return state.state.SetRawGlobal(name, value)
 }
 
 func (state *State) PrependPackagePath(root string) error {
-	value, err := state.state.Global("package")
+	value, err := state.state.RawGlobal("package")
 	if err != nil {
 		return err
 	}
-	table, ok := value.Table()
+	table, ok := value.AsTable()
 	if !ok {
 		return fmt.Errorf("package library is %s, not a table", value.Kind())
 	}
@@ -197,7 +197,7 @@ func (state *State) CallOne(function Value, argument Value) (Value, error) {
 }
 
 func (state *State) CallGlobalBool(name string) error {
-	function, err := state.state.Global(name)
+	function, err := state.state.RawGlobal(name)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func ValueString(value Value) (string, bool) {
 }
 
 func ValueTable(value Value) (*Table, bool) {
-	return value.Table()
+	return value.AsTable()
 }
 
 func TableRawGetString(table *Table, key string) Value {

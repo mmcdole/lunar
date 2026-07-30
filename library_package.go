@@ -35,8 +35,9 @@ const (
 // "dynamic libraries absent" fallback.
 //
 // Opening is explicit and idempotent in effect. Each call installs fresh
-// package, preload, loader, and Function objects while preserving the
-// registry-backed package.loaded table and its cached modules.
+// package, loader, and Function objects while preserving the State-owned
+// package.preload table, the registry-backed package.loaded table, and its
+// cached modules.
 func (state *State) OpenPackage() error {
 	if err := state.checkOpen(); err != nil {
 		return err
@@ -50,7 +51,7 @@ func (state *State) OpenPackage() error {
 		return err
 	}
 	library := newTable(state, 0, 8)
-	preload := newTable(state, 0, 0)
+	preload := state.ensureModulePreloads()
 	loaders := newTable(state, 4, 0)
 	sentinel := state.ensurePackageSentinel()
 
@@ -164,6 +165,13 @@ func (state *State) OpenPackage() error {
 	}
 	state.setLoadedModule(loaded, "package", slotFromTableObject(library))
 	return nil
+}
+
+func (state *State) ensureModulePreloads() *tableObject {
+	if state.modulePreloads == nil {
+		state.modulePreloads = newTable(state, 0, 0)
+	}
+	return state.modulePreloads
 }
 
 func (state *State) newPackageFunction(

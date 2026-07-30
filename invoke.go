@@ -37,7 +37,7 @@ func (err *ResultCapacityError) Error() string {
 //
 // Invalid or foreign Values and a State already executing are rejected before
 // Lua runs. Execution failures are returned as *Error. An ExitError unwraps
-// to *ExitRequest and asks the host to apply its own lifecycle policy; Lunik
+// to *ExitRequest and asks the host to apply its own lifecycle policy; Lunar
 // neither closes the State nor terminates the process. A panic from a
 // NativeFunc is propagated after the State has been restored to a callable
 // state.

@@ -279,11 +279,11 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 	}
 	defer state.Close()
 
-	operand, err := state.NewTable(0, 0)
+	operand, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metatable, err := state.NewTable(0, 1)
+	metatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 	if err := state.SetMetatable(operand.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("operand", operand.Value()); err != nil {
+	if err := state.SetRawGlobal("operand", operand.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -314,11 +314,11 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 		t.Fatalf("error = %q; want %q", got, want)
 	}
 
-	chained, err := state.NewTable(0, 0)
+	chained, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chainMetatable, err := state.NewTable(0, 1)
+	chainMetatable, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 	if err := state.SetMetatable(chained.Value(), chainMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetGlobal("chained", chained.Value()); err != nil {
+	if err := state.SetRawGlobal("chained", chained.Value()); err != nil {
 		t.Fatal(err)
 	}
 	function, err = state.LoadString(
@@ -609,11 +609,11 @@ error(file,0)
 	if !errors.As(err, &failure) {
 		t.Fatalf("userdata error = %T %v; want *Error", err, err)
 	}
-	first, ok := failure.Value().UserData()
+	first, ok := failure.Value().AsUserData()
 	if !ok {
 		t.Fatalf("userdata error Value = %v", failure.Value())
 	}
-	second, ok := failure.Value().UserData()
+	second, ok := failure.Value().AsUserData()
 	if !ok || second != first {
 		t.Fatalf(
 			"repeated error Value = (%p, %v); want (%p, true)",
@@ -637,7 +637,7 @@ error(file,0)
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	afterClose, ok := failure.Value().UserData()
+	afterClose, ok := failure.Value().AsUserData()
 	if !ok || afterClose != first {
 		t.Fatalf(
 			"post-close error Value = (%p, %v); want (%p, true)",
@@ -669,7 +669,7 @@ error(io.tmpfile(),0)
 			err,
 		)
 	}
-	if _, ok := failure.Value().UserData(); !ok {
+	if _, ok := failure.Value().AsUserData(); !ok {
 		t.Fatalf("coroutine error Value = %v", failure.Value())
 	}
 	if entries, keys, stale := hostDirectoryKindCounts(
@@ -723,7 +723,7 @@ return setmetatable({},{
 				if err != nil {
 					t.Fatal(err)
 				}
-				target, ok := results[0].Table()
+				target, ok := results[0].AsTable()
 				if !ok {
 					t.Fatalf("index target = %v", results[0])
 				}
