@@ -32,7 +32,10 @@ func NewState(options Options) (*State, error) {
 		fixed := time.Unix(options.FixedUnixTime, 0)
 		now = func() time.Time { return fixed }
 	}
-	runtime, err := engine.New(engine.Options{Now: now})
+	runtime, err := engine.New(engine.Options{
+		Source: engine.OSSource(),
+		Now:    now,
+	})
 	if err != nil {
 		return nil, err
 	}

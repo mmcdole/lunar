@@ -49,11 +49,17 @@ var ErrReadOnlyUserData = errors.New(
 // Options is copied by New. Mutating the caller's value after construction
 // does not affect a live State.
 type Options struct {
+	// Source controls file-backed source loading for State.LoadFile,
+	// State.DoFile, Lua loadfile and dofile, and require. Its zero value
+	// denies source-file access. Reader- and string-backed loading remain
+	// available independently.
+	Source SourcePolicy
 	// Stdin is the State's standard input stream. A nil interface selects
 	// os.Stdin. Standard-input consumers share one logical cursor. Lua
 	// libraries borrow the stream and never close it. Child processes
 	// instead inherit the embedding process's actual os.Stdin unless
-	// io.popen connects that descriptor to its returned pipe.
+	// io.popen connects that descriptor to its returned pipe. Filename-less
+	// loadfile and dofile may consume this stream only with OSSource.
 	Stdin io.Reader
 	// Stdout is the State's standard output stream. A nil interface selects
 	// os.Stdout. Standard-output consumers share one buffering endpoint. Lua
@@ -278,6 +284,7 @@ type State struct {
 	options          Options
 	limits           resourceLimits
 	streams          *standardStreams
+	source           sourceConfig
 	location         *time.Location
 	now              func() time.Time
 	closeContext     *stateCloseContext
@@ -308,6 +315,10 @@ func New(options Options) (*State, error) {
 	if options.MaxLoadBytes == 0 {
 		options.MaxLoadBytes = defaultMaxLoadBytes
 	}
+	source, err := normalizeSourcePolicy(options.Source)
+	if err != nil {
+		return nil, err
+	}
 	if options.Stdin == nil {
 		options.Stdin = os.Stdin
 	}
@@ -336,6 +347,7 @@ func New(options Options) (*State, error) {
 			options.Stdout,
 			options.Stderr,
 		),
+		source:   source,
 		location: options.Location,
 		now:      options.Now,
 		limits: resourceLimits{
@@ -398,6 +410,7 @@ func (state *State) Close() error {
 		streamErr = state.streams.release()
 	}
 	state.streams = nil
+	state.source = sourceConfig{}
 	state.location = nil
 	state.now = nil
 	var resourceErr error
@@ -416,6 +429,7 @@ func (state *State) Close() error {
 	state.options.Stdin = nil
 	state.options.Stdout = nil
 	state.options.Stderr = nil
+	state.options.Source = SourcePolicy{}
 	state.options.Location = nil
 	state.options.Now = nil
 	state.typeMetatables = [TableKind + 1]*tableObject{}

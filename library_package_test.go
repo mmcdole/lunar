@@ -42,11 +42,11 @@ func TestPackageEnvironmentPathExpandsOnlyDoubleSeparators(t *testing.T) {
 	}
 }
 
-func TestOpenPackageInstallsCanonicalLua51Surface(t *testing.T) {
+func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	t.Setenv("LUA_PATH", "before;;after")
-	t.Setenv("LUA_CPATH", "")
+	t.Setenv("LUA_CPATH", "ignored/?.so")
 
-	state, err := New(Options{})
+	state, err := New(Options{Source: OSSource()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestOpenPackageInstallsCanonicalLua51Surface(t *testing.T) {
 	}
 	assertTestValue(t, registryLoaded.RawGetString("math"), mathValue)
 
-	expectedPath, expectedCPath, err := initialPackagePaths()
+	expectedPath, err := initialOSPackagePath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,18 +95,18 @@ func TestOpenPackageInstallsCanonicalLua51Surface(t *testing.T) {
 	if !ok {
 		t.Fatalf("package.loaders = %v; want Table", loadersValue)
 	}
-	for index := 1; index <= 4; index++ {
+	for index := 1; index <= 2; index++ {
 		if value := loaders.RawGetInt(index); value.Kind() != FunctionKind {
 			t.Fatalf("package.loaders[%d] = %v; want Function", index, value)
 		}
 	}
-	assertTestValue(t, loaders.RawGetInt(5), Nil())
+	assertTestValue(t, loaders.RawGetInt(3), Nil())
 	if value := library.RawGetString("preload"); value.Kind() != TableKind {
 		t.Fatalf("package.preload = %v; want Table", value)
 	}
 	assertTestValue(t, library.RawGetString("loaded"), registryLoaded.Value())
 	assertTestValue(t, library.RawGetString("path"), state.String(expectedPath))
-	assertTestValue(t, library.RawGetString("cpath"), state.String(expectedCPath))
+	assertTestValue(t, library.RawGetString("cpath"), state.String(""))
 	assertTestValue(
 		t,
 		library.RawGetString("config"),
@@ -535,7 +535,7 @@ return virtual,meta,writes
 	assertTestValue(t, library.RawGetString("loaded"), oldLoaded.Value())
 }
 
-func TestPackageLuaAndNativeFileSearchers(t *testing.T) {
+func TestPackageLuaSourceSearcherAndLoadLibStub(t *testing.T) {
 	directory := t.TempDir()
 	nestedDirectory := filepath.Join(directory, "nested")
 	if err := os.Mkdir(nestedDirectory, 0o700); err != nil {
@@ -588,16 +588,7 @@ func TestPackageLuaAndNativeFileSearchers(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	nativePath := filepath.Join(directory, "native.so")
-	if err := os.WriteFile(nativePath, []byte("not a library"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	rootPath := filepath.Join(directory, "root.so")
-	if err := os.WriteFile(rootPath, []byte("not a library"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	state := newStateWithPackage(t, Options{})
+	state := newStateWithPackage(t, Options{Source: OSSource()})
 	defer state.Close()
 	if err := state.OpenString(); err != nil {
 		t.Fatal(err)
@@ -609,7 +600,6 @@ func TestPackageLuaAndNativeFileSearchers(t *testing.T) {
 		filepath.Join(directory, "?", "init.lua")
 	source := `
 package.path=` + quoteLuaString(path) + `
-package.cpath=` + quoteLuaString(filepath.Join(directory, "?.so")) + `
 
 local nested=require("nested.module")
 local initial=require("initial")
@@ -617,15 +607,11 @@ local shebang=require("shebang")
 local binary=require("binary")
 local missingOK,missingError=pcall(function() require("absent") end)
 local brokenOK,brokenError=pcall(function() require("broken") end)
-local nativeOK,nativeError=pcall(function() require("native") end)
-local rootOK,rootError=pcall(function() require("root.child") end)
 local loaded,loadError,where=package.loadlib("anything","luaopen_anything")
 
 return nested.name,nested.marker,initial,shebang,binary,
 	missingOK,missingError,
 	brokenOK,brokenError,
-	nativeOK,nativeError,
-	rootOK,rootError,
 	loaded,loadError,where
 `
 	chunk := mustLoadString(t, state, "@package-files.lua", source)
@@ -633,8 +619,8 @@ return nested.name,nested.marker,initial,shebang,binary,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 16 {
-		t.Fatalf("file-search results = %d, want 16", len(results))
+	if len(results) != 12 {
+		t.Fatalf("file-search results = %d, want 12", len(results))
 	}
 	assertTestValues(
 		t,
@@ -665,24 +651,9 @@ return nested.name,nested.marker,initial,shebang,binary,
 		!strings.Contains(brokenMessage, "broken.lua:1:") {
 		t.Fatalf("broken module error = %q", brokenMessage)
 	}
-	if nativeOK, _ := results[9].AsBool(); nativeOK {
-		t.Fatalf("native module succeeded: %v", results[10])
-	}
-	nativeMessage, _ := results[10].AsString()
-	if !strings.Contains(nativeMessage, dynamicLibrariesUnavailable) {
-		t.Fatalf("native module error = %q", nativeMessage)
-	}
-	if rootOK, _ := results[11].AsBool(); rootOK {
-		t.Fatalf("native root module succeeded: %v", results[12])
-	}
-	rootMessage, _ := results[12].AsString()
-	if !strings.Contains(rootMessage, dynamicLibrariesUnavailable) ||
-		!strings.Contains(rootMessage, rootPath) {
-		t.Fatalf("native root module error = %q", rootMessage)
-	}
 	assertTestValues(
 		t,
-		results[13:],
+		results[9:],
 		Nil(),
 		state.String(dynamicLibrariesUnavailable),
 		state.String("absent"),
@@ -813,7 +784,10 @@ func TestPackageLuaLoaderPreservesResourceFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := newStateWithPackage(t, Options{MaxLoadBytes: 32})
+	state := newStateWithPackage(t, Options{
+		Source:       OSSource(),
+		MaxLoadBytes: 32,
+	})
 	defer state.Close()
 	packageValue, err := state.RawGlobal("package")
 	if err != nil {
@@ -955,11 +929,6 @@ func TestPackageLibraryCasesMatchLua51(t *testing.T) {
 }
 
 var packageLibraryLua51Cases = []lua51Case{
-	{
-		name:   "package_surface",
-		source: `return type(package),type(require),type(module),type(package.loadlib),type(package.seeall),type(package.loaders),#package.loaders,type(package.loaded),type(package.preload),loadlib==nil`,
-		want:   "ok 'table' 'function' 'function' 'function' 'function' 'table' 4 'table' 'table' true",
-	},
 	{
 		name:   "require_caches_truthy_loader_result",
 		source: `local calls=0; package.preload.cached=function(name,extra) calls=calls+1; return {name=name,extra=extra} end; local a=require("cached","discarded"); local b=require("cached"); return a==b,a.name,a.extra,calls`,

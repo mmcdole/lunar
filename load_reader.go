@@ -14,7 +14,8 @@ const (
 	maxConsecutiveEmptyRead = 100
 )
 
-// ErrNilReader reports a nil Reader passed to Load.
+// ErrNilReader reports a nil Reader passed to Load or returned by a
+// SourceOpener.
 var ErrNilReader = errors.New("lua: nil source reader")
 
 // Load reads a Lua 5.1 source or native binary chunk from reader and returns a
@@ -74,10 +75,11 @@ func (state *State) loadReader(
 	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
-// LoadFile reads and loads a Lua 5.1 source or native binary file. The source
-// name is "@" followed by path. A leading Unix interpreter line is ignored in
-// the same way as Lua 5.1's loadfile. LoadFile closes the opened file on every
-// outcome and does not execute the resulting chunk.
+// LoadFile opens path through the State's SourcePolicy and loads a Lua 5.1
+// source or native binary chunk. The source name is "@" followed by path. A
+// leading Unix interpreter line is ignored in the same way as Lua 5.1's
+// loadfile. LoadFile closes the opened reader on every outcome and does not
+// execute the resulting chunk.
 func (state *State) LoadFile(path string) (*Function, error) {
 	return state.loadFile(nil, path)
 }
@@ -85,8 +87,9 @@ func (state *State) LoadFile(path string) (*Function, error) {
 // LoadFileContext reads and loads path like LoadFile while observing ctx.
 //
 // A nil context returns ErrNilContext. Cancellation is returned as a *Error
-// categorized ContextError. Cancellation cannot interrupt an operating-system
-// read already in progress. The resulting Function does not retain ctx.
+// categorized ContextError. A CustomSource opener receives ctx. Cancellation
+// cannot interrupt a backend already blocked inside Open or Read unless that
+// backend observes ctx. The resulting Function does not retain ctx.
 func (state *State) LoadFileContext(
 	ctx context.Context,
 	path string,
@@ -108,7 +111,11 @@ func (state *State) loadFile(
 	if failure != nil {
 		return nil, failure
 	}
-	prototype, err := loadNamedFilePrototype(path, &control)
+	prototype, err := state.loadNamedSourcePrototype(
+		ctx,
+		path,
+		&control,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -227,23 +234,27 @@ func (failure *fileLoadError) Unwrap() error {
 	return failure.cause
 }
 
-func loadNamedFilePrototype(
+func (state *State) loadNamedSourcePrototype(
+	ctx context.Context,
 	path string,
 	control *loadControl,
 ) (*Prototype, error) {
-	file, err := os.Open(path)
+	reader, err := state.source.open(ctx, path, control)
 	if err != nil {
+		if _, hostFailure := err.(*Error); hostFailure {
+			return nil, err
+		}
 		return nil, &fileLoadError{
 			operation: "open",
 			name:      path,
 			cause:     err,
 		}
 	}
-	defer file.Close()
+	defer reader.Close()
 	return loadFileReaderPrototype(
 		"@"+path,
 		path,
-		file,
+		reader,
 		control,
 	)
 }

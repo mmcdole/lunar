@@ -37,7 +37,8 @@ func (state *State) DoStringContext(
 	return state.CallContext(ctx, chunk.Value())
 }
 
-// DoFile loads and executes a Lua 5.1 source or native binary file.
+// DoFile opens path through the State's SourcePolicy, then loads and executes
+// a Lua 5.1 source or native binary chunk.
 //
 // The source name is "@" followed by path. A leading Unix interpreter line is
 // ignored in the same way as Lua 5.1's loadfile. The returned slice and its
@@ -55,9 +56,10 @@ func (state *State) DoFile(path string) ([]Value, error) {
 // both loading and execution.
 //
 // A nil context returns ErrNilContext. Cancellation is returned as an *Error
-// categorized ContextError. Cancellation cannot interrupt an operating-system
-// read already in progress. Lua-visible side effects completed before
-// cancellation remain.
+// categorized ContextError. A CustomSource opener receives ctx. Cancellation
+// cannot interrupt a backend already blocked inside Open or Read unless that
+// backend observes ctx. Lua-visible side effects completed before cancellation
+// remain.
 func (state *State) DoFileContext(
 	ctx context.Context,
 	path string,

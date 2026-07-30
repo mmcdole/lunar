@@ -81,7 +81,7 @@ func TestStateDoStringPreservesLoadAndExecutionErrors(t *testing.T) {
 }
 
 func TestStateDoFileReturnsResults(t *testing.T) {
-	state, err := New(Options{})
+	state, err := New(Options{Source: OSSource()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestStateDoFileReturnsResults(t *testing.T) {
 }
 
 func TestStateDoContextCoversLoadingAndExecution(t *testing.T) {
-	state, err := New(Options{})
+	state, err := New(Options{Source: OSSource()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,27 +1,15 @@
 package lua
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"runtime"
+	"io"
+	"io/fs"
 	"strings"
 )
 
 const (
 	loadedModulesRegistryKey = "_LOADED"
-
-	defaultLuaPathUnix = "./?.lua;" +
-		"/usr/local/share/lua/5.1/?.lua;" +
-		"/usr/local/share/lua/5.1/?/init.lua;" +
-		"/usr/local/lib/lua/5.1/?.lua;" +
-		"/usr/local/lib/lua/5.1/?/init.lua"
-	defaultLuaCPathUnix = "./?.so;" +
-		"/usr/local/lib/lua/5.1/?.so;" +
-		"/usr/local/lib/lua/5.1/loadall.so"
-
-	defaultLuaPathWindows = `.\?.lua;!\lua\?.lua;!\lua\?\init.lua;` +
-		`!\?.lua;!\?\init.lua`
-	defaultLuaCPathWindows = `.\?.dll;!\?.dll;!\loadall.dll`
 
 	dynamicLibrariesUnavailable = "dynamic libraries not enabled; check your Lua installation"
 )
@@ -29,10 +17,11 @@ const (
 // OpenPackage installs Lua 5.1's package table plus the global require and
 // module functions.
 //
-// Lua modules load through the same bounded source and binary pipeline as
-// LoadFile. Native C modules are deliberately unavailable in this pure-Go
-// runtime; package.loadlib and the C searchers expose Lua 5.1's standard
-// "dynamic libraries absent" fallback.
+// Lua modules load through the State's SourcePolicy and the same bounded
+// source and binary pipeline as LoadFile. package.loaders contains the preload
+// and Lua-source searchers. Native C modules are deliberately unavailable in
+// this pure-Go runtime, so package.cpath is empty and package.loadlib reports
+// that dynamic libraries are unavailable.
 //
 // Opening is explicit and idempotent in effect. Each call installs fresh
 // package, loader, and Function objects while preserving the State-owned
@@ -42,17 +31,13 @@ func (state *State) OpenPackage() error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
-	path, cpath, err := initialPackagePaths()
-	if err != nil {
-		return err
-	}
 	loaded, err := state.ensureLoadedModules()
 	if err != nil {
 		return err
 	}
 	library := newTable(state, 0, 8)
 	preload := state.ensureModulePreloads()
-	loaders := newTable(state, 4, 0)
+	loaders := newTable(state, 2, 0)
 	sentinel := state.ensurePackageSentinel()
 
 	loadlib, err := state.newPackageFunction(
@@ -83,20 +68,6 @@ func (state *State) OpenPackage() error {
 	if err != nil {
 		return err
 	}
-	cLoader, err := state.newPackageFunction(
-		library,
-		packageCLoader,
-	)
-	if err != nil {
-		return err
-	}
-	cRootLoader, err := state.newPackageFunction(
-		library,
-		packageCRootLoader,
-	)
-	if err != nil {
-		return err
-	}
 	require, err := state.newPackageFunction(
 		library,
 		packageRequire,
@@ -116,8 +87,6 @@ func (state *State) OpenPackage() error {
 	for index, loader := range [...]*functionObject{
 		preloadLoader,
 		luaLoader,
-		cLoader,
-		cRootLoader,
 	} {
 		loaders.rawSetIntegerSlot(index+1, slotFromFunctionObject(loader))
 	}
@@ -128,12 +97,17 @@ func (state *State) OpenPackage() error {
 		{name: "loadlib", value: slotFromFunctionObject(loadlib)},
 		{name: "seeall", value: slotFromFunctionObject(seeall)},
 		{name: "loaders", value: slotFromTableObject(loaders)},
-		{name: "path", value: stringSlot(state.runtime.strings.make(path))},
-		{name: "cpath", value: stringSlot(state.runtime.strings.make(cpath))},
+		{
+			name: "path",
+			value: stringSlot(
+				state.runtime.strings.make(state.source.packagePath),
+			),
+		},
+		{name: "cpath", value: stringSlot(state.runtime.strings.make(""))},
 		{
 			name: "config",
 			value: stringSlot(state.runtime.strings.make(
-				string(os.PathSeparator) + "\n;\n?\n!\n-",
+				state.source.separator + "\n;\n?\n!\n-",
 			)),
 		},
 		{name: "loaded", value: slotFromTableObject(loaded)},
@@ -231,46 +205,6 @@ func (state *State) setLoadedModule(
 	if status != tableKeyValid {
 		panic("lua: string module name produced an invalid table key")
 	}
-}
-
-func initialPackagePaths() (string, string, error) {
-	defaultPath := defaultLuaPathUnix
-	defaultCPath := defaultLuaCPathUnix
-	if runtime.GOOS == "windows" {
-		defaultPath = defaultLuaPathWindows
-		defaultCPath = defaultLuaCPathWindows
-	}
-	path := packageEnvironmentPath("LUA_PATH", defaultPath)
-	cpath := packageEnvironmentPath("LUA_CPATH", defaultCPath)
-	if runtime.GOOS != "windows" {
-		return path, cpath, nil
-	}
-	executable, err := os.Executable()
-	if err != nil {
-		return "", "", fmt.Errorf(
-			"lua: resolve executable directory: %w",
-			err,
-		)
-	}
-	directory := executable
-	if separator := strings.LastIndexAny(directory, `\/`); separator >= 0 {
-		directory = directory[:separator]
-	} else {
-		return "", "", fmt.Errorf(
-			"lua: executable path has no directory separator",
-		)
-	}
-	return strings.ReplaceAll(path, "!", directory),
-		strings.ReplaceAll(cpath, "!", directory),
-		nil
-}
-
-func packageEnvironmentPath(name, fallback string) string {
-	path, present := os.LookupEnv(name)
-	if !present {
-		return fallback
-	}
-	return strings.ReplaceAll(path, ";;", ";"+fallback+";")
 }
 
 func packageNameArgument(
@@ -457,24 +391,28 @@ func packageLuaLoader(frame Frame) Outcome {
 	if failed {
 		return outcome
 	}
-	file, filename, diagnostics, failure := packageFindFile(
+	reader, filename, diagnostics, failure := packageFindSource(
 		frame,
 		name,
-		"path",
 		&control,
 	)
 	if failure != nil {
-		return frame.sealError(failure)
+		if luaFailure, ok := failure.(*Error); ok {
+			return frame.sealError(luaFailure)
+		}
+		sourceFailure := libraryFailure(frame, "%s", failure.Error())
+		sourceFailure.cause = failure
+		return frame.sealError(sourceFailure)
 	}
-	if file == nil {
+	if reader == nil {
 		return frame.ReturnString(diagnostics)
 	}
-	defer file.Close()
+	defer reader.Close()
 
 	prototype, err := loadFileReaderPrototype(
 		"@"+filename,
 		filename,
-		file,
+		reader,
 		&control,
 	)
 	if err != nil {
@@ -484,13 +422,15 @@ func packageLuaLoader(frame Frame) Outcome {
 				return frame.sealError(luaFailure)
 			}
 		}
-		return libraryError(
+		loadFailure := libraryFailure(
 			frame,
 			"error loading module '%s' from file '%s':\n\t%s",
 			name,
 			filename,
 			err.Error(),
 		)
+		loadFailure.cause = err
+		return frame.sealError(loadFailure)
 	}
 	function := frame.thread.state.loadPrototypeObject(prototype)
 	return frame.returnOne(
@@ -499,83 +439,14 @@ func packageLuaLoader(frame Frame) Outcome {
 	)
 }
 
-func packageCLoader(frame Frame) Outcome {
-	name, _, outcome, failed := packageNameArgument(frame, 0)
-	if failed {
-		return outcome
-	}
-	control, outcome, failed := frameLoadControl(frame)
-	if failed {
-		return outcome
-	}
-	file, filename, diagnostics, failure := packageFindFile(
-		frame,
-		name,
-		"cpath",
-		&control,
-	)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	if file == nil {
-		return frame.ReturnString(diagnostics)
-	}
-	_ = file.Close()
-	return packageDynamicLoadError(frame, name, filename)
-}
-
-func packageCRootLoader(frame Frame) Outcome {
-	name, _, outcome, failed := packageNameArgument(frame, 0)
-	if failed {
-		return outcome
-	}
-	dot := strings.IndexByte(name, '.')
-	if dot < 0 {
-		return frame.Return()
-	}
-	control, outcome, failed := frameLoadControl(frame)
-	if failed {
-		return outcome
-	}
-	file, filename, diagnostics, failure := packageFindFile(
-		frame,
-		name[:dot],
-		"cpath",
-		&control,
-	)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	if file == nil {
-		return frame.ReturnString(diagnostics)
-	}
-	_ = file.Close()
-	return packageDynamicLoadError(frame, name, filename)
-}
-
-func packageDynamicLoadError(
+func packageFindSource(
 	frame Frame,
 	name string,
-	filename string,
-) Outcome {
-	return libraryError(
-		frame,
-		"error loading module '%s' from file '%s':\n\t%s",
-		name,
-		filename,
-		dynamicLibrariesUnavailable,
-	)
-}
-
-func packageFindFile(
-	frame Frame,
-	name string,
-	field string,
 	control *loadControl,
-) (*os.File, string, string, *Error) {
+) (io.ReadCloser, string, string, error) {
 	pathValue, failure := frame.indexCompact(
 		slotFromTableObject(frame.environmentObject()),
-		stringSlot(frame.thread.owner.strings.make(field)),
+		stringSlot(frame.thread.owner.strings.make("path")),
 	)
 	if failure != nil {
 		return nil, "", "", failure
@@ -584,15 +455,13 @@ func packageFindFile(
 	if !ok {
 		return nil, "", "", libraryFailure(
 			frame,
-			"'package.%s' must be a string",
-			field,
+			"'package.path' must be a string",
 		)
 	}
 	path = luaCString(path)
-	mappedName := strings.ReplaceAll(
+	mappedName := packageModuleName(
 		name,
-		".",
-		string(os.PathSeparator),
+		frame.thread.state.source.separator,
 	)
 
 	var diagnostics strings.Builder
@@ -614,9 +483,20 @@ func packageFindFile(
 		}
 		template := path[cursor:end]
 		filename := strings.ReplaceAll(template, "?", mappedName)
-		file, err := os.Open(filename)
+		reader, err := frame.thread.state.source.open(
+			frame.Context(),
+			filename,
+			control,
+		)
 		if err == nil {
-			return file, filename, "", nil
+			return reader, filename, "", nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, "", "", &fileLoadError{
+				operation: "open",
+				name:      filename,
+				cause:     err,
+			}
 		}
 		diagnostics.WriteString("\n\tno file '")
 		diagnostics.WriteString(filename)
@@ -624,6 +504,10 @@ func packageFindFile(
 		cursor = end
 	}
 	return nil, "", diagnostics.String(), nil
+}
+
+func packageModuleName(name, separator string) string {
+	return strings.ReplaceAll(name, ".", separator)
 }
 
 func packageLoadLib(frame Frame) Outcome {

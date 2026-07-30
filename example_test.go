@@ -2,9 +2,41 @@ package lua_test
 
 import (
 	"fmt"
+	"testing/fstest"
 
 	"github.com/mmcdole/lunar"
 )
+
+func ExampleFSSource() {
+	scripts := fstest.MapFS{
+		"main.lua": {
+			Data: []byte(`return require("modules.answer")`),
+		},
+		"modules/answer.lua": {
+			Data: []byte(`return 6 * 7`),
+		},
+	}
+	state, err := lua.New(lua.Options{
+		Source: lua.FSSource(scripts),
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer state.Close()
+	if err := state.OpenPackage(); err != nil {
+		panic(err)
+	}
+
+	results, err := state.DoFile("main.lua")
+	if err != nil {
+		panic(err)
+	}
+	answer, _ := results[0].AsNumber()
+	fmt.Println(answer)
+
+	// Output:
+	// 42
+}
 
 func Example() {
 	state, err := lua.New(lua.Options{})

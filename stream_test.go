@@ -30,6 +30,7 @@ return loaded()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			state, err := New(Options{
+				Source: OSSource(),
 				Stdin: strings.NewReader(
 					"consumed by io\nreturn 42",
 				),

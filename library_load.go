@@ -74,18 +74,12 @@ func baseLoadFile(frame Frame) Outcome {
 		return outcome
 	}
 
-	var prototype *Prototype
-	var err error
-	if standardInput {
-		prototype, err = loadFileEndpointPrototype(
-			"=stdin",
-			"stdin",
-			&frame.thread.state.streams.stdin,
-			&control,
-		)
-	} else {
-		prototype, err = loadNamedFilePrototype(filename, &control)
-	}
+	prototype, err := loadFrameFilePrototype(
+		frame,
+		filename,
+		standardInput,
+		&control,
+	)
 	return returnLoadResult(frame, prototype, err)
 }
 
@@ -99,18 +93,12 @@ func baseDoFile(frame Frame) Outcome {
 		return outcome
 	}
 
-	var prototype *Prototype
-	var err error
-	if standardInput {
-		prototype, err = loadFileEndpointPrototype(
-			"=stdin",
-			"stdin",
-			&frame.thread.state.streams.stdin,
-			&control,
-		)
-	} else {
-		prototype, err = loadNamedFilePrototype(filename, &control)
-	}
+	prototype, err := loadFrameFilePrototype(
+		frame,
+		filename,
+		standardInput,
+		&control,
+	)
 	if err != nil {
 		return raiseDoFileError(frame, err)
 	}
@@ -118,6 +106,35 @@ func baseDoFile(frame Frame) Outcome {
 	return frame.callCompactAllAndReturn(
 		slotFromFunctionObject(function),
 		nil,
+	)
+}
+
+func loadFrameFilePrototype(
+	frame Frame,
+	filename string,
+	standardInput bool,
+	control *loadControl,
+) (*Prototype, error) {
+	state := frame.thread.state
+	if !standardInput {
+		return state.loadNamedSourcePrototype(
+			frame.Context(),
+			filename,
+			control,
+		)
+	}
+	if !state.source.stdin {
+		return nil, &fileLoadError{
+			operation: "open",
+			name:      "stdin",
+			cause:     ErrSourceLoadingDisabled,
+		}
+	}
+	return loadFileEndpointPrototype(
+		"=stdin",
+		"stdin",
+		&state.streams.stdin,
+		control,
 	)
 }
 
@@ -206,7 +223,13 @@ func returnLoadResult(
 func raiseDoFileError(frame Frame, err error) Outcome {
 	failure, luaFailure := err.(*Error)
 	if !luaFailure {
-		return frame.RaiseString(err.Error())
+		message := err.Error()
+		return frame.sealError(&Error{
+			value:       frame.thread.state.String(message),
+			description: message,
+			category:    RuntimeError,
+			cause:       err,
+		})
 	}
 	switch failure.category {
 	case ContextError, ExitError, RuntimeError, ResourceError:

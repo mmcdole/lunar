@@ -38,9 +38,10 @@ var baseLibraryFunctions = [...]struct {
 
 // OpenBase installs the Lua 5.1 base-library globals.
 //
-// Opening is explicit: New returns an empty State. Calling OpenBase again
-// replaces every installed function and the coroutine table with fresh
-// canonical objects and restores _G and _VERSION.
+// Opening is explicit: New returns an empty State. loadfile and dofile obey
+// the State's SourcePolicy; merely opening the base library grants no source
+// access. Calling OpenBase again replaces every installed function and the
+// coroutine table with fresh canonical objects and restores _G and _VERSION.
 func (state *State) OpenBase() error {
 	if err := state.checkOpen(); err != nil {
 		return err

@@ -411,7 +411,10 @@ func TestStateLoadFileHandlesShebangTextAndBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, err := New(Options{MaxLoadBytes: len(text)})
+	state, err := New(Options{
+		Source:       OSSource(),
+		MaxLoadBytes: len(text),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,6 +462,7 @@ func TestStateLoadFileHandlesShebangTextAndBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	binaryState, err := New(Options{
+		Source:       OSSource(),
 		MaxLoadBytes: len(binaryFile) * 32,
 	})
 	if err != nil {
@@ -477,7 +481,7 @@ func TestStateLoadFileHandlesShebangTextAndBinary(t *testing.T) {
 }
 
 func TestStateLoadFileReportsOpenReadAndLimitFailures(t *testing.T) {
-	state, err := New(Options{})
+	state, err := New(Options{Source: OSSource()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +520,10 @@ func TestStateLoadFileReportsOpenReadAndLimitFailures(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	limited, err := New(Options{MaxLoadBytes: len(text) - 1})
+	limited, err := New(Options{
+		Source:       OSSource(),
+		MaxLoadBytes: len(text) - 1,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +535,10 @@ func TestStateLoadFileReportsOpenReadAndLimitFailures(t *testing.T) {
 		t.Fatalf("file limit error = %#v; want ResourceError", limitErr)
 	}
 
-	tiny, err := New(Options{MaxLoadBytes: 3})
+	tiny, err := New(Options{
+		Source:       OSSource(),
+		MaxLoadBytes: 3,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
