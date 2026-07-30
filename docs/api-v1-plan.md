@@ -121,13 +121,21 @@ String and reader loading remain available because the host directly supplies
 their contents. Preloaded Go modules remain available when source files are
 denied. General IO-library file access is a separate capability.
 
-Decision gate before implementation:
+Decisions:
 
-- decide whether zero-value `Options` denies files or retains OS behavior;
-- decide whether denied mode also rejects the standard-input form of
-  `loadfile` and `dofile` (recommended: yes);
-- settle the logical path contract and initial `package.path`; and
-- decide when OS-mode `LUA_PATH` is snapshotted (recommended: during `New`).
+- the zero-value policy denies source-file loading;
+- `OSSource` grants OS files, snapshots `LUA_PATH` during `New`, and is the
+  only mode that permits filename-less `loadfile` and `dofile`;
+- `FSSource` and `CustomSource` use slash-separated logical names and default
+  `package.path` to `?.lua;?/init.lua`;
+- `WithPackagePath` sets the initial `package.path`, which Lua may later
+  mutate without changing the source backend;
+- only `fs.ErrNotExist` advances `require` to another candidate;
+- opening base or package grants no source authority;
+- source policy does not govern the separate IO-library filesystem surface;
+  and
+- the pure-Go package library has no C searchers, exposes an empty
+  `package.cpath`, and retains only an unavailable `package.loadlib` stub.
 
 Exit criteria:
 

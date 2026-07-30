@@ -27,14 +27,96 @@ for _, open := range []func() error{
 coroutines are needed without the base globals. IO, OS, package, and debug are
 separate openers.
 
-`Options` configures State-local streams, time, timezone, execution limits, and
-load limits. A State owns native resources created by its libraries. Always
-close the State. `Close` can report buffered-write or native-resource cleanup
-errors; applications using IO or process resources should handle that error.
+`Options` configures source access, State-local streams, time, timezone,
+execution limits, and load limits. A State owns native resources created by
+its libraries. Always close the State. `Close` can report buffered-write or
+native-resource cleanup errors; applications using IO or process resources
+should handle that error.
+
+## Control source loading
+
+The zero value of `Options.Source` denies source-file access. String and reader
+loading still work because the host supplies those bytes directly:
+
+```go
+state, err := lua.New(lua.Options{})
+// DoString and Load(reader) work.
+// LoadFile and DoFile return lua.ErrSourceLoadingDisabled.
+```
+
+Use `OSSource` for trusted applications that intentionally expose paths from
+the host operating system:
+
+```go
+state, err := lua.New(lua.Options{
+	Source: lua.OSSource(),
+})
+```
+
+OS mode snapshots `LUA_PATH` during `New` and uses OS path syntax. It is also
+the only mode in which filename-less Lua `loadfile()` and `dofile()` may read
+`Options.Stdin`.
+
+Use `FSSource` to restrict loading to an `fs.FS`, including an embedded script
+tree:
+
+```go
+//go:embed scripts
+var embedded embed.FS
+
+scripts, err := fs.Sub(embedded, "scripts")
+if err != nil {
+	return err
+}
+state, err := lua.New(lua.Options{
+	Source: lua.FSSource(scripts),
+})
+```
+
+Filesystem names are slash-separated logical paths. `FSSource` does not read
+`LUA_PATH` or consult the process working directory. Its default module search
+path is `?.lua;?/init.lua`, so `require("tools.json")` tries
+`tools/json.lua`, then `tools/json/init.lua`.
+
+`CustomSource` accepts a context-aware host opener for generated, database,
+network, overlay, or application-specific sources:
+
+```go
+state, err := lua.New(lua.Options{
+	Source: lua.CustomSource(func(
+		ctx context.Context,
+		name string,
+	) (io.ReadCloser, error) {
+		return openApplicationSource(ctx, name)
+	}),
+})
+```
+
+The opener receives a non-nil operation context, and Lunar closes every reader
+it returns. During `require`, an error matching `fs.ErrNotExist` tries the next
+candidate; other errors stop the search and remain available to Go through
+`errors.Is` or `errors.As` if Lua does not catch them.
+
+All policies can replace the initial Lua path templates:
+
+```go
+source := lua.FSSource(scripts).
+	WithPackagePath("modules/?.lua;modules/?/init.lua")
+```
+
+Lua may later assign `package.path`; that changes candidate names but never the
+State's source backend. Preloaded Go modules remain usable when source loading
+is denied. `package.cpath` is empty, there are no C-module searchers, and
+`package.loadlib` reports that dynamic libraries are unavailable.
+
+SourcePolicy governs program loading only. Opening the IO or OS library grants
+their separately documented capabilities; conversely, opening the base or
+package library does not grant source access.
 
 ## Load and call Lua
 
-`DoString` and `DoFile` load and execute a chunk in one operation:
+`DoString` and, when the SourcePolicy permits it, `DoFile` load and execute a
+chunk in one operation:
 
 ```go
 results, err := state.DoString("@answer.lua", `return 6 * 7`)

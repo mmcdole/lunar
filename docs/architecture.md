@@ -105,11 +105,22 @@ State and creates the executable function and environment.
 
 ## Loading and binary chunks
 
-Source and binary loaders accept strings, readers, and files. `DoString` and
-`DoFile` combine loading and execution when a compiled chunk does not need to
-be retained. Reader-backed loading uses bounded refill windows and preserves
-reader errors. Context-aware variants poll while reading, compiling, decoding,
-or executing.
+Source and binary loaders accept strings, readers, and policy-controlled
+logical files. `DoString` and `DoFile` combine loading and execution when a
+compiled chunk does not need to be retained. Reader-backed loading uses bounded
+refill windows and preserves reader errors. Context-aware variants poll while
+opening, reading, compiling, decoding, or executing.
+
+One normalized SourcePolicy belongs to each State. Its zero value has no
+opener. OS mode snapshots `LUA_PATH` during `New`; `fs.FS` and custom-opener
+modes use slash-separated names and default `package.path` to
+`?.lua;?/init.lua`. `LoadFile`, `DoFile`, base-library file loading, and the
+Lua package source searcher all pass through the same opener. Only
+`fs.ErrNotExist` advances a module search to the next path candidate.
+
+The source backend is immutable for the State's lifetime. Lua may mutate
+`package.path`, which changes template expansion without changing authority.
+Source access is independent of the IO library's file capabilities.
 
 Lua 5.1 binary chunks describe a native ABI: byte order, integer widths,
 `size_t`, instruction layout, and number layout are encoded in the header.
@@ -250,8 +261,9 @@ collection converge on that cleanup while retaining their reason-specific
 wait, flush, or termination behavior. Lua userdata finalization remains
 separate from native resource cleanup.
 
-The pure-Go runtime has no Lua C ABI. C-module searchers and
-`package.loadlib` report that dynamic libraries are unavailable.
+The pure-Go runtime has no Lua C ABI. The package library installs no C-module
+searchers, leaves `package.cpath` empty, and keeps `package.loadlib` as a stub
+that reports dynamic libraries are unavailable.
 
 ## Limits and validation
 

@@ -47,8 +47,11 @@ func main() {
 ```
 
 `DoString` and `DoFile` load and execute a chunk, returning owned Lua values.
-Use the separate `Load*` and `Call` APIs when a compiled chunk will be called
-more than once.
+The zero-value source policy denies file loading; applications that need
+`DoFile`, Lua `loadfile`/`dofile`, or file-backed `require` explicitly grant
+`lua.OSSource()`, `lua.FSSource(fsys)`, or `lua.CustomSource(opener)`. Use the
+separate `Load*` and `Call` APIs when a compiled chunk will be called more than
+once.
 
 ## Call Go from Lua
 
@@ -130,6 +133,7 @@ runtime versions.
 | Lua version | Lua 5.1 | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
 | Go API | Functions return typed values; callbacks use typed `Frame` accessors | Values are `LValue` objects; callbacks pass arguments and results through an `LState` stack | Mirrors the Lua C API; values are addressed by numeric stack position |
 | Libraries in a new state | None; open each library explicitly | All standard libraries | None; call `OpenLibraries` or open them individually |
+| Source-file access | Denied by default; grant an OS file system, `fs.FS`, or host opener | Ambient OS file access | Ambient OS file access when the applicable libraries are open |
 | Coroutines | Supported from Lua and Go | Supported from Lua and Go | Not implemented |
 | Cancellation | Choose a context for each load, call, or resume | Attach one context to the state for all execution | No context-based cancellation |
 | `os.exit` | Returns an `*lua.ExitRequest` to Go | Exits the entire Go process | Exits the entire Go process |
@@ -144,8 +148,8 @@ and finalizers are implemented. Current intentional limits are:
 - no `debug.sethook` or `debug.gethook`;
 - garbage collection runs synchronously rather than incrementally;
 - no retained-heap quota; and
-- no public high-level table iterator or State-level metamethod-aware
-  indexing.
+- no high-level table iteration convenience beyond the precise `Table.Next`
+  primitive.
 
 One `State` can execute one goroutine at a time. Separate States may run
 concurrently.
