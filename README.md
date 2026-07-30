@@ -49,11 +49,7 @@ func main() {
 	}
 	defer state.Close()
 
-	chunk, err := state.LoadString("@answer.lua", `return 6 * 7`)
-	if err != nil {
-		panic(err)
-	}
-	results, err := state.Call(chunk.Value())
+	results, err := state.DoString("@answer.lua", `return 6 * 7`)
 	if err != nil {
 		panic(err)
 	}
@@ -63,8 +59,9 @@ func main() {
 }
 ```
 
-Loading compiles a chunk; calling it executes the chunk and returns owned Lua
-values.
+`DoString` and `DoFile` load and execute a chunk, returning owned Lua values.
+Use the separate `Load*` and `Call` APIs when a compiled chunk will be called
+more than once.
 
 ## Call Go from Lua
 
@@ -94,14 +91,10 @@ if err := state.SetGlobal("unit_price", unitPrice.Value()); err != nil {
 	panic(err)
 }
 
-chunk, err := state.LoadString("@checkout.lua", `
+results, err := state.DoString("@checkout.lua", `
 	local subtotal = unit_price("widget") * 4
 	return subtotal * 0.90
 `)
-if err != nil {
-	panic(err)
-}
-results, err := state.Call(chunk.Value())
 if err != nil {
 	panic(err)
 }

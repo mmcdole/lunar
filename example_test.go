@@ -17,11 +17,7 @@ func Example() {
 		}
 	}()
 
-	chunk, err := state.LoadString("@answer.lua", `return 6 * 7`)
-	if err != nil {
-		panic(err)
-	}
-	results, err := state.Call(chunk.Value())
+	results, err := state.DoString("@answer.lua", `return 6 * 7`)
 	if err != nil {
 		panic(err)
 	}

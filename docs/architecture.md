@@ -105,10 +105,11 @@ State and creates the executable function and environment.
 
 ## Loading and binary chunks
 
-Source and binary loaders accept strings, readers, and files. Reader-backed
-loading uses bounded refill windows and preserves reader errors. Context-aware
-variants poll while reading, compiling, or decoding. Context-aware call and
-resume methods poll during execution.
+Source and binary loaders accept strings, readers, and files. `DoString` and
+`DoFile` combine loading and execution when a compiled chunk does not need to
+be retained. Reader-backed loading uses bounded refill windows and preserves
+reader errors. Context-aware variants poll while reading, compiling, decoding,
+or executing.
 
 Lua 5.1 binary chunks describe a native ABI: byte order, integer widths,
 `size_t`, instruction layout, and number layout are encoded in the header.

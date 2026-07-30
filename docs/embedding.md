@@ -34,7 +34,21 @@ errors; applications using IO or process resources should handle that error.
 
 ## Load and call Lua
 
-Loading compiles source but does not execute it:
+`DoString` and `DoFile` load and execute a chunk in one operation:
+
+```go
+results, err := state.DoString("@answer.lua", `return 6 * 7`)
+if err != nil {
+	return err
+}
+answer, _ := results[0].AsNumber()
+```
+
+Their context-aware forms observe the same context during both loading and
+execution.
+
+Use the separate loading and calling APIs when a compiled chunk will be called
+more than once. Loading compiles source but does not execute it:
 
 ```go
 chunk, err := state.LoadString("@price.lua", `
@@ -169,6 +183,7 @@ that Lua should be able to catch.
 
 Use the context-aware methods when a host request must be interruptible:
 
+- `DoStringContext` and `DoFileContext`;
 - `LoadContext` and `LoadFileContext`;
 - `LoadStringContext`;
 - `CallContext` and `CallIntoContext`; and
