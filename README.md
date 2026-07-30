@@ -13,25 +13,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
-Lunik is a Lua 5.1 compiler, bytecode VM, and standard library written entirely
-in Go. It focuses on Lua compatibility, low interpreter overhead, and an
-embedding API that feels natural from Go.
-
-The compiler, VM, libraries, and pattern engine are checked against the
-[Lua 5.1 reference implementation](https://www.lua.org/ftp/). The runtime
-supports coroutines, weak tables, finalizers, and PUC-compatible binary chunks.
-
-> [!NOTE]
-> The module is named Lunik; its Go package is named `lua`. Import
-> `github.com/mmcdole/lunik` and use it as `lua`.
+Lunik implements Lua 5.1 entirely in Go: compiler, bytecode VM, coroutines,
+binary chunks, and standard libraries. Its compiler, VM, libraries, and
+pattern engine are checked against the
+[Lua 5.1 reference implementation](https://www.lua.org/ftp/).
 
 ## Quick start
-
-Lunik requires Go 1.24 or newer.
-
-```sh
-go get github.com/mmcdole/lunik
-```
 
 ```go
 package main
@@ -65,8 +52,8 @@ more than once.
 
 ## Call Go from Lua
 
-Native functions let a script call application code without exposing Go's
-objects or reflection surface. With a `State` created as above:
+Register a native function to make Go code available to Lua. With a `State`
+created as above:
 
 ```go
 prices := map[string]float64{
@@ -108,9 +95,8 @@ errors, coroutines, and lifecycle management.
 
 ## Performance
 
-Lunik measures interpreter workloads, embedding overhead, allocation traffic,
-and retained heap separately. The following medians come from 15 samples on
-an Apple M3 Pro with Go 1.25.1:
+These results are medians from 15 runs on an Apple M3 Pro with Go 1.25.1.
+Lower is better.
 
 | Established Lua program | Lunik | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
@@ -121,62 +107,48 @@ an Apple M3 Pro with Go 1.25.1:
 
 | Embedding operation | Lunik | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go to Lua, scalars | **61.21 ns** | 61.51 ns | 146.80 ns |
-| Lua to Go callback, 1,000 calls | **62.49 µs** | 99.58 µs | 84.37 µs |
-| Convert and echo a 128-byte Go string | 86.20 ns | **81.41 ns** | 144.00 ns |
-| Pass and checksum a prebuilt table | **312.4 ns** | 578.3 ns | 972.9 ns |
-| Create, fill, pass, and checksum a table | 2.230 µs | **1.405 µs** | 1.645 µs |
+| Go calls Lua with scalar arguments | **61.21 ns** | 61.51 ns | 146.80 ns |
+| Lua calls Go 1,000 times | **62.49 µs** | 99.58 µs | 84.37 µs |
+| Lua echoes a 128-byte Go string | 86.20 ns | **81.41 ns** | 144.00 ns |
+| Lua checksums a reused Go-built table | **312.4 ns** | 578.3 ns | 972.9 ns |
+| Build a table in Go, then checksum it in Lua | 2.230 µs | **1.405 µs** | 1.645 µs |
 
-| 9 MB CBOR graph | Lunik | GopherLua |
+| Loading a 9 MB CBOR graph | Lunik | GopherLua |
 | --- | ---: | ---: |
-| Allocation traffic | **107.5 MB** | 784.6 MB |
-| Retained heap increase | **72.24 MiB** | 542.26 MiB |
+| Total memory allocated while loading | **107.5 MB** | 784.6 MB |
+| Live heap added after garbage collection | **72.24 MiB** | 542.26 MiB |
 
-These are individual workloads, not a composite score. The
-[full result archive](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
-contains every benchmark row, confidence intervals, allocation counts, raw
-output, and paired CBOR measurements. The
-[benchmark protocol](benchmarks/README.md) documents timing boundaries,
-environment controls, validation, and pinned runtime versions.
-
-## Embedding behavior
-
-- A new `State` has no libraries. Applications opt into the base, coroutine,
-  math, string, table, IO, OS, package, and debug libraries individually.
-- Context-aware load, call, and resume operations support cancellation.
-  `Options` also provides deterministic execution and load limits.
-- Lua `os.exit` returns a `*lua.ExitRequest`; it never terminates the Go
-  process.
-- The public API uses typed, owning values. Native callbacks use borrowed
-  frames for low-overhead argument and result handling.
-
-One `State` permits one active executor. Separate States may run concurrently.
+The [full results](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/) include
+confidence intervals, allocation counts, and raw output. The
+[benchmark protocol](benchmarks/README.md) lists the commands, inputs, and
+runtime versions.
 
 ## Compatibility
 
 | | Lunik | [GopherLua](https://github.com/yuin/gopher-lua) | [Shopify go-lua](https://github.com/Shopify/go-lua) |
 | --- | --- | --- | --- |
-| Language target | Lua 5.1 | Lua 5.1 plus 5.2-style `goto` | Lua 5.2 |
-| Host interface | Owned typed values and borrowed callback frames | Public `LValue` objects and callback stacks | Lua C API-style stack indices |
-| Coroutines | Supported | Supported | Not implemented |
-| Cancellation | Per-operation Go contexts | Context installed on the State | No Go context API |
-| `os.exit` | Returned to the host | Terminates the process | Terminates the process |
-| Binary chunks | PUC-compatible Lua 5.1 read/write | No PUC-compatible chunk I/O | Lua 5.2 read/write through the Go API |
-
-Comparator versions and the measurement protocol are pinned in the
-[benchmark module](benchmarks/README.md).
+| Lua version | Lua 5.1 | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
+| Go API | Functions return typed values; callbacks use typed `Frame` accessors | Values are `LValue` objects; callbacks pass arguments and results through an `LState` stack | Mirrors the Lua C API; values are addressed by numeric stack position |
+| Libraries in a new state | None; open each library explicitly | All standard libraries | None; call `OpenLibraries` or open them individually |
+| Coroutines | Supported from Lua and Go | Supported from Lua and Go | Not implemented |
+| Cancellation | Choose a context for each load, call, or resume | Attach one context to the state for all execution | No context-based cancellation |
+| `os.exit` | Returns an `*lua.ExitRequest` to Go | Exits the entire Go process | Exits the entire Go process |
+| Binary chunks | Reads and writes Lua 5.1 bytecode when byte order and type sizes match | Cannot read or write standard Lua bytecode files | Reads and writes Lua 5.2 bytecode through the Go API |
 
 ## Scope
 
-The compiler, VM, coroutines, binary chunks, Lua-visible collection, and
-standard runtime are implemented. Current intentional limits are:
+The compiler, VM, standard libraries, coroutines, binary chunks, weak tables,
+and finalizers are implemented. Current intentional limits are:
 
 - no C ABI, native C-module loading, or light userdata;
 - no `debug.sethook` or `debug.gethook`;
-- synchronous rather than incremental semantic collection;
+- garbage collection runs synchronously rather than incrementally;
 - no retained-heap quota; and
 - no public high-level table iterator or State-level metamethod-aware
   indexing.
+
+One `State` can execute one goroutine at a time. Separate States may run
+concurrently.
 
 The public embedding API is still stabilizing.
 
