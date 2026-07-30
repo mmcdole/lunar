@@ -215,7 +215,7 @@ return "handled:" .. key
 		if indexErr != nil {
 			var failure *Error
 			if errors.As(indexErr, &failure) {
-				return frame.RaiseError(failure)
+				return frame.Reraise(failure)
 			}
 			return frame.RaiseString(indexErr.Error())
 		}
@@ -366,7 +366,7 @@ end
 		if nestedError != nil {
 			var failure *Error
 			if errors.As(nestedError, &failure) {
-				return frame.RaiseError(failure)
+				return frame.Reraise(failure)
 			}
 			return frame.RaiseString(nestedError.Error())
 		}
@@ -842,7 +842,7 @@ func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
 	assertRootThreadReady(t, state.main)
 }
 
-func TestFrameRaiseErrorPreservesFailureAndAppendsOuterTrace(t *testing.T) {
+func TestFrameReraisePreservesFailureAndAppendsOuterTrace(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -886,7 +886,7 @@ return 1
 			return frame.RaiseString("nested failure was not a Lua error")
 		}
 		nestedTrace = nestedFailure.Traceback()
-		return frame.RaiseError(nestedFailure)
+		return frame.Reraise(nestedFailure)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -907,7 +907,7 @@ return invoke()
 		t.Fatalf("raised nested failure = %#v; want *Error", callErr)
 	}
 	if failure == nestedFailure {
-		t.Fatal("RaiseError reused and mutated the nested failure object")
+		t.Fatal("Reraise reused and mutated the nested failure object")
 	}
 	if failure.Category() != ResourceError ||
 		!errors.Is(failure, cause) ||
@@ -916,7 +916,7 @@ return invoke()
 	}
 	if same, applicable := failure.Value().SameObject(marker.Value()); !applicable ||
 		!same {
-		t.Fatal("RaiseError lost arbitrary error Value identity")
+		t.Fatal("Reraise lost arbitrary error Value identity")
 	}
 	sideEffect, err := state.RawGlobal("nested_trace_side_effect")
 	if err != nil {
@@ -1019,7 +1019,7 @@ return pcallOK, pcallValue, xpcallOK, xpcallValue
 	assertRootThreadReady(t, state.main)
 }
 
-func TestFrameRaiseErrorAppendsEachNestedTraceSegmentOnce(t *testing.T) {
+func TestFrameReraiseAppendsEachNestedTraceSegmentOnce(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -1048,7 +1048,7 @@ return value
 			return frame.RaiseString("inner bridge lost its Lua error")
 		}
 		innerTrace = failure.Traceback()
-		return frame.RaiseError(failure)
+		return frame.Reraise(failure)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1069,7 +1069,7 @@ return value
 			return frame.RaiseString("outer bridge lost its Lua error")
 		}
 		middleTrace = failure.Traceback()
-		return frame.RaiseError(failure)
+		return frame.Reraise(failure)
 	})
 	if err != nil {
 		t.Fatal(err)

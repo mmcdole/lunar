@@ -622,7 +622,7 @@ inner()`)
 		frameRestored = frame.Context() == ctx &&
 			frame.ArgumentCount() == 1 &&
 			frame.Kind(0) == NumberKind
-		return frame.RaiseError(nestedFailure)
+		return frame.Reraise(nestedFailure)
 	})
 	if err != nil {
 		t.Fatal(err)

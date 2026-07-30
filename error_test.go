@@ -749,7 +749,7 @@ return setmetatable({},{
 					exposedBeforeReturn =
 						nested.value.Valid() &&
 							!nested.hasCompactValue
-					return frame.RaiseError(nested)
+					return frame.Reraise(nested)
 				},
 			)
 			if err != nil {

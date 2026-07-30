@@ -1066,7 +1066,7 @@ func TestFinalizersPermitNestedCollectionAndDeferNewUserData(t *testing.T) {
 		nested := newFinalizerFunction(state, func(frame Frame) Outcome {
 			order = append(order, "new-enter")
 			if _, failure := frame.collectAndFinalize(); failure != nil {
-				return frame.RaiseError(failure)
+				return frame.Reraise(failure)
 			}
 			order = append(order, "new-exit")
 			return frame.Return()
@@ -1159,7 +1159,7 @@ func TestFinalizersPermitNestedCollectionAndDeferNewUserData(t *testing.T) {
 				return frame.RaiseString(err.Error())
 			}
 			if _, failure := frame.collectAndFinalize(); failure != nil {
-				return frame.RaiseError(failure)
+				return frame.Reraise(failure)
 			}
 			nestedBaseline = state.runtime.collection.baseline
 			state.runtime.collection.pause = 300
@@ -1211,7 +1211,7 @@ func TestFinalizerCannotYieldAcrossTheCollectingFrame(t *testing.T) {
 	)
 	collector := newFinalizerFunction(state, func(frame Frame) Outcome {
 		if _, failure := frame.collectAndFinalize(); failure != nil {
-			return frame.RaiseError(failure)
+			return frame.Reraise(failure)
 		}
 		return frame.Return()
 	})

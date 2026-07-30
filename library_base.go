@@ -148,7 +148,7 @@ func baseAssert(frame Frame) Outcome {
 		return baseArgumentError(frame, 0, "value expected")
 	}
 	if truthySlot(value) {
-		return frame.returnArguments()
+		return frame.ReturnArguments()
 	}
 
 	message := "assertion failed!"

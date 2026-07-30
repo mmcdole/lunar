@@ -171,6 +171,15 @@ func (frame Frame) Kind(index int) Kind {
 	return value.kind()
 }
 
+// IsMissingOrNil reports whether argument index was omitted or is Lua nil.
+//
+// It is the common primitive for optional arguments: initialize a Go default,
+// then read and validate the argument only when IsMissingOrNil returns false.
+func (frame Frame) IsMissingOrNil(index int) bool {
+	value, present := frame.argument(index)
+	return !present || value.isNil()
+}
+
 // Bool returns argument index and whether it is exactly a Lua boolean.
 func (frame Frame) Bool(index int) (bool, bool) {
 	value, present := frame.argument(index)
@@ -196,6 +205,53 @@ func (frame Frame) Number(index int) (float64, bool) {
 	return math.Float64frombits(value.bits), true
 }
 
+// CoerceNumber returns argument index as a Lua number.
+//
+// Exact numbers pass through. Strings are accepted only when their complete
+// contents match Lunar's deterministic Lua numeric grammar. No metamethod is
+// invoked.
+func (frame Frame) CoerceNumber(index int) (float64, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return 0, false
+	}
+	return slotToNumber(value)
+}
+
+// Integer returns argument index as an int64 when it is exactly a finite,
+// integral Lua number representable by int64.
+//
+// Integer does not accept numeric strings, truncate fractions, or saturate
+// values outside the int64 range.
+func (frame Frame) Integer(index int) (int64, bool) {
+	number, ok := frame.Number(index)
+	if !ok ||
+		math.IsNaN(number) ||
+		math.IsInf(number, 0) ||
+		math.Trunc(number) != number ||
+		number < -0x1p63 ||
+		number >= 0x1p63 {
+		return 0, false
+	}
+	return int64(number), true
+}
+
+// IntegerInRange returns argument index as an int64 when Integer accepts it
+// and it lies in the inclusive range [minimum, maximum].
+//
+// An inverted range rejects every value.
+func (frame Frame) IntegerInRange(
+	index int,
+	minimum int64,
+	maximum int64,
+) (int64, bool) {
+	value, ok := frame.Integer(index)
+	if !ok || minimum > maximum || value < minimum || value > maximum {
+		return 0, false
+	}
+	return value, true
+}
+
 // String returns argument index and whether it is exactly a Lua string.
 func (frame Frame) String(index int) (string, bool) {
 	value, present := frame.argument(index)
@@ -203,6 +259,18 @@ func (frame Frame) String(index int) (string, bool) {
 		return "", false
 	}
 	return stringSlotText(value), true
+}
+
+// CoerceString returns argument index as a Lua string.
+//
+// Exact strings pass through and numbers use Lua's primitive number spelling.
+// Other kinds are rejected and no metamethod is invoked.
+func (frame Frame) CoerceString(index int) (string, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return "", false
+	}
+	return compactText(value)
 }
 
 // Table returns argument index and whether it is exactly a Lua table.
@@ -402,8 +470,9 @@ func (frame Frame) ReturnValues(values ...Value) Outcome {
 	return frame.sealReturn(outputCount)
 }
 
-// returnArguments returns every supplied argument without materializing it.
-func (frame Frame) returnArguments() Outcome {
+// ReturnArguments completes the callback by returning every supplied argument
+// in order without materializing it as owning Values.
+func (frame Frame) ReturnArguments() Outcome {
 	call := frame.activation()
 	base := int(call.base)
 	return frame.returnCompactValues(
@@ -661,15 +730,38 @@ func (frame Frame) ArgError(index int, reason string) Outcome {
 
 // ArgTypeError completes the callback with a Lua argument-type error.
 //
-// index is zero-based. It may name a missing argument. InvalidKind is not a
-// valid expected kind.
-func (frame Frame) ArgTypeError(index int, expected Kind) Outcome {
+// index is zero-based and may name a missing argument. At least one distinct
+// expected kind is required. InvalidKind and values outside the Kind range are
+// programming errors.
+func (frame Frame) ArgTypeError(index int, expected ...Kind) Outcome {
 	call := frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
 	}
-	if expected <= InvalidKind || expected > TableKind {
-		panic("lua: invalid expected argument kind")
+	if len(expected) == 0 {
+		panic("lua: missing expected argument kind")
+	}
+	var seen uint16
+	expectedText := ""
+	for expectedIndex, kind := range expected {
+		if kind <= InvalidKind || kind > TableKind {
+			panic("lua: invalid expected argument kind")
+		}
+		bit := uint16(1) << uint(kind)
+		if seen&bit != 0 {
+			panic("lua: duplicate expected argument kind")
+		}
+		seen |= bit
+		switch {
+		case expectedIndex == 0:
+		case expectedIndex == len(expected)-1 && len(expected) == 2:
+			expectedText += " or "
+		case expectedIndex == len(expected)-1:
+			expectedText += ", or "
+		default:
+			expectedText += ", "
+		}
+		expectedText += kind.String()
 	}
 	actual := "no value"
 	count := frame.thread.top - int(call.base)
@@ -678,7 +770,7 @@ func (frame Frame) ArgTypeError(index int, expected Kind) Outcome {
 	}
 	return frame.ArgError(index, fmt.Sprintf(
 		"%s expected, got %s",
-		expected,
+		expectedText,
 		actual,
 	))
 }

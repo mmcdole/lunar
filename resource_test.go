@@ -206,7 +206,7 @@ func TestRecursiveCollectionDuringCloseUsesShutdownResourcePolicy(
 	}
 	collector := newFinalizerFunction(state, func(frame Frame) Outcome {
 		if _, failure := frame.collectAndFinalize(); failure != nil {
-			return frame.RaiseError(failure)
+			return frame.Reraise(failure)
 		}
 		return frame.Return()
 	})

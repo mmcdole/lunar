@@ -605,7 +605,7 @@ func TestOSExitAndCancellationUseFirstObservedHostControl(t *testing.T) {
 			if !errors.As(nestedErr, &failure) {
 				panic("nested cancellation did not return *Error")
 			}
-			return frame.RaiseError(failure)
+			return frame.Reraise(failure)
 		})
 		if err != nil {
 			t.Fatal(err)
