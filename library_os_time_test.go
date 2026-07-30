@@ -521,7 +521,7 @@ func TestDateTimeHelpersCoverSignedLimits(t *testing.T) {
 // platforms while measuring every other scalar operation on Windows too.
 func TestWarmOSScalarOperationsDoNotAllocate(t *testing.T) {
 	requireStableAllocationAccounting(t)
-	t.Setenv("LUGO_LUA_OS_ALLOC", "value")
+	t.Setenv("LUNIK_LUA_OS_ALLOC", "value")
 	state := newStateWithOS(t)
 	defer state.Close()
 	loader := mustLoadString(t, state, "@os-alloc.lua", `
@@ -536,7 +536,7 @@ return function()
   local total = 0
   for index = 1, 20 do
     total = total + clock() + difftime(index, 1) + ostime(date)
-    if checkEnvironment and getenv("LUGO_LUA_OS_ALLOC") ~= "value" then
+    if checkEnvironment and getenv("LUNIK_LUA_OS_ALLOC") ~= "value" then
       error("environment")
     end
     if setlocale() ~= "C" then error("locale") end

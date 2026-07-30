@@ -17,7 +17,7 @@ import (
 // want is what PUC Lua 5.1.5 produces, in the shared spelling
 // runPatternEngineCase builds. Regenerate or re-verify with:
 //
-//	LUGO_LUA51=/path/to/lua-5.1.5/src/lua go test -run PatternEngineCasesMatch
+//	LUNIK_LUA51=/path/to/lua-5.1.5/src/lua go test -run PatternEngineCasesMatch
 //
 // The recording driver forces PUC through its matcher even for patterns whose
 // bytes would otherwise qualify for string.find's plain scan, so these cases
@@ -84,12 +84,12 @@ func TestPatternEngineMatchesLua51(t *testing.T) {
 
 // TestPatternEngineCasesMatchTheLua51Oracle re-derives every recorded engine
 // expectation from a real Lua 5.1 interpreter. It is skipped unless
-// LUGO_LUA51 names one, because the reference binary is deliberately not
+// LUNIK_LUA51 names one, because the reference binary is deliberately not
 // carried in this repository.
 func TestPatternEngineCasesMatchTheLua51Oracle(t *testing.T) {
-	binary := os.Getenv("LUGO_LUA51")
+	binary := os.Getenv("LUNIK_LUA51")
 	if binary == "" {
-		t.Skip("set LUGO_LUA51 to a Lua 5.1 interpreter to verify")
+		t.Skip("set LUNIK_LUA51 to a Lua 5.1 interpreter to verify")
 	}
 	driver := &strings.Builder{}
 	driver.WriteString(patternOracleDriver)
@@ -121,7 +121,7 @@ func TestPatternEngineCasesMatchTheLua51Oracle(t *testing.T) {
 			len(patternEngineLua51Cases),
 		)
 	}
-	record := os.Getenv("LUGO_LUA51_RECORD") != ""
+	record := os.Getenv("LUNIK_LUA51_RECORD") != ""
 	for index, test := range patternEngineLua51Cases {
 		if record {
 			t.Logf(

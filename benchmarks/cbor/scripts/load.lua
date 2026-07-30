@@ -1,8 +1,8 @@
-local fixture = assert(os.getenv("LUGO_CBOR_FIXTURE"))
+local fixture = assert(os.getenv("LUNIK_CBOR_FIXTURE"))
 
 package.path = fixture .. "/?.lua;" .. package.path
-LUGO_CBOR_DATA_PATH = fixture .. "/data/graph.cbor"
-LUGO_CBOR_LOG = function() end
+LUNIK_CBOR_DATA_PATH = fixture .. "/data/graph.cbor"
+LUNIK_CBOR_LOG = function() end
 
 local function heap_kib()
     collectgarbage("collect")

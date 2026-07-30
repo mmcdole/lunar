@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mmcdole/lugo/benchmarks/cbor/internal/fixture"
-	lua "github.com/mmcdole/lugo/benchmarks/cbor/internal/luabridge"
+	"github.com/mmcdole/lunik/benchmarks/cbor/internal/fixture"
+	lua "github.com/mmcdole/lunik/benchmarks/cbor/internal/luabridge"
 )
 
 func TestSmallPresetLoadRoundTripsWithStableOracle(t *testing.T) {

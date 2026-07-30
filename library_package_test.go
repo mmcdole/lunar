@@ -26,16 +26,16 @@ func newStateWithPackage(t *testing.T, options Options) *State {
 }
 
 func TestPackageEnvironmentPathExpandsOnlyDoubleSeparators(t *testing.T) {
-	t.Setenv("LUGO_LUA_PATH_TEST", "before;;middle\x01after")
+	t.Setenv("LUNIK_LUA_PATH_TEST", "before;;middle\x01after")
 	if got := packageEnvironmentPath(
-		"LUGO_LUA_PATH_TEST",
+		"LUNIK_LUA_PATH_TEST",
 		"default",
 	); got != "before;default;middle\x01after" {
 		t.Fatalf("expanded path = %q", got)
 	}
-	t.Setenv("LUGO_LUA_PATH_TEST", "")
+	t.Setenv("LUNIK_LUA_PATH_TEST", "")
 	if got := packageEnvironmentPath(
-		"LUGO_LUA_PATH_TEST",
+		"LUNIK_LUA_PATH_TEST",
 		"default",
 	); got != "" {
 		t.Fatalf("explicit empty path = %q", got)

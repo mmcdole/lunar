@@ -298,7 +298,7 @@ func appendDateDirective(
 		return appendDateInteger(text, date.Year(), 4, '0')
 	default:
 		// The host C library decides unknown conversion behavior in PUC.
-		// Lugo keeps it deterministic by copying the conversion byte.
+		// Lunik keeps it deterministic by copying the conversion byte.
 		return append(text, directive)
 	}
 }

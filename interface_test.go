@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	lua "github.com/mmcdole/lugo"
+	"github.com/mmcdole/lunik"
 )
 
 func TestFriendlyObjectInterface(t *testing.T) {

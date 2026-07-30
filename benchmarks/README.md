@@ -1,6 +1,6 @@
 # Runtime comparisons
 
-This module compares Lugo, GopherLua, and Shopify go-lua with three separate
+This module compares Lunik, GopherLua, and Shopify go-lua with three separate
 benchmark groups:
 
 | Benchmark | Timed work |
@@ -20,7 +20,7 @@ Published raw output and summaries are under
 
 The module pins:
 
-- Lugo to the adjacent checkout;
+- Lunik to the adjacent checkout;
 - GopherLua to `v1.1.2`; and
 - Shopify go-lua to
   `v0.0.0-20250718183320-1e37f32ad7d0`.
@@ -79,17 +79,17 @@ separate `go test` process and rotates runtime order across rounds. Describe
 the machine's power and background-load policy explicitly:
 
 ```sh
-LUGO_BENCH_POWER_POLICY='AC power; low-power mode off; otherwise idle' \
-  ./run-comparison.sh /tmp/lugo-benchmarks.txt
+LUNIK_BENCH_POWER_POLICY='AC power; low-power mode off; otherwise idle' \
+  ./run-comparison.sh /tmp/lunik-benchmarks.txt
 ```
 
 Defaults are 15 samples and a 500 ms target per benchmark. They can be changed
 explicitly:
 
 ```sh
-LUGO_BENCH_POWER_POLICY='AC power; low-power mode off; otherwise idle' \
-LUGO_BENCH_SAMPLES=20 LUGO_BENCH_TIME=1s \
-  ./run-comparison.sh /tmp/lugo-benchmarks.txt
+LUNIK_BENCH_POWER_POLICY='AC power; low-power mode off; otherwise idle' \
+LUNIK_BENCH_SAMPLES=20 LUNIK_BENCH_TIME=1s \
+  ./run-comparison.sh /tmp/lunik-benchmarks.txt
 ```
 
 The output begins with the Git revision, Go and comparator versions, platform,
@@ -97,7 +97,7 @@ machine and CPU models, power policy, collection policy, sample count, and
 benchmark duration.
 
 If automatic hardware detection is unavailable, set
-`LUGO_BENCH_MACHINE_MODEL` and `LUGO_BENCH_CPU_MODEL` to explicit descriptions
+`LUNIK_BENCH_MACHINE_MODEL` and `LUNIK_BENCH_CPU_MODEL` to explicit descriptions
 before collection.
 
 ## Statistical summaries
@@ -110,18 +110,18 @@ BENCHSTAT=golang.org/x/perf/cmd/benchstat@v0.0.0-20260709024250-82a0b07e230d
 
 go run "$BENCHSTAT" \
   -filter '.name:Programs' \
-  -row /program -col '/runtime@(lugo gopherlua golua)' \
-  /tmp/lugo-benchmarks.txt
+  -row /program -col '/runtime@(lunik gopherlua golua)' \
+  /tmp/lunik-benchmarks.txt
 
 go run "$BENCHSTAT" \
   -filter '.name:Interpreter' \
-  -row /case -col '/runtime@(lugo gopherlua golua)' \
-  /tmp/lugo-benchmarks.txt
+  -row /case -col '/runtime@(lunik gopherlua golua)' \
+  /tmp/lunik-benchmarks.txt
 
 go run "$BENCHSTAT" \
   -filter '.name:Embedding' \
-  -row /case -col '/runtime@(lugo gopherlua golua)' \
-  /tmp/lugo-benchmarks.txt
+  -row /case -col '/runtime@(lunik gopherlua golua)' \
+  /tmp/lunik-benchmarks.txt
 ```
 
 `ns/op` measures the warm timed operation. `B/op` and `allocs/op` measure Go

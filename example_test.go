@@ -3,7 +3,7 @@ package lua_test
 import (
 	"fmt"
 
-	lua "github.com/mmcdole/lugo"
+	"github.com/mmcdole/lunik"
 )
 
 func Example() {

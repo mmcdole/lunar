@@ -1,6 +1,6 @@
 # Architecture
 
-Lugo is a Lua 5.1 compiler and virtual machine implemented in Go. Runtime
+Lunik is a Lua 5.1 compiler and virtual machine implemented in Go. Runtime
 objects stay in private compact representations; the public Go API adds
 ownership only when a value crosses the embedding boundary.
 
@@ -112,7 +112,7 @@ resume methods poll during execution.
 
 Lua 5.1 binary chunks describe a native ABI: byte order, integer widths,
 `size_t`, instruction layout, and number layout are encoded in the header.
-Lugo reads and writes chunks compatible with PUC Lua 5.1 when those ABI fields
+Lunik reads and writes chunks compatible with PUC Lua 5.1 when those ABI fields
 match. Loaded bytecode still passes the prototype verifier.
 
 `Options.MaxLoadBytes` bounds input consumed by one load and the projected
@@ -149,7 +149,7 @@ This division keeps one instruction implementation. It also keeps policy,
 stack replacement, reentry, and uncommon failure handling out of the ordinary
 dispatch path.
 
-Lugo currently has no debug-hook dispatch. Stack, local, upvalue, function, and
+Lunik currently has no debug-hook dispatch. Stack, local, upvalue, function, and
 traceback inspection are implemented as cold operations that read published
 activation state.
 
@@ -185,7 +185,7 @@ Native callbacks return through `Frame.Return*`, `Frame.Raise*`, or
 callback may retain owning values read from the Frame, but it must not retain
 the Frame itself.
 
-See [Embedding Lugo](embedding.md) for examples and lifecycle guidance.
+See [Embedding Lunik](embedding.md) for examples and lifecycle guidance.
 
 ## Coroutines and reentry
 
@@ -221,7 +221,7 @@ Lua error value.
 
 ## Semantic collection
 
-Go reclaims backing allocations, while Lugo's State-local collector determines
+Go reclaims backing allocations, while Lunik's State-local collector determines
 Lua reachability. It implements Lua 5.1 weak-table behavior, userdata
 finalization, `collectgarbage`, `gcinfo`, automatic collection scheduling, and
 logical Lua heap accounting.
@@ -262,7 +262,7 @@ formatting apply a shared 1 GiB contiguous-result limit.
 Correctness tests cover public ownership, lifecycle, race behavior, compiler
 and VM semantics, libraries, collection, and supported platform paths.
 Recorded language and library cases can be re-run against a configured PUC Lua
-5.1.5 executable with `LUGO_LUA51`.
+5.1.5 executable with `LUNIK_LUA51`.
 
 Cross-runtime performance claims use the version-pinned harness and collection
 protocol in [`benchmarks/README.md`](../benchmarks/README.md). Algorithms

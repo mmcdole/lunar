@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	windowsPopenCopyHelperEnv = "LUGO_TEST_WINDOWS_POPEN_COPY"
-	windowsPopenCopyOutputEnv = "LUGO_TEST_WINDOWS_POPEN_COPY_OUTPUT"
+	windowsPopenCopyHelperEnv = "LUNIK_TEST_WINDOWS_POPEN_COPY"
+	windowsPopenCopyOutputEnv = "LUNIK_TEST_WINDOWS_POPEN_COPY_OUTPUT"
 )
 
 func TestIOPopenWindowsCopyHelper(t *testing.T) {

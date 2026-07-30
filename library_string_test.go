@@ -209,7 +209,7 @@ func TestStringLibraryMatchesLua51(t *testing.T) {
 // to an integer type. That cast is undefined for a negative value and for a
 // magnitude the type cannot hold, and the mainstream architectures disagree:
 // arm64 saturates, x86-64 wraps. Every case below is one C leaves undefined,
-// so it describes Lugo's rule rather than any interpreter's output.
+// so it describes Lunik's rule rather than any interpreter's output.
 func TestStringLibraryDefinesCUndefinedFormatting(t *testing.T) {
 	testCases := []struct {
 		name   string

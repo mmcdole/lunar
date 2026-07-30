@@ -1,13 +1,13 @@
 # CBOR graph benchmark
 
-This nested module compares Lugo with stock GopherLua v1.1.2 on the same
+This nested module compares Lunik with stock GopherLua v1.1.2 on the same
 deterministic CBOR load and save workload. The graph stresses large string maps,
 dense numeric lists, mixed numeric/string keys, repeated record layouts, table
 iteration, file I/O, and recursive codec calls.
 
 The graph is reported as a large-table memory workload. General interpreter and
-embedding results come from the benchmark module above it. The Lugo worker uses
-Lugo's owned public API, explicitly opens the standard libraries required by
+embedding results come from the benchmark module above it. The Lunik worker uses
+Lunik's owned public API, explicitly opens the standard libraries required by
 the fixture, and uses operation-scoped contexts for guarded calls. The stock
 worker is selected with the `gopherlua_reference` build tag and uses the pinned
 dependency in `stock.mod`; both builds otherwise compile the same generator,
@@ -32,10 +32,10 @@ From this directory, generate the public fixtures:
 
 ```sh
 go run ./cmd/generate \
-  -preset small -output /tmp/lugo-cbor-small.cbor
+  -preset small -output /tmp/lunik-cbor-small.cbor
 
 go run ./cmd/generate \
-  -preset large -output /tmp/lugo-cbor-large.cbor
+  -preset large -output /tmp/lunik-cbor-large.cbor
 ```
 
 The expected current checksums are:
@@ -49,8 +49,8 @@ Verify the file hashes with:
 
 ```sh
 shasum -a 256 \
-  /tmp/lugo-cbor-small.cbor \
-  /tmp/lugo-cbor-large.cbor
+  /tmp/lunik-cbor-small.cbor \
+  /tmp/lunik-cbor-large.cbor
 ```
 
 Worker output validates the structural digest after decoding.
@@ -68,28 +68,28 @@ Build one fresh-process worker for each implementation:
 
 ```sh
 go build -trimpath \
-  -o /tmp/lugo-cbor-lugo ./cmd/workload
+  -o /tmp/lunik-cbor-lunik ./cmd/workload
 
 go build -trimpath -tags gopherlua_reference -modfile=stock.mod \
-  -o /tmp/lugo-cbor-gopherlua ./cmd/workload
+  -o /tmp/lunik-cbor-gopherlua ./cmd/workload
 ```
 
 Run the small fixture through both load and save paths:
 
 ```sh
-/tmp/lugo-cbor-lugo \
+/tmp/lunik-cbor-lunik \
   -preset small -mode load -measurement retained \
-  -fixture testdata -data /tmp/lugo-cbor-small.cbor
-/tmp/lugo-cbor-lugo \
+  -fixture testdata -data /tmp/lunik-cbor-small.cbor
+/tmp/lunik-cbor-lunik \
   -preset small -mode save -measurement retained \
-  -fixture testdata -data /tmp/lugo-cbor-small.cbor
+  -fixture testdata -data /tmp/lunik-cbor-small.cbor
 
-/tmp/lugo-cbor-gopherlua \
+/tmp/lunik-cbor-gopherlua \
   -preset small -mode load -measurement retained \
-  -fixture testdata -data /tmp/lugo-cbor-small.cbor
-/tmp/lugo-cbor-gopherlua \
+  -fixture testdata -data /tmp/lunik-cbor-small.cbor
+/tmp/lunik-cbor-gopherlua \
   -preset small -mode save -measurement retained \
-  -fixture testdata -data /tmp/lugo-cbor-small.cbor
+  -fixture testdata -data /tmp/lunik-cbor-small.cbor
 ```
 
 Every invocation copies the shared input into a private writable directory.
@@ -107,17 +107,17 @@ evidence:
 
 ```sh
 go run ./cmd/run \
-  -baseline /tmp/lugo-cbor-gopherlua \
-  -candidate /tmp/lugo-cbor-lugo \
+  -baseline /tmp/lunik-cbor-gopherlua \
+  -candidate /tmp/lunik-cbor-lunik \
   -preset large -mode load -measurement timing \
-  -fixture testdata -data /tmp/lugo-cbor-large.cbor \
+  -fixture testdata -data /tmp/lunik-cbor-large.cbor \
   -runs 15 -warmups 2 -seed 1 \
   -baseline-output /tmp/cbor-gopherlua-load.jsonl \
-  -candidate-output /tmp/cbor-lugo-load.jsonl
+  -candidate-output /tmp/cbor-lunik-load.jsonl
 
 go run ./cmd/compare \
   -baseline /tmp/cbor-gopherlua-load.jsonl \
-  -candidate /tmp/cbor-lugo-load.jsonl \
+  -candidate /tmp/cbor-lunik-load.jsonl \
   -min-samples 15 -bootstrap 10000 -seed 1
 ```
 
@@ -141,17 +141,17 @@ runner:
 
 ```sh
 go run ./cmd/run \
-  -baseline /tmp/lugo-cbor-gopherlua \
-  -candidate /tmp/lugo-cbor-lugo \
+  -baseline /tmp/lunik-cbor-gopherlua \
+  -candidate /tmp/lunik-cbor-lunik \
   -preset large -mode load -measurement retained \
-  -fixture testdata -data /tmp/lugo-cbor-large.cbor \
+  -fixture testdata -data /tmp/lunik-cbor-large.cbor \
   -runs 15 -warmups 2 -seed 1 \
   -baseline-output /tmp/cbor-gopherlua-retained.jsonl \
-  -candidate-output /tmp/cbor-lugo-retained.jsonl
+  -candidate-output /tmp/cbor-lunik-retained.jsonl
 
 go run ./cmd/compare \
   -baseline /tmp/cbor-gopherlua-retained.jsonl \
-  -candidate /tmp/cbor-lugo-retained.jsonl \
+  -candidate /tmp/cbor-lunik-retained.jsonl \
   -min-samples 15 -bootstrap 10000 -seed 1
 ```
 

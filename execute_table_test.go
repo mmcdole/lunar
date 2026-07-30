@@ -12,7 +12,7 @@ local function tail()
 	return 3, nil, 5
 end
 local table = {
-	name = "lugo",
+	name = "lunik",
 	[false] = 17,
 	1,
 	2,
@@ -33,7 +33,7 @@ return table[1], table[2], table[3], table[4], table[5],
 		Number(3),
 		Nil(),
 		Number(5),
-		state.String("lugo"),
+		state.String("lunik"),
 		Number(17),
 		Nil(),
 		Nil(),

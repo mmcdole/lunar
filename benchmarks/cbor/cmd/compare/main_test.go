@@ -60,7 +60,7 @@ func TestCompareAllowsDifferentRuntimeVersions(t *testing.T) {
 		t,
 		candidate,
 		`"runtime_version":"Lua 5.1"`,
-		`"runtime_version":"Lugo (Lua 5.1)"`,
+		`"runtime_version":"Lunik (Lua 5.1)"`,
 	)
 
 	report, err := compare(options{
@@ -71,7 +71,7 @@ func TestCompareAllowsDifferentRuntimeVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if report.Signature.RuntimeVersion != "Lua 5.1" ||
-		report.CandidateRuntimeVersion != "Lugo (Lua 5.1)" {
+		report.CandidateRuntimeVersion != "Lunik (Lua 5.1)" {
 		t.Fatalf(
 			"runtime versions = %q/%q",
 			report.Signature.RuntimeVersion,

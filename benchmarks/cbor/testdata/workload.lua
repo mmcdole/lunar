@@ -1,9 +1,9 @@
 local cbor = require "cbor"
 
-local data_path = assert(LUGO_CBOR_DATA_PATH, "LUGO_CBOR_DATA_PATH is required")
-local log = LUGO_CBOR_LOG or function() end
+local data_path = assert(LUNIK_CBOR_DATA_PATH, "LUNIK_CBOR_DATA_PATH is required")
+local log = LUNIK_CBOR_LOG or function() end
 
-LUGO_CBOR_GRAPH = nil
+LUNIK_CBOR_GRAPH = nil
 
 local function graph_counts(graph)
     local area_count = 0
@@ -47,14 +47,14 @@ function loadBenchmarkGraph()
         return false
     end
 
-    LUGO_CBOR_GRAPH = graph
+    LUNIK_CBOR_GRAPH = graph
     local areas, rooms, exits = graph_counts(graph)
     log(string.format("loaded %d areas, %d rooms, and %d exits", areas, rooms, exits))
     return true
 end
 
 function saveBenchmarkGraph()
-    local graph = LUGO_CBOR_GRAPH
+    local graph = LUNIK_CBOR_GRAPH
     if type(graph) ~= "table" then
         log("no CBOR graph is loaded")
         return false

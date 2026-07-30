@@ -1,6 +1,6 @@
 # Performance policy
 
-Lugo tracks four separate dimensions:
+Lunik tracks four separate dimensions:
 
 - Lua execution time;
 - Go allocation traffic;

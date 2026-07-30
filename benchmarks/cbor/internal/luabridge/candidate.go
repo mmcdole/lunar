@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	engine "github.com/mmcdole/lugo"
+	engine "github.com/mmcdole/lunik"
 )
 
 type (
@@ -16,7 +16,7 @@ type (
 	Table = engine.Table
 )
 
-// State adapts the benchmark operations to Lugo's owned public API.
+// State adapts the benchmark operations to Lunik's owned public API.
 type State struct {
 	state      *engine.State
 	guarded    bool
@@ -105,12 +105,12 @@ func (state *State) Close() error {
 }
 
 func (state *State) RuntimeVersion() string {
-	return "Lugo (Lua 5.1)"
+	return "Lunik (Lua 5.1)"
 }
 
 func (state *State) ConfigureExecution(guarded bool, interval int) error {
 	if interval != 0 {
-		return fmt.Errorf("Lugo uses operation-scoped contexts and does not support configurable polling intervals")
+		return fmt.Errorf("Lunik uses operation-scoped contexts and does not support configurable polling intervals")
 	}
 	state.guarded = guarded
 	return nil

@@ -29,7 +29,7 @@ var debugLibraryFunctions = [...]struct {
 // The library deliberately exposes mutable execution state, raw metatables,
 // and the registry. Applications executing untrusted Lua should not open it.
 // Instruction hooks are not installed because exact hooks would add work to
-// ordinary execution, which Lugo deliberately keeps unchanged.
+// ordinary execution, which Lunik deliberately keeps unchanged.
 // Opening again replaces the debug table and its functions with fresh
 // canonical objects.
 func (state *State) OpenDebug() error {

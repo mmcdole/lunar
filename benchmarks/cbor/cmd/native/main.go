@@ -455,7 +455,7 @@ func buildPolicyRecord(opts options, specs []runtimeSpec, inputSHA256, scriptSHA
 }
 
 func stageRuntimeBinaries(specs []runtimeSpec) (string, error) {
-	directory, err := os.MkdirTemp("", "lugo-cbor-native-runtimes-")
+	directory, err := os.MkdirTemp("", "lunik-cbor-native-runtimes-")
 	if err != nil {
 		return "", fmt.Errorf("create private runtime staging directory: %w", err)
 	}
@@ -498,7 +498,7 @@ func stageRuntimeBinaries(specs []runtimeSpec) (string, error) {
 }
 
 func runOne(opts options, spec runtimeSpec, inputSHA256, scriptSHA256, codecSHA256, workloadSHA256 string) (result, error) {
-	workdir, err := os.MkdirTemp("", "lugo-cbor-native-")
+	workdir, err := os.MkdirTemp("", "lunik-cbor-native-")
 	if err != nil {
 		return result{}, err
 	}
@@ -518,7 +518,7 @@ func runOne(opts options, spec runtimeSpec, inputSHA256, scriptSHA256, codecSHA2
 
 	arguments := append(append([]string(nil), spec.arguments...), opts.script)
 	command := exec.Command(spec.executable, arguments...)
-	command.Env = append(os.Environ(), "LUGO_CBOR_FIXTURE="+workdir)
+	command.Env = append(os.Environ(), "LUNIK_CBOR_FIXTURE="+workdir)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr

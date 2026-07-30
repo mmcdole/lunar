@@ -428,7 +428,7 @@ func ioTempFile(frame Frame) Outcome {
 	if err != nil {
 		return libraryError(frame, "%s", err)
 	}
-	file, err := os.CreateTemp("", "lugo-")
+	file, err := os.CreateTemp("", "lunik-")
 	if err != nil {
 		return ioFailureResult(frame, err)
 	}

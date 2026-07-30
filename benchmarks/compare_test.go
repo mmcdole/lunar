@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	golua "github.com/Shopify/go-lua"
-	lugo "github.com/mmcdole/lugo"
+	lunik "github.com/mmcdole/lunik"
 	gopherlua "github.com/yuin/gopher-lua"
 )
 
@@ -78,8 +78,8 @@ end
 func BenchmarkInterpreter(b *testing.B) {
 	for _, workload := range runtimeWorkloads {
 		b.Run("case="+workload.name, func(b *testing.B) {
-			b.Run("runtime=lugo", func(b *testing.B) {
-				benchmarkLugo(b, workload)
+			b.Run("runtime=lunik", func(b *testing.B) {
+				benchmarkLunik(b, workload)
 			})
 			b.Run("runtime=gopherlua", func(b *testing.B) {
 				benchmarkGopherLua(b, workload)
@@ -91,8 +91,8 @@ func BenchmarkInterpreter(b *testing.B) {
 	}
 }
 
-func benchmarkLugo(b *testing.B, workload workload) {
-	state, err := lugo.New(lugo.Options{})
+func benchmarkLunik(b *testing.B, workload workload) {
+	state, err := lunik.New(lunik.Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func benchmarkLugo(b *testing.B, workload workload) {
 	if _, err := state.CallInto(function, nil, nil); err != nil {
 		b.Fatal(err)
 	}
-	validateLugoResult(b, state, workload)
+	validateLunikResult(b, state, workload)
 
 	runtime.GC()
 	b.ReportAllocs()
@@ -125,12 +125,12 @@ func benchmarkLugo(b *testing.B, workload workload) {
 			b.Fatal(err)
 		}
 	}
-	validateLugoResult(b, state, workload)
+	validateLunikResult(b, state, workload)
 }
 
-func validateLugoResult(
+func validateLunikResult(
 	b *testing.B,
-	state *lugo.State,
+	state *lunik.State,
 	workload workload,
 ) {
 	b.Helper()

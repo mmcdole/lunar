@@ -1,6 +1,6 @@
 # Semantic collection
 
-Lugo uses Go's garbage collector to reclaim backing allocations, but Lua
+Lunik uses Go's garbage collector to reclaim backing allocations, but Lua
 decides which Lua objects are reachable. The State-local collector implements
 Lua 5.1 weak tables, userdata finalization, collection controls, automatic
 scheduling, and logical heap accounting.
@@ -76,7 +76,7 @@ live stack extent, activations, and open upvalues. Userdata trace their
 environment and metatable.
 
 Go callback closures and userdata payloads are opaque. A Go value that needs
-to retain a Lua object must use an owning Lugo value, which then appears in the
+to retain a Lua object must use an owning Lunik value, which then appears in the
 host root set. Hosts that create cycles through opaque Go payloads must break
 those cycles themselves.
 
@@ -96,7 +96,7 @@ Implicit array indexes are numbers, not stored objects. Weak keys therefore do
 not weaken array values.
 
 Lua 5.1 weak keys are not ephemerons. A weak-key table still marks its values.
-If a value points back to its key, that path can keep the key alive. Lugo does
+If a value points back to its key, that path can keep the key alive. Lunik does
 not apply Lua 5.2's later ephemeron rules.
 
 Reachable weak tables are classified during marking. After the strong mark
@@ -212,4 +212,4 @@ heap measurements when comparing physical retained memory across runtimes.
 ## Current limit
 
 The collector is not incremental. A cycle, including any Lua finalizers it
-runs, is synchronous. Lugo does not yet expose a retained-heap quota.
+runs, is synchronous. Lunik does not yet expose a retained-heap quota.

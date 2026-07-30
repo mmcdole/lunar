@@ -163,7 +163,7 @@ func execute(opts options) error {
 }
 
 func stageImplementations(implementations []implementation) ([]implementation, string, error) {
-	directory, err := os.MkdirTemp("", "lugo-cbor-workers-")
+	directory, err := os.MkdirTemp("", "lunik-cbor-workers-")
 	if err != nil {
 		return nil, "", fmt.Errorf("create worker staging directory: %w", err)
 	}

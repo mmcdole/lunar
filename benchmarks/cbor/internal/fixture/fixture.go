@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	lua "github.com/mmcdole/lugo/benchmarks/cbor/internal/luabridge"
+	lua "github.com/mmcdole/lunik/benchmarks/cbor/internal/luabridge"
 )
 
 const FixedTimestamp = 1_700_000_000
@@ -84,11 +84,11 @@ func WriteCBOR(codecRoot, output string, p Preset) (Summary, error) {
 	}
 	if err := L.DoString(
 		"@load-cbor.lua",
-		`__lugo_cbor_codec = require "cbor"`,
+		`__lunik_cbor_codec = require "cbor"`,
 	); err != nil {
 		return Summary{}, fmt.Errorf("load CBOR codec: %w", err)
 	}
-	moduleValue, err := L.Global("__lugo_cbor_codec")
+	moduleValue, err := L.Global("__lunik_cbor_codec")
 	if err != nil {
 		return Summary{}, fmt.Errorf("read CBOR module: %w", err)
 	}

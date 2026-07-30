@@ -1,4 +1,4 @@
-# Embedding Lugo
+# Embedding Lunik
 
 ## Create a State
 
@@ -161,7 +161,7 @@ Captured values can be supplied after the callback argument to
 `NewNativeFunction` and read with `Frame.Capture`. Captures are copied into the
 function's private runtime storage.
 
-A Go panic is not converted into a Lua error. It propagates to Go after Lugo
+A Go panic is not converted into a Lua error. It propagates to Go after Lunik
 restores the Frame. Use `Raise*`, `ArgError`, or `ArgTypeError` for failures
 that Lua should be able to catch.
 
@@ -177,7 +177,7 @@ Use the context-aware methods when a host request must be interruptible:
 The supplied context is available to native callbacks through
 `Frame.Context`. Cancellation returns a `*lua.Error` in the
 `lua.ContextError` category. Lua `pcall` cannot catch host cancellation.
-Ordinary non-context methods do not install cancellation polling. Lugo cannot
+Ordinary non-context methods do not install cancellation polling. Lunik cannot
 preempt a callback while it is running Go code; blocking or long-running
 callbacks must observe `Frame.Context()` themselves.
 

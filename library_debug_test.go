@@ -639,11 +639,11 @@ func TestDebugLibraryMatchesLua51Cases(t *testing.T) {
 }
 
 // TestDebugLibraryCasesMatchLua51Oracle re-derives every recorded expectation
-// from an actual Lua 5.1 interpreter when LUGO_LUA51 is set.
+// from an actual Lua 5.1 interpreter when LUNIK_LUA51 is set.
 func TestDebugLibraryCasesMatchLua51Oracle(t *testing.T) {
-	binary := os.Getenv("LUGO_LUA51")
+	binary := os.Getenv("LUNIK_LUA51")
 	if binary == "" {
-		t.Skip("set LUGO_LUA51 to a Lua 5.1 interpreter to verify")
+		t.Skip("set LUNIK_LUA51 to a Lua 5.1 interpreter to verify")
 	}
 
 	driver := &strings.Builder{}
@@ -672,7 +672,7 @@ func TestDebugLibraryCasesMatchLua51Oracle(t *testing.T) {
 			output,
 		)
 	}
-	record := os.Getenv("LUGO_LUA51_RECORD") != ""
+	record := os.Getenv("LUNIK_LUA51_RECORD") != ""
 	for index, test := range debugLibraryLua51Cases {
 		if record {
 			t.Logf("%s: %q", test.name, lines[index])

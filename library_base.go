@@ -201,7 +201,7 @@ func baseCollectGarbage(frame Frame) Outcome {
 	case "restart":
 		control.setStopped(false)
 		// PUC installs the current allocation total as its threshold.
-		// Lugo records the equivalent request and services it at the
+		// Lunik records the equivalent request and services it at the
 		// next graph-stable executor seam.
 		control.requestCycle()
 		return frame.ReturnNumber(0)
@@ -637,7 +637,7 @@ func baseIPairsIterator(frame Frame) Outcome {
 		return baseArgumentTypeError(frame, 0, "table")
 	}
 	// PUC increments a signed C int here, which is undefined at MaxInt32.
-	// Lugo defines the common two's-complement wrap instead.
+	// Lunik defines the common two's-complement wrap instead.
 	if index == math.MaxInt32 {
 		index = math.MinInt32
 	} else {

@@ -166,7 +166,7 @@ func osSetLocale(frame Frame) Outcome {
 		)
 	}
 
-	// Locale is process-global in C, while Lugo States may execute
+	// Locale is process-global in C, while Lunik States may execute
 	// independently. Numeric parsing, byte-string ordering, and date names
 	// therefore use one deterministic C locale. Querying it and selecting C,
 	// POSIX, or the host-default request all resolve to that same locale.
@@ -177,7 +177,7 @@ func osSetLocale(frame Frame) Outcome {
 }
 
 func osTemporaryName(frame Frame) Outcome {
-	file, err := os.CreateTemp("", "lugo-")
+	file, err := os.CreateTemp("", "lunik-")
 	if err != nil {
 		return libraryError(
 			frame,

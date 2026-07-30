@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mmcdole/lugo/benchmarks/cbor/internal/fixture"
+	"github.com/mmcdole/lunik/benchmarks/cbor/internal/fixture"
 )
 
 func main() {

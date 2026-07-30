@@ -45,7 +45,7 @@ func TestTableRawScalarAccess(t *testing.T) {
 		{Number(-4), state.String("negative")},
 		{Bool(true), Number(1)},
 		{Bool(false), Number(2)},
-		{state.String("name"), state.String("lugo")},
+		{state.String("name"), state.String("lunik")},
 	}
 	for _, test := range tests {
 		if err := table.rawSetValue(test.key, test.value); err != nil {
