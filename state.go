@@ -297,6 +297,7 @@ type State struct {
 	execution        executionControl
 	operationBridges [luaOperationCount]*functionObject
 	typeMetatables   [TableKind + 1]*tableObject
+	userDataTypes    map[string]*userDataTypeRegistration
 }
 
 // New constructs an empty State.
@@ -433,6 +434,7 @@ func (state *State) Close() error {
 	state.options.Location = nil
 	state.options.Now = nil
 	state.typeMetatables = [TableKind + 1]*tableObject{}
+	state.userDataTypes = nil
 	state.runtime.hosts.prune()
 	closeErr := errors.Join(
 		errors.Join(closeContext.failures...),

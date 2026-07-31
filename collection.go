@@ -535,6 +535,9 @@ func (state *State) markCollectionRoots() {
 	for _, metatable := range state.typeMetatables {
 		state.markTable(metatable)
 	}
+	for _, registration := range state.userDataTypes {
+		state.markTable(registration.metatable)
+	}
 	state.markErrorValue(state.execution.failure)
 	state.markErrorValue(state.execution.pendingExit)
 	state.runtime.hosts.markCollectionRoots(state)
