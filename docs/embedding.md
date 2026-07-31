@@ -305,6 +305,22 @@ Use the helper whose name matches the contract you want:
 - `IntegerInRange` adds an inclusive caller-supplied range.
 - `IsMissingOrNil` lets optional arguments share one explicit default path.
 
+Every required accessor has an `Opt` counterpart that supplies a default for a
+missing or nil argument and otherwise applies the same check, so a wrong type
+is still reported rather than replaced by the default:
+
+```go
+limit, ok := frame.OptIntegerInRange(1, 25, 1, 100)
+if !ok {
+	return frame.ArgError(1, "integer from 1 through 100 expected")
+}
+```
+
+`OptBool`, `OptNumber`, `OptCoerceNumber`, `OptInteger`, `OptIntegerInRange`,
+`OptString`, `OptCoerceString`, `OptTable`, `OptFunction`, and `OptUserData`
+cover the accessors above. Use `IsMissingOrNil` directly when several optional
+arguments share one default path.
+
 For example, this callback accepts a string-or-number label and an optional
 bounded integer:
 
