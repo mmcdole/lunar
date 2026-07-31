@@ -188,14 +188,23 @@ Exit criteria:
 
 ## Phase 5: typed userdata
 
-Prototype a State-bound `UserDataType[T]` descriptor. Successful extraction
-requires exact metatable identity and the expected Go payload type. Reusing a
-name with a different Go type is an error.
+Add a State-bound `UserDataType[T]` descriptor. Successful extraction requires
+exact metatable identity and a Go type assertion to `T`.
 
-The descriptor should expose its name and metatable, construct userdata with
-that metatable, and extract payloads from an owning Value or Frame argument.
-The type registry should be private to the State rather than redefinable
-through `debug.getregistry`.
+Decisions:
+
+- `NewUserDataType[T](state, name)` creates or reopens a registration;
+- the same name and exact `T` reuse one canonical metatable;
+- the same name with another `T` returns `ErrUserDataTypeConflict`;
+- `Name` and `Metatable` expose immutable descriptor metadata;
+- `New` constructs an instance, while `FromValue` and `FromArgument` perform
+  both validations without panic control flow;
+- registrations live in a private State map, not the Lua registry;
+- the collector treats every registered metatable as a State root;
+- the metatable is the Lua class authority, so host code may intentionally
+  classify compatible bare userdata by installing it; and
+- descriptor metadata and owning-value extraction remain readable after
+  State closure, while construction returns `ErrClosed`.
 
 Exit criteria:
 

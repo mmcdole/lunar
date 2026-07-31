@@ -11,7 +11,8 @@ A `State` owns:
 - one registry;
 - one main Lua thread and any coroutines created from it, each with a global
   environment pointer;
-- runtime metatables, libraries, string caches, and native resources;
+- runtime metatables, typed-userdata registrations, libraries, string caches,
+  and native resources;
 - the Lua object ledger used for semantic collection; and
 - one active executor.
 
@@ -39,6 +40,12 @@ The runtime follows these ownership rules:
 created with `Nil()`. Scalar observers use exact type checks. Reference values
 can be converted to typed `*Table`, `*Function`, `*Thread`, and `*UserData`
 handles.
+
+`UserDataType[T]` adds a State-local Lua class identity to an opaque userdata
+payload. Its private registration roots one canonical metatable and records
+the declared Go type. Extraction requires both that metatable identity and a
+successful assertion to `T`; Lua's visible registry is not the source of
+truth.
 
 The private execution value is a separate unexported type. It stores the same
 Lua value without exposing mutable runtime objects or paying host-ownership

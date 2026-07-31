@@ -64,7 +64,8 @@ for their documented read-only operations.
 A collection starts from:
 
 - the main thread and currently active thread;
-- the global environment, registry, and per-type metatables;
+- the global environment, registry, primitive per-type metatables, and
+  registered typed-userdata metatables;
 - State-held package and library objects;
 - live failures or exit requests that carry Lua values;
 - the argument of a currently executing finalizer; and

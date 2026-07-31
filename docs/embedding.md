@@ -327,6 +327,115 @@ return frame.ReturnValues(results...)
 `ReturnArguments` is the allocation-conscious echo path when a callback wants
 to return every argument unchanged.
 
+## Typed userdata
+
+Use `UserDataType[T]` when a Lua userdata represents a particular Go class.
+The descriptor combines two checks that are easy to omit when using bare
+`UserData`:
+
+- exact identity of the class's Lua metatable; and
+- assignability of the stored Go payload to `T`.
+
+Registration is State-local:
+
+```go
+counterType, err := lua.NewUserDataType[*Counter](
+	state,
+	"example.Counter",
+)
+```
+
+Repeating the same name and `T` reuses the canonical metatable. Reusing the
+name with another Go type returns `ErrUserDataTypeConflict`. Registrations live
+outside the Lua registry, so `debug.getregistry` cannot replace the name-to-
+metatable association.
+
+Build normal Lua methods by using a methods table as `__index`:
+
+```go
+methods, err := state.NewTable()
+if err != nil {
+	return err
+}
+if err := state.SetFunctions(
+	methods,
+	map[string]lua.NativeFunc{
+		"add": func(frame lua.Frame) lua.Outcome {
+			counter, ok := counterType.FromArgument(frame, 0)
+			if !ok {
+				return frame.ArgError(
+					0,
+					counterType.Name()+" expected",
+				)
+			}
+
+			amount := int64(1)
+			if !frame.IsMissingOrNil(1) {
+				amount, ok = frame.IntegerInRange(
+					1,
+					-1_000,
+					1_000,
+				)
+				if !ok {
+					return frame.ArgError(
+						1,
+						"bounded integer expected",
+					)
+				}
+			}
+			counter.Value += amount
+			return frame.ReturnNumber(float64(counter.Value))
+		},
+	},
+); err != nil {
+	return err
+}
+if err := counterType.Metatable().RawSetString(
+	"__index",
+	methods.Value(),
+); err != nil {
+	return err
+}
+```
+
+Construct instances through the descriptor:
+
+```go
+counter, err := counterType.New(&Counter{Value: 10})
+if err != nil {
+	return err
+}
+if err := state.SetGlobal("counter", counter.Value()); err != nil {
+	return err
+}
+```
+
+Lua can then use ordinary colon calls:
+
+```lua
+counter:add(5)
+```
+
+The receiver is Frame argument zero. `FromArgument` rejects another userdata
+class even if it carries the same Go payload type, and rejects the registered
+metatable if its payload is not assignable to `T`. `FromValue` performs the
+same checks for an owning Value:
+
+```go
+counter, ok := counterType.FromValue(value)
+```
+
+The metatable is the Lua class authority, not an unforgeable creation marker.
+Host code may intentionally classify compatible bare userdata by installing
+the exact metatable. Opening the debug library gives Lua raw metatable powers
+that bypass normal `__metatable` protection, so it remains an explicitly
+trusted capability.
+
+Descriptor metadata and `FromValue` remain readable after State closure, like
+the underlying owning `UserData`. `New` returns `ErrClosed` after closure.
+Changing a typed userdata's payload through `SetData` is allowed, but later
+typed extraction fails safely if the new payload no longer satisfies `T`.
+
 ## Cancellation
 
 Use the context-aware methods when a host request must be interruptible:

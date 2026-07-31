@@ -7,6 +7,10 @@ import (
 	"github.com/mmcdole/lunar"
 )
 
+type exampleCounter struct {
+	value int64
+}
+
 func ExampleFSSource() {
 	scripts := fstest.MapFS{
 		"main.lua": {
@@ -149,4 +153,98 @@ func ExampleFrame_IntegerInRange() {
 
 	// Output:
 	// 42:25
+}
+
+func ExampleNewUserDataType() {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		panic(err)
+	}
+	defer state.Close()
+
+	counterType, err := lua.NewUserDataType[*exampleCounter](
+		state,
+		"example.Counter",
+	)
+	if err != nil {
+		panic(err)
+	}
+	methods, err := state.NewTable()
+	if err != nil {
+		panic(err)
+	}
+	if err := state.SetFunctions(
+		methods,
+		map[string]lua.NativeFunc{
+			"add": func(frame lua.Frame) lua.Outcome {
+				counter, ok := counterType.FromArgument(frame, 0)
+				if !ok {
+					return frame.ArgError(
+						0,
+						counterType.Name()+" expected",
+					)
+				}
+				amount := int64(1)
+				if !frame.IsMissingOrNil(1) {
+					amount, ok = frame.IntegerInRange(
+						1,
+						-1_000,
+						1_000,
+					)
+					if !ok {
+						return frame.ArgError(
+							1,
+							"bounded integer expected",
+						)
+					}
+				}
+				counter.value += amount
+				return frame.ReturnNumber(float64(counter.value))
+			},
+		},
+	); err != nil {
+		panic(err)
+	}
+	if err := counterType.Metatable().RawSetString(
+		"__index",
+		methods.Value(),
+	); err != nil {
+		panic(err)
+	}
+
+	newCounter, err := state.NewNativeFunction(
+		func(frame lua.Frame) lua.Outcome {
+			initial, ok := frame.Integer(0)
+			if !ok {
+				return frame.ArgTypeError(0, lua.NumberKind)
+			}
+			counter, createErr := counterType.New(
+				&exampleCounter{value: initial},
+			)
+			if createErr != nil {
+				return frame.RaiseError(createErr)
+			}
+			return frame.ReturnValue(counter.Value())
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := state.SetGlobal("new_counter", newCounter.Value()); err != nil {
+		panic(err)
+	}
+
+	results, err := state.DoString("@counter.lua", `
+local counter = new_counter(10)
+return counter:add(5), counter:add()
+`)
+	if err != nil {
+		panic(err)
+	}
+	first, _ := results[0].AsNumber()
+	second, _ := results[1].AsNumber()
+	fmt.Println(first, second)
+
+	// Output:
+	// 15 16
 }
