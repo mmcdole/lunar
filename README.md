@@ -66,11 +66,11 @@ prices := map[string]float64{
 unitPrice, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 	sku, ok := frame.String(0)
 	if !ok {
-		return frame.ArgTypeError(0, lua.StringKind)
+		frame.ThrowArgTypeError(0, lua.StringKind)
 	}
 	price, ok := prices[sku]
 	if !ok {
-		return frame.RaiseString("unknown product: " + sku)
+		frame.ThrowString("unknown product: " + sku)
 	}
 	return frame.ReturnNumber(price)
 })
@@ -135,7 +135,7 @@ runtime versions.
 | Libraries in a new state | None; open each library explicitly | All standard libraries | None; call `OpenLibraries` or open them individually |
 | Source-file access | Denied by default; grant an OS file system, `fs.FS`, or host opener | Ambient OS file access | Ambient OS file access when the applicable libraries are open |
 | Coroutines | Supported from Lua and Go | Supported from Lua and Go | Not implemented |
-| Cancellation | Choose a context for each load, call, or resume | Attach one context to the state for all execution | No context-based cancellation |
+| Cancellation | One installed context covers execution, loading, and coroutines | One context on the state, execution only | No context-based cancellation |
 | `os.exit` | Returns an `*lua.ExitRequest` to Go | Exits the entire Go process | Exits the entire Go process |
 | Binary chunks | Reads and writes Lua 5.1 bytecode when byte order and type sizes match | Cannot read or write standard Lua bytecode files | Reads and writes Lua 5.2 bytecode through the Go API |
 

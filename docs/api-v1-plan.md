@@ -1,6 +1,11 @@
 # Lunar v1 public interface plan
 
-Status: working plan for the first public release.
+Status: superseded in part. The surface decisions this plan reached are
+recorded in [ADR 0006](adr/0006-cut-to-a-demand-backed-surface.md),
+[ADR 0007](adr/0007-use-one-ambient-context.md), and
+[ADR 0008](adr/0008-throw-is-the-callback-failure-path.md), which override the
+phase text below wherever the two disagree. The phases remain as the record of
+how the surface was built before it was measured.
 
 Lunar is not released or in production. Public interface changes in this plan
 are therefore clean breaks: the implementation will not retain aliases or

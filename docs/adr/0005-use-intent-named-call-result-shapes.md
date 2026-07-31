@@ -52,26 +52,14 @@ func (state *State) CallOne(
 	arguments ...Value,
 ) (Value, error)
 
-func (state *State) CallOneContext(
-	ctx context.Context,
-	callable Value,
-	arguments ...Value,
-) (Value, error)
-
 func (state *State) CallDiscard(
-	callable Value,
-	arguments ...Value,
-) error
-
-func (state *State) CallDiscardContext(
-	ctx context.Context,
 	callable Value,
 	arguments ...Value,
 ) error
 ```
 
-Add matching `Frame.CallOne` and `Frame.CallDiscard` methods. Frame forms
-inherit the enclosing context and instruction budget.
+Add matching `Frame.CallOne` and `Frame.CallDiscard` methods. Frame forms run
+under the State's installed context like every other reentrant operation.
 
 `CallOne` requests exactly one result from the VM. A function returning no
 values therefore produces `Nil`, and extra values are discarded. It must not

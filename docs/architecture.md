@@ -63,6 +63,10 @@ record capacity hints affect initial allocation only; tables grow as needed.
 Deletion retains only the continuation information required by Lua's `next`
 semantics.
 
+A closed State leaves its objects as a frozen snapshot: `Table` readers,
+`Table.Next`, `UserData.Data`, `Function.Prototype`, and every `Value` observer
+keep working, while mutation reports `ErrClosed`.
+
 Public `Table` methods are raw operations. They never invoke `__index`,
 `__newindex`, or another Lua function. Metamethod-aware indexing from a native
 callback uses `Frame.Index` and `Frame.SetIndex`, which can invoke Lua
@@ -115,8 +119,8 @@ State and creates the executable function and environment.
 Source and binary loaders accept strings, readers, and policy-controlled
 logical files. `DoString` and `DoFile` combine loading and execution when a
 compiled chunk does not need to be retained. Reader-backed loading uses bounded
-refill windows and preserves reader errors. Context-aware variants poll while
-opening, reading, compiling, decoding, or executing.
+refill windows and preserves reader errors. Loading polls the State's installed
+context while opening, reading, compiling, and decoding.
 
 One normalized SourcePolicy belongs to each State. Its zero value has no
 opener. OS mode snapshots `LUA_PATH` during `New`; `fs.FS` and custom-opener
@@ -187,9 +191,9 @@ need a second open-versus-closed representation.
 The public API has an owning interface and a borrowed native-callback
 interface over the same runtime:
 
-- `State.Call` and `State.CallContext` return owned result slices.
+- `State.Call` returns an owned result slice.
 - `State.CallOne` applies Lua's one-result adjustment, while
-  `State.CallDiscard` requests no results; both have context-aware forms.
+  `State.CallDiscard` requests no results.
 - `State.CallInto` and `State.CallIntoContext` write into caller-provided
   result storage.
 - `NativeFunc` receives a borrowed `Frame` with typed argument access and
@@ -210,9 +214,13 @@ are not rolled back.
 Native callbacks return through `Frame.Return*`, `Frame.Raise*`, or
 `Frame.Yield*`. An `Outcome` is tied to the invocation that created it. A
 callback may retain owning values read from the Frame, but it must not retain
-the Frame itself. `RaiseError` converts an ordinary Go error and preserves it
-as the cause; `Reraise` propagates an existing Lua error without losing its
-value, category, or nested traceback.
+the Frame itself. A callback ends by returning a `Return*` Outcome, returning a
+`Yield*` Outcome, or throwing. `Throw*` unwinds with a private panic recovered
+at the native call boundary, so a helper called at any depth inside the
+callback can report a failure that a returned Outcome cannot express.
+`ThrowError` converts an ordinary Go error and preserves it as the cause;
+`Rethrow` propagates an existing Lua error without losing its value, category,
+or nested traceback.
 
 See [Embedding Lunar](embedding.md) for examples and lifecycle guidance.
 
@@ -234,12 +242,28 @@ Frame APIs, but another goroutine may not enter the State concurrently.
 
 ## Contexts and host control
 
-Context-aware load, call, and resume methods install one operation-scoped
-`context.Context`. Ordinary methods do not install cancellation state.
+`SetContext` installs one ambient `context.Context` for the State. It outlives
+the operation that installed it, covers every thread including coroutines, and
+governs loading as well as execution, so a script cannot escape it by looping
+inside a coroutine or a `require`. It can be replaced from inside a native
+callback and takes effect during the call that replaced it. A State with no
+installed context arms no polling at all.
+
 Execution, patterns, readers, and blocking library paths poll at bounded safe
 points. Cancellation returns an `*Error` in the `ContextError` category and is
 not catchable by Lua `pcall`. Polling cannot preempt an arbitrary caller
 `io.Reader` while its own `Read` method is blocked.
+
+`Options.MaxHeapBytes` bounds the logical heap `HeapBytes` measures. The
+collector supplies the enforcement point: a charge that crosses the limit
+schedules a cycle, and the safe point raises only if the freshly measured live
+heap is still over. The failure is a `LimitError`, which Lua `pcall` cannot
+catch — a script must not be able to absorb the ceiling that bounds it and keep
+allocating. `ResourceError` remains the category for the limits Lua itself
+defines, such as stack overflow, which a script may legitimately recover from.
+While an xpcall handler runs, the enforced limit widens by
+`max(64 KiB, MaxHeapBytes/8)` so the handler can allocate its report, mirroring
+the emergency capacity `MaxValues` and `MaxFrames` already grant.
 
 `os.exit` does not terminate the Go process. It returns an `*Error` in the
 `ExitError` category that unwraps to `*ExitRequest`. The host decides whether
@@ -247,8 +271,10 @@ that request ends a plugin, request, service, or process.
 
 Lua execution errors retain the original Lua value and a compact traceback.
 The exported `Error` remains inspectable after State closure and classifies
-runtime, syntax, resource, context, and exit failures without replacing the
-Lua error value.
+runtime, syntax, resource, context, limit, and exit failures without replacing
+the Lua error value. `TraceFrame.String` renders one activation the way Lua
+positions it, and `Frame.Where` gives a callback the same prefix for a message
+it composes itself.
 
 ## Semantic collection
 

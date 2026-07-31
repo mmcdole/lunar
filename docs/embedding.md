@@ -72,32 +72,25 @@ inspect a State that holds more than the limit allows.
 ## Control the collector
 
 `Collect` performs a full collection and runs pending finalizers.
-`HeapBytes` measures the live heap. The remaining options Lua's
-`collectgarbage` exposes are available to the host too:
+`HeapBytes` measures the live heap.
 
 ```go
-state.StopGC()                        // suspend automatic collection
-defer state.RestartGC()               // resume it, and request a cycle
-previous, err := state.SetGCPause(150)
+state.StopGC()          // suspend automatic collection
+defer state.RestartGC() // resume it, and request a cycle
 ```
 
-`StopGC`, `RestartGC`, `GCRunning`, `GCPause`, `SetGCPause`,
-`GCStepMultiplier`, and `SetGCStepMultiplier` require an idle State and
-return `ErrRunning` otherwise; a callback suspends and resumes collection
-through `Frame.StopGC`, `Frame.RestartGC`, and `Frame.GCRunning`. Retuning
-pause or step multiplier is a policy decision that belongs to an idle host,
-so those exist only on `State`. Both drive the same control block as
-`collectgarbage`, so a change made through either is visible to the other.
+`StopGC` and `RestartGC` keep a latency-sensitive section free of collection.
+Both require an idle State and return `ErrRunning` otherwise. They drive the
+same control block as Lua's `collectgarbage`, so a change made through either
+is visible to the other, and everything else `collectgarbage` exposes stays
+available to scripts.
 
-Stopping the collector is useful for a latency-sensitive section, but nothing
-is reclaimed while it is stopped. Explicit `Collect` still works, and a State
-with `MaxHeapBytes` still enforces it, so a long stop can surface a limit that
-automatic collection would have avoided.
+Nothing is reclaimed while the collector is stopped. Explicit `Collect` still
+works, and a State with `MaxHeapBytes` still enforces it, so a long stop can
+surface a limit that automatic collection would have avoided.
 
 Lunar's collector is synchronous — a cycle runs to completion at a safe
 point — so `Collect` is a complete step and there is no separate `StepGC`.
-The step multiplier is recorded for `collectgarbage` compatibility without
-changing how much work a collection does.
 
 ## Control source loading
 
@@ -273,17 +266,9 @@ if errors.As(err, &capacity) {
 ## Cache compiled chunks
 
 `Compile` produces a `*Prototype` without a State, and `LoadPrototype`
-installs one into any State. `MarshalBinary` and `UnmarshalPrototype` carry
-that across process runs, so a chunk can be compiled at build time and loaded
-without parsing again:
-
-```go
-prototype, err := lua.Compile("@price.lua", source)
-encoded, err := prototype.MarshalBinary()
-// ... later, in another process ...
-decoded, err := lua.UnmarshalPrototype("@price.lua", encoded)
-function, err := state.LoadPrototype(decoded)
-```
+installs one into any State, so a build step can compile once and every State
+pays only the binding. Lua's own `string.dump` still produces a binary chunk
+that `LoadString` accepts when bytes on disk are what a host wants.
 
 The format is Lua 5.1's binary chunk, which `string.dump` also writes, so
 chunks move between Lua and Go in both directions. Lua 5.1 chunks describe the
@@ -319,30 +304,46 @@ if err := state.SetGlobal("config", table.Value()); err != nil {
 
 `Table.RawGet*` and `Table.RawSet*` never invoke metamethods. A native callback
 that needs ordinary Lua `__index` or `__newindex` behavior can use
-`Frame.Index` and `Frame.SetIndex`.
+`Frame.Index` and `Frame.SetIndex`. `Table.Next` walks a table in Lua's raw
+traversal order; start with `lua.Nil()` and pass each returned key back.
+
+Data that already exists as a Go tree crosses in one pass:
+
+```go
+config, err := state.NewTableFrom(map[string]any{
+	"host":    "aardmud.org",
+	"port":    4000,
+	"filters": []any{"combat", "chat"},
+})
+```
+
+`NewTableFrom` converts scalars, `[]byte`, `[]any`, `map[string]any`, and an
+owning `Value` that already belongs to this State. Slices become one-based
+sequences and nested maps become nested tables. Any other Go type reports
+`ErrUnsupportedTreeValue` rather than guessing, and no partially built table
+becomes reachable. Conversion performs raw assignments only, so it never
+invokes `__newindex` and is usable from a callback through `Frame.State`.
 
 ## Apply Lua operators
 
-`Index`, `SetIndex`, `Len`, `Equal`, `LessThan`, `LessEqual`, `ToString`,
-`Concat`, and `Arith` apply Lua's own semantics, including metamethods. Each
-exists on both `State` and `Frame`, with context-aware `State` forms:
+`Index`, `SetIndex`, `Len`, `Equal`, and `ToString` apply Lua's own semantics,
+including metamethods. Each exists on both `State` and `Frame`:
 
 ```go
-total, err := state.Arith(lua.AddOperator, lua.Number(6), lua.Number(7))
-label, err := state.Concat(state.String("id-"), lua.Number(42))
+name, err := state.Index(config.Value(), state.String("name"))
+count, err := state.Len(items.Value())
+same, err := state.Equal(left, right)
 ```
-
-`Arith` takes `AddOperator`, `SubtractOperator`, `MultiplyOperator`,
-`DivideOperator`, `ModuloOperator`, `PowerOperator`, or `NegateOperator`.
-Numbers and complete numeric strings are computed directly; anything else
-follows the operation's metamethod and may execute Lua. `NegateOperator` reads
-one operand and ignores the second, matching Lua 5.1's `__unm` convention of
-passing the operand twice. `Concat` joins strings and numbers directly and
-otherwise follows `__concat`.
 
 These share the executor's implementation, so a host operation and the
 equivalent Lua expression agree on coercion, metamethod selection, and float
-edge cases such as division by zero.
+edge cases. `Raw` operations on `Table` bypass metamethods; unqualified
+operations do not.
+
+Lunar deliberately stops there. Arithmetic, concatenation, and ordering are
+things Go does directly on values you have already extracted, and routing them
+back through the VM buys only metamethod dispatch that host code rarely wants.
+`Equal` is the exception because `__eq` has no Go equivalent.
 
 Tables, functions, threads, and userdata belong to the State that created
 them. Importing one into another State returns `lua.ErrForeignValue`. Scalars
@@ -357,11 +358,11 @@ typed accessors do not coerce values.
 multiply, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 	left, ok := frame.Number(0)
 	if !ok {
-		return frame.ArgTypeError(0, lua.NumberKind)
+		frame.ThrowArgTypeError(0, lua.NumberKind)
 	}
 	right, ok := frame.Number(1)
 	if !ok {
-		return frame.ArgTypeError(1, lua.NumberKind)
+		frame.ThrowArgTypeError(1, lua.NumberKind)
 	}
 	return frame.ReturnNumber(left * right)
 })
@@ -387,17 +388,19 @@ Every required accessor has an `Opt` counterpart that supplies a default for a
 missing or nil argument and otherwise applies the same check, so a wrong type
 is still reported rather than replaced by the default:
 
+An optional argument composes `IsMissingOrNil` with the accessor it needs:
+
 ```go
-limit, ok := frame.OptIntegerInRange(1, 25, 1, 100)
-if !ok {
-	return frame.ArgError(1, "integer from 1 through 100 expected")
+limit := int64(25)
+if !frame.IsMissingOrNil(1) {
+	value, ok := frame.IntegerInRange(1, 1, 100)
+	if !ok {
+		frame.ThrowArgTypeError(1, lua.NumberKind)
+	}
+	limit = value
 }
 ```
 
-`OptBool`, `OptNumber`, `OptCoerceNumber`, `OptInteger`, `OptIntegerInRange`,
-`OptString`, `OptCoerceString`, `OptTable`, `OptFunction`, and `OptUserData`
-cover the accessors above. Use `IsMissingOrNil` directly when several optional
-arguments share one default path.
 
 For example, this callback accepts a string-or-number label and an optional
 bounded integer:
@@ -406,7 +409,7 @@ bounded integer:
 describe, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 	label, ok := frame.CoerceString(0)
 	if !ok {
-		return frame.ArgTypeError(
+		frame.ThrowArgTypeError(
 			0,
 			lua.StringKind,
 			lua.NumberKind,
@@ -443,32 +446,31 @@ The Frame becomes invalid after a terminal outcome or callback return. Owning
 `Frame.CallInto`, `Frame.Index`, and `Frame.SetIndex` are the supported
 reentrant operations.
 
-Captured values can be supplied after the callback argument to
-`NewNativeFunction` and read with `Frame.Capture`. Captures are copied into the
-function's private runtime storage.
+State a callback needs travels in the Go closure. An owning `Value` held that
+way keeps its Lua object reachable, so a closure is both the simpler and the
+safer place for it.
 
 A Go panic is not converted into a Lua error. It propagates to Go after Lunar
-restores the Frame. Use `Raise*`, `ArgError`, or `ArgTypeError` for failures
-that Lua should be able to catch.
+restores the Frame. Use `Throw*` for failures that Lua should be able to
+catch.
 
-## Fail from a helper
+## Fail from a callback
 
-An `Outcome` must be returned by the `NativeFunc` itself, so a helper called
-by that function cannot report failure with `Raise*`. Each `Raise*` method has
-an unwinding `Throw*` counterpart that never returns and may be called from any
-depth inside the callback:
+A callback ends in exactly one of three ways: it returns a `Return*` Outcome,
+it returns a `Yield*` Outcome, or it throws.
 
-| returned            | unwinding              |
-| ------------------- | ---------------------- |
-| `Raise(value)`      | `Throw(value)`         |
-| `RaiseString(text)` | `ThrowString(text)`    |
-| `RaiseError(err)`   | `ThrowError(err)`      |
-| `Reraise(failure)`  | `Rethrow(failure)`     |
-| `ArgError`          | `ThrowArgError`        |
-| `ArgTypeError`      | `ThrowArgTypeError`    |
+| method                       | raises                                    |
+| ---------------------------- | ----------------------------------------- |
+| `Throw(value)`               | an arbitrary Lua value                    |
+| `ThrowString(text)`          | a string                                  |
+| `ThrowError(err)`            | a Go error, retained as the cause         |
+| `Rethrow(failure)`           | a `*lua.Error` from a nested operation    |
+| `ThrowArgError(i, reason)`   | `bad argument #i (reason)`                |
+| `ThrowArgTypeError(i, kind)` | `bad argument #i (kind expected, got …)`  |
 
-A `Throw*` completes the callback exactly as returning the corresponding
-`Raise*` would, which makes shared argument checks possible:
+Throwing rather than returning a failure is what lets a helper called at any
+depth inside the callback report the error, which is where argument checks
+usually live:
 
 ```go
 func checkString(frame lua.Frame, index int) string {
@@ -484,17 +486,22 @@ greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 })
 ```
 
-`Throw*` unwinds with a private panic that Lunar recovers at the native call
-boundary. Host code between the `Throw*` and the `NativeFunc` must not recover
-it, so a deferred recover in that range should re-panic values it does not
-recognize. Panics that are not throws keep propagating to Go unchanged.
+Throws are statements, not expressions, so a guard clause reads as one and the
+callback continues below it only when the check passed. A callback whose whole
+body is a failure still needs a terminal return that never executes.
 
-Use `RaiseError(err)` for an ordinary host failure. Lunar raises `err.Error()`
+`Throw*` unwinds with a private panic that Lunar recovers at the native call
+boundary, leaving the callback in the same state a returned Outcome would.
+Host code between the `Throw*` and the `NativeFunc` must not recover it, so a
+deferred recover in that range should re-panic values it does not recognize.
+Panics that are not throws keep propagating to Go unchanged.
+
+Use `ThrowError(err)` for an ordinary host failure. Lunar raises `err.Error()`
 as the Lua value and retains `err` as the Go cause, so a later host caller can
-use `errors.Is` or `errors.As`. Use `Reraise(failure)` for a `*lua.Error`
+use `errors.Is` or `errors.As`. Use `Rethrow(failure)` for a `*lua.Error`
 returned by a nested Frame operation; it preserves the original arbitrary Lua
 value, category, cause, and traceback. A direct `*lua.Error` passed to
-`RaiseError` is defensively reraised, but explicit `Reraise` documents the
+`ThrowError` is defensively rethrown, but explicit `Rethrow` documents the
 intended boundary.
 
 ```go
@@ -502,9 +509,9 @@ results, err := frame.Call(callback, arguments...)
 if err != nil {
 	var failure *lua.Error
 	if errors.As(err, &failure) {
-		return frame.Reraise(failure)
+		frame.Rethrow(failure)
 	}
-	return frame.RaiseError(err)
+	frame.ThrowError(err)
 }
 return frame.ReturnValues(results...)
 ```
@@ -623,60 +630,44 @@ typed extraction fails safely if the new payload no longer satisfies `T`.
 
 ## Cancellation
 
-Use the context-aware methods when a host request must be interruptible:
-
-- `DoStringContext` and `DoFileContext`;
-- `LoadContext` and `LoadFileContext`;
-- `LoadStringContext`;
-- `CallContext`, `CallOneContext`, `CallDiscardContext`, and
-  `CallIntoContext`; and
-- `Thread.ResumeContext` and `Thread.ResumeIntoContext`.
-
-The supplied context is available to native callbacks through
-`Frame.Context`. Cancellation returns a `*lua.Error` in the
-`lua.ContextError` category. Lua `pcall` cannot catch host cancellation.
-Ordinary non-context methods do not install cancellation polling. Lunar cannot
-preempt a callback while it is running Go code; blocking or long-running
-callbacks must observe `Frame.Context()` themselves.
-
-## Interrupt execution
-
-A context is captured when a call begins, so it cannot be re-armed or detached
-while that call runs. `SetInterrupt` installs an ambient callback instead: it
-outlives one call, applies to every thread of the State, and can be changed
-from a native callback:
+One installed context governs everything a State executes:
 
 ```go
-var cancelled atomic.Bool
+ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+defer cancel()
 
-state.SetInterrupt(func() error {
-	if cancelled.Load() {
-		return errCancelled
-	}
-	return nil
-})
+state.SetContext(ctx)
+defer state.RemoveContext()
+
+results, err := state.Call(handler)
 ```
 
-Returning a non-nil error stops execution and surfaces that error as a
-`*lua.Error` in the `lua.ContextError` category, so `errors.Is` still finds the
-host's error and Lua `pcall` cannot catch it. Coroutines are covered too, so a
-script cannot escape an interrupt by looping inside one.
+The context is ambient. It outlives one call, applies to every thread of the
+State including coroutines, and governs loading as well as execution, so a
+script cannot escape it by looping inside a coroutine or a `require`.
+Cancellation returns a `*lua.Error` in the `lua.ContextError` category, and
+Lua `pcall` cannot catch it.
 
-The callback runs on the executing goroutine between instructions and around
-native calls, never inside one, so it cannot preempt host code that is already
-running. `SetInterrupt` is a State operation and must be serialized like any
-other; a host deciding to interrupt from another goroutine publishes that
-decision through its own synchronization, as the atomic flag above does.
+`SetContext` takes effect immediately, including from inside a native callback,
+so a watchdog can be re-armed during the call it governs — pause it before
+handing control to code that legitimately blocks, then install a fresh deadline
+afterwards. `Frame.Context` returns the installed context, or
+`context.Background` when none is installed.
 
-Use this for a watchdog that must pause while a callback legitimately blocks:
-`RemoveInterrupt` before handing control to the user, then `SetInterrupt`
-again with a fresh deadline afterwards. `State.Traceback` reports where the
-executing thread is when the interrupt fires.
+Because the context outlives the operation, a cancelled context that is left
+installed refuses every later operation on that State. A host that cancels per
+operation clears it afterwards, as the `defer` above does.
 
-Ordinary execution installs no polling at all. The check is armed only while a
-context or an interrupt is present.
+`SetContext` is a State operation and must be serialized like any other. A host
+deciding to cancel from another goroutine does so through its own context,
+which is what `context.WithCancel` already provides.
 
-## Inspect the call stack
+A State with no installed context arms no polling at all: the check exists only
+while a context is present. Lunar cannot preempt a callback while it is running
+Go code, so blocking or long-running callbacks observe `Frame.Context`
+themselves.
+
+## Position a host failure
 
 `Frame.Where` reports the source position of an activation, formatted the way
 Lua positions runtime errors. Level 0 is the native call itself and level 1 is
@@ -685,32 +676,19 @@ site:
 
 ```go
 reject, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
-	return frame.RaiseString(frame.Where(1) + "host rejected the request")
+	frame.ThrowString(frame.Where(1) + "host rejected the request")
+	return lua.Outcome{} // unreachable
 })
 // chunk.lua:12: host rejected the request
 ```
 
-`Raise*` and `Throw*` never position the message they are given, so a host that
-wants runtime-identical attribution adds it with `Where`, and one that wants a
-bare message simply omits it.
+`Throw*` never positions the message it is given, so a host that wants
+runtime-identical attribution adds it with `Where`, and one that wants a bare
+message simply omits it.
 
-`Frame.Stack` reports one activation as a `TraceFrame` under the same
-numbering, and returns `ok == false` past the bottom of the stack:
-
-```go
-for level := 0; ; level++ {
-	activation, ok := frame.Stack(level)
-	if !ok {
-		break
-	}
-	log.Printf("%s:%d %s", activation.Source, activation.Line, activation.Function)
-}
-```
-
-`Frame.Traceback` returns the whole executing stack, innermost activation
-first, in the same form `Error.Traceback` reports. `State.Traceback` does the
-same for the State's executing thread, which is what an interrupt callback
-needs; a State that is not executing reports an empty traceback.
+For a whole stack, `Error.Traceback` returns the activations a failure unwound
+through, and `TraceFrame.String` renders one the way Lua would. Neither
+executes Lua, so both stay valid after the State closes.
 
 ## Errors and exit requests
 
