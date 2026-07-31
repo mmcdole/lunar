@@ -266,6 +266,29 @@ if err := state.SetGlobal("config", table.Value()); err != nil {
 that needs ordinary Lua `__index` or `__newindex` behavior can use
 `Frame.Index` and `Frame.SetIndex`.
 
+## Apply Lua operators
+
+`Index`, `SetIndex`, `Len`, `Equal`, `LessThan`, `LessEqual`, `ToString`,
+`Concat`, and `Arith` apply Lua's own semantics, including metamethods. Each
+exists on both `State` and `Frame`, with context-aware `State` forms:
+
+```go
+total, err := state.Arith(lua.AddOperator, lua.Number(6), lua.Number(7))
+label, err := state.Concat(state.String("id-"), lua.Number(42))
+```
+
+`Arith` takes `AddOperator`, `SubtractOperator`, `MultiplyOperator`,
+`DivideOperator`, `ModuloOperator`, `PowerOperator`, or `NegateOperator`.
+Numbers and complete numeric strings are computed directly; anything else
+follows the operation's metamethod and may execute Lua. `NegateOperator` reads
+one operand and ignores the second, matching Lua 5.1's `__unm` convention of
+passing the operand twice. `Concat` joins strings and numbers directly and
+otherwise follows `__concat`.
+
+These share the executor's implementation, so a host operation and the
+equivalent Lua expression agree on coercion, metamethod selection, and float
+edge cases such as division by zero.
+
 Tables, functions, threads, and userdata belong to the State that created
 them. Importing one into another State returns `lua.ErrForeignValue`. Scalars
 and immutable strings may be used by more than one State.

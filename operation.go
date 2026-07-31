@@ -15,6 +15,16 @@ const (
 	luaEqualOperation
 	luaLessThanOperation
 	luaLessEqualOperation
+	luaConcatOperation
+	// The arithmetic operations stay contiguous and ordered like Operator
+	// so arithmeticOperation can map between them by offset.
+	luaAddOperation
+	luaSubtractOperation
+	luaMultiplyOperation
+	luaDivideOperation
+	luaModuloOperation
+	luaPowerOperation
+	luaNegateOperation
 	luaOperationCount
 )
 
@@ -26,6 +36,46 @@ var luaOperationEntries = [...]NativeFunc{
 	luaEqualOperation:     luaEqualOperationEntry,
 	luaLessThanOperation:  luaLessThanOperationEntry,
 	luaLessEqualOperation: luaLessEqualOperationEntry,
+	luaConcatOperation:    luaConcatOperationEntry,
+	luaAddOperation:       arithmeticOperationEntry(AddOperator),
+	luaSubtractOperation:  arithmeticOperationEntry(SubtractOperator),
+	luaMultiplyOperation:  arithmeticOperationEntry(MultiplyOperator),
+	luaDivideOperation:    arithmeticOperationEntry(DivideOperator),
+	luaModuloOperation:    arithmeticOperationEntry(ModuloOperator),
+	luaPowerOperation:     arithmeticOperationEntry(PowerOperator),
+	luaNegateOperation:    arithmeticOperationEntry(NegateOperator),
+}
+
+func arithmeticOperation(operator Operator) luaOperation {
+	return luaAddOperation + luaOperation(operator)
+}
+
+func arithmeticOperationEntry(operator Operator) NativeFunc {
+	return func(frame Frame) Outcome {
+		left, leftPresent := frame.argument(0)
+		right, rightPresent := frame.argument(1)
+		if !leftPresent || !rightPresent {
+			panic("lua: invalid Arith operation invocation")
+		}
+		result, failure := frame.arithSlots(left, right, operator, false)
+		if failure != nil {
+			return frame.sealError(failure)
+		}
+		return frame.returnOne(frame.activation(), result)
+	}
+}
+
+func luaConcatOperationEntry(frame Frame) Outcome {
+	left, leftPresent := frame.argument(0)
+	right, rightPresent := frame.argument(1)
+	if !leftPresent || !rightPresent {
+		panic("lua: invalid Concat operation invocation")
+	}
+	result, failure := frame.concatSlots(left, right, false)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	return frame.returnOne(frame.activation(), result)
 }
 
 func luaIndexOperationEntry(frame Frame) Outcome {
