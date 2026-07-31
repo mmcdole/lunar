@@ -69,6 +69,36 @@ host-initiated Lua operations such as `Call`, `SetGlobal`, and `Index`. Raw
 operations and explicit `Collect` do not, so a host can still build and
 inspect a State that holds more than the limit allows.
 
+## Control the collector
+
+`Collect` performs a full collection and runs pending finalizers.
+`HeapBytes` measures the live heap. The remaining options Lua's
+`collectgarbage` exposes are available to the host too:
+
+```go
+state.StopGC()                        // suspend automatic collection
+defer state.RestartGC()               // resume it, and request a cycle
+previous, err := state.SetGCPause(150)
+```
+
+`StopGC`, `RestartGC`, `GCRunning`, `GCPause`, `SetGCPause`,
+`GCStepMultiplier`, and `SetGCStepMultiplier` require an idle State and
+return `ErrRunning` otherwise; a callback suspends and resumes collection
+through `Frame.StopGC`, `Frame.RestartGC`, and `Frame.GCRunning`. Retuning
+pause or step multiplier is a policy decision that belongs to an idle host,
+so those exist only on `State`. Both drive the same control block as
+`collectgarbage`, so a change made through either is visible to the other.
+
+Stopping the collector is useful for a latency-sensitive section, but nothing
+is reclaimed while it is stopped. Explicit `Collect` still works, and a State
+with `MaxHeapBytes` still enforces it, so a long stop can surface a limit that
+automatic collection would have avoided.
+
+Lunar's collector is synchronous — a cycle runs to completion at a safe
+point — so `Collect` is a complete step and there is no separate `StepGC`.
+The step multiplier is recorded for `collectgarbage` compatibility without
+changing how much work a collection does.
+
 ## Control source loading
 
 The zero value of `Options.Source` denies source-file access. String and reader
