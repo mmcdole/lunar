@@ -509,6 +509,42 @@ Ordinary non-context methods do not install cancellation polling. Lunar cannot
 preempt a callback while it is running Go code; blocking or long-running
 callbacks must observe `Frame.Context()` themselves.
 
+## Inspect the call stack
+
+`Frame.Where` reports the source position of an activation, formatted the way
+Lua positions runtime errors. Level 0 is the native call itself and level 1 is
+the activation that called it, so `Where(1)` attributes a failure to the call
+site:
+
+```go
+reject, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+	return frame.RaiseString(frame.Where(1) + "host rejected the request")
+})
+// chunk.lua:12: host rejected the request
+```
+
+`Raise*` and `Throw*` never position the message they are given, so a host that
+wants runtime-identical attribution adds it with `Where`, and one that wants a
+bare message simply omits it.
+
+`Frame.Stack` reports one activation as a `TraceFrame` under the same
+numbering, and returns `ok == false` past the bottom of the stack:
+
+```go
+for level := 0; ; level++ {
+	activation, ok := frame.Stack(level)
+	if !ok {
+		break
+	}
+	log.Printf("%s:%d %s", activation.Source, activation.Line, activation.Function)
+}
+```
+
+`Frame.Traceback` returns the whole executing stack, innermost activation
+first, in the same form `Error.Traceback` reports. `State.Traceback` does the
+same for the State's executing thread, which is what an interrupt callback
+needs; a State that is not executing reports an empty traceback.
+
 ## Errors and exit requests
 
 Execution failures are returned as `*lua.Error`. The error owns the original
