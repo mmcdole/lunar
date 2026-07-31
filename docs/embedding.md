@@ -270,6 +270,31 @@ if errors.As(err, &capacity) {
 }
 ```
 
+## Cache compiled chunks
+
+`Compile` produces a `*Prototype` without a State, and `LoadPrototype`
+installs one into any State. `MarshalBinary` and `UnmarshalPrototype` carry
+that across process runs, so a chunk can be compiled at build time and loaded
+without parsing again:
+
+```go
+prototype, err := lua.Compile("@price.lua", source)
+encoded, err := prototype.MarshalBinary()
+// ... later, in another process ...
+decoded, err := lua.UnmarshalPrototype("@price.lua", encoded)
+function, err := state.LoadPrototype(decoded)
+```
+
+The format is Lua 5.1's binary chunk, which `string.dump` also writes, so
+chunks move between Lua and Go in both directions. Lua 5.1 chunks describe the
+host ABI in their header rather than defining a portable encoding, so the bytes
+load only on a matching byte order, pointer width, and number format. Treat
+them as an architecture-keyed cache and keep the source to recompile from.
+
+Binary chunks encode structure a decoder must trust. `UnmarshalPrototype`
+applies the default load limit; load untrusted chunks through a State whose
+`MaxLoadBytes` reflects the host's policy.
+
 ## Values and tables
 
 Use `lua.Nil`, `lua.Bool`, and `lua.Number` for State-neutral scalar values.
