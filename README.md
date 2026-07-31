@@ -98,8 +98,8 @@ errors, coroutines, and lifecycle management.
 
 ## Performance
 
-These results are medians from 15 runs on an Apple M3 Pro with Go 1.25.1.
-Lower is better.
+These results are medians from 15 runs on an Apple M3 Pro with Go 1.25.1 at
+source revision `1d43aec`. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
