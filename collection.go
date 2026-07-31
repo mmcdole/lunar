@@ -62,6 +62,13 @@ type collectionControl struct {
 	servicing      bool
 	runnable       bool
 
+	// heapLimit is Options.MaxHeapBytes; zero leaves the heap unlimited.
+	// baseline plus debt is the running estimate charge compares against,
+	// which overstates the heap by whatever has died since the last
+	// collection. Crossing it only schedules a cycle, so the measured
+	// baseline after that cycle is what the safe point enforces.
+	heapLimit uint64
+
 	// attributedStrings records long string backing admitted and charged to
 	// this State. A completed semantic scan removes entries not retained by
 	// the Lua graph, making this a swept attribution set rather than a
@@ -97,9 +104,21 @@ func (control *collectionControl) charge(bytes uint64) {
 	if control.budget == 0 {
 		control.budget = minimumAutomaticCollectionDebt
 	}
-	if !control.requested && control.debt >= control.budget {
+	if !control.requested &&
+		(control.debt >= control.budget || control.overHeapLimit()) {
 		control.requestCycle()
 	}
+}
+
+// overHeapLimit reports whether the running estimate has crossed the
+// configured heap limit. It schedules collection ahead of the ordinary
+// debt budget so a limited State measures its heap promptly instead of
+// waiting for the heap to double.
+func (control *collectionControl) overHeapLimit() bool {
+	if control.heapLimit == 0 {
+		return false
+	}
+	return control.baseline+control.debt > control.heapLimit
 }
 
 func (control *collectionControl) refreshRunnable() {
@@ -633,8 +652,40 @@ func runAutomaticCollection(thread *threadObject) (failure *Error) {
 
 	state.collectUnreachable()
 	state.resetCollectionDebt()
+	// resetCollectionDebt has just measured the live heap into baseline, so
+	// this compares the limit against surviving objects rather than the
+	// estimate that scheduled the cycle.
+	if limit := thread.effectiveHeapLimit(); limit != 0 &&
+		control.baseline > limit {
+		return newResourceError("heap limit exceeded")
+	}
 	failure = state.runPendingFinalizers(nil, thread)
 	return failure
+}
+
+// protectedHeapReserve is the smallest emergency heap headroom granted to
+// an xpcall error handler, mirroring protectedValueReserve's role for
+// MaxValues.
+const protectedHeapReserve = 64 << 10
+
+// effectiveHeapLimit is the configured heap limit, widened while an xpcall
+// error handler runs so the handler can allocate its report. This mirrors
+// the bounded emergency capacity MaxValues and MaxFrames grant handlers:
+// without it, a handler that builds even a format string over the limit
+// dies, and Lua reports "error in error handling" instead of the failure.
+func (thread *threadObject) effectiveHeapLimit() uint64 {
+	limit := thread.owner.collection.heapLimit
+	if limit == 0 || thread.errorHandlerDepth == 0 {
+		return limit
+	}
+	reserve := limit / 8
+	if reserve < protectedHeapReserve {
+		reserve = protectedHeapReserve
+	}
+	if limit > ^uint64(0)-reserve {
+		return ^uint64(0)
+	}
+	return limit + reserve
 }
 
 // Collect performs one complete semantic collection and runs pending userdata

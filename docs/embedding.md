@@ -33,6 +33,42 @@ its libraries. Always close the State. `Close` can report buffered-write or
 native-resource cleanup errors; applications using IO or process resources
 should handle that error.
 
+## Bound memory
+
+`MaxValues` and `MaxFrames` bound execution slots and activations; they say
+nothing about bytes, so one slot may hold an arbitrarily large string.
+`MaxHeapBytes` bounds the logical Lua heap that `HeapBytes` measures:
+
+```go
+state, err := lua.New(lua.Options{
+	MaxHeapBytes: 64 << 20,
+})
+```
+
+The limit bounds the logical Lua heap `HeapBytes` measures — Lua objects and
+their owned storage, not process memory. Opaque userdata payloads and Go
+allocator overhead sit outside the count, so actual process usage is higher.
+
+Crossing the limit schedules a collection, and the runtime raises a
+`ResourceError` only if the heap is still over the limit once unreachable
+objects are gone. A program that allocates far more than the limit in total
+therefore runs normally as long as it retains little; one that retains more
+than the limit fails. Because the check happens at execution safe points
+rather than inside the allocator, a single allocation can overshoot the limit
+before the runtime observes it, so `MaxHeapBytes` bounds sustained retention
+rather than peak allocation. Collection runs more often as retention
+approaches the limit, so a State held near saturation trades throughput for
+enforcement.
+
+While an xpcall error handler runs, the limit widens by
+`max(64 KiB, MaxHeapBytes/8)` so the handler can allocate its report,
+mirroring the emergency capacity `MaxValues` and `MaxFrames` grant handlers.
+
+Every operation that runs the executor observes the limit, including
+host-initiated Lua operations such as `Call`, `SetGlobal`, and `Index`. Raw
+operations and explicit `Collect` do not, so a host can still build and
+inspect a State that holds more than the limit allows.
+
 ## Control source loading
 
 The zero value of `Options.Source` denies source-file access. String and reader

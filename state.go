@@ -98,6 +98,31 @@ type Options struct {
 	// retained storage. Zero selects 64 MiB. Exceeding either applicable bound
 	// returns a ResourceError before the corresponding allocation.
 	MaxLoadBytes int
+	// MaxHeapBytes limits the logical Lua heap, measured as HeapBytes
+	// measures it: Lua objects and their owned storage, not process
+	// memory. Opaque userdata payloads and Go allocator overhead are
+	// outside the count, so actual process usage is higher. Zero leaves
+	// the heap unlimited.
+	//
+	// The limit is enforced at execution safe points: crossing it schedules
+	// a collection, and the runtime raises a ResourceError only if the heap
+	// is still over the limit once unreachable objects are gone. A single
+	// allocation can therefore overshoot the limit before the runtime
+	// observes it, so MaxHeapBytes bounds sustained retention rather than
+	// peak allocation. Collection runs more often as retention approaches
+	// the limit, so a State held near saturation trades throughput for
+	// enforcement.
+	//
+	// While an xpcall error handler runs, the limit widens by
+	// max(64 KiB, MaxHeapBytes/8) so the handler can allocate its report,
+	// mirroring the emergency capacity MaxValues and MaxFrames grant.
+	//
+	// Every operation that runs the executor observes the limit, including
+	// host-initiated Lua operations such as Call, SetGlobal, and Index. Raw
+	// operations and explicit State.Collect and Frame.Collect do not, so a
+	// host can still build and inspect a State that holds more than the
+	// limit allows.
+	MaxHeapBytes int
 }
 
 type resourceLimits struct {
@@ -304,7 +329,8 @@ type State struct {
 func New(options Options) (*State, error) {
 	if options.MaxValues < 0 ||
 		options.MaxFrames < 0 ||
-		options.MaxLoadBytes < 0 {
+		options.MaxLoadBytes < 0 ||
+		options.MaxHeapBytes < 0 {
 		return nil, ErrNegativeCapacity
 	}
 	if options.MaxValues == 0 {
@@ -339,6 +365,7 @@ func New(options Options) (*State, error) {
 	rt := &runtimeState{
 		collection: defaultCollectionControl(),
 	}
+	rt.collection.heapLimit = uint64(options.MaxHeapBytes)
 	rt.strings.owner = rt
 	state := &State{
 		runtime: rt,
