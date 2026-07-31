@@ -215,6 +215,9 @@ Exit criteria:
 
 ## Phase 6: result-safe calls
 
+The contract and competitive rationale are recorded in
+[ADR 0005](adr/0005-use-intent-named-call-result-shapes.md).
+
 Add State and context forms of `CallOne` and `CallDiscard`, plus Frame forms
 that inherit the current operation.
 
@@ -224,7 +227,13 @@ materializing a result slice.
 
 Keep `CallInto`, `Frame.CallInto`, and `ResumeInto` all-or-nothing for their
 destinations. When storage is insufficient, `ResultCapacityError` owns the
-complete result list and exposes it through `Results()`.
+complete result list and exposes a caller-owned copy through `Results()`. Its
+error text is operation-neutral because calls and coroutine transitions share
+the type.
+
+Do not add a numeric result-count API, `CallN`, `ResumeOne`, or
+`ResumeDiscard` for v1. These can be added later if real embedding code
+demonstrates a need.
 
 Exit criteria:
 
