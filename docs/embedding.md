@@ -151,7 +151,7 @@ if !ok {
 	return fmt.Errorf("chunk did not return a function")
 }
 
-results, err := state.Call(
+result, err := state.CallOne(
 	price.Value(),
 	lua.Number(6),
 	lua.Number(7.5),
@@ -159,11 +159,20 @@ results, err := state.Call(
 if err != nil {
 	return err
 }
-total, _ := results[0].AsNumber()
+total, _ := result.AsNumber()
 ```
 
-`Call` returns an owned result slice. Its values remain valid across later
-calls and after State closure.
+`CallOne` is the usual choice when one value is expected. It follows Lua's
+normal adjustment rule: no result becomes Lua nil and extra results are
+discarded. Use `Call` when every result matters; it returns an owned slice
+whose values remain valid across later calls and after State closure. Use
+`CallDiscard` for a side-effect-only call:
+
+```go
+if err := state.CallDiscard(notify.Value(), result); err != nil {
+	return err
+}
+```
 
 Use `CallInto` when the caller already has result storage:
 
@@ -184,8 +193,16 @@ total, _ := destination[0].AsNumber()
 ```
 
 If the destination is too short, `CallInto` leaves it unchanged and returns a
-`*lua.ResultCapacityError` containing the required size. The Lua call has
-already run, so its side effects are not rolled back.
+`*lua.ResultCapacityError`. The Lua call has already run, so its side effects
+are not rolled back, but the values remain recoverable:
+
+```go
+var capacity *lua.ResultCapacityError
+if errors.As(err, &capacity) {
+	results := capacity.Results()
+	_ = results // Every completed result, as caller-owned Values.
+}
+```
 
 ## Values and tables
 
@@ -443,7 +460,8 @@ Use the context-aware methods when a host request must be interruptible:
 - `DoStringContext` and `DoFileContext`;
 - `LoadContext` and `LoadFileContext`;
 - `LoadStringContext`;
-- `CallContext` and `CallIntoContext`; and
+- `CallContext`, `CallOneContext`, `CallDiscardContext`, and
+  `CallIntoContext`; and
 - `Thread.ResumeContext` and `Thread.ResumeIntoContext`.
 
 The supplied context is available to native callbacks through
@@ -490,8 +508,10 @@ if errors.As(err, &request) {
 ## Coroutines and concurrency
 
 `State.NewThread` creates a coroutine from a callable Lua value. `Resume`
-returns an owned result slice; `ResumeInto` uses caller-provided storage. The
-context-aware forms interrupt execution under the same rules as State calls.
+returns an owned result slice; `ResumeInto` uses caller-provided storage. If
+that storage is too short, the coroutine has already advanced but the values
+remain available from `ResultCapacityError.Results`. The context-aware forms
+interrupt execution under the same rules as State calls.
 
 One State permits one active executor. Serialize State methods, thread resumes,
 and mutation through owning object handles. While Lua is executing, reentry

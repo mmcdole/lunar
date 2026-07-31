@@ -188,11 +188,14 @@ The public API has an owning interface and a borrowed native-callback
 interface over the same runtime:
 
 - `State.Call` and `State.CallContext` return owned result slices.
+- `State.CallOne` applies Lua's one-result adjustment, while
+  `State.CallDiscard` requests no results; both have context-aware forms.
 - `State.CallInto` and `State.CallIntoContext` write into caller-provided
   result storage.
 - `NativeFunc` receives a borrowed `Frame` with typed argument access and
   terminal `Outcome` methods.
-- `Frame.Call` and `Frame.CallInto` make protected reentrant calls.
+- `Frame.Call`, `Frame.CallOne`, `Frame.CallDiscard`, and `Frame.CallInto` make
+  protected reentrant calls.
 - `Frame.Index` and `Frame.SetIndex` perform Lua indexing from a callback.
 
 Frame argument indexes are zero-based. Exact typed accessors never coerce;
@@ -200,8 +203,9 @@ explicitly named coercion, strict-integer, range, and missing-or-nil helpers
 cover common native-module validation without panic control flow.
 
 `CallInto` does not write a partial result when its destination is too small.
-It returns the required count in `ResultCapacityError`; Lua side effects from
-the completed call are not rolled back.
+It returns the required count in `ResultCapacityError`; `Results` recovers an
+owned copy after the completed call or coroutine transition. Lua side effects
+are not rolled back.
 
 Native callbacks return through `Frame.Return*`, `Frame.Raise*`, or
 `Frame.Yield*`. An `Outcome` is tied to the invocation that created it. A
@@ -216,7 +220,9 @@ See [Embedding Lunar](embedding.md) for examples and lifecycle guidance.
 
 Coroutines use the same compact thread and activation structures as the main
 thread. Resume transfers arguments into the suspended thread and returns
-yielded or final results through owned or caller-provided storage.
+yielded or final results through owned or caller-provided storage. An
+undersized caller destination does not lose the completed transition's
+results; `ResultCapacityError.Results` owns and recovers them.
 
 A yielding native callback suspends its activation. When resumed, it receives
 the resume arguments through that same activation. Nested `Frame.Call`,
