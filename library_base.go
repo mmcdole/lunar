@@ -272,7 +272,7 @@ func baseError(frame Frame) Outcome {
 		if prototype, pc, found := luaCallerAtLevel(frame, level); found {
 			text = executionErrorDescription(prototype, pc, text)
 		}
-		return frame.RaiseString(text)
+		return frame.raiseString(text)
 	}
 	return frame.raiseCompact(value)
 }

@@ -967,9 +967,7 @@ func TestIOReadContextOnWriteOnlyFileReturnsFailure(t *testing.T) {
 	read := ioFunctionField(t, fileMetatable(t, state), "read")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	results, err := state.CallContext(
-		ctx,
-		read.Value(),
+	results, err := callCtx(t, state, ctx, read.Value(),
 		opened[0],
 	)
 	if err != nil {
@@ -1151,9 +1149,7 @@ func TestIOReadSurfaceObservesActiveContext(t *testing.T) {
 				"read",
 			)
 
-			_, err := state.CallContext(
-				ctx,
-				read.Value(),
+			_, err := callCtx(t, state, ctx, read.Value(),
 				test.argument(state),
 			)
 			var failure *Error
@@ -1179,9 +1175,7 @@ func TestIOReadContextWinsOverAnEmptyReader(t *testing.T) {
 	defer state.Close()
 	read := ioFunctionField(t, ioLibraryTable(t, state), "read")
 
-	_, err := state.CallContext(
-		ctx,
-		read.Value(),
+	_, err := callCtx(t, state, ctx, read.Value(),
 		state.String("*a"),
 	)
 	var failure *Error
@@ -1208,9 +1202,7 @@ func TestIOReadDefersASimultaneousSourceFailureAfterContext(
 	defer state.Close()
 	read := ioFunctionField(t, ioLibraryTable(t, state), "read")
 
-	_, err := state.CallContext(
-		ctx,
-		read.Value(),
+	_, err := callCtx(t, state, ctx, read.Value(),
 		state.String("*a"),
 	)
 	var failure *Error

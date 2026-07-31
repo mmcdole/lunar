@@ -436,7 +436,7 @@ func TestFlatStringSurvivesGCStateCloseAndCrossState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	if err := consumer.SetRawGlobal("shared", value); err != nil {
+	if err := consumer.RawSetGlobal("shared", value); err != nil {
 		t.Fatalf("cross-State string: %v", err)
 	}
 	got, err := consumer.RawGlobal("shared")
@@ -470,7 +470,7 @@ func TestPackageStringIsStateNeutral(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.SetRawGlobal("shared", value); err != nil {
+	if err := state.RawSetGlobal("shared", value); err != nil {
 		t.Fatalf("share package String with State: %v", err)
 	}
 	got, err := state.RawGlobal("shared")
@@ -551,7 +551,7 @@ func TestCanonicalObjectsAndOwnership(t *testing.T) {
 	if err := other.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := table.RawGetString("shared-string"); got.String() != "x" {
+	if got := rawStr(table, "shared-string"); got.String() != "x" {
 		t.Fatalf("state-neutral string = %v, want x", got)
 	}
 	if equal, err := state.RawEqual(shared, state.String("x")); err != nil || !equal {
@@ -609,7 +609,7 @@ func TestUserDataOwningHandleRepresentation(t *testing.T) {
 	if err := table.RawSetString("data", public); err != nil {
 		t.Fatal(err)
 	}
-	fromTable, ok := table.RawGetString("data").AsUserData()
+	fromTable, ok := rawStr(table, "data").AsUserData()
 	if !ok || fromTable != data {
 		t.Fatalf(
 			"re-published userdata = (%p, %v); want (%p, true)",
@@ -813,21 +813,21 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if outer.RawLen() != 1 {
-		t.Fatalf("post-close outer length = %d; want 1", outer.RawLen())
+	if rawLen(outer) != 1 {
+		t.Fatalf("post-close outer length = %d; want 1", rawLen(outer))
 	}
-	if number, ok := outer.RawGetInt(1).AsNumber(); !ok || number != 11 {
+	if number, ok := rawInt(outer, 1).AsNumber(); !ok || number != 11 {
 		t.Fatalf("post-close scalar = (%v, %v); want 11", number, ok)
 	}
-	first, ok := outer.RawGetString("inner").AsTable()
+	first, ok := rawStr(outer, "inner").AsTable()
 	if !ok || first.runtimeObject() != inner {
 		t.Fatal("post-close nested table was not published")
 	}
-	second, ok := outer.RawGetString("inner").AsTable()
+	second, ok := rawStr(outer, "inner").AsTable()
 	if !ok || second != first {
 		t.Fatal("post-close nested table publication was not canonical")
 	}
-	if text, ok := outer.RawGetString("long").AsString(); !ok ||
+	if text, ok := rawStr(outer, "long").AsString(); !ok ||
 		text != longText {
 		t.Fatalf("post-close string = (%q, %v)", text, ok)
 	}
@@ -947,23 +947,6 @@ func TestUserDataOwningHandleEnforcesStateOwnership(t *testing.T) {
 	); !errors.Is(err, ErrForeignValue) {
 		t.Fatalf("foreign userdata table value = %v; want ErrForeignValue", err)
 	}
-	if _, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-		foreign.Value(),
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign userdata capture = %v; want ErrForeignValue", err)
-	}
-	if _, err := state.UserDataEnvironment(
-		foreign,
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign userdata environment = %v; want ErrForeignValue", err)
-	}
-	if err := state.SetUserDataEnvironment(
-		foreign,
-		nil,
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign userdata setter = %v; want ErrForeignValue", err)
-	}
 
 	var zero UserData
 	for name, data := range map[string]*UserData{
@@ -973,7 +956,7 @@ func TestUserDataOwningHandleEnforcesStateOwnership(t *testing.T) {
 		if data.Value().Valid() {
 			t.Fatalf("%s userdata manufactured a valid Value", name)
 		}
-		if _, err := state.UserDataEnvironment(
+		if _, err := userDataEnvironment(
 			data,
 		); !errors.Is(err, ErrInvalidValue) {
 			t.Fatalf("%s userdata environment = %v; want ErrInvalidValue", name, err)
@@ -1030,7 +1013,7 @@ func TestUserDataHandleIdentitySurvivesStateClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	published, ok := table.RawGetString("data").AsUserData()
+	published, ok := rawStr(table, "data").AsUserData()
 	if !ok || published != data {
 		t.Fatalf(
 			"post-close userdata = (%p, %v); want (%p, true)",
@@ -1561,7 +1544,7 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	main := state.MainThread()
-	environment, err := state.ThreadEnvironment(main)
+	environment, err := threadEnvironment(main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1578,20 +1561,20 @@ func TestClosePreservesReadsAndRejectsMutation(t *testing.T) {
 	if main.Status() != ThreadClosed {
 		t.Fatalf("main thread status = %v, want ThreadClosed", main.Status())
 	}
-	if got := table.RawGetString("answer"); got.String() != "42" {
+	if got := rawStr(table, "answer"); got.String() != "42" {
 		t.Fatalf("retained table read = %v, want 42", got)
 	}
 	if data.Data() != "alive" {
 		t.Fatal("retained userdata payload became unreadable")
 	}
-	if got, ok := environment.RawGetString("retained").AsNumber(); !ok ||
+	if got, ok := rawStr(environment, "retained").AsNumber(); !ok ||
 		got != 17 {
 		t.Fatalf("retained environment read = (%v, %v); want 17", got, ok)
 	}
-	if _, err := state.ThreadEnvironment(main); !errors.Is(err, ErrClosed) {
+	if _, err := threadEnvironment(main); !errors.Is(err, ErrClosed) {
 		t.Fatalf("ThreadEnvironment after close = %v; want ErrClosed", err)
 	}
-	if err := state.SetThreadEnvironment(
+	if err := setThreadEnvironment(
 		main,
 		environment,
 	); !errors.Is(err, ErrClosed) {
@@ -1641,7 +1624,7 @@ func closeStateWithUnrelatedRoot(collected chan<- struct{}) Value {
 	runtime.SetFinalizer(unrelated, func(*Table) {
 		collected <- struct{}{}
 	})
-	if err := state.SetRawGlobal("unrelated", unrelated.Value()); err != nil {
+	if err := state.RawSetGlobal("unrelated", unrelated.Value()); err != nil {
 		panic(err)
 	}
 	retained := state.String("retained")

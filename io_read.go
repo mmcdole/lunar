@@ -47,7 +47,7 @@ func newIOReadEngine(
 func (engine *ioReadEngine) bindContext(thread *threadObject) bool {
 	if engine.input == nil ||
 		thread == nil ||
-		thread.state.execution.done == nil {
+		thread.state.ambientDone == nil {
 		return false
 	}
 	engine.contextThread = thread

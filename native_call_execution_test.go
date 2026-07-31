@@ -74,10 +74,10 @@ func TestFrameCallCompletesMetamethodAndIteratorContinuations(t *testing.T) {
 	if err := state.SetMetatable(other.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("continued_object", object.Value()); err != nil {
+	if err := state.RawSetGlobal("continued_object", object.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("continued_other", other.Value()); err != nil {
+	if err := state.RawSetGlobal("continued_other", other.Value()); err != nil {
 		t.Fatal(err)
 	}
 	iteration := 0
@@ -95,7 +95,7 @@ func TestFrameCallCompletesMetamethodAndIteratorContinuations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("continued_iterator", iterator.Value()); err != nil {
+	if err := state.RawSetGlobal("continued_iterator", iterator.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-continuations.lua", `
@@ -114,7 +114,7 @@ return indexed, added, ordered, joined, total
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		results, callErr := frame.Call(target.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		_, present := frame.Argument(0)
 		frameValid = present && frame.ArgumentCount() == 1
@@ -153,12 +153,14 @@ func TestFrameCallClosesFailedCalleeUpvaluesAndPreservesCallerUpvalues(
 	defer state.Close()
 
 	fail, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.RaiseString("close nested upvalues")
+		frame.ThrowString("close nested upvalues")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_upvalue_fail", fail.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_upvalue_fail", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-upvalues.lua", `
@@ -175,30 +177,30 @@ inner = 99
 	bridge, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		view, ok := frame.Function(0)
 		if !ok {
-			return frame.ArgTypeError(0, FunctionKind)
+			frame.ThrowArgTypeError(0, FunctionKind)
 		}
 		_, callErr := frame.Call(target.Value())
 		if !errors.As(callErr, &nestedFailure) {
-			return frame.RaiseString("nested upvalue target did not fail")
+			frame.ThrowString("nested upvalue target did not fail")
 		}
 		escaped, globalErr := state.RawGlobal("nested_escaped")
 		if globalErr != nil {
-			return frame.RaiseString(globalErr.Error())
+			frame.ThrowString(globalErr.Error())
 		}
 		closedValues, callErr := frame.Call(escaped)
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		openValues, callErr := frame.Call(view.Value(), Number(15))
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		return frame.ReturnValues(closedValues[0], openValues[0])
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_upvalue_bridge", bridge.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_upvalue_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@outer-upvalues.lua", `
@@ -241,7 +243,7 @@ func TestFrameCallPropagatesGoPanicAndRestoresExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_panic", panicking.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_panic", panicking.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(
@@ -308,15 +310,15 @@ func TestFrameCallRestoresOuterFrameBeforePropagatingPanic(t *testing.T) {
 			_, _ = frame.Call(panicking.Value())
 		}()
 		if recovered != marker {
-			return frame.RaiseString("nested panic was not propagated")
+			frame.ThrowString("nested panic was not propagated")
 		}
 		argument, present := frame.Argument(0)
 		if !present || frame.ArgumentCount() != 1 {
-			return frame.RaiseString("outer Frame was not restored")
+			frame.ThrowString("outer Frame was not restored")
 		}
 		results, callErr := frame.Call(identity.Value(), argument)
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		return frame.ReturnValues(results...)
 	})
@@ -360,10 +362,10 @@ func TestFrameCallInvalidatesOuterFrameDuringNestedCallback(t *testing.T) {
 		outer = frame
 		results, callErr := frame.Call(nested.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		if frame.ArgumentCount() != 1 {
-			return frame.RaiseString("outer Frame stayed invalid")
+			frame.ThrowString("outer Frame stayed invalid")
 		}
 		return frame.ReturnValues(results...)
 	})
@@ -400,7 +402,7 @@ func TestFrameCallRejectsSameThreadYieldThenOuterFrameRecoversAndYields(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_yield", yielding.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_yield", yielding.Value()); err != nil {
 		t.Fatal(err)
 	}
 	callable, err := state.NewTableWithCapacity(0, 0)
@@ -441,19 +443,19 @@ func TestFrameCallRejectsSameThreadYieldThenOuterFrameRecoversAndYields(
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		_, directErr := frame.Call(yielding.Value())
 		if !errors.As(directErr, &directFailure) {
-			return frame.RaiseString("direct nested yield was not rejected")
+			frame.ThrowString("direct nested yield was not rejected")
 		}
 		_, callableErr := frame.Call(callable.Value())
 		if !errors.As(callableErr, &callableFailure) {
-			return frame.RaiseString("callable nested yield was not rejected")
+			frame.ThrowString("callable nested yield was not rejected")
 		}
 		caught, callErr := frame.Call(caughtTarget.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		recovered, callErr := frame.Call(recoveryTarget.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		return frame.YieldValues(
 			directFailure.Value(),
@@ -520,7 +522,7 @@ return coroutine.yield("child-yield")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_child", child.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_child", child.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-child-resume.lua", `
@@ -529,7 +531,7 @@ return coroutine.resume(nested_child)
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		results, callErr := frame.Call(target.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		return frame.ReturnValues(results...)
 	})
@@ -570,7 +572,7 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 		host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 			_, callErr := frame.Call(target.Value())
 			if !errors.As(callErr, &failure) {
-				return frame.RaiseString("frame limit did not fail")
+				frame.ThrowString("frame limit did not fail")
 			}
 			return frame.ReturnBool(true)
 		})
@@ -633,11 +635,11 @@ func TestFrameCallHonorsFrameValueAndNativeDepthLimits(t *testing.T) {
 				Number(3),
 			)
 			if !errors.As(stagingErr, &stagingFailure) {
-				return frame.RaiseString("callable staging did not fail")
+				frame.ThrowString("callable staging did not fail")
 			}
 			_, resultErr := frame.Call(target.Value())
 			if !errors.As(resultErr, &resultFailure) {
-				return frame.RaiseString("nested result placement did not fail")
+				frame.ThrowString("nested result placement did not fail")
 			}
 			return frame.ReturnBool(true)
 		})

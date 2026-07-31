@@ -234,7 +234,13 @@ func TestIOPopenCancellationInterruptsBlockedReadAndReapsRoot(
 		pidResult <- waitForProcessIDs(pidPath, 5*time.Second)
 		cancel()
 	}()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	assertPopenContextFailure(t, err)
 	pids := <-pidResult
 	if len(pids) != 2 {
@@ -272,8 +278,12 @@ func TestIOPopenCancellationUnblocksAfterShellExit(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
+	if err := state.SetContext(ctx); err != nil {
+		t.Fatalf("SetContext: %v", err)
+	}
+	defer func() { _ = state.RemoveContext() }()
 	go func() {
-		_, err := state.CallContext(ctx, chunk.Value())
+		_, err := state.Call(chunk.Value())
 		result <- err
 	}()
 
@@ -291,6 +301,11 @@ func TestIOPopenCancellationUnblocksAfterShellExit(
 		assertPopenContextFailure(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("popen read did not stop after context cancellation")
+	}
+	// The installed context is cancelled; clear it before the State is used
+	// again.
+	if err := state.RemoveContext(); err != nil {
+		t.Fatalf("RemoveContext: %v", err)
 	}
 	results := runIOChunk(
 		t,
@@ -334,7 +349,13 @@ func TestIOPopenCancellationInterruptsBlockedWriteAndReapsRoot(
 		pidResult <- waitForProcessIDs(pidPath, 5*time.Second)
 		cancel()
 	}()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	assertPopenContextFailure(t, err)
 	pids := <-pidResult
 	if len(pids) != 2 {
@@ -385,7 +406,13 @@ func TestIOPopenCancellationInterruptsBlockedFlushAndReapsRoot(
 		pidResult <- waitForProcessIDs(pidPath, 5*time.Second)
 		cancel()
 	}()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	assertPopenContextFailure(t, err)
 	pids := <-pidResult
 	if len(pids) != 2 {
@@ -463,8 +490,12 @@ func TestIOPopenAlternateEntryPointsHonorCancellation(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			result := make(chan error, 1)
+			if err := state.SetContext(ctx); err != nil {
+				t.Fatalf("SetContext: %v", err)
+			}
+			defer func() { _ = state.RemoveContext() }()
 			go func() {
-				_, err := state.CallContext(ctx, chunk.Value())
+				_, err := state.Call(chunk.Value())
 				result <- err
 			}()
 
@@ -485,6 +516,9 @@ func TestIOPopenAlternateEntryPointsHonorCancellation(t *testing.T) {
 				assertPopenContextFailure(t, err)
 			case <-time.After(5 * time.Second):
 				t.Fatal("process-file operation ignored cancellation")
+			}
+			if err := state.RemoveContext(); err != nil {
+				t.Fatalf("RemoveContext: %v", err)
 			}
 			results := runIOChunk(
 				t,
@@ -528,7 +562,13 @@ func TestIOPopenCancellationInterruptsCloseAndReapsRoot(
 		pidResult <- waitForProcessIDs(pidPath, 5*time.Second)
 		cancel()
 	}()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	assertPopenContextFailure(t, err)
 	pids := <-pidResult
 	if len(pids) != 2 {

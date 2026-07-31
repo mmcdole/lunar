@@ -29,24 +29,7 @@ func (state *State) Load(
 	sourceName string,
 	reader io.Reader,
 ) (*Function, error) {
-	return state.loadReader(nil, sourceName, reader)
-}
-
-// LoadContext reads and loads a chunk like Load while observing ctx.
-//
-// A nil context returns ErrNilContext. Cancellation is returned as a *Error
-// categorized ContextError. Cancellation is observed before and between
-// Reader calls; it cannot interrupt a Reader already blocked inside Read.
-// The resulting Function does not retain ctx.
-func (state *State) LoadContext(
-	ctx context.Context,
-	sourceName string,
-	reader io.Reader,
-) (*Function, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-	return state.loadReader(ctx, sourceName, reader)
+	return state.loadReader(state.ambient, sourceName, reader)
 }
 
 func (state *State) loadReader(
@@ -81,23 +64,7 @@ func (state *State) loadReader(
 // loadfile. LoadFile closes the opened reader on every outcome and does not
 // execute the resulting chunk.
 func (state *State) LoadFile(path string) (*Function, error) {
-	return state.loadFile(nil, path)
-}
-
-// LoadFileContext reads and loads path like LoadFile while observing ctx.
-//
-// A nil context returns ErrNilContext. Cancellation is returned as a *Error
-// categorized ContextError. A CustomSource opener receives ctx. Cancellation
-// cannot interrupt a backend already blocked inside Open or Read unless that
-// backend observes ctx. The resulting Function does not retain ctx.
-func (state *State) LoadFileContext(
-	ctx context.Context,
-	path string,
-) (*Function, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-	return state.loadFile(ctx, path)
+	return state.loadFile(state.ambient, path)
 }
 
 func (state *State) loadFile(

@@ -51,7 +51,7 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 	want["mod"] = FunctionKind
 	previous := make(map[string]Value, len(want))
 	for name, kind := range want {
-		value := library.RawGetString(name)
+		value := rawStr(library, name)
 		if value.Kind() != kind {
 			t.Fatalf("math.%s = %v; want %v", name, value, kind)
 		}
@@ -102,7 +102,7 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 
 	// Reopening replaces the table and every Function with fresh canonical
 	// objects, as the other library openers do.
-	if err := state.SetRawGlobal("math", Number(1)); err != nil {
+	if err := state.RawSetGlobal("math", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenMath(); err != nil {
@@ -125,7 +125,7 @@ func TestMathLibraryInstallationAndSurface(t *testing.T) {
 		if kind != FunctionKind {
 			continue
 		}
-		value := reopened.RawGetString(name)
+		value := rawStr(reopened, name)
 		if same, applicable := previous[name].SameObject(
 			value,
 		); !applicable || same {
@@ -275,7 +275,7 @@ return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8]
 	if err := sixth.OpenMath(); err != nil {
 		t.Fatal(err)
 	}
-	if err := sixth.SetRawGlobal("held", held); err != nil {
+	if err := sixth.RawSetGlobal("held", held); err != nil {
 		t.Fatal(err)
 	}
 	independent := sequence(t, sixth, `

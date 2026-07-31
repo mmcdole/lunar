@@ -670,7 +670,7 @@ func runAutomaticCollection(thread *threadObject) (failure *Error) {
 	// estimate that scheduled the cycle.
 	if limit := thread.effectiveHeapLimit(); limit != 0 &&
 		control.baseline > limit {
-		return newResourceError("heap limit exceeded")
+		return newHeapLimitError()
 	}
 	failure = state.runPendingFinalizers(nil, thread)
 	return failure
@@ -762,13 +762,6 @@ func (frame Frame) Collect() error {
 	}
 	frame.thread.owner.collection.setStopped(false)
 	return nil
-}
-
-// HeapBytes reports the target-architecture logical Lua heap size of frame's
-// State. It has the same accounting boundary as State.HeapBytes.
-func (frame Frame) HeapBytes() uint64 {
-	frame.activation()
-	return frame.thread.state.semanticHeap().bytes
 }
 
 func (state *State) runPendingFinalizers(

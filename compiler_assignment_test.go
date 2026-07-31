@@ -31,10 +31,10 @@ func TestCompileSourceAssignsMultipleValuesRightToLeft(t *testing.T) {
 		moves[2].b() != 2 {
 		t.Fatalf("swap MOVE instructions = %#v", moves)
 	}
-	if prototype.RegisterCount() != 3 {
+	if registerCount(prototype) != 3 {
 		t.Fatalf(
 			"swap register count = %d, want 3",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 }
@@ -391,11 +391,11 @@ func TestCompileSourceAttributesAssignmentStoresToFinalValue(t *testing.T) {
 	for pc, code := range prototype.code {
 		if code.opcode() == opSetGlobal {
 			stores++
-			if prototype.LineAt(pc) != 3 {
+			if prototype.lineAt(pc) != 3 {
 				t.Fatalf(
 					"SETGLOBAL at %d has line %d, want 3",
 					pc,
-					prototype.LineAt(pc),
+					prototype.lineAt(pc),
 				)
 			}
 		}
@@ -421,12 +421,12 @@ func TestCompileSourceAttributesAssignmentStoresToFinalValue(t *testing.T) {
 			} else {
 				stores++
 			}
-			if prototype.LineAt(pc) != 2 {
+			if prototype.lineAt(pc) != 2 {
 				t.Fatalf(
 					"%s at %d has line %d, want 2",
 					code.opcode(),
 					pc,
-					prototype.LineAt(pc),
+					prototype.lineAt(pc),
 				)
 			}
 		}
@@ -520,10 +520,10 @@ func TestCompileSourceEnforcesAssignmentTargetLimit(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	if prototype.RegisterCount() != maxLuaRegisters {
+	if registerCount(prototype) != maxLuaRegisters {
 		t.Fatalf(
 			"assignment register count = %d, want %d",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 			maxLuaRegisters,
 		)
 	}

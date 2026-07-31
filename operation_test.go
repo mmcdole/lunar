@@ -151,7 +151,7 @@ func TestStateIndexAndSetIndexApplyLuaSemantics(t *testing.T) {
 	if newIndexCalls != 0 {
 		t.Fatal("SetIndex invoked __newindex for an existing field")
 	}
-	if got := direct.RawGetString("present"); got.String() != "43" {
+	if got := rawStr(direct, "present"); got.String() != "43" {
 		t.Fatalf("direct SetIndex stored %v, want 43", got)
 	}
 	if err := state.SetIndex(
@@ -166,7 +166,7 @@ func TestStateIndexAndSetIndexApplyLuaSemantics(t *testing.T) {
 	}
 	assertTestValue(t, assignedKey, String("virtual"))
 	assertTestValue(t, assignedValue, Number(44))
-	if raw := direct.RawGetString("virtual"); !raw.IsNil() {
+	if raw := rawStr(direct, "virtual"); !raw.IsNil() {
 		t.Fatalf("__newindex assignment leaked into target: %v", raw)
 	}
 
@@ -201,7 +201,7 @@ func TestStateIndexAndSetIndexApplyLuaSemantics(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if got := redirected.RawGetString("redirected"); got.String() != "45" {
+	if got := rawStr(redirected, "redirected"); got.String() != "45" {
 		t.Fatalf("table-valued __newindex stored %v, want 45", got)
 	}
 }
@@ -313,11 +313,11 @@ func TestStateToStringAndLenApplyLuaSemantics(t *testing.T) {
 	}
 	lengthHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.ArgumentCount() != 2 {
-			return frame.RaiseString("length did not receive two arguments")
+			frame.ThrowString("length did not receive two arguments")
 		}
 		second, _ := frame.Argument(1)
 		if !second.IsNil() {
-			return frame.RaiseString("length fallback was not nil")
+			frame.ThrowString("length fallback was not nil")
 		}
 		return frame.ReturnValue(marker.Value())
 	})
@@ -350,157 +350,6 @@ func TestStateToStringAndLenApplyLuaSemantics(t *testing.T) {
 	if _, err := state.Len(Bool(false)); err == nil ||
 		!strings.Contains(err.Error(), "get length") {
 		t.Fatalf("missing __len error = %v", err)
-	}
-}
-
-func TestStateEqualityAndOrderingApplyLuaSemantics(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-
-	for _, test := range []struct {
-		name       string
-		left       Value
-		right      Value
-		wantEqual  bool
-		wantLess   bool
-		wantLessEq bool
-	}{
-		{
-			name:       "numbers",
-			left:       Number(1),
-			right:      Number(2),
-			wantLess:   true,
-			wantLessEq: true,
-		},
-		{
-			name:       "strings",
-			left:       String("a"),
-			right:      String("b"),
-			wantLess:   true,
-			wantLessEq: true,
-		},
-		{
-			name:       "equal strings",
-			left:       String("same"),
-			right:      String("same"),
-			wantEqual:  true,
-			wantLessEq: true,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			equal, err := state.Equal(test.left, test.right)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if equal != test.wantEqual {
-				t.Fatalf("Equal = %v, want %v", equal, test.wantEqual)
-			}
-			less, err := state.LessThan(test.left, test.right)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if less != test.wantLess {
-				t.Fatalf("LessThan = %v, want %v", less, test.wantLess)
-			}
-			lessEqual, err := state.LessEqual(test.left, test.right)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if lessEqual != test.wantLessEq {
-				t.Fatalf(
-					"LessEqual = %v, want %v",
-					lessEqual,
-					test.wantLessEq,
-				)
-			}
-		})
-	}
-
-	equalCalls := 0
-	equalHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		equalCalls++
-		return frame.ReturnString("truthy")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	lessCalls := 0
-	lessHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		lessCalls++
-		left, _ := frame.UserData(0)
-		right, _ := frame.UserData(1)
-		return frame.ReturnBool(
-			left.Data().(int) < right.Data().(int),
-		)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	metatable, err := state.NewTableWithCapacity(0, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := metatable.RawSetString(
-		"__eq",
-		equalHandler.Value(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := metatable.RawSetString(
-		"__lt",
-		lessHandler.Value(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	left, err := state.NewUserData(1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	right, err := state.NewUserData(2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetMetatable(left.Value(), metatable); err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetMetatable(right.Value(), metatable); err != nil {
-		t.Fatal(err)
-	}
-	if equal, err := state.Equal(left.Value(), right.Value()); err != nil {
-		t.Fatal(err)
-	} else if !equal {
-		t.Fatal("shared __eq result was not truthy")
-	}
-	if equalCalls != 1 {
-		t.Fatalf("__eq calls = %d, want 1", equalCalls)
-	}
-	if less, err := state.LessThan(left.Value(), right.Value()); err != nil {
-		t.Fatal(err)
-	} else if !less {
-		t.Fatal("shared __lt did not order userdata")
-	}
-	if lessEqual, err := state.LessEqual(
-		left.Value(),
-		right.Value(),
-	); err != nil {
-		t.Fatal(err)
-	} else if !lessEqual {
-		t.Fatal("LessEqual did not invert reversed __lt")
-	}
-	if lessCalls != 2 {
-		t.Fatalf("__lt calls = %d, want 2", lessCalls)
-	}
-
-	if _, err := state.LessThan(Number(1), String("1")); err == nil ||
-		!strings.Contains(err.Error(), "compare number with string") {
-		t.Fatalf("mixed comparison error = %v", err)
-	}
-	if _, err := state.LessThan(Bool(false), Bool(true)); err == nil ||
-		!strings.Contains(err.Error(), "compare two boolean") {
-		t.Fatalf("unorderable comparison error = %v", err)
 	}
 }
 
@@ -574,7 +423,7 @@ func TestSemanticGlobalsAndRawGlobalsRemainDistinct(t *testing.T) {
 	} else if !raw.IsNil() {
 		t.Fatalf("semantic virtual assignment was stored raw: %v", raw)
 	}
-	if err := state.SetRawGlobal("raw", Number(10)); err != nil {
+	if err := state.RawSetGlobal("raw", Number(10)); err != nil {
 		t.Fatal(err)
 	}
 	if setCalls != 1 {
@@ -620,9 +469,7 @@ func TestSemanticOperationsContextReentryYieldAndErrors(t *testing.T) {
 	if err := state.SetMetatable(target.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := state.IndexContext(
-		ctx,
-		target.Value(),
+	if got, err := indexCtx(t, state, ctx, target.Value(),
 		String("key"),
 	); err != nil {
 		t.Fatal(err)
@@ -635,9 +482,7 @@ func TestSemanticOperationsContextReentryYieldAndErrors(t *testing.T) {
 	if !errors.Is(reentryErr, ErrRunning) {
 		t.Fatalf("State reentry error = %v, want ErrRunning", reentryErr)
 	}
-	if _, err := state.IndexContext(
-		nil,
-		target.Value(),
+	if _, err := indexCtx(t, state, nil, target.Value(),
 		String("key"),
 	); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("nil context error = %v, want ErrNilContext", err)
@@ -645,9 +490,7 @@ func TestSemanticOperationsContextReentryYieldAndErrors(t *testing.T) {
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := state.IndexContext(
-		cancelled,
-		target.Value(),
+	if _, err := indexCtx(t, state, cancelled, target.Value(),
 		String("key"),
 	); err == nil {
 		t.Fatal("cancelled IndexContext succeeded")
@@ -756,65 +599,4 @@ func TestSemanticOperationsRejectInvalidForeignAndClosedValues(t *testing.T) {
 	); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed Index error = %v, want ErrClosed", err)
 	}
-}
-
-func TestFrameSemanticConveniences(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-
-	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		if err := frame.SetGlobal("frame_value", Number(11)); err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		global, err := frame.Global("frame_value")
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		text, err := frame.ToString(global)
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		length, err := frame.Len(String("abc"))
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		equal, err := frame.Equal(global, Number(11))
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		less, err := frame.LessThan(Number(1), Number(2))
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		lessEqual, err := frame.LessEqual(Number(2), Number(2))
-		if err != nil {
-			return frame.RaiseString(err.Error())
-		}
-		return frame.ReturnValues(
-			String(text),
-			length,
-			Bool(equal),
-			Bool(less),
-			Bool(lessEqual),
-		)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	results, err := state.Call(host.Value())
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertTestValues(
-		t,
-		results,
-		String("11"),
-		Number(3),
-		Bool(true),
-		Bool(true),
-		Bool(true),
-	)
 }

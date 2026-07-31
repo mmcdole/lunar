@@ -84,46 +84,9 @@ func (prototype *Prototype) LineRange() (first, last int) {
 	return int(prototype.lineDefined), int(prototype.lastLine)
 }
 
-// ParameterCount returns the number of fixed parameters.
-func (prototype *Prototype) ParameterCount() int {
-	if prototype == nil {
-		return 0
-	}
-	return int(prototype.parameters)
-}
-
-// RegisterCount returns the number of registers required by an activation.
-func (prototype *Prototype) RegisterCount() int {
-	if prototype == nil {
-		return 0
-	}
-	return int(prototype.registers)
-}
-
-// UpvalueCount returns the fixed upvalue count.
-func (prototype *Prototype) UpvalueCount() int {
-	if prototype == nil {
-		return 0
-	}
-	return int(prototype.upvalues)
-}
-
-// IsVararg reports whether prototype accepts variable arguments.
-func (prototype *Prototype) IsVararg() bool {
-	return prototype != nil && prototype.varargFlags&varargIsVararg != 0
-}
-
-// ChildCount returns the number of nested function prototypes.
-func (prototype *Prototype) ChildCount() int {
-	if prototype == nil {
-		return 0
-	}
-	return len(prototype.children)
-}
-
-// LineAt returns the source line associated with an instruction. It returns
+// lineAt returns the source line associated with an instruction. It returns
 // zero when debug line information was omitted or pc is out of range.
-func (prototype *Prototype) LineAt(pc int) int {
+func (prototype *Prototype) lineAt(pc int) int {
 	if prototype == nil ||
 		prototype.debug == nil ||
 		pc < 0 ||

@@ -37,8 +37,8 @@ func TestHeapLimitStopsSustainedGrowth(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("error is not a *Error: %v", err)
 	}
-	if failure.Category() != ResourceError {
-		t.Fatalf("category = %v; want ResourceError", failure.Category())
+	if failure.Category() != LimitError {
+		t.Fatalf("category = %v; want LimitError", failure.Category())
 	}
 	if !strings.Contains(failure.Error(), "heap limit exceeded") {
 		t.Fatalf("message = %q", failure.Error())
@@ -80,7 +80,7 @@ func TestHeapLimitAllowsCollectableChurn(t *testing.T) {
 	}
 }
 
-func TestHeapLimitIsCatchableByLua(t *testing.T) {
+func TestHeapLimitIsNotCatchableByLua(t *testing.T) {
 	state, err := New(Options{MaxHeapBytes: 8 << 20})
 	if err != nil {
 		t.Fatal(err)
@@ -96,33 +96,43 @@ func TestHeapLimitIsCatchableByLua(t *testing.T) {
 		}
 	}
 
-	results, err := state.DoString("@caught.lua", `
+	// A script must not be able to catch the ceiling that bounds it and keep
+	// allocating, so the failure passes straight through pcall to the host.
+	_, err = state.DoString("@caught.lua", `
 		local kept = {}
-		local ok, message = pcall(function()
-			for index = 1, 4096 do
-				kept[index] = string.rep("z", 64 * 1024)
+		local rounds = 0
+		while true do
+			rounds = rounds + 1
+			pcall(function()
+				for index = 1, 64 do
+					kept[#kept + 1] = string.rep("z", 64 * 1024)
+				end
+			end)
+			if rounds > 4096 then
+				return "escaped the ceiling"
 			end
-		end)
-		kept = nil
-		return ok, message
+		end
 	`)
-	if err != nil {
-		t.Fatalf("pcall over the heap limit failed: %v", err)
+	if err == nil {
+		t.Fatal("pcall absorbed the heap ceiling and kept allocating")
 	}
-	if ok, _ := results[0].AsBool(); ok {
-		t.Fatal("pcall reported success under an exceeded heap limit")
+	var failure *Error
+	if !errors.As(err, &failure) {
+		t.Fatalf("error is not a *Error: %v", err)
 	}
-	if message, _ := results[1].AsString(); !strings.Contains(
-		message,
-		"heap limit exceeded",
-	) {
-		t.Fatalf("caught message = %q", message)
+	if failure.Category() != LimitError {
+		t.Fatalf("category = %v; want LimitError", failure.Category())
+	}
+	if !strings.Contains(failure.Error(), "heap limit exceeded") {
+		t.Fatalf("message = %q", failure.Error())
 	}
 }
 
 // An xpcall error handler receives bounded emergency headroom, mirroring
-// MaxValues and MaxFrames, so it can allocate its report instead of dying
-// with Lua's "error in error handling".
+// MaxValues and MaxFrames. A heap ceiling is not catchable, so the headroom
+// exists for the ordinary case: a handler reporting some other failure while
+// the State already sits near its limit must be able to allocate its report
+// instead of dying with Lua's "error in error handling".
 func TestHeapLimitGrantsErrorHandlersHeadroom(t *testing.T) {
 	state, err := New(Options{MaxHeapBytes: 8 << 20})
 	if err != nil {
@@ -140,29 +150,31 @@ func TestHeapLimitGrantsErrorHandlersHeadroom(t *testing.T) {
 	}
 
 	results, err := state.DoString("@handled.lua", `
-		local kept = {}
+		-- Park the State just under its ceiling.
+		ballast = {}
+		for index = 1, 96 do
+			ballast[index] = string.rep("x", 64 * 1024)
+		end
 		local ok, message = xpcall(function()
-			for index = 1, 8192 do
-				kept[index] = string.rep("x", 64 * 1024)
-			end
+			error("ordinary failure")
 		end, function(err)
-			-- The handler allocates while the State is over the limit.
+			-- The handler allocates while the State sits near the limit.
 			return "handled: " .. string.format("%s", err)
 		end)
 		return ok, message
 	`)
 	if err != nil {
-		t.Fatalf("xpcall over the heap limit failed: %v", err)
+		t.Fatalf("xpcall near the heap limit failed: %v", err)
 	}
 	if ok, _ := results[0].AsBool(); ok {
-		t.Fatal("xpcall reported success under an exceeded heap limit")
+		t.Fatal("xpcall reported success for a failing target")
 	}
 	message, _ := results[1].AsString()
 	if message == "error in error handling" {
 		t.Fatal("the error handler died instead of reporting the failure")
 	}
 	if !strings.Contains(message, "handled: ") ||
-		!strings.Contains(message, "heap limit exceeded") {
+		!strings.Contains(message, "ordinary failure") {
 		t.Fatalf("handler report = %q", message)
 	}
 }
@@ -227,7 +239,7 @@ func TestHeapLimitAppliesOnlyToExecution(t *testing.T) {
 	)); err != nil {
 		t.Fatalf("raw construction hit the heap limit: %v", err)
 	}
-	if err := state.SetRawGlobal("held", table.Value()); err != nil {
+	if err := state.RawSetGlobal("held", table.Value()); err != nil {
 		t.Fatalf("raw global assignment hit the heap limit: %v", err)
 	}
 	if err := state.Collect(); err != nil {

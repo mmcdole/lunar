@@ -306,7 +306,7 @@ func TestThreadHandleSupportsObservationAfterClose(t *testing.T) {
 			resumeErr,
 		)
 	}
-	if _, environmentErr := state.ThreadEnvironment(
+	if _, environmentErr := threadEnvironment(
 		child,
 	); !errors.Is(environmentErr, ErrClosed) {
 		t.Fatalf(
@@ -348,7 +348,7 @@ func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
 				thread.IsMain() {
 				t.Fatal("invalid Thread exposed live metadata")
 			}
-			if _, threadErr := state.ThreadEnvironment(
+			if _, threadErr := threadEnvironment(
 				thread,
 			); !errors.Is(threadErr, ErrInvalidValue) {
 				t.Fatalf(
@@ -356,7 +356,7 @@ func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
 					threadErr,
 				)
 			}
-			if threadErr := state.SetThreadEnvironment(
+			if threadErr := setThreadEnvironment(
 				thread,
 				environment,
 			); !errors.Is(threadErr, ErrInvalidValue) {
@@ -377,24 +377,7 @@ func TestThreadOwningHandleRejectsInvalidAndForeignUse(t *testing.T) {
 	}
 
 	foreign := other.MainThread()
-	if _, threadErr := state.ThreadEnvironment(
-		foreign,
-	); !errors.Is(threadErr, ErrForeignValue) {
-		t.Fatalf(
-			"foreign ThreadEnvironment = %v; want ErrForeignValue",
-			threadErr,
-		)
-	}
-	if threadErr := state.SetThreadEnvironment(
-		foreign,
-		environment,
-	); !errors.Is(threadErr, ErrForeignValue) {
-		t.Fatalf(
-			"foreign SetThreadEnvironment = %v; want ErrForeignValue",
-			threadErr,
-		)
-	}
-	if threadErr := state.SetRawGlobal(
+	if threadErr := state.RawSetGlobal(
 		"foreign_thread",
 		foreign.Value(),
 	); !errors.Is(threadErr, ErrForeignValue) {
@@ -533,11 +516,11 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	}
 	defer state.Close()
 
-	mainEnvironment, err := state.ThreadEnvironment(state.MainThread())
+	mainEnvironment, err := threadEnvironment(state.MainThread())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("environment_marker", state.String("main")); err != nil {
+	if err := state.RawSetGlobal("environment_marker", state.String("main")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -555,25 +538,25 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	var probe *Function
 	var nested *Thread
 	probe, err = state.NewNativeFunction(func(frame Frame) Outcome {
-		if frame.Environment() != mainEnvironment {
-			return frame.RaiseString("native function environment changed")
+		if frame.activation().function.environment.owningHandle() != mainEnvironment {
+			frame.ThrowString("native function environment changed")
 		}
-		if frame.GlobalEnvironment() != childEnvironment {
-			return frame.RaiseString("callback did not observe child globals")
+		if frame.thread.globals.owningHandle() != childEnvironment {
+			frame.ThrowString("callback did not observe child globals")
 		}
 		marker, globalErr := state.RawGlobal("environment_marker")
 		if globalErr != nil {
-			return frame.RaiseString(globalErr.Error())
+			frame.ThrowString(globalErr.Error())
 		}
 		if text, ok := marker.AsString(); !ok || text != "child" {
-			return frame.RaiseString("State.Global did not use child globals")
+			frame.ThrowString("State.Global did not use child globals")
 		}
-		if globalErr := state.SetRawGlobal("child_write", Number(42)); globalErr != nil {
-			return frame.RaiseString(globalErr.Error())
+		if globalErr := state.RawSetGlobal("child_write", Number(42)); globalErr != nil {
+			frame.ThrowString(globalErr.Error())
 		}
 		nested, globalErr = state.NewThread(probe.Value())
 		if globalErr != nil {
-			return frame.RaiseString(globalErr.Error())
+			frame.ThrowString(globalErr.Error())
 		}
 		return frame.Return()
 	})
@@ -585,7 +568,7 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inherited, environmentErr := state.ThreadEnvironment(
+	if inherited, environmentErr := threadEnvironment(
 		child,
 	); environmentErr != nil || inherited != mainEnvironment {
 		t.Fatalf(
@@ -595,7 +578,7 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 			mainEnvironment,
 		)
 	}
-	if err := state.SetThreadEnvironment(child, childEnvironment); err != nil {
+	if err := setThreadEnvironment(child, childEnvironment); err != nil {
 		t.Fatal(err)
 	}
 	results, status, err := child.Resume()
@@ -610,7 +593,7 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	if nested == nil {
 		t.Fatal("callback did not construct a nested coroutine")
 	}
-	if inherited, environmentErr := state.ThreadEnvironment(
+	if inherited, environmentErr := threadEnvironment(
 		nested,
 	); environmentErr != nil || inherited != childEnvironment {
 		t.Fatalf(
@@ -620,11 +603,11 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 			childEnvironment,
 		)
 	}
-	if got, ok := childEnvironment.RawGetString("child_write").AsNumber(); !ok ||
+	if got, ok := rawStr(childEnvironment, "child_write").AsNumber(); !ok ||
 		got != 42 {
 		t.Fatalf("child environment write = (%v, %v); want 42", got, ok)
 	}
-	if got := mainEnvironment.RawGetString("child_write"); !got.IsNil() {
+	if got := rawStr(mainEnvironment, "child_write"); !got.IsNil() {
 		t.Fatalf("child write leaked into main environment: %v", got)
 	}
 	marker, err := state.RawGlobal("environment_marker")
@@ -639,7 +622,7 @@ func TestThreadGlobalEnvironmentsInheritAndRouteStateOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inherited, environmentErr := state.ThreadEnvironment(
+	if inherited, environmentErr := threadEnvironment(
 		sibling,
 	); environmentErr != nil || inherited != mainEnvironment {
 		t.Fatalf(
@@ -758,7 +741,7 @@ func TestOpenUpvalueSurvivesYieldAndClosesOnReturn(t *testing.T) {
 	publish, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		function, ok := frame.Function(0)
 		if !ok {
-			return frame.ArgTypeError(0, FunctionKind)
+			frame.ThrowArgTypeError(0, FunctionKind)
 		}
 		retained = function
 		return frame.Return()
@@ -766,7 +749,7 @@ func TestOpenUpvalueSurvivesYieldAndClosesOnReturn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("publish_closure", publish.Value()); err != nil {
+	if err := state.RawSetGlobal("publish_closure", publish.Value()); err != nil {
 		t.Fatal(err)
 	}
 	entry := mustLoadString(t, state, "@yield-upvalue.lua", `
@@ -842,7 +825,7 @@ func TestYieldBoundaryMatchesLua51CallKinds(t *testing.T) {
 	if err := state.SetMetatable(indexed.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("indexed_for_yield", indexed.Value()); err != nil {
+	if err := state.RawSetGlobal("indexed_for_yield", indexed.Value()); err != nil {
 		t.Fatal(err)
 	}
 	indexEntry := mustLoadString(
@@ -995,7 +978,7 @@ func TestCoroutineFailureClosesUpvaluesAndPreservesErrorValue(t *testing.T) {
 	publish, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		function, ok := frame.Function(0)
 		if !ok {
-			return frame.ArgTypeError(0, FunctionKind)
+			frame.ThrowArgTypeError(0, FunctionKind)
 		}
 		retained = function
 		return frame.Return()
@@ -1008,15 +991,17 @@ func TestCoroutineFailureClosesUpvaluesAndPreservesErrorValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	fail, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.Raise(marker.Value())
+		frame.Throw(marker.Value())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("publish_closure", publish.Value()); err != nil {
+	if err := state.RawSetGlobal("publish_closure", publish.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("fail_coroutine", fail.Value()); err != nil {
+	if err := state.RawSetGlobal("fail_coroutine", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1525,7 +1510,7 @@ func installYieldTestFunction(t testing.TB, state *State) *Function {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("native_yield", yield.Value()); err != nil {
+	if err := state.RawSetGlobal("native_yield", yield.Value()); err != nil {
 		t.Fatal(err)
 	}
 	return yield

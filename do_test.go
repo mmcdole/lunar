@@ -124,13 +124,11 @@ func TestStateDoContextCoversLoadingAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("probe", probe.Value()); err != nil {
+	if err := state.RawSetGlobal("probe", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
 
-	results, err := state.DoStringContext(
-		ctx,
-		"@context.lua",
+	results, err := doStringWithContext(t, state, ctx, "@context.lua",
 		`return probe()`,
 	)
 	if err != nil {
@@ -141,31 +139,14 @@ func TestStateDoContextCoversLoadingAndExecution(t *testing.T) {
 		t.Fatalf("callback context = %v; want supplied context", seen)
 	}
 
-	if results, doErr := state.DoStringContext(
-		nil,
-		"@nil.lua",
-		`return 1`,
-	); results != nil || !errors.Is(doErr, ErrNilContext) {
-		t.Fatalf("nil-context string result = (%v, %v)", results, doErr)
-	}
-
 	path := filepath.Join(t.TempDir(), "context.lua")
 	if err := os.WriteFile(path, []byte(`return 1`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if results, doErr := state.DoFileContext(
-		nil,
-		path,
-	); results != nil || !errors.Is(doErr, ErrNilContext) {
-		t.Fatalf("nil-context file result = (%v, %v)", results, doErr)
-	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if results, doErr := state.DoFileContext(
-		cancelled,
-		path,
-	); results != nil || doErr == nil {
+	if results, doErr := doFileWithContext(t, state, cancelled, path); results != nil || doErr == nil {
 		t.Fatalf("cancelled file result = (%v, %v)", results, doErr)
 	} else {
 		assertContextFailure(
@@ -176,4 +157,33 @@ func TestStateDoContextCoversLoadingAndExecution(t *testing.T) {
 			"context canceled",
 		)
 	}
+}
+
+func doStringWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	sourceName string,
+	source string,
+) (results []Value, err error) {
+	t.Helper()
+	if setErr := state.SetContext(ctx); setErr != nil {
+		t.Fatalf("SetContext: %v", setErr)
+	}
+	defer func() { _ = state.RemoveContext() }()
+	return state.DoString(sourceName, source)
+}
+
+func doFileWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	path string,
+) (results []Value, err error) {
+	t.Helper()
+	if setErr := state.SetContext(ctx); setErr != nil {
+		t.Fatalf("SetContext: %v", setErr)
+	}
+	defer func() { _ = state.RemoveContext() }()
+	return state.DoFile(path)
 }

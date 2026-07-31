@@ -1101,7 +1101,7 @@ func appendExecutionTraceback(
 		pc := int(frame.pc) - 1
 		traceback = append(traceback, TraceFrame{
 			Source:    prototype.SourceName(),
-			Line:      prototype.LineAt(pc),
+			Line:      prototype.lineAt(pc),
 			TailCalls: frame.tailCalls,
 		})
 	}

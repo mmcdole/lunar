@@ -220,10 +220,10 @@ func TestFunctionRepresentations(t *testing.T) {
 	if nativeHandle.Prototype() != nil || native.body == nil {
 		t.Fatal("native function has Lua executable metadata")
 	}
-	if nativeHandle.UpvalueCount() != len(captures) {
+	if upvalueCount(nativeHandle) != len(captures) {
 		t.Fatalf(
 			"native UpvalueCount = %d; want %d",
-			nativeHandle.UpvalueCount(),
+			upvalueCount(nativeHandle),
 			len(captures),
 		)
 	}
@@ -279,7 +279,7 @@ func TestNativeFunctionPrefixRetainsBodyAcrossGC(t *testing.T) {
 	if !ok {
 		t.Fatal("native capture did not retain its table")
 	}
-	if got, ok := capture.RawGetString("key").AsString(); !ok || got != "value" {
+	if got, ok := rawStr(capture, "key").AsString(); !ok || got != "value" {
 		t.Fatalf("retained capture value = (%q, %v)", got, ok)
 	}
 	runtime.KeepAlive(function)
@@ -416,11 +416,11 @@ func TestFunctionHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	first, ok := outer.RawGetString("function").AsFunction()
+	first, ok := rawStr(outer, "function").AsFunction()
 	if !ok || first.runtimeObject() != function {
 		t.Fatal("post-close nested function was not published")
 	}
-	second, ok := outer.RawGetString("function").AsFunction()
+	second, ok := rawStr(outer, "function").AsFunction()
 	if !ok || second != first {
 		t.Fatal("post-close nested function publication was not canonical")
 	}
@@ -438,7 +438,7 @@ func TestFunctionHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 		)
 	}
 	if first.Prototype() != function.prototype ||
-		first.UpvalueCount() != int(function.prototype.upvalues) {
+		upvalueCount(first) != int(function.prototype.upvalues) {
 		t.Fatal("post-close function metadata changed")
 	}
 	if err := state.SetFunctionEnvironment(
@@ -849,7 +849,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mainEnvironment, err := state.ThreadEnvironment(state.MainThread())
+	mainEnvironment, err := threadEnvironment(state.MainThread())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -890,7 +890,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, environmentErr := state.UserDataEnvironment(
+	if got, environmentErr := userDataEnvironment(
 		data,
 	); environmentErr != nil || got != mainEnvironment {
 		t.Fatalf(
@@ -900,10 +900,10 @@ func TestControlledObjectMetadata(t *testing.T) {
 			mainEnvironment,
 		)
 	}
-	if err := state.SetUserDataEnvironment(data, environment); err != nil {
+	if err := setUserDataEnvironment(data, environment); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := state.UserDataEnvironment(data); err != nil || got != environment {
+	if got, err := userDataEnvironment(data); err != nil || got != environment {
 		t.Fatalf("UserDataEnvironment = (%p, %v)", got, err)
 	}
 
@@ -917,7 +917,7 @@ func TestControlledObjectMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, environmentErr := state.ThreadEnvironment(
+	if got, environmentErr := threadEnvironment(
 		thread,
 	); environmentErr != nil || got != mainEnvironment {
 		t.Fatalf(
@@ -927,43 +927,38 @@ func TestControlledObjectMetadata(t *testing.T) {
 			mainEnvironment,
 		)
 	}
-	if err := state.SetThreadEnvironment(thread, environment); err != nil {
+	if err := setThreadEnvironment(thread, environment); err != nil {
 		t.Fatal(err)
 	}
-	if got, environmentErr := state.ThreadEnvironment(
+	if got, environmentErr := threadEnvironment(
 		thread,
 	); environmentErr != nil || got != environment {
 		t.Fatalf("ThreadEnvironment = (%p, %v)", got, environmentErr)
 	}
-	if _, environmentErr := state.ThreadEnvironment(
-		other.MainThread(),
-	); !errors.Is(environmentErr, ErrForeignValue) {
-		t.Fatalf("foreign ThreadEnvironment error = %v", environmentErr)
-	}
-	if _, environmentErr := state.ThreadEnvironment(
+	if _, environmentErr := threadEnvironment(
 		nil,
 	); !errors.Is(environmentErr, ErrInvalidValue) {
 		t.Fatalf("nil ThreadEnvironment error = %v", environmentErr)
 	}
-	if environmentErr := state.SetThreadEnvironment(
+	if environmentErr := setThreadEnvironment(
 		thread,
 		nil,
 	); !errors.Is(environmentErr, ErrInvalidValue) {
 		t.Fatalf("nil thread environment error = %v", environmentErr)
 	}
-	if environmentErr := state.SetThreadEnvironment(
+	if environmentErr := setThreadEnvironment(
 		thread,
 		foreignEnvironment,
 	); !errors.Is(environmentErr, ErrForeignValue) {
 		t.Fatalf("foreign thread environment error = %v", environmentErr)
 	}
-	if environmentErr := state.SetThreadEnvironment(
+	if environmentErr := setThreadEnvironment(
 		other.MainThread(),
 		environment,
 	); !errors.Is(environmentErr, ErrForeignValue) {
 		t.Fatalf("foreign thread error = %v", environmentErr)
 	}
-	if got, environmentErr := state.ThreadEnvironment(
+	if got, environmentErr := threadEnvironment(
 		thread,
 	); environmentErr != nil || got != environment {
 		t.Fatalf(
@@ -1025,12 +1020,6 @@ func TestFunctionOwningHandleEnforcesStateOwnership(t *testing.T) {
 		ErrForeignValue,
 	) {
 		t.Fatalf("foreign function call = %v; want ErrForeignValue", err)
-	}
-	if _, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-		foreign.Value(),
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign function capture = %v; want ErrForeignValue", err)
 	}
 	if _, err := state.FunctionEnvironment(foreign); !errors.Is(
 		err,

@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"context"
 	"fmt"
 )
 
@@ -74,33 +73,6 @@ func (state *State) Call(
 	arguments ...Value,
 ) ([]Value, error) {
 	results, _, err := state.callMain(
-		nil,
-		callable,
-		arguments,
-		nil,
-		true,
-		allResults,
-	)
-	return results, err
-}
-
-// CallContext invokes callable like Call while making ctx available to native
-// callbacks and interrupting Lua execution when ctx is cancelled.
-//
-// A nil context returns ErrNilContext. Lifecycle, ownership, and argument
-// errors take precedence over a context already cancelled at admission. Once
-// execution starts, cancellation is returned as a *Error categorized
-// ContextError. Lua-visible side effects completed before cancellation remain.
-func (state *State) CallContext(
-	ctx context.Context,
-	callable Value,
-	arguments ...Value,
-) ([]Value, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-	results, _, err := state.callMain(
-		ctx,
 		callable,
 		arguments,
 		nil,
@@ -120,32 +92,6 @@ func (state *State) CallOne(
 ) (Value, error) {
 	var destination [1]Value
 	_, _, err := state.callMain(
-		nil,
-		callable,
-		arguments,
-		destination[:],
-		false,
-		1,
-	)
-	if err != nil {
-		return Value{}, err
-	}
-	return destination[0], nil
-}
-
-// CallOneContext invokes callable like CallContext and applies Lua's
-// one-result adjustment.
-func (state *State) CallOneContext(
-	ctx context.Context,
-	callable Value,
-	arguments ...Value,
-) (Value, error) {
-	if ctx == nil {
-		return Value{}, ErrNilContext
-	}
-	var destination [1]Value
-	_, _, err := state.callMain(
-		ctx,
 		callable,
 		arguments,
 		destination[:],
@@ -164,28 +110,6 @@ func (state *State) CallDiscard(
 	arguments ...Value,
 ) error {
 	_, _, err := state.callMain(
-		nil,
-		callable,
-		arguments,
-		nil,
-		false,
-		0,
-	)
-	return err
-}
-
-// CallDiscardContext invokes callable like CallContext and discards all
-// results.
-func (state *State) CallDiscardContext(
-	ctx context.Context,
-	callable Value,
-	arguments ...Value,
-) error {
-	if ctx == nil {
-		return ErrNilContext
-	}
-	_, _, err := state.callMain(
-		ctx,
 		callable,
 		arguments,
 		nil,
@@ -212,33 +136,6 @@ func (state *State) CallInto(
 	destination []Value,
 ) (count int, err error) {
 	_, count, err = state.callMain(
-		nil,
-		callable,
-		arguments,
-		destination,
-		false,
-		allResults,
-	)
-	return count, err
-}
-
-// CallIntoContext invokes callable like CallContext and writes results into
-// destination.
-//
-// On cancellation count is zero and destination is unchanged. When callable
-// itself does not allocate, a warm call with a non-cancelled context and
-// sufficient caller-provided storage adds no boundary allocation.
-func (state *State) CallIntoContext(
-	ctx context.Context,
-	callable Value,
-	arguments []Value,
-	destination []Value,
-) (count int, err error) {
-	if ctx == nil {
-		return 0, ErrNilContext
-	}
-	_, count, err = state.callMain(
-		ctx,
 		callable,
 		arguments,
 		destination,
@@ -249,7 +146,6 @@ func (state *State) CallIntoContext(
 }
 
 func (state *State) callMain(
-	ctx context.Context,
 	callable Value,
 	arguments []Value,
 	destination []Value,
@@ -261,19 +157,13 @@ func (state *State) callMain(
 		return nil, 0, err
 	}
 
-	contextInstalled := ctx != nil
-	if contextInstalled {
-		execution, failure := prepareExecutionContext(ctx)
-		if failure != nil {
-			return nil, 0, failure
-		}
-		state.beginExecutionContext(execution)
+	if failure := state.admitExecutionContext(); failure != nil {
+		return nil, 0, failure
 	}
-	// Polling is armed for an installed interrupt too, so an ordinary call
-	// observes one. A call with neither guard leaves the budget alone: it
-	// is already zero, and skipping the write keeps unguarded calls on
-	// exactly the path they had before interrupts existed.
-	if contextInstalled || state.interrupt != nil {
+	// A State with no installed context leaves the budget alone: it is
+	// already zero, and skipping the write keeps unguarded calls on exactly
+	// the path they had before cancellation existed.
+	if state.ambientDone != nil {
 		thread.resetContextBudget()
 	}
 	state.active = thread
@@ -282,11 +172,7 @@ func (state *State) callMain(
 		thread.resetMainCall()
 		state.active = nil
 		thread.contextBudget = 0
-		if contextInstalled {
-			state.endExecutionContext()
-		} else {
-			state.execution.pendingExit = nil
-		}
+		state.endExecution()
 	}()
 
 	resultBase, failure := startStagedCall(
@@ -372,7 +258,7 @@ func (state *State) callMainCompactNone(
 	defer func() {
 		thread.resetMainCall()
 		state.active = nil
-		state.execution.pendingExit = nil
+		state.endExecution()
 	}()
 
 	resultBase, failure := startStagedCall(
@@ -447,8 +333,6 @@ func (state *State) prepareReadyMainThread() (*threadObject, error) {
 		thread.errorHandlerDepth != 0 ||
 		thread.contextBudget != 0 ||
 		state.runtime.nativeCallDepth != 0 ||
-		state.execution.context != nil ||
-		state.execution.done != nil ||
 		state.execution.failure != nil ||
 		state.execution.pendingExit != nil ||
 		state.limits.values != state.options.MaxValues ||

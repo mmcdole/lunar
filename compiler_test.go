@@ -186,14 +186,14 @@ func TestCompilerEmitsInstructionsLinesAndRegisterHighWater(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	if prototype.RegisterCount() != 7 {
-		t.Fatalf("register count = %d, want 7", prototype.RegisterCount())
+	if registerCount(prototype) != 7 {
+		t.Fatalf("register count = %d, want 7", registerCount(prototype))
 	}
-	if prototype.LineAt(0) != 5 || prototype.LineAt(1) != 6 {
+	if prototype.lineAt(0) != 5 || prototype.lineAt(1) != 6 {
 		t.Fatalf(
 			"instruction lines = (%d, %d), want (5, 6)",
-			prototype.LineAt(0),
-			prototype.LineAt(1),
+			prototype.lineAt(0),
+			prototype.lineAt(1),
 		)
 	}
 	if prototype.code[0].opcode() != opLoadK ||
@@ -227,10 +227,10 @@ func TestCompilerUsesCanonicalMinimumAndRejectsRegisterOverflow(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	if prototype.RegisterCount() != 2 {
+	if registerCount(prototype) != 2 {
 		t.Fatalf(
 			"empty function register count = %d, want 2",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 }

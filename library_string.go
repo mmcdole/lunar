@@ -465,7 +465,7 @@ func stringGMatch(frame Frame) Outcome {
 		},
 	)
 	if err != nil {
-		return frame.RaiseString(err.Error())
+		return frame.raiseString(err.Error())
 	}
 	return frame.returnOne(
 		frame.activation(),

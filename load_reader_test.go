@@ -151,7 +151,7 @@ func TestStateLoadStreamsSourceAndBinaryChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("marker", Number(73)); err != nil {
+	if err := state.RawSetGlobal("marker", Number(73)); err != nil {
 		t.Fatal(err)
 	}
 	binaryReader := &fixedWidthReader{text: dumped, width: 1}
@@ -336,7 +336,7 @@ func TestStateLoadHonorsLimitsAndContexts(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	reader := &fixedWidthReader{text: source, width: 1}
-	_, loadErr = state.LoadContext(ctx, "@cancelled.lua", reader)
+	_, loadErr = loadCtx(t, state, ctx, "@cancelled.lua", reader)
 	if !errors.As(loadErr, &failure) ||
 		failure.Category() != ContextError ||
 		reader.reads != 0 {
@@ -346,16 +346,12 @@ func TestStateLoadHonorsLimitsAndContexts(t *testing.T) {
 			reader.reads,
 		)
 	}
-	if _, loadErr = state.LoadContext(
-		nil,
-		"@nil-context.lua",
+	if _, loadErr = loadCtx(t, state, nil, "@nil-context.lua",
 		strings.NewReader(source),
 	); !errors.Is(loadErr, ErrNilContext) {
 		t.Fatalf("nil context error = %v", loadErr)
 	}
-	if _, loadErr = state.LoadStringContext(
-		ctx,
-		"@cancelled-string.lua",
+	if _, loadErr = loadStringCtx(t, state, ctx, "@cancelled-string.lua",
 		source,
 	); !errors.As(loadErr, &failure) ||
 		failure.Category() != ContextError {
@@ -364,9 +360,7 @@ func TestStateLoadHonorsLimitsAndContexts(t *testing.T) {
 
 	emptyContext, cancelEmpty := context.WithCancel(context.Background())
 	emptyReader := &cancelAfterEmptyReader{cancel: cancelEmpty}
-	_, loadErr = state.LoadContext(
-		emptyContext,
-		"@cancelled-empty.lua",
+	_, loadErr = loadCtx(t, state, emptyContext, "@cancelled-empty.lua",
 		emptyReader,
 	)
 	if !errors.As(loadErr, &failure) ||
@@ -392,9 +386,7 @@ func TestStateLoadHonorsLimitsAndContexts(t *testing.T) {
 		text:   dumped,
 		cancel: cancelBinary,
 	}
-	_, loadErr = state.LoadContext(
-		binaryContext,
-		"@cancelled-binary.luac",
+	_, loadErr = loadCtx(t, state, binaryContext, "@cancelled-binary.luac",
 		binaryReader,
 	)
 	if !errors.As(loadErr, &failure) ||

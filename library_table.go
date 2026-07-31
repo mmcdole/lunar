@@ -206,7 +206,7 @@ func tableForEach(frame Frame) Outcome {
 	for {
 		nextKey, value, found, err := target.next(key)
 		if err != nil {
-			return frame.RaiseString(err.Error())
+			return frame.raiseString(err.Error())
 		}
 		if !found {
 			return frame.Return()
@@ -330,7 +330,7 @@ func tableMaxN(frame Frame) Outcome {
 	for {
 		nextKey, _, found, err := target.next(key)
 		if err != nil {
-			return frame.RaiseString(err.Error())
+			return frame.raiseString(err.Error())
 		}
 		if !found {
 			return frame.ReturnNumber(largest)

@@ -18,10 +18,9 @@ func TestPreloadModuleBeforeAfterAndAcrossOpenPackage(t *testing.T) {
 		func(frame Frame) Outcome {
 			beforeCalls++
 			name, _ := frame.String(0)
-			capture, _ := frame.Capture(0).AsNumber()
-			return frame.ReturnString(name + ":" + Number(capture).String())
+			// State a module needs travels in the Go closure.
+			return frame.ReturnString(name + ":" + Number(7).String())
 		},
-		Number(7),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +42,7 @@ func TestPreloadModuleBeforeAfterAndAcrossOpenPackage(t *testing.T) {
 	if !ok {
 		t.Fatalf("package = %v, want table", packageValue)
 	}
-	published, ok := library.RawGetString("preload").AsTable()
+	published, ok := rawStr(library, "preload").AsTable()
 	if !ok || published.runtimeObject() != preload {
 		t.Fatal("OpenPackage did not publish the State preload table")
 	}
@@ -81,7 +80,7 @@ func TestPreloadModuleBeforeAfterAndAcrossOpenPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopenedLibrary, _ := reopenedPackage.AsTable()
-	reopenedPreload, _ := reopenedLibrary.RawGetString("preload").AsTable()
+	reopenedPreload, _ := rawStr(reopenedLibrary, "preload").AsTable()
 	if reopenedPreload.runtimeObject() != preload {
 		t.Fatal("reopening package replaced the preload table")
 	}
@@ -139,54 +138,6 @@ func TestPreloadModuleValidatesBeforeCreatingPreloadTable(t *testing.T) {
 	if state.modulePreloads != nil {
 		t.Fatal("nil loader created a preload table")
 	}
-	if err := state.PreloadModule(
-		"invalid",
-		func(frame Frame) Outcome { return frame.Return() },
-		Value{},
-	); !errors.Is(err, ErrInvalidValue) {
-		t.Fatalf("invalid capture error = %v", err)
-	}
-	if state.modulePreloads != nil {
-		t.Fatal("invalid capture created a preload table")
-	}
-
-	other, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foreign, err := other.NewTable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.PreloadModule(
-		"foreign",
-		func(frame Frame) Outcome { return frame.Return() },
-		foreign.Value(),
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign capture error = %v", err)
-	}
-	if state.modulePreloads != nil {
-		t.Fatal("foreign capture created a preload table")
-	}
-	if err := other.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	captures := make([]Value, maxNativeCaptures+1)
-	for index := range captures {
-		captures[index] = Number(float64(index))
-	}
-	if err := state.PreloadModule(
-		"too-many",
-		func(frame Frame) Outcome { return frame.Return() },
-		captures...,
-	); !errors.Is(err, ErrNativeCaptureLimit) {
-		t.Fatalf("capture-limit error = %v", err)
-	}
-	if state.modulePreloads != nil {
-		t.Fatal("capture-limit failure created a preload table")
-	}
-
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +149,9 @@ func TestPreloadModuleValidatesBeforeCreatingPreloadTable(t *testing.T) {
 	}
 }
 
-func TestSetFunctionsInstallsIndependentCapturedFunctions(t *testing.T) {
+// Captured state now lives in the Go closure. Each installed function must
+// still get its own, so two entries built from one factory do not share it.
+func TestSetFunctionsInstallsIndependentClosureState(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -208,28 +161,29 @@ func TestSetFunctionsInstallsIndependentCapturedFunctions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := func(frame Frame) Outcome {
-		value := frame.Capture(0)
-		number, _ := value.AsNumber()
-		frame.SetCapture(0, Number(number+1))
-		return frame.ReturnValue(value)
+	counter := func() NativeFunc {
+		next := 10.0
+		return func(frame Frame) Outcome {
+			current := next
+			next++
+			return frame.ReturnNumber(current)
+		}
 	}
 	if err := state.SetFunctions(
 		table,
 		map[string]NativeFunc{
-			"first":  entry,
-			"second": entry,
+			"first":  counter(),
+			"second": counter(),
 		},
-		Number(10),
 	); err != nil {
 		t.Fatal(err)
 	}
-	firstValue := table.RawGetString("first")
+	firstValue := rawStr(table, "first")
 	first, ok := firstValue.AsFunction()
 	if !ok {
 		t.Fatalf("first = %v, want function", firstValue)
 	}
-	secondValue := table.RawGetString("second")
+	secondValue := rawStr(table, "second")
 	second, ok := secondValue.AsFunction()
 	if !ok {
 		t.Fatalf("second = %v, want function", secondValue)
@@ -273,31 +227,17 @@ func TestSetFunctionsValidationIsAllOrNothing(t *testing.T) {
 	); !errors.Is(err, ErrInvalidNativeFunction) {
 		t.Fatalf("nil function error = %v", err)
 	}
-	if !table.RawGetString("good").IsNil() ||
-		!table.RawGetString("bad").IsNil() {
+	if !rawStr(table, "good").IsNil() ||
+		!rawStr(table, "bad").IsNil() {
 		t.Fatal("nil function failure partially installed fields")
 	}
-	assertTestValue(t, table.RawGetString("existing"), Number(1))
+	assertTestValue(t, rawStr(table, "existing"), Number(1))
 
 	other, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreignCapture, err := other.NewTable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.SetFunctions(
-		table,
-		map[string]NativeFunc{"captured": valid},
-		foreignCapture.Value(),
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign capture error = %v", err)
-	}
-	if !table.RawGetString("captured").IsNil() {
-		t.Fatal("foreign capture failure installed a field")
-	}
-
+	defer other.Close()
 	foreignTable, err := other.NewTable()
 	if err != nil {
 		t.Fatal(err)
@@ -318,18 +258,7 @@ func TestSetFunctionsValidationIsAllOrNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	captures := make([]Value, maxNativeCaptures+1)
-	for index := range captures {
-		captures[index] = Bool(true)
-	}
-	if err := state.SetFunctions(
-		table,
-		map[string]NativeFunc{"too_many": valid},
-		captures...,
-	); !errors.Is(err, ErrNativeCaptureLimit) {
-		t.Fatalf("capture-limit error = %v", err)
-	}
-	if !table.RawGetString("too_many").IsNil() {
+	if !rawStr(table, "too_many").IsNil() {
 		t.Fatal("capture-limit failure installed a field")
 	}
 }

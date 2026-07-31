@@ -30,7 +30,7 @@ func TestDebugActivationWalksPhysicalNativeAndTailFrames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("inspect", inspect.Value()); err != nil {
+	if err := state.RawSetGlobal("inspect", inspect.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +135,7 @@ func TestDebugActivationRecoversCallerNameCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("probe", probe.Value()); err != nil {
+	if err := state.RawSetGlobal("probe", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
 	holder, err := state.NewTableWithCapacity(0, 2)
@@ -148,7 +148,7 @@ func TestDebugActivationRecoversCallerNameCategories(t *testing.T) {
 	if err := holder.RawSetString("method", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("holder", holder.Value()); err != nil {
+	if err := state.RawSetGlobal("holder", holder.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -329,7 +329,7 @@ func TestDebugActivationMutatesCapturedLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("mutate_local", mutate.Value()); err != nil {
+	if err := state.RawSetGlobal("mutate_local", mutate.Value()); err != nil {
 		t.Fatal(err)
 	}
 

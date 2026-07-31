@@ -205,7 +205,7 @@ func returnLoadResult(
 
 	failure, luaFailure := err.(*Error)
 	if luaFailure && isHostControlFailure(failure) {
-		return frame.Reraise(failure)
+		return frame.reraise(failure)
 	}
 	errorValue := stringSlot(
 		frame.thread.owner.strings.make(err.Error()),
@@ -233,7 +233,7 @@ func raiseDoFileError(frame Frame, err error) Outcome {
 	}
 	switch failure.category {
 	case ContextError, ExitError, RuntimeError, ResourceError:
-		return frame.Reraise(failure)
+		return frame.reraise(failure)
 	default:
 		// Loading failures are values raised by dofile. Reclassify syntax
 		// failures as ordinary runtime errors so pcall can catch them.

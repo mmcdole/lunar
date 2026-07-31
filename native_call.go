@@ -626,19 +626,13 @@ func (frame Frame) callNested(
 	return owned, count, nil
 }
 
-// RaiseError completes the callback with a Lua runtime error backed by err.
-//
-// The Lua error Value and description are err.Error(), while errors.Is and
-// errors.As can recover err through the resulting *Error. A direct *Error is
-// reraised so its Lua Value, category, and traceback are not discarded. err
-// must be non-nil.
-func (frame Frame) RaiseError(err error) Outcome {
+func (frame Frame) raiseError(err error) Outcome {
 	frame.activation()
 	if err == nil {
 		panic("lua: nil Go error")
 	}
 	if failure, ok := err.(*Error); ok {
-		return frame.Reraise(failure)
+		return frame.reraise(failure)
 	}
 	message := err.Error()
 	return frame.sealError(&Error{
@@ -649,15 +643,7 @@ func (frame Frame) RaiseError(err error) Outcome {
 	})
 }
 
-// Reraise completes the callback by propagating a protected Lua execution
-// failure.
-//
-// The arbitrary Lua error Value, category, Go cause, and nested traceback are
-// preserved. As the propagated error unwinds, the executor appends each
-// surrounding traceback segment exactly once. failure must be non-nil and its
-// Value must be valid for this State; invalid or foreign reference Values
-// panic.
-func (frame Frame) Reraise(failure *Error) Outcome {
+func (frame Frame) reraise(failure *Error) Outcome {
 	frame.activation()
 	value, valid := failure.valueSlot()
 	if !valid {

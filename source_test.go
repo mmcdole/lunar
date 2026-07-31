@@ -115,7 +115,7 @@ func TestOSSourceLoadsFilesSnapshotsLuaPathAndAllowsStdin(t *testing.T) {
 	library, _ := packageValue.AsTable()
 	assertTestValue(
 		t,
-		library.RawGetString("path"),
+		rawStr(library, "path"),
 		state.String("snapshot/?.lua"),
 	)
 
@@ -224,7 +224,7 @@ func TestWithPackagePathIsImmutableAndOverridesTheDefault(t *testing.T) {
 	originalTable, _ := originalPackage.AsTable()
 	assertTestValue(
 		t,
-		originalTable.RawGetString("path"),
+		rawStr(originalTable, "path"),
 		originalState.String("?.lua;?/init.lua"),
 	)
 
@@ -240,7 +240,7 @@ func TestWithPackagePathIsImmutableAndOverridesTheDefault(t *testing.T) {
 	customTable, _ := customPackage.AsTable()
 	assertTestValue(
 		t,
-		customTable.RawGetString("path"),
+		rawStr(customTable, "path"),
 		customState.String("modules/?.luau"),
 	)
 }
@@ -291,7 +291,7 @@ func TestCustomSourceReceivesContextClosesReadersAndSearchesCandidates(t *testin
 		struct{ name string }{"source"},
 		"marker",
 	)
-	function, err := state.LoadFileContext(ctx, "direct.lua")
+	function, err := loadFileCtx(t, state, ctx, "direct.lua")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +488,7 @@ func TestCustomSourceCancellationWinsAfterOpening(t *testing.T) {
 	}
 	defer state.Close()
 
-	_, err = state.LoadFileContext(ctx, "cancel.lua")
+	_, err = loadFileCtx(t, state, ctx, "cancel.lua")
 	var failure *Error
 	if !errors.As(err, &failure) ||
 		failure.Category() != ContextError {

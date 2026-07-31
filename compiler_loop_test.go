@@ -479,7 +479,7 @@ func TestCompileSourceUsesCanonicalGenericForLayout(t *testing.T) {
 		iterator := opcodeIndex(prototype.code, opIteratorLoop)
 		if iterator < 0 ||
 			prototype.code[iterator].c() != test.results ||
-			prototype.RegisterCount() != test.registers ||
+			registerCount(prototype) != test.registers ||
 			iterator+1 >= len(prototype.code) ||
 			prototype.code[iterator+1].opcode() != opJump {
 			t.Fatalf(

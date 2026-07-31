@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -320,7 +321,8 @@ type State struct {
 	modulePreloads   *tableObject
 	resources        *nativeResourceRegistry
 	execution        executionControl
-	interrupt        func() error
+	ambient          context.Context
+	ambientDone      <-chan struct{}
 	operationBridges [luaOperationCount]*functionObject
 	typeMetatables   [TableKind + 1]*tableObject
 	userDataTypes    map[string]*userDataTypeRegistration
@@ -461,6 +463,8 @@ func (state *State) Close() error {
 	state.options.Source = SourcePolicy{}
 	state.options.Location = nil
 	state.options.Now = nil
+	state.ambient = nil
+	state.ambientDone = nil
 	state.typeMetatables = [TableKind + 1]*tableObject{}
 	state.userDataTypes = nil
 	state.runtime.hosts.prune()
@@ -581,11 +585,11 @@ func (state *State) RawGlobal(name string) (Value, error) {
 	return state.globalEnvironment().rawGetStringValue(name), nil
 }
 
-// SetRawGlobal performs a raw assignment in the current global environment.
+// RawSetGlobal performs a raw assignment in the current global environment.
 //
 // During a native callback, current means the executing Thread. Otherwise it
 // means the main Thread.
-func (state *State) SetRawGlobal(name string, value Value) error {
+func (state *State) RawSetGlobal(name string, value Value) error {
 	if err := state.checkOpen(); err != nil {
 		return err
 	}
@@ -679,67 +683,6 @@ func (state *State) SetFunctionEnvironment(function *Function, environment *Tabl
 	}
 	object.environment = compactEnvironment
 	runtime.KeepAlive(function)
-	runtime.KeepAlive(environment)
-	return nil
-}
-
-// ThreadEnvironment returns thread's Lua 5.1 global environment.
-func (state *State) ThreadEnvironment(thread *Thread) (*Table, error) {
-	object, err := state.acceptThread(thread)
-	if err != nil {
-		return nil, err
-	}
-	environment := object.globals.owningHandle()
-	runtime.KeepAlive(thread)
-	return environment, nil
-}
-
-// SetThreadEnvironment replaces thread's Lua 5.1 global environment.
-func (state *State) SetThreadEnvironment(
-	thread *Thread,
-	environment *Table,
-) error {
-	object, err := state.acceptThread(thread)
-	if err != nil {
-		return err
-	}
-	compactEnvironment, err := state.acceptTable(environment)
-	if err != nil {
-		return err
-	}
-	object.globals = compactEnvironment
-	runtime.KeepAlive(thread)
-	runtime.KeepAlive(environment)
-	return nil
-}
-
-// UserDataEnvironment returns data's Lua 5.1 environment. A nil result means
-// no environment is installed.
-func (state *State) UserDataEnvironment(data *UserData) (*Table, error) {
-	if err := state.checkUserData(data); err != nil {
-		return nil, err
-	}
-	environment := data.runtimeObject().environment
-	runtime.KeepAlive(data)
-	return environment.owningHandle(), nil
-}
-
-// SetUserDataEnvironment replaces data's Lua 5.1 environment. Passing nil
-// removes it.
-func (state *State) SetUserDataEnvironment(data *UserData, environment *Table) error {
-	if err := state.checkUserData(data); err != nil {
-		return err
-	}
-	var compactEnvironment *tableObject
-	if environment != nil {
-		var err error
-		compactEnvironment, err = state.acceptTable(environment)
-		if err != nil {
-			return err
-		}
-	}
-	data.runtimeObject().environment = compactEnvironment
-	runtime.KeepAlive(data)
 	runtime.KeepAlive(environment)
 	return nil
 }

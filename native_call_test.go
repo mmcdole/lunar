@@ -117,7 +117,7 @@ return first, middle, last, nil
 							frame.State() == state &&
 							frame.CurrentThread() == state.MainThread()
 					if callErr != nil {
-						return frame.RaiseString(callErr.Error())
+						frame.ThrowString(callErr.Error())
 					}
 					return frame.ReturnValues(results...)
 				},
@@ -156,21 +156,21 @@ func TestFrameCallOneAndCallDiscardUseLuaResultAdjustment(t *testing.T) {
 nested_call_count = nested_call_count + 1
 return 41, 42, 43
 `)
-	if err := state.SetRawGlobal("nested_call_count", Number(0)); err != nil {
+	if err := state.RawSetGlobal("nested_call_count", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		emptyResult, callErr := frame.CallOne(empty.Value())
 		if callErr != nil {
-			return frame.RaiseError(callErr)
+			frame.ThrowError(callErr)
 		}
 		first, callErr := frame.CallOne(producer.Value())
 		if callErr != nil {
-			return frame.RaiseError(callErr)
+			frame.ThrowError(callErr)
 		}
 		if callErr := frame.CallDiscard(producer.Value()); callErr != nil {
-			return frame.RaiseError(callErr)
+			frame.ThrowError(callErr)
 		}
 		return frame.ReturnValues(emptyResult, first)
 	})
@@ -261,12 +261,12 @@ return "handled:" .. key
 		if indexErr != nil {
 			var failure *Error
 			if errors.As(indexErr, &failure) {
-				return frame.Reraise(failure)
+				frame.Rethrow(failure)
 			}
-			return frame.RaiseString(indexErr.Error())
+			frame.ThrowString(indexErr.Error())
 		}
 		if frame.ArgumentCount() != 2 {
-			return frame.RaiseString("Index invalidated its Frame")
+			frame.ThrowString("Index invalidated its Frame")
 		}
 		return frame.ReturnValue(result)
 	})
@@ -368,7 +368,7 @@ func TestFrameSetIndexAppliesLuaTableSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("setIndexSink", sink.Value()); err != nil {
+	if err := state.RawSetGlobal("setIndexSink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	handlerChunk := mustLoadString(t, state, "@frame-set-index.lua", `
@@ -412,12 +412,12 @@ end
 		if nestedError != nil {
 			var failure *Error
 			if errors.As(nestedError, &failure) {
-				return frame.Reraise(failure)
+				frame.Rethrow(failure)
 			}
-			return frame.RaiseString(nestedError.Error())
+			frame.ThrowString(nestedError.Error())
 		}
 		if frame.ArgumentCount() != 3 {
-			return frame.RaiseString("SetIndex invalidated its Frame")
+			frame.ThrowString("SetIndex invalidated its Frame")
 		}
 		return frame.ReturnBool(true)
 	})
@@ -443,17 +443,17 @@ end
 	}
 
 	set(direct, "existing", Number(41))
-	assertTestValue(t, direct.RawGetString("existing"), Number(41))
+	assertTestValue(t, rawStr(direct, "existing"), Number(41))
 	set(direct, "new", Number(42))
-	assertTestValue(t, direct.RawGetString("new"), Number(42))
+	assertTestValue(t, rawStr(direct, "new"), Number(42))
 	set(chained, "chained", Number(43))
-	assertTestValue(t, chained.RawGetString("chained"), Nil())
-	assertTestValue(t, fallback.RawGetString("chained"), Number(43))
+	assertTestValue(t, rawStr(chained, "chained"), Nil())
+	assertTestValue(t, rawStr(fallback, "chained"), Number(43))
 	set(computed, "computed", Number(44))
-	assertTestValue(t, computed.RawGetString("computed"), Nil())
-	assertTestValue(t, sink.RawGetString("computed"), Number(45))
+	assertTestValue(t, rawStr(computed, "computed"), Nil())
+	assertTestValue(t, rawStr(sink, "computed"), Number(45))
 	set(direct, "existing", Nil())
-	assertTestValue(t, direct.RawGetString("existing"), Nil())
+	assertTestValue(t, rawStr(direct, "existing"), Nil())
 
 	// Warm replacement takes the direct raw-hit path and allocates nothing.
 	set(direct, "warm", Number(0))
@@ -484,7 +484,7 @@ end
 	if allocations != 0 {
 		t.Fatalf("warm raw SetIndex allocated %v times", allocations)
 	}
-	assertTestValue(t, direct.RawGetString("warm"), Number(46))
+	assertTestValue(t, rawStr(direct, "warm"), Number(46))
 }
 
 func TestFrameCallRejectsInputsAtomically(t *testing.T) {
@@ -648,7 +648,7 @@ func TestFrameCallIntoHandlesOverlapAndCapacityAtomically(t *testing.T) {
 nested_side_effect = nested_side_effect + 1
 return 1, nil, 3
 `)
-	if err := state.SetRawGlobal("nested_side_effect", Number(0)); err != nil {
+	if err := state.RawSetGlobal("nested_side_effect", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	destination := []Value{Number(80), Number(81)}
@@ -661,7 +661,7 @@ return 1, nil, 3
 			destination,
 		)
 		if _, present := frame.Argument(0); !present {
-			return frame.RaiseString("outer Frame lost its argument")
+			frame.ThrowString("outer Frame lost its argument")
 		}
 		return frame.ReturnBool(true)
 	})
@@ -711,7 +711,7 @@ return nil + 1
 			failureDestination,
 		)
 		if count != 0 || !errors.As(callErr, &nestedFailure) {
-			return frame.RaiseString("ordinary nested failure was not returned")
+			frame.ThrowString("ordinary nested failure was not returned")
 		}
 		return frame.ReturnBool(true)
 	})
@@ -776,26 +776,20 @@ return grow(...)
 				marker.Value(),
 			)
 			if callErr != nil {
-				return frame.RaiseString(callErr.Error())
+				frame.ThrowString(callErr.Error())
 			}
 			argument, argumentPresent := frame.Argument(0)
-			capture := frame.Capture(0)
 			argumentSame, argumentApplicable :=
 				argument.SameObject(marker.Value())
-			captureSame, captureApplicable :=
-				capture.SameObject(marker.Value())
 			frameValid =
 				argumentPresent &&
 					argumentApplicable &&
-					argumentSame &&
-					captureApplicable &&
-					captureSame
+					argumentSame
 			stacksGrew =
 				cap(frame.thread.values) > beforeValues &&
 					cap(frame.thread.frames) > beforeFrames
 			return frame.ReturnValues(results...)
 		},
-		marker.Value(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -872,7 +866,7 @@ func TestFrameCallDistinguishesLuaCallableFailures(t *testing.T) {
 			func(frame Frame) Outcome {
 				_, nestedError = frame.Call(callable)
 				if nestedError == nil {
-					return frame.RaiseString("noncallable nested value ran")
+					frame.ThrowString("noncallable nested value ran")
 				}
 				return frame.ReturnBool(true)
 			},
@@ -919,7 +913,7 @@ func TestFrameReraisePreservesFailureAndAppendsOuterTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_raise", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_raise", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 	nested := mustLoadString(t, state, "@nested-trace.lua", `
@@ -936,15 +930,17 @@ return 1
 	bridge, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		_, callErr := frame.Call(nested.Value())
 		if !errors.As(callErr, &nestedFailure) {
-			return frame.RaiseString("nested failure was not a Lua error")
+			frame.ThrowString("nested failure was not a Lua error")
 		}
 		nestedTrace = nestedFailure.Traceback()
-		return frame.Reraise(nestedFailure)
+		frame.Rethrow(nestedFailure)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_bridge", bridge.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@outer-trace.lua", `
@@ -1025,12 +1021,14 @@ func TestFrameCallLetsNestedPCallAndXPCallCatchLuaErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.Raise(marker.Value())
+		frame.Throw(marker.Value())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_protected_raise", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_protected_raise", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 	target := mustLoadString(t, state, "@nested-protected-call.lua", `
@@ -1044,7 +1042,7 @@ return pcallOK, pcallValue, xpcallOK, xpcallValue
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		results, callErr := frame.Call(target.Value())
 		if callErr != nil {
-			return frame.RaiseString(callErr.Error())
+			frame.ThrowString(callErr.Error())
 		}
 		return frame.ReturnValues(results...)
 	})
@@ -1080,12 +1078,14 @@ func TestFrameReraiseAppendsEachNestedTraceSegmentOnce(t *testing.T) {
 	defer state.Close()
 
 	fail, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.RaiseString("nested bridge failure")
+		frame.ThrowString("nested bridge failure")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_trace_fail", fail.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_trace_fail", fail.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := mustLoadString(t, state, "@trace-inner.lua", `
@@ -1098,15 +1098,17 @@ return value
 		_, callErr := frame.Call(inner.Value())
 		var failure *Error
 		if !errors.As(callErr, &failure) {
-			return frame.RaiseString("inner bridge lost its Lua error")
+			frame.ThrowString("inner bridge lost its Lua error")
 		}
 		innerTrace = failure.Traceback()
-		return frame.Reraise(failure)
+		frame.Rethrow(failure)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_trace_bridge_one", bridgeOne.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_trace_bridge_one", bridgeOne.Value()); err != nil {
 		t.Fatal(err)
 	}
 	middle := mustLoadString(t, state, "@trace-middle.lua", `
@@ -1119,15 +1121,17 @@ return value
 		_, callErr := frame.Call(middle.Value())
 		var failure *Error
 		if !errors.As(callErr, &failure) {
-			return frame.RaiseString("outer bridge lost its Lua error")
+			frame.ThrowString("outer bridge lost its Lua error")
 		}
 		middleTrace = failure.Traceback()
-		return frame.Reraise(failure)
+		frame.Rethrow(failure)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_trace_bridge_two", bridgeTwo.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_trace_bridge_two", bridgeTwo.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(t, state, "@trace-outer.lua", `
@@ -1215,7 +1219,7 @@ func TestWarmFrameCallIntoDoesNotAllocate(t *testing.T) {
 	nativeTarget, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		number, ok := frame.Number(0)
 		if !ok {
-			return frame.ArgTypeError(0, NumberKind)
+			frame.ThrowArgTypeError(0, NumberKind)
 		}
 		return frame.ReturnNumber(number)
 	})
@@ -1276,7 +1280,7 @@ func TestWarmFrameCallIntoDoesNotAllocate(t *testing.T) {
 						nestedDestination,
 					)
 					if callErr != nil || count != 1 {
-						return frame.RaiseString("warm nested call failed")
+						frame.ThrowString("warm nested call failed")
 					}
 					return frame.ReturnValue(nestedDestination[0])
 				},
@@ -1328,7 +1332,7 @@ func TestWarmFrameCallIntoDoesNotAllocate(t *testing.T) {
 					nil,
 				)
 				if callErr != nil || count != 0 {
-					return frame.RaiseString("empty nested call failed")
+					frame.ThrowString("empty nested call failed")
 				}
 				return frame.Return()
 			},
@@ -1371,7 +1375,7 @@ func TestWarmFrameCallAllocationContract(t *testing.T) {
 	emptyHost, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		results, callErr := frame.Call(empty.Value())
 		if callErr != nil || results != nil {
-			return frame.RaiseString("zero-result nested Call failed")
+			frame.ThrowString("zero-result nested Call failed")
 		}
 		return frame.Return()
 	})
@@ -1407,7 +1411,7 @@ func TestWarmFrameCallAllocationContract(t *testing.T) {
 	oneHost, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		results, callErr := frame.Call(one.Value())
 		if callErr != nil || len(results) != 1 {
-			return frame.RaiseString("one-result nested Call failed")
+			frame.ThrowString("one-result nested Call failed")
 		}
 		return frame.ReturnValue(results[0])
 	})

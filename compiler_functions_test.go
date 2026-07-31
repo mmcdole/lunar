@@ -22,7 +22,7 @@ func TestCompileSourceCapturesAndMutatesUpvalue(t *testing.T) {
 		t.Fatalf("child count = %d, want 1", len(prototype.children))
 	}
 	child := prototype.children[0]
-	if child.UpvalueCount() != 1 ||
+	if upvalueCount(child) != 1 ||
 		child.debug == nil ||
 		len(child.debug.upvalues) != 1 ||
 		child.debug.upvalues[0].text != "value" {
@@ -93,11 +93,11 @@ func TestCompileSourceDeduplicatesAndChainsUpvalues(t *testing.T) {
 	}
 	middle := prototype.children[0]
 	inner := middle.children[0]
-	if middle.UpvalueCount() != 1 || inner.UpvalueCount() != 1 {
+	if upvalueCount(middle) != 1 || upvalueCount(inner) != 1 {
 		t.Fatalf(
 			"upvalue counts = middle %d, inner %d; want 1 each",
-			middle.UpvalueCount(),
-			inner.UpvalueCount(),
+			upvalueCount(middle),
+			upvalueCount(inner),
 		)
 	}
 
@@ -213,8 +213,8 @@ func TestCompileSourceLocalFunctionIsRecursive(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	child := recursive.children[0]
-	if child.UpvalueCount() != 1 {
-		t.Fatalf("recursive child upvalues = %d, want 1", child.UpvalueCount())
+	if upvalueCount(child) != 1 {
+		t.Fatalf("recursive child upvalues = %d, want 1", upvalueCount(child))
 	}
 	closurePC := opcodeIndex(recursive.code, opClosure)
 	if closurePC < 0 ||
@@ -240,7 +240,7 @@ func TestCompileSourceLocalFunctionIsRecursive(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	child = initializer.children[0]
-	if child.UpvalueCount() != 0 ||
+	if upvalueCount(child) != 0 ||
 		opcodeIndex(child.code, opGetGlobal) < 0 {
 		t.Fatal("ordinary local initializer incorrectly captured its destination")
 	}
@@ -257,11 +257,11 @@ func TestCompileSourceNamedMethodAndUpvalueFunctionStores(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	child := prototype.children[0]
-	if child.ParameterCount() != 3 || !child.IsVararg() {
+	if parameterCount(child) != 3 || !isVararg(child) {
 		t.Fatalf(
 			"method metadata = %d parameters, vararg %v",
-			child.ParameterCount(),
-			child.IsVararg(),
+			parameterCount(child),
+			isVararg(child),
 		)
 	}
 	if child.varargFlags != varargHasArg|varargIsVararg {
@@ -298,7 +298,7 @@ func TestCompileSourceNamedMethodAndUpvalueFunctionStores(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	middle := upvalueStore.children[0]
-	if middle.UpvalueCount() != 1 ||
+	if upvalueCount(middle) != 1 ||
 		opcodeIndex(middle.code, opSetUpvalue) < 0 {
 		t.Fatal("named function did not store into an enclosing upvalue")
 	}
@@ -313,7 +313,7 @@ func TestCompileSourceFunctionParametersAndVarargIsolation(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	child := prototype.children[0]
-	if child.ParameterCount() != 2 ||
+	if parameterCount(child) != 2 ||
 		len(child.debug.locals) != 2 ||
 		child.debug.locals[0].name != child.debug.locals[1].name {
 		t.Fatal("duplicate parameter names were not retained as distinct locals")
@@ -331,7 +331,7 @@ func TestCompileSourceFunctionParametersAndVarargIsolation(t *testing.T) {
 		t.Fatal(syntaxError)
 	}
 	child = legacy.children[0]
-	if child.ParameterCount() != 0 ||
+	if parameterCount(child) != 0 ||
 		child.varargFlags !=
 			varargHasArg|varargIsVararg|varargNeedsArg ||
 		len(child.debug.locals) != 1 ||
@@ -406,7 +406,7 @@ func TestCompileSourceUsesLuaFunctionLineRanges(t *testing.T) {
 				)
 			}
 			closurePC := opcodeIndex(prototype.code, opClosure)
-			if got := prototype.LineAt(closurePC); got != test.closureLine {
+			if got := prototype.lineAt(closurePC); got != test.closureLine {
 				t.Fatalf(
 					"CLOSURE line = %d, want %d",
 					got,
@@ -415,7 +415,7 @@ func TestCompileSourceUsesLuaFunctionLineRanges(t *testing.T) {
 			}
 			if test.globalStoreLine != 0 {
 				storePC := opcodeIndex(prototype.code, opSetGlobal)
-				if got := prototype.LineAt(storePC); got != test.globalStoreLine {
+				if got := prototype.lineAt(storePC); got != test.globalStoreLine {
 					t.Fatalf(
 						"SETGLOBAL line = %d, want %d",
 						got,
@@ -552,7 +552,7 @@ func TestCompileSourcePlacesClosureValuesWithoutExtraPaths(t *testing.T) {
 		if syntaxError != nil {
 			t.Fatalf("%q: %v", source, syntaxError)
 		}
-		if prototype.ChildCount() == 0 ||
+		if childCount(prototype) == 0 ||
 			opcodeIndex(prototype.code, opClosure) < 0 {
 			t.Fatalf("%q emitted no closure", source)
 		}
@@ -609,7 +609,7 @@ func TestCompileSourceEnforcesFunctionLimitsAndGrammar(t *testing.T) {
 		if syntaxError != nil {
 			t.Fatalf("%d upvalues: %v", count, syntaxError)
 		}
-		if got := prototype.children[0].children[0].UpvalueCount(); got != count {
+		if got := upvalueCount(prototype.children[0].children[0]); got != count {
 			t.Fatalf("upvalue count = %d, want %d", got, count)
 		}
 	}

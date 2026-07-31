@@ -412,23 +412,7 @@ func (state *State) LoadString(
 	sourceName string,
 	source string,
 ) (*Function, error) {
-	return state.loadString(nil, sourceName, source)
-}
-
-// LoadStringContext loads source like LoadString while observing ctx during
-// compilation or binary decoding.
-//
-// A nil context returns ErrNilContext. Cancellation is returned as a *Error
-// categorized ContextError. The resulting Function does not retain ctx.
-func (state *State) LoadStringContext(
-	ctx context.Context,
-	sourceName string,
-	source string,
-) (*Function, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-	return state.loadString(ctx, sourceName, source)
+	return state.loadString(state.ambient, sourceName, source)
 }
 
 func (state *State) loadString(

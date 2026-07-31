@@ -27,10 +27,10 @@ func TestCompileAndLoadPrototypeAcrossStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	if err := first.SetRawGlobal("marker", Number(1)); err != nil {
+	if err := first.RawSetGlobal("marker", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.SetRawGlobal("marker", Number(2)); err != nil {
+	if err := second.RawSetGlobal("marker", Number(2)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -104,7 +104,7 @@ func TestLoadStringAcceptsBinaryChunksAndBoundsInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.SetRawGlobal("marker", Number(42)); err != nil {
+	if err := state.RawSetGlobal("marker", Number(42)); err != nil {
 		t.Fatal(err)
 	}
 	function, err := state.LoadString("@binary.luac", dumped)
@@ -266,7 +266,7 @@ func TestStateCallOneAndCallDiscardUseLuaResultAdjustment(t *testing.T) {
 call_count = call_count + 1
 return 41, 42, 43
 `)
-	if err := state.SetRawGlobal("call_count", Number(0)); err != nil {
+	if err := state.RawSetGlobal("call_count", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	result, err = state.CallOne(producer.Value())
@@ -491,7 +491,7 @@ func TestStateCallIntoHandlesOverlapAndShortDestination(t *testing.T) {
 side_effect = side_effect + 1
 return 1, 2, 3
 `)
-	if err := state.SetRawGlobal("side_effect", Number(0)); err != nil {
+	if err := state.RawSetGlobal("side_effect", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	destination := make([]Value, 2, 8)
@@ -609,8 +609,8 @@ func TestLoadPrototypeInitializesRootUpvalues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if function.UpvalueCount() != 2 {
-		t.Fatalf("loaded upvalue count = %d; want 2", function.UpvalueCount())
+	if upvalueCount(function) != 2 {
+		t.Fatalf("loaded upvalue count = %d; want 2", upvalueCount(function))
 	}
 	results, err := state.Call(function.Value())
 	if err != nil {
@@ -659,7 +659,7 @@ func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
 	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		number, ok := frame.Number(0)
 		if !ok {
-			return frame.ArgTypeError(0, NumberKind)
+			frame.ThrowArgTypeError(0, NumberKind)
 		}
 		second, _ := frame.Argument(1)
 		return frame.ReturnValues(
@@ -690,11 +690,11 @@ func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
 	}
 	callHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if _, ok := frame.Table(0); !ok {
-			return frame.ArgTypeError(0, TableKind)
+			frame.ThrowArgTypeError(0, TableKind)
 		}
 		number, ok := frame.Number(1)
 		if !ok {
-			return frame.ArgTypeError(1, NumberKind)
+			frame.ThrowArgTypeError(1, NumberKind)
 		}
 		second, _ := frame.Argument(2)
 		return frame.ReturnValues(Number(number+1), second)
@@ -719,7 +719,9 @@ func TestStateCallRunsNativeRootsAndNativeCallMetamethods(t *testing.T) {
 	assertTestValues(t, results, Number(9), state.String("metamethod"))
 
 	failing, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.RaiseString("native failure")
+		frame.ThrowString("native failure")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -750,7 +752,7 @@ func TestStateCallCleansRootExecutionAfterNativePanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("host", host.Value()); err != nil {
+	if err := state.RawSetGlobal("host", host.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@panic.lua", `
@@ -796,7 +798,7 @@ func TestStateCallRejectsNativeReentry(t *testing.T) {
 			callErr,
 			ErrRunning,
 		) {
-			return frame.RaiseString("nested call was not rejected")
+			frame.ThrowString("nested call was not rejected")
 		}
 		return frame.ReturnBool(true)
 	})
@@ -1295,7 +1297,7 @@ func TestStateCallIntoWarmFixedCallDoesNotAllocate(t *testing.T) {
 	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		number, ok := frame.Number(0)
 		if !ok {
-			return frame.ArgTypeError(0, NumberKind)
+			frame.ThrowArgTypeError(0, NumberKind)
 		}
 		return frame.ReturnNumber(number)
 	})
@@ -1344,7 +1346,7 @@ func BenchmarkStateCallBoundary(b *testing.B) {
 	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		number, ok := frame.Number(0)
 		if !ok {
-			return frame.ArgTypeError(0, NumberKind)
+			frame.ThrowArgTypeError(0, NumberKind)
 		}
 		return frame.ReturnNumber(number)
 	})

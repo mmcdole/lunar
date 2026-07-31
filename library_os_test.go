@@ -47,7 +47,7 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 	previous := make(map[string]Value, len(osLibraryFunctions))
 	for _, definition := range osLibraryFunctions {
 		want[definition.name] = FunctionKind
-		previous[definition.name] = library.RawGetString(definition.name)
+		previous[definition.name] = rawStr(library, definition.name)
 	}
 	assertTableSurface(t, library, want)
 
@@ -57,7 +57,7 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 	}
 	assertTestValues(t, results, Number(5))
 
-	if err := state.SetRawGlobal("os", Number(1)); err != nil {
+	if err := state.RawSetGlobal("os", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenOS(); err != nil {
@@ -77,7 +77,7 @@ func TestOpenOSInstallsFreshCanonicalLibrary(t *testing.T) {
 		t.Fatal("reopening did not replace the os table")
 	}
 	for name, old := range previous {
-		current := reopened.RawGetString(name)
+		current := rawStr(reopened, name)
 		if same, applicable := old.SameObject(
 			current,
 		); !applicable || same {
@@ -567,7 +567,9 @@ func TestOSExitAtExternalCoroutineAndContextBoundaries(t *testing.T) {
 		"@context-exit.lua",
 		`os.exit(52)`,
 	)
-	count, err = state.CallIntoContext(
+	count, err = callIntoCtx(
+		t,
+		state,
 		context.Background(),
 		contextExit.Value(),
 		nil,
@@ -605,12 +607,12 @@ func TestOSExitAndCancellationUseFirstObservedHostControl(t *testing.T) {
 			if !errors.As(nestedErr, &failure) {
 				panic("nested cancellation did not return *Error")
 			}
-			return frame.Reraise(failure)
+			return frame.reraise(failure)
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = state.CallContext(ctx, native.Value())
+		_, err = callCtx(t, state, ctx, native.Value())
 		var failure *Error
 		if !errors.As(err, &failure) ||
 			failure.Category() != ContextError ||
@@ -641,7 +643,7 @@ func TestOSExitAndCancellationUseFirstObservedHostControl(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = state.CallContext(ctx, native.Value())
+		_, err = callCtx(t, state, ctx, native.Value())
 		requireExitRequest(t, err, 62)
 		if errors.Is(err, context.Canceled) {
 			t.Fatalf("exit-before-cancel error = %#v; cancellation won", err)

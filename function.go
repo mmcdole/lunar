@@ -209,22 +209,6 @@ func (function *Function) Prototype() *Prototype {
 	return prototype
 }
 
-// UpvalueCount returns the fixed Lua upvalue or native capture count.
-func (function *Function) UpvalueCount() int {
-	object := function.runtimeObject()
-	if object == nil {
-		return 0
-	}
-	var count int
-	if object.prototype != nil {
-		count = int(object.prototype.upvalues)
-	} else if native := object.nativeBody(); native != nil {
-		count = len(native.captures)
-	}
-	runtime.KeepAlive(function)
-	return count
-}
-
 func (function *functionObject) nativeBody() *nativeFunctionData {
 	if function == nil ||
 		function.owner == nil ||

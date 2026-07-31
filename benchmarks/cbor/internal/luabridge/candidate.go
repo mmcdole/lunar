@@ -84,15 +84,15 @@ end
 		value, valuePresent := frame.Argument(1)
 		if !keyPresent || !valuePresent {
 			bridge.visitError = fmt.Errorf("iterator callback omitted key or value")
-			return frame.RaiseString(bridge.visitError.Error())
+			frame.ThrowString(bridge.visitError.Error())
 		}
 		if bridge.visit == nil {
 			bridge.visitError = fmt.Errorf("iterator callback ran outside traversal")
-			return frame.RaiseString(bridge.visitError.Error())
+			frame.ThrowString(bridge.visitError.Error())
 		}
 		if err := bridge.visit(key, value); err != nil {
 			bridge.visitError = err
-			return frame.RaiseString(err.Error())
+			frame.ThrowString(err.Error())
 		}
 		return frame.Return()
 	})
@@ -132,7 +132,7 @@ func (state *State) Global(name string) (Value, error) {
 }
 
 func (state *State) SetGlobal(name string, value Value) error {
-	return state.state.SetRawGlobal(name, value)
+	return state.state.RawSetGlobal(name, value)
 }
 
 func (state *State) PrependPackagePath(root string) error {
@@ -210,12 +210,11 @@ func (state *State) CallGlobalBool(name string) error {
 	var result [1]engine.Value
 	var count int
 	if state.guarded {
-		count, err = state.state.CallIntoContext(
-			context.Background(),
-			function,
-			nil,
-			result[:],
-		)
+		if setErr := state.state.SetContext(context.Background()); setErr != nil {
+			return setErr
+		}
+		defer func() { _ = state.state.RemoveContext() }()
+		count, err = state.state.CallInto(function, nil, result[:])
 	} else {
 		count, err = state.state.CallInto(function, nil, result[:])
 	}

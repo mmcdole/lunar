@@ -64,7 +64,7 @@ func (record debugActivation) currentLine() int {
 	if prototype == nil || pc < 0 {
 		return -1
 	}
-	return prototype.LineAt(pc)
+	return prototype.lineAt(pc)
 }
 
 // functionName recovers lua_getinfo's call-site name. The name belongs to the

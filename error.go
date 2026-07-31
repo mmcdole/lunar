@@ -24,6 +24,12 @@ const (
 	// ExitError identifies an os.exit request returned to the host. Lua
 	// protected calls do not catch it.
 	ExitError
+	// LimitError identifies a host ceiling configured through Options, such
+	// as MaxHeapBytes. Unlike ResourceError, which reports a limit Lua 5.1
+	// itself defines and a script may legitimately recover from, a host
+	// ceiling exists to be enforced against the script: Lua protected calls
+	// do not catch it, and it ends the outer operation.
+	LimitError
 )
 
 // ExitRequest reports that Lua called os.exit.
@@ -65,6 +71,36 @@ type TraceFrame struct {
 	// TailCalls is the number of frames eliminated immediately below this
 	// surviving frame by proper tail calls.
 	TailCalls uint32
+}
+
+// String renders one traceback entry the way Lua positions a frame:
+// "chunk.lua:12: in function 'name'". It never executes Lua and stays valid
+// after the owning State closes.
+func (entry TraceFrame) String() string {
+	location := entry.Source
+	if location == "" {
+		location = "?"
+	} else {
+		location = sourceID(location)
+	}
+	if entry.Line > 0 {
+		location = fmt.Sprintf("%s:%d", location, entry.Line)
+	}
+	switch {
+	case entry.Function != "":
+		location += fmt.Sprintf(": in function '%s'", entry.Function)
+	case entry.Source == "=[Go]":
+		location += ": in native function"
+	default:
+		location += ": in function <anonymous>"
+	}
+	if entry.TailCalls != 0 {
+		location += fmt.Sprintf(
+			" (+%d tail call(s))",
+			entry.TailCalls,
+		)
+	}
+	return location
 }
 
 // Error is a protected execution failure.
@@ -212,6 +248,19 @@ func newResourceError(format string, arguments ...any) *Error {
 	}
 }
 
+// newHeapLimitError reports Options.MaxHeapBytes enforcement. It is
+// deliberately not a ResourceError: a script must not be able to catch the
+// ceiling that bounds it and keep allocating.
+func newHeapLimitError() *Error {
+	const message = "heap limit exceeded"
+	return &Error{
+		value:              errorStringValue(message),
+		description:        message,
+		category:           LimitError,
+		sourcePositionable: true,
+	}
+}
+
 func newExitError(code int) *Error {
 	request := &ExitRequest{code: code}
 	message := fmt.Sprintf("exit requested with status %d", code)
@@ -229,7 +278,7 @@ func isHostControlFailure(failure *Error) bool {
 		return false
 	}
 	switch failure.category {
-	case ContextError, ExitError:
+	case ContextError, ExitError, LimitError:
 		return true
 	default:
 		return false
@@ -251,7 +300,7 @@ func executionErrorDescription(
 	message string,
 ) string {
 	source := sourceID(prototype.SourceName())
-	if line := prototype.LineAt(pc); line != 0 {
+	if line := prototype.lineAt(pc); line != 0 {
 		return fmt.Sprintf("%s:%d: %s", source, line, message)
 	}
 	return fmt.Sprintf("%s: %s", source, message)

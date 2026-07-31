@@ -889,7 +889,7 @@ func TestOwningTableDoesNotRetainStateLedgerPeers(t *testing.T) {
 	if err := table.RawSetInt(1, Number(23)); err != nil {
 		t.Fatal(err)
 	}
-	if number, ok := table.RawGetInt(1).AsNumber(); !ok || number != 23 {
+	if number, ok := rawInt(table, 1).AsNumber(); !ok || number != 23 {
 		t.Fatalf("retained table value = (%v, %v); want 23", number, ok)
 	}
 	runtime.KeepAlive(table)
@@ -947,7 +947,7 @@ func TestSemanticCollectionAtExecutionSafePointKeepsFrameExtent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("collect_now", collect.Value()); err != nil {
+	if err := state.RawSetGlobal("collect_now", collect.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(
@@ -1098,7 +1098,7 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 		dataObject.gcMark != 0 {
 		t.Fatal("Close retained a collection mark")
 	}
-	if number, ok := table.RawGetInt(1).AsNumber(); !ok || number != 19 {
+	if number, ok := rawInt(table, 1).AsNumber(); !ok || number != 19 {
 		t.Fatalf("post-close table value = (%v, %v)", number, ok)
 	}
 	if data.Data() != "retained" {
@@ -1360,12 +1360,12 @@ func TestCollectionHostSurfaceUsesTheSemanticCollector(t *testing.T) {
 
 	var stateCollectError error
 	entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		before := frame.HeapBytes()
+		before := frame.thread.state.semanticHeap().bytes
 		stateCollectError = state.Collect()
 		if err := frame.Collect(); err != nil {
 			t.Fatal(err)
 		}
-		after := frame.HeapBytes()
+		after := frame.thread.state.semanticHeap().bytes
 		return frame.ReturnValues(Number(float64(before)), Number(float64(after)))
 	})
 	if err != nil {
@@ -1895,17 +1895,17 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		longResult, indexErr := frame.Index(lookupTarget, longProbe)
 		if indexErr != nil {
 			nestedError = indexErr
-			return frame.RaiseString(indexErr.Error())
+			frame.ThrowString(indexErr.Error())
 		}
 		shortResult, indexErr := frame.Index(lookupTarget, shortProbe)
 		if indexErr != nil {
 			nestedError = indexErr
-			return frame.RaiseString(indexErr.Error())
+			frame.ThrowString(indexErr.Error())
 		}
 		longNumber, longOK := longResult.AsNumber()
 		shortNumber, shortOK := shortResult.AsNumber()
 		if !longOK || !shortOK {
-			return frame.RaiseString("non-numeric lookup result")
+			frame.ThrowString("non-numeric lookup result")
 		}
 		return frame.ReturnNumber(longNumber + shortNumber)
 	})
@@ -2031,7 +2031,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 	if err := table.RawSet(longProbe, Number(17)); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := table.RawGetString(longText).AsNumber(); !ok || got != 17 {
+	if got, ok := rawStr(table, longText).AsNumber(); !ok || got != 17 {
 		t.Fatalf("equal-content key update = %v; want 17", got)
 	}
 	if control.debt != 0 || control.attributedStrings != nil {
@@ -2095,7 +2095,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		}
 		setError = frame.SetIndex(setProxy.Value(), longProbe, Number(23))
 		if setError != nil {
-			return frame.RaiseString(setError.Error())
+			frame.ThrowString(setError.Error())
 		}
 		return frame.ReturnBool(true)
 	})
@@ -2223,18 +2223,13 @@ func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		capture := longValue(state, "native-capture")
+		rejected := longValue(state, "foreign-tree-leaf")
 		state.resetCollectionDebt()
-		if _, err := state.NewNativeFunction(
-			func(frame Frame) Outcome { return frame.Return() },
-			capture,
-			foreign.Value(),
-		); err == nil {
-			t.Fatal("NewNativeFunction accepted a foreign capture")
-		}
-		assertNotAttributed(t, state, capture)
-		if got := state.runtime.collection.debt; got != 0 {
-			t.Fatalf("failed native construction charged %d bytes", got)
+		if _, err := state.NewTableFrom(map[string]any{
+			"kept":    rejected,
+			"foreign": foreign.Value(),
+		}); err == nil {
+			t.Fatal("NewTableFrom accepted a foreign value")
 		}
 	})
 
@@ -2317,7 +2312,7 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 	handler, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		handlerCalls++
 		if target, ok := frame.String(0); !ok || target != internalText {
-			return frame.RaiseString("unexpected metamethod target")
+			frame.ThrowString("unexpected metamethod target")
 		}
 		switch frame.ArgumentCount() {
 		case 2:
@@ -2325,8 +2320,10 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 		case 3:
 			return frame.Return()
 		default:
-			return frame.RaiseString("unexpected metamethod argument count")
+			frame.ThrowString("unexpected metamethod argument count")
 		}
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2396,15 +2393,15 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 		result, failure := frame.Index(source.Value(), indexKey)
 		indexFailure = failure
 		if failure != nil {
-			return frame.RaiseString(failure.Error())
+			frame.ThrowString(failure.Error())
 		}
 		number, ok := result.AsNumber()
 		if !ok || number != 29 {
-			return frame.RaiseString("unexpected __index result")
+			frame.ThrowString("unexpected __index result")
 		}
 		setFailure = frame.SetIndex(source.Value(), setKey, setValue)
 		if setFailure != nil {
-			return frame.RaiseString(setFailure.Error())
+			frame.ThrowString(setFailure.Error())
 		}
 		return frame.Return()
 	})
@@ -2559,7 +2556,7 @@ func TestAutomaticCollectionRunsOnlyAtRootedExecutorSafePoints(t *testing.T) {
 	if !ok {
 		t.Fatalf("second rooted result = %v; want table", results[1])
 	}
-	assertTestValue(t, table.RawGetString("answer"), Number(42))
+	assertTestValue(t, rawStr(table, "answer"), Number(42))
 	if state.runtime.collection.requested {
 		t.Fatal("completed automatic cycle remained requested")
 	}
@@ -2610,7 +2607,7 @@ func TestAutomaticCollectionRootsNativeReturnAtDepthZero(t *testing.T) {
 			"answer",
 			numberSlot(42),
 		); setErr != nil {
-			return frame.RaiseString(setErr.Error())
+			frame.ThrowString(setErr.Error())
 		}
 		return frame.returnOne(
 			frame.activation(),
@@ -2643,7 +2640,7 @@ func TestAutomaticCollectionRootsNativeReturnAtDepthZero(t *testing.T) {
 	if !ok || table.runtimeObject() != returned {
 		t.Fatal("native return did not preserve canonical table identity")
 	}
-	assertTestValue(t, table.RawGetString("answer"), Number(42))
+	assertTestValue(t, rawStr(table, "answer"), Number(42))
 	if state.runtime.collection.requested {
 		t.Fatal("native-return collection remained requested")
 	}

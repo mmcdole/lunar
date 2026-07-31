@@ -19,94 +19,6 @@ func TestNativeFrameRepresentation(t *testing.T) {
 	}
 }
 
-func TestNativeFunctionConstructionAndCaptureOwnership(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-
-	table, err := state.NewTableWithCapacity(0, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	captures := []Value{Number(7), table.Value()}
-	function, err := state.NewNativeFunction(
-		func(frame Frame) Outcome {
-			return frame.Return()
-		},
-		captures...,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	captures[0] = Number(99)
-
-	if function.Prototype() != nil {
-		t.Fatal("native Function has a Prototype")
-	}
-	if function.UpvalueCount() != 2 {
-		t.Fatalf("capture count = %d; want 2", function.UpvalueCount())
-	}
-	object := function.runtimeObject()
-	if object.nativeBody() == nil {
-		t.Fatal("native Function did not retain its immutable executable kind")
-	}
-	body := object.nativeBody()
-	if got := body.captures[0].owningValue(); !rawEqual(got, Number(7)) {
-		t.Fatalf("capture 0 = %v; want 7", got)
-	}
-	if got, ok := body.captures[1].owningValue().AsTable(); !ok || got != table {
-		t.Fatalf("capture 1 = (%p, %v); want %p", got, ok, table)
-	}
-	environment, err := state.FunctionEnvironment(function)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if environment.runtimeObject() != state.main.globals {
-		t.Fatal("native Function did not use the State global environment")
-	}
-	if got, ok := function.Value().AsFunction(); !ok || got != function {
-		t.Fatal("native Function did not preserve canonical identity")
-	}
-
-	if _, err := state.NewNativeFunction(nil); !errors.Is(err, ErrInvalidNativeFunction) {
-		t.Fatalf("nil entry error = %v", err)
-	}
-	tooMany := make([]Value, maxNativeCaptures+1)
-	for index := range tooMany {
-		tooMany[index] = Nil()
-	}
-	if _, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-		tooMany...,
-	); !errors.Is(err, ErrNativeCaptureLimit) {
-		t.Fatalf("capture-limit error = %v", err)
-	}
-	if _, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-		Value{},
-	); !errors.Is(err, ErrInvalidValue) {
-		t.Fatalf("invalid capture error = %v", err)
-	}
-
-	foreign, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer foreign.Close()
-	foreignTable, err := foreign.NewTableWithCapacity(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-		foreignTable.Value(),
-	); !errors.Is(err, ErrForeignValue) {
-		t.Fatalf("foreign capture error = %v", err)
-	}
-}
-
 func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -132,11 +44,11 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 	var loaded *Function
 	var loadedPrototype *Function
 	constructor, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		if frame.Environment() != functionEnvironment {
-			return frame.RaiseString("callback lost its function environment")
+		if frame.activation().function.environment.owningHandle() != functionEnvironment {
+			frame.ThrowString("callback lost its function environment")
 		}
-		if frame.GlobalEnvironment() != threadEnvironment {
-			return frame.RaiseString("callback lost its thread environment")
+		if frame.thread.globals.owningHandle() != threadEnvironment {
+			frame.ThrowString("callback lost its thread environment")
 		}
 
 		var constructionErr error
@@ -146,22 +58,22 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 			},
 		)
 		if constructionErr != nil {
-			return frame.RaiseString(constructionErr.Error())
+			frame.ThrowString(constructionErr.Error())
 		}
 		createdData, constructionErr = state.NewUserData("created")
 		if constructionErr != nil {
-			return frame.RaiseString(constructionErr.Error())
+			frame.ThrowString(constructionErr.Error())
 		}
 		loaded, constructionErr = state.LoadString(
 			"@constructed.lua",
 			"return 42",
 		)
 		if constructionErr != nil {
-			return frame.RaiseString(constructionErr.Error())
+			frame.ThrowString(constructionErr.Error())
 		}
 		loadedPrototype, constructionErr = state.LoadPrototype(prototype)
 		if constructionErr != nil {
-			return frame.RaiseString(constructionErr.Error())
+			frame.ThrowString(constructionErr.Error())
 		}
 		return frame.Return()
 	})
@@ -179,7 +91,7 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetThreadEnvironment(thread, threadEnvironment); err != nil {
+	if err := setThreadEnvironment(thread, threadEnvironment); err != nil {
 		t.Fatal(err)
 	}
 	results, status, err := thread.Resume()
@@ -208,7 +120,7 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 			functionEnvironment,
 		)
 	}
-	if environment, environmentErr := state.UserDataEnvironment(
+	if environment, environmentErr := userDataEnvironment(
 		createdData,
 	); environmentErr != nil || environment != functionEnvironment {
 		t.Fatalf(
@@ -237,123 +149,6 @@ func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T)
 			environmentErr,
 			threadEnvironment,
 		)
-	}
-}
-
-func TestNativeFrameTypedArgumentsAndCaptures(t *testing.T) {
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer state.Close()
-
-	table, err := state.NewTableWithCapacity(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := state.NewUserData("payload")
-	if err != nil {
-		t.Fatal(err)
-	}
-	other, err := state.NewNativeFunction(
-		func(frame Frame) Outcome { return frame.Return() },
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var function *Function
-	function, err = state.NewNativeFunction(
-		func(frame Frame) Outcome {
-			if frame.ArgumentCount() != 8 {
-				t.Fatalf("argument count = %d; want 8", frame.ArgumentCount())
-			}
-			if frame.State() != state ||
-				frame.CurrentThread() != state.MainThread() {
-				t.Fatal("Frame did not expose its executing State and Thread")
-			}
-			if frame.Environment().runtimeObject() != state.main.globals {
-				t.Fatal("Frame did not expose its function environment")
-			}
-			if value, ok := frame.Bool(0); !ok || !value {
-				t.Fatalf("Bool(0) = (%v, %v)", value, ok)
-			}
-			if value, ok := frame.Number(1); !ok || value != 12.5 {
-				t.Fatalf("Number(1) = (%v, %v)", value, ok)
-			}
-			if value, ok := frame.String(2); !ok || value != "text" {
-				t.Fatalf("String(2) = (%q, %v)", value, ok)
-			}
-			if value, ok := frame.Table(3); !ok || value != table {
-				t.Fatalf("Table(3) = (%p, %v)", value, ok)
-			}
-			if value, ok := frame.Function(4); !ok || value != other {
-				t.Fatalf("Function(4) = (%p, %v)", value, ok)
-			}
-			if value, ok := frame.UserData(5); !ok || value != data {
-				t.Fatalf("UserData(5) = (%p, %v)", value, ok)
-			}
-			if value, ok := frame.Thread(6); !ok || value != state.MainThread() {
-				t.Fatalf("Thread(6) = (%p, %v)", value, ok)
-			}
-			if _, ok := frame.Number(0); ok {
-				t.Fatal("typed read coerced a boolean to a number")
-			}
-			if _, ok := frame.String(8); ok {
-				t.Fatal("missing argument passed an exact typed read")
-			}
-			explicitNil, present := frame.Argument(7)
-			if !present || !explicitNil.IsNil() || frame.Kind(7) != NilKind {
-				t.Fatal("explicit nil argument lost its Lua kind")
-			}
-			missing, present := frame.Argument(8)
-			if present || !missing.IsNil() || frame.Kind(8) != InvalidKind {
-				t.Fatal("missing argument did not retain no-value kind")
-			}
-			if frame.CaptureCount() != 2 {
-				t.Fatalf("capture count = %d; want 2", frame.CaptureCount())
-			}
-			if value, ok := frame.Capture(0).AsNumber(); !ok || value != 4 {
-				t.Fatalf("capture 0 = (%v, %v)", value, ok)
-			}
-			if value, ok := frame.Capture(1).AsString(); !ok || value != "old" {
-				t.Fatalf("capture 1 = (%q, %v)", value, ok)
-			}
-			frame.SetCapture(1, state.String("new"))
-			return frame.ReturnValues(
-				Number(17),
-				frame.Capture(1),
-			)
-		},
-		Number(4),
-		state.String("old"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	thread := stageNativeTestCall(
-		t,
-		state,
-		function,
-		allResults,
-		Bool(true),
-		Number(12.5),
-		state.String("text"),
-		table.Value(),
-		other.Value(),
-		data.Value(),
-		state.MainThread().Value(),
-		Nil(),
-	)
-	if failure := invokeNativeCall(thread); failure != nil {
-		t.Fatal(failure)
-	}
-	assertNativeTestResults(t, thread, Number(17), state.String("new"))
-	if value, ok := function.runtimeObject().
-		nativeBody().captures[1].owningValue().AsString(); !ok ||
-		value != "new" {
-		t.Fatalf("updated capture = (%q, %v)", value, ok)
 	}
 }
 
@@ -542,7 +337,7 @@ return 9, forward()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetRawGlobal("host", host.Value()); err != nil {
+			if err := state.RawSetGlobal("host", host.Value()); err != nil {
 				t.Fatal(err)
 			}
 			chunk := compileTestFunction(
@@ -658,7 +453,7 @@ func TestNativeFrameStringRoundTripChargesAtImport(t *testing.T) {
 			var ok bool
 			observed, ok = frame.String(0)
 			if !ok {
-				return frame.RaiseString("missing string argument")
+				frame.ThrowString("missing string argument")
 			}
 			return frame.ReturnValue(frame.State().String(observed))
 		},
@@ -789,7 +584,9 @@ func TestProtectedErrorImportsStateNeutralStringOnDemand(t *testing.T) {
 		value := state.String(strings.Repeat("uncaught-native-error-", 8))
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.Raise(value)
+				frame.Throw(value)
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
@@ -818,13 +615,15 @@ func TestProtectedErrorImportsStateNeutralStringOnDemand(t *testing.T) {
 		reference := stringRef{ref: compact.ref, bits: compact.bits}
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.Raise(value)
+				frame.Throw(value)
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("raise_host", function.Value()); err != nil {
+		if err := state.RawSetGlobal("raise_host", function.Value()); err != nil {
 			t.Fatal(err)
 		}
 		caller := mustLoadString(
@@ -874,7 +673,9 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		raised := state.String("native failure")
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.Raise(raised)
+				frame.Throw(raised)
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
@@ -903,7 +704,7 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
 				if _, ok := frame.Number(1); !ok {
-					return frame.ArgTypeError(1, NumberKind)
+					frame.ThrowArgTypeError(1, NumberKind)
 				}
 				return frame.Return()
 			},
@@ -931,7 +732,9 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		defer state.Close()
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.ArgError(0, "value must be positive")
+				frame.ThrowArgError(0, "value must be positive")
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
@@ -954,7 +757,9 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		defer state.Close()
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.RaiseString("native string failure")
+				frame.ThrowString("native string failure")
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
@@ -976,13 +781,15 @@ func TestNativeFrameRaisesProtectedErrors(t *testing.T) {
 		defer state.Close()
 		host, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
-				return frame.Raise(state.String("native traceback"))
+				frame.Throw(state.String("native traceback"))
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			},
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("host", host.Value()); err != nil {
+		if err := state.RawSetGlobal("host", host.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := compileTestFunction(t, state, "@native-trace.lua", `
@@ -1059,7 +866,9 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 			defer state.Close()
 			failing, err := state.NewNativeFunction(
 				func(frame Frame) Outcome {
-					return frame.RaiseString("continued native failure")
+					frame.ThrowString("continued native failure")
+					// Unreachable: the throw above does not return.
+					return Outcome{}
 				},
 			)
 			if err != nil {
@@ -1071,7 +880,7 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 				if tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				if tableErr = state.SetRawGlobal(
+				if tableErr = state.RawSetGlobal(
 					name,
 					table.Value(),
 				); tableErr != nil {
@@ -1117,7 +926,7 @@ func TestNativeErrorsUnwindEveryContinuationMode(t *testing.T) {
 				newTable("right")
 				install(test.event, left.Value())
 			case "":
-				if err := state.SetRawGlobal(
+				if err := state.RawSetGlobal(
 					"iterator",
 					failing.Value(),
 				); err != nil {
@@ -1449,7 +1258,7 @@ return result
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetRawGlobal("host", host.Value()); err != nil {
+			if err := state.RawSetGlobal("host", host.Value()); err != nil {
 				t.Fatal(err)
 			}
 			if test.indexMetamethod {
@@ -1473,7 +1282,7 @@ return result
 				); tableErr != nil {
 					t.Fatal(tableErr)
 				}
-				if tableErr = state.SetRawGlobal(
+				if tableErr = state.RawSetGlobal(
 					"target",
 					target.Value(),
 				); tableErr != nil {
@@ -1577,7 +1386,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 		if tableErr != nil {
 			t.Fatal(tableErr)
 		}
-		if tableErr = state.SetRawGlobal(name, table.Value()); tableErr != nil {
+		if tableErr = state.RawSetGlobal(name, table.Value()); tableErr != nil {
 			t.Fatal(tableErr)
 		}
 		return table
@@ -1590,7 +1399,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 		native(func(frame Frame) Outcome {
 			value, ok := frame.Number(1)
 			if !ok {
-				return frame.ArgTypeError(1, NumberKind)
+				frame.ThrowArgTypeError(1, NumberKind)
 			}
 			return frame.ReturnNumber(value + 1)
 		}),
@@ -1613,12 +1422,12 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 		native(func(frame Frame) Outcome {
 			target, ok := frame.Table(0)
 			if !ok {
-				return frame.ArgTypeError(0, TableKind)
+				frame.ThrowArgTypeError(0, TableKind)
 			}
 			key, _ := frame.Argument(1)
 			value, _ := frame.Argument(2)
 			if setErr := target.RawSet(key, value); setErr != nil {
-				return frame.Raise(state.String(setErr.Error()))
+				frame.Throw(state.String(setErr.Error()))
 			}
 			return frame.Return()
 		}),
@@ -1648,7 +1457,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("length_value", lengthValue.Value()); err != nil {
+	if err := state.RawSetGlobal("length_value", lengthValue.Value()); err != nil {
 		t.Fatal(err)
 	}
 	installMetamethod(
@@ -1679,7 +1488,7 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 	iterator := native(func(frame Frame) Outcome {
 		control, ok := frame.Number(1)
 		if !ok {
-			return frame.ArgTypeError(1, NumberKind)
+			frame.ThrowArgTypeError(1, NumberKind)
 		}
 		control++
 		if control > 3 {
@@ -1690,17 +1499,17 @@ func TestExecutorUsesNativeFunctionsAtEveryCallSeam(t *testing.T) {
 			Number(control*2),
 		)
 	})
-	if err := state.SetRawGlobal("iterator", iterator.Value()); err != nil {
+	if err := state.RawSetGlobal("iterator", iterator.Value()); err != nil {
 		t.Fatal(err)
 	}
 
 	method := native(func(frame Frame) Outcome {
 		if value, ok := frame.Table(0); !ok || value == nil {
-			return frame.ArgTypeError(0, TableKind)
+			frame.ThrowArgTypeError(0, TableKind)
 		}
 		number, ok := frame.Number(1)
 		if !ok {
-			return frame.ArgTypeError(1, NumberKind)
+			frame.ThrowArgTypeError(1, NumberKind)
 		}
 		return frame.ReturnNumber(number * 2)
 	})
@@ -1764,11 +1573,11 @@ func TestExecutorCallsAndTailCallsNativeFunctions(t *testing.T) {
 				func(frame Frame) Outcome {
 					left, leftOK := frame.Number(0)
 					if !leftOK {
-						return frame.ArgTypeError(0, NumberKind)
+						frame.ThrowArgTypeError(0, NumberKind)
 					}
 					right, rightOK := frame.Number(1)
 					if !rightOK {
-						return frame.ArgTypeError(1, NumberKind)
+						frame.ThrowArgTypeError(1, NumberKind)
 					}
 					return frame.ReturnNumber(left + right)
 				},
@@ -1776,7 +1585,7 @@ func TestExecutorCallsAndTailCallsNativeFunctions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetRawGlobal("host_add", add.Value()); err != nil {
+			if err := state.RawSetGlobal("host_add", add.Value()); err != nil {
 				t.Fatal(err)
 			}
 			chunk := compileTestFunction(t, state, "@native.lua", test.source)
@@ -1798,7 +1607,7 @@ func TestWarmNativeFrameCallDoesNotAllocate(t *testing.T) {
 		func(frame Frame) Outcome {
 			value, ok := frame.Number(0)
 			if !ok {
-				return frame.ArgTypeError(0, NumberKind)
+				frame.ThrowArgTypeError(0, NumberKind)
 			}
 			return frame.ReturnValues(
 				Number(value+1),
@@ -1858,7 +1667,7 @@ func BenchmarkExecutorNativeCall(b *testing.B) {
 		func(frame Frame) Outcome {
 			value, ok := frame.Number(0)
 			if !ok {
-				return frame.ArgTypeError(0, NumberKind)
+				frame.ThrowArgTypeError(0, NumberKind)
 			}
 			return frame.ReturnNumber(value + 1)
 		},
@@ -1904,7 +1713,6 @@ return value
 func BenchmarkNativeFrameOutcomes(b *testing.B) {
 	tests := []struct {
 		name     string
-		captures []Value
 		callback NativeFunc
 		results  int
 	}{
@@ -1929,10 +1737,9 @@ func BenchmarkNativeFrameOutcomes(b *testing.B) {
 			results: 2,
 		},
 		{
-			name:     "captured Value",
-			captures: []Value{Number(42)},
+			name: "closure Value",
 			callback: func(frame Frame) Outcome {
-				return frame.ReturnValue(frame.Capture(0))
+				return frame.ReturnValue(Number(42))
 			},
 			results: 1,
 		},
@@ -1947,10 +1754,7 @@ func BenchmarkNativeFrameOutcomes(b *testing.B) {
 			b.Cleanup(func() {
 				_ = state.Close()
 			})
-			function, err := state.NewNativeFunction(
-				test.callback,
-				test.captures...,
-			)
+			function, err := state.NewNativeFunction(test.callback)
 			if err != nil {
 				b.Fatal(err)
 			}

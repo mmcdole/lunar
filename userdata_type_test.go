@@ -75,7 +75,7 @@ func TestUserDataTypeRegistrationIsCanonicalAndPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value := registry.RawGetString("test.Record"); !value.IsNil() {
+	if value := rawStr(registry, "test.Record"); !value.IsNil() {
 		t.Fatalf("Lua registry exposed private type registration as %v", value)
 	}
 	collision, err := state.NewTable()

@@ -486,7 +486,7 @@ func TestExecutorNewIndexMetamethodSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("sink", sink.Value()); err != nil {
+	if err := state.RawSetGlobal("sink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	setter := compileTestFunction(t, state, "@setter.lua", `
@@ -535,14 +535,14 @@ return target, key, value
 		state.String("missing"),
 		Number(31),
 	)
-	assertTestSlot(t, slotFromValue(sink.RawGetInt(1)), target.Value())
+	assertTestSlot(t, slotFromValue(rawInt(sink, 1)), target.Value())
 	assertTestSlot(
 		t,
-		slotFromValue(sink.RawGetInt(2)),
+		slotFromValue(rawInt(sink, 2)),
 		state.String("missing"),
 	)
-	assertTestSlot(t, slotFromValue(sink.RawGetInt(3)), Number(31))
-	if got := target.RawGetString("missing"); !got.IsNil() {
+	assertTestSlot(t, slotFromValue(rawInt(sink, 3)), Number(31))
+	if got := rawStr(target, "missing"); !got.IsNil() {
 		t.Fatalf("setter handler also assigned target = %v", got)
 	}
 
@@ -562,7 +562,7 @@ return target, key, value
 		state.String("deleted"),
 		Nil(),
 	)
-	if got := sink.RawGetInt(3); !got.IsNil() {
+	if got := rawInt(sink, 3); !got.IsNil() {
 		t.Fatalf("nil setter argument = %v", got)
 	}
 
@@ -581,10 +581,10 @@ return target, key, value
 		Number(2),
 	)
 	assertExecutionReturned(t, result)
-	if got, ok := target.RawGetString("present").AsNumber(); !ok || got != 2 {
+	if got, ok := rawStr(target, "present").AsNumber(); !ok || got != 2 {
 		t.Fatalf("existing-key update = (%v, %v)", got, ok)
 	}
-	if got, _ := sink.RawGetInt(1).AsString(); got != "unchanged" {
+	if got, _ := rawInt(sink, 1).AsString(); got != "unchanged" {
 		t.Fatalf("existing-key update called __newindex: %q", got)
 	}
 
@@ -601,10 +601,10 @@ return target, key, value
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(7), Nil(), Number(9))
-	if got, ok := sink.RawGetInt(1).AsNumber(); !ok || got != 7 {
+	if got, ok := rawInt(sink, 1).AsNumber(); !ok || got != 7 {
 		t.Fatalf("scalar setter target = (%v, %v)", got, ok)
 	}
-	if got := sink.RawGetInt(2); !got.IsNil() {
+	if got := rawInt(sink, 2); !got.IsNil() {
 		t.Fatalf("scalar setter nil key = %v", got)
 	}
 
@@ -647,7 +647,7 @@ return invalid()
 		Number(44),
 	)
 	assertExecutionReturned(t, result)
-	if got, ok := proxy.RawGetString("delegated").AsNumber(); !ok ||
+	if got, ok := rawStr(proxy, "delegated").AsNumber(); !ok ||
 		got != 44 {
 		t.Fatalf("delegated setter result = (%v, %v)", got, ok)
 	}
@@ -667,13 +667,13 @@ return invalid()
 		Number(45),
 	)
 	assertExecutionReturned(t, result)
-	assertTestSlot(t, slotFromValue(sink.RawGetInt(1)), proxy.Value())
+	assertTestSlot(t, slotFromValue(rawInt(sink, 1)), proxy.Value())
 	assertTestSlot(
 		t,
-		slotFromValue(sink.RawGetInt(2)),
+		slotFromValue(rawInt(sink, 2)),
 		state.String("through proxy"),
 	)
-	assertTestSlot(t, slotFromValue(sink.RawGetInt(3)), Number(45))
+	assertTestSlot(t, slotFromValue(rawInt(sink, 3)), Number(45))
 }
 
 func TestExecutorTableMetamethodDelegationLimit(t *testing.T) {
@@ -780,9 +780,10 @@ func TestExecutorTableMetamethodDelegationLimit(t *testing.T) {
 						thread,
 						targets[0].Value(),
 					)
-					if got, ok := targets[len(targets)-1].
-						RawGetString("field").
-						AsNumber(); !ok || got != 88 {
+					if got, ok := rawStr(
+						targets[len(targets)-1],
+						"field",
+					).AsNumber(); !ok || got != 88 {
 						t.Fatalf(
 							"terminal set = (%v, %v)",
 							got,
@@ -843,7 +844,7 @@ return target
 		thread.frameExtent != 0 {
 		t.Fatal("setter failure retained execution state")
 	}
-	if got := target.RawGetString("missing"); !got.IsNil() {
+	if got := rawStr(target, "missing"); !got.IsNil() {
 		t.Fatalf("failed setter also assigned %v", got)
 	}
 	traceback := result.err.Traceback()
@@ -864,7 +865,7 @@ func TestExecutorNewIndexContinuationSupportsNestedAndTailCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("sink", sink.Value()); err != nil {
+	if err := state.RawSetGlobal("sink", sink.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := compileTestFunction(t, state, "@inner-setter.lua", `
@@ -892,7 +893,7 @@ sink[2] = value
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested", nested.Value()); err != nil {
+	if err := state.RawSetGlobal("nested", nested.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := compileTestFunction(t, state, "@outer-setter.lua", `
@@ -937,10 +938,10 @@ return target
 	assertExecutionValues(t, thread, target.Value())
 	assertTestSlot(
 		t,
-		slotFromValue(sink.RawGetInt(1)),
+		slotFromValue(rawInt(sink, 1)),
 		state.String("forwarded"),
 	)
-	assertTestSlot(t, slotFromValue(sink.RawGetInt(2)), Number(77))
+	assertTestSlot(t, slotFromValue(rawInt(sink, 2)), Number(77))
 	if len(thread.continuations) != 0 {
 		t.Fatal("nested setters retained continuations")
 	}
@@ -967,7 +968,7 @@ return relay(...)
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, target.Value())
-	if got := target.RawGetString("tail"); !got.IsNil() {
+	if got := rawStr(target, "tail"); !got.IsNil() {
 		t.Fatalf("tail-called setter also assigned %v", got)
 	}
 	if len(thread.continuations) != 0 {
@@ -1004,7 +1005,7 @@ return answer
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(42))
-	if got, ok := environment.RawGetString("answer").AsNumber(); !ok ||
+	if got, ok := rawStr(environment, "answer").AsNumber(); !ok ||
 		got != 42 {
 		t.Fatalf("custom environment answer = (%v, %v)", got, ok)
 	}
@@ -1098,7 +1099,7 @@ return answer
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, Number(64))
-	if got, ok := forwarded.RawGetString("forwarded").AsNumber(); !ok ||
+	if got, ok := rawStr(forwarded, "forwarded").AsNumber(); !ok ||
 		got != 64 {
 		t.Fatalf("forwarded global = (%v, %v)", got, ok)
 	}
@@ -1441,7 +1442,7 @@ func TestExecutorDecodesTableHintsAndExtendedSetList(t *testing.T) {
 		t.Fatal("extended SETLIST did not return a table")
 	}
 	index := (block-1)*fieldsPerFlush + 1
-	if got, ok := table.RawGetInt(index).AsNumber(); !ok || got != 55 {
+	if got, ok := rawInt(table, index).AsNumber(); !ok || got != 55 {
 		t.Fatalf("extended SETLIST[%d] = (%v, %v)", index, got, ok)
 	}
 }
@@ -1499,7 +1500,7 @@ return invalid()
 	)
 	assertExecutionReturned(t, result)
 	assertExecutionValues(t, thread, target.Value())
-	if got, ok := target.RawGetInt(1).AsNumber(); !ok || got != 91 {
+	if got, ok := rawInt(target, 1).AsNumber(); !ok || got != 91 {
 		t.Fatalf("raw SETLIST result = (%v, %v)", got, ok)
 	}
 }

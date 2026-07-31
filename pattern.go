@@ -100,7 +100,7 @@ func (state *matchState) reset(source, pattern string) {
 // bindContext makes matcher work cooperative with a context-aware call. Raw
 // calls leave thread nil, so their hot path pays only one predictable branch.
 func (state *matchState) bindContext(thread *threadObject) {
-	if thread == nil || thread.state.execution.done == nil {
+	if thread == nil || thread.state.ambientDone == nil {
 		return
 	}
 	state.thread = thread

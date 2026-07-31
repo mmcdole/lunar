@@ -41,7 +41,7 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 	}
 	previous := make(map[string]Value, len(tableLibraryFunctions))
 	for _, definition := range tableLibraryFunctions {
-		value := library.RawGetString(definition.name)
+		value := rawStr(library, definition.name)
 		if value.Kind() != FunctionKind {
 			t.Fatalf(
 				"table.%s = %v; want function",
@@ -84,7 +84,7 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 	}
 	assertTestValues(t, results, state.String("1-2-3"))
 
-	if err := state.SetRawGlobal("table", Number(1)); err != nil {
+	if err := state.RawSetGlobal("table", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenTable(); err != nil {
@@ -104,7 +104,7 @@ func TestTableLibraryInstallationAndSurface(t *testing.T) {
 		t.Fatal("reopening did not replace the table library")
 	}
 	for _, definition := range tableLibraryFunctions {
-		value := reopened.RawGetString(definition.name)
+		value := rawStr(reopened, definition.name)
 		if same, applicable := previous[definition.name].SameObject(
 			value,
 		); !applicable || same {
@@ -285,7 +285,7 @@ func TestTableLibrarySortReleasesExtraArgumentsBeforeComparator(
 	if !ok {
 		t.Fatalf("table = %v; want table", libraryValue)
 	}
-	sort := library.RawGetString("sort")
+	sort := rawStr(library, "sort")
 	arguments := []Value{
 		target.owningValue(),
 		comparator.Value(),

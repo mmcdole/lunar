@@ -293,7 +293,7 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 	if err := state.SetMetatable(operand.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("operand", operand.Value()); err != nil {
+	if err := state.RawSetGlobal("operand", operand.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -331,7 +331,7 @@ func TestRuntimeTypeErrorsDoNotNameDerivedMetamethodValues(t *testing.T) {
 	if err := state.SetMetatable(chained.Value(), chainMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("chained", chained.Value()); err != nil {
+	if err := state.RawSetGlobal("chained", chained.Value()); err != nil {
 		t.Fatal(err)
 	}
 	function, err = state.LoadString(
@@ -744,12 +744,14 @@ return setmetatable({},{
 				func(frame Frame) Outcome {
 					err := invoke(frame)
 					if !errors.As(err, &nested) {
-						return frame.RaiseString("nested call did not return *Error")
+						frame.ThrowString("nested call did not return *Error")
 					}
 					exposedBeforeReturn =
 						nested.value.Valid() &&
 							!nested.hasCompactValue
-					return frame.Reraise(nested)
+					frame.Rethrow(nested)
+					// Unreachable: the throw above does not return.
+					return Outcome{}
 				},
 			)
 			if err != nil {

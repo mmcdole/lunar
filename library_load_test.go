@@ -252,7 +252,7 @@ func TestBaseLoadPropagatesContextCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("cancelReader", reader.Value()); err != nil {
+	if err := state.RawSetGlobal("cancelReader", reader.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(
@@ -261,7 +261,7 @@ func TestBaseLoadPropagatesContextCancellation(t *testing.T) {
 		"@load-context.lua",
 		`return load(cancelReader)`,
 	)
-	results, callErr := state.CallContext(ctx, chunk.Value())
+	results, callErr := callCtx(t, state, ctx, chunk.Value())
 	if results != nil {
 		t.Fatalf("cancelled load returned %v", results)
 	}

@@ -81,7 +81,7 @@ return marker
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("marker", marker.Value()); err != nil {
+	if err := state.RawSetGlobal("marker", marker.Value()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.SetMetatable(data.Value(), metatable); err != nil {
@@ -295,19 +295,19 @@ return "bad"
 			t.Fatal(err)
 		}
 	}
-	if err := state.SetRawGlobal("expected_a", values[0].Value()); err != nil {
+	if err := state.RawSetGlobal("expected_a", values[0].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("expected_b", values[1].Value()); err != nil {
+	if err := state.RawSetGlobal("expected_b", values[1].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("expected_c", values[2].Value()); err != nil {
+	if err := state.RawSetGlobal("expected_c", values[2].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("joined", values[3].Value()); err != nil {
+	if err := state.RawSetGlobal("joined", values[3].Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("phase", Number(0)); err != nil {
+	if err := state.RawSetGlobal("phase", Number(0)); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `
@@ -404,16 +404,16 @@ return joined
 			t.Fatal(err)
 		}
 	}
-	if err := state.SetRawGlobal("meta", metatable.Value()); err != nil {
+	if err := state.RawSetGlobal("meta", metatable.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal(
+	if err := state.RawSetGlobal(
 		"replacement",
 		replacement.owningValue(),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("joined", values[3].Value()); err != nil {
+	if err := state.RawSetGlobal("joined", values[3].Value()); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `
@@ -482,10 +482,10 @@ return replacement
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("phase", Number(0)); err != nil {
+	if err := state.RawSetGlobal("phase", Number(0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("replacement", replacement.Value()); err != nil {
+	if err := state.RawSetGlobal("replacement", replacement.Value()); err != nil {
 		t.Fatal(err)
 	}
 	caller := compileTestFunction(t, state, "@concat.lua", `

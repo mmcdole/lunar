@@ -794,12 +794,12 @@ return value`)
 		)
 	}
 	controlPC := conditionJumps[0] - 1
-	if prototype.LineAt(controlPC) != 3 ||
-		prototype.LineAt(conditionJumps[0]) != 3 {
+	if prototype.lineAt(controlPC) != 3 ||
+		prototype.lineAt(conditionJumps[0]) != 3 {
 		t.Fatalf(
 			"condition lines = %d/%d, want 3/3\n%s",
-			prototype.LineAt(controlPC),
-			prototype.LineAt(conditionJumps[0]),
+			prototype.lineAt(controlPC),
+			prototype.lineAt(conditionJumps[0]),
 			formatControlCode(prototype),
 		)
 	}
@@ -812,10 +812,10 @@ return value`)
 			break
 		}
 	}
-	if escape < 0 || prototype.LineAt(escape) != 5 {
+	if escape < 0 || prototype.lineAt(escape) != 5 {
 		t.Fatalf(
 			"then-arm escape line = %d, want last body line 5\n%s",
-			prototype.LineAt(escape),
+			prototype.lineAt(escape),
 			formatControlCode(prototype),
 		)
 	}
@@ -879,10 +879,10 @@ func TestCompileSourceBuildsLongElseIfChainIteratively(t *testing.T) {
 			branches,
 		)
 	}
-	if prototype.RegisterCount() > 2 {
+	if registerCount(prototype) > 2 {
 		t.Fatalf(
 			"long chain register high-water = %d, want at most 2",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 	for pc, code := range prototype.code {
@@ -977,7 +977,7 @@ func formatControlCode(prototype *Prototype) string {
 		output.WriteString(" C=")
 		output.WriteString(strconv.Itoa(code.c()))
 		output.WriteString(" line=")
-		output.WriteString(strconv.Itoa(prototype.LineAt(pc)))
+		output.WriteString(strconv.Itoa(prototype.lineAt(pc)))
 		if code.opcode() == opJump {
 			output.WriteString(" target=")
 			output.WriteString(strconv.Itoa(pc + 1 + code.sbx()))

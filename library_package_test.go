@@ -67,7 +67,7 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertTestValue(t, registryLoaded.RawGetString("math"), mathValue)
+	assertTestValue(t, rawStr(registryLoaded, "math"), mathValue)
 
 	expectedPath, err := initialOSPackagePath()
 	if err != nil {
@@ -86,33 +86,33 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	}
 
 	for _, name := range []string{"loadlib", "seeall"} {
-		if value := library.RawGetString(name); value.Kind() != FunctionKind {
+		if value := rawStr(library, name); value.Kind() != FunctionKind {
 			t.Fatalf("package.%s = %v; want Function", name, value)
 		}
 	}
-	loadersValue := library.RawGetString("loaders")
+	loadersValue := rawStr(library, "loaders")
 	loaders, ok := loadersValue.AsTable()
 	if !ok {
 		t.Fatalf("package.loaders = %v; want Table", loadersValue)
 	}
 	for index := 1; index <= 2; index++ {
-		if value := loaders.RawGetInt(index); value.Kind() != FunctionKind {
+		if value := rawInt(loaders, index); value.Kind() != FunctionKind {
 			t.Fatalf("package.loaders[%d] = %v; want Function", index, value)
 		}
 	}
-	assertTestValue(t, loaders.RawGetInt(3), Nil())
-	if value := library.RawGetString("preload"); value.Kind() != TableKind {
+	assertTestValue(t, rawInt(loaders, 3), Nil())
+	if value := rawStr(library, "preload"); value.Kind() != TableKind {
 		t.Fatalf("package.preload = %v; want Table", value)
 	}
-	assertTestValue(t, library.RawGetString("loaded"), registryLoaded.Value())
-	assertTestValue(t, library.RawGetString("path"), state.String(expectedPath))
-	assertTestValue(t, library.RawGetString("cpath"), state.String(""))
+	assertTestValue(t, rawStr(library, "loaded"), registryLoaded.Value())
+	assertTestValue(t, rawStr(library, "path"), state.String(expectedPath))
+	assertTestValue(t, rawStr(library, "cpath"), state.String(""))
 	assertTestValue(
 		t,
-		library.RawGetString("config"),
+		rawStr(library, "config"),
 		state.String(string(os.PathSeparator)+"\n;\n?\n!\n-"),
 	)
-	assertTestValue(t, registryLoaded.RawGetString("package"), packageValue)
+	assertTestValue(t, rawStr(registryLoaded, "package"), packageValue)
 
 	for _, name := range []string{"require", "module"} {
 		value, globalErr := state.RawGlobal(name)
@@ -137,7 +137,7 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertTestValue(t, registryLoaded.RawGetString("table"), tableValue)
+	assertTestValue(t, rawStr(registryLoaded, "table"), tableValue)
 
 	marker, err := state.NewTableWithCapacity(0, 0)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldPackage := library
-	oldPreload, _ := library.RawGetString("preload").AsTable()
+	oldPreload, _ := rawStr(library, "preload").AsTable()
 	oldLoaders := loaders
 	oldRequire, _ := state.RawGlobal("require")
 
@@ -156,8 +156,8 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	}
 	newPackageValue, _ := state.RawGlobal("package")
 	newPackage, _ := newPackageValue.AsTable()
-	newPreload, _ := newPackage.RawGetString("preload").AsTable()
-	newLoaders, _ := newPackage.RawGetString("loaders").AsTable()
+	newPreload, _ := rawStr(newPackage, "preload").AsTable()
+	newLoaders, _ := rawStr(newPackage, "loaders").AsTable()
 	newRequire, _ := state.RawGlobal("require")
 	if newPackage == oldPackage || newLoaders == oldLoaders {
 		t.Fatal("OpenPackage reused a replaceable package object")
@@ -169,14 +169,14 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	if !applicable || sameRequire {
 		t.Fatal("OpenPackage reused the global require Function")
 	}
-	assertTestValue(t, newPackage.RawGetString("loaded"), registryLoaded.Value())
-	assertTestValue(t, registryLoaded.RawGetString("marker"), marker.Value())
+	assertTestValue(t, rawStr(newPackage, "loaded"), registryLoaded.Value())
+	assertTestValue(t, rawStr(registryLoaded, "marker"), marker.Value())
 	assertTestValue(
 		t,
-		registryLoaded.RawGetString("package"),
+		rawStr(registryLoaded, "package"),
 		newPackage.Value(),
 	)
-	assertTestValue(t, oldPackage.RawGetString("loaded"), registryLoaded.Value())
+	assertTestValue(t, rawStr(oldPackage, "loaded"), registryLoaded.Value())
 
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
@@ -293,14 +293,14 @@ return first==second,first.name,first.extra,calls,
 		t.Fatal(err)
 	}
 	sentinels, _ := sentinelsValue.AsTable()
-	sentinel, ok := sentinels.RawGetInt(1).AsUserData()
+	sentinel, ok := rawInt(sentinels, 1).AsUserData()
 	if !ok {
 		t.Fatal("failed module did not expose its userdata sentinel")
 	}
 	if err := sentinel.SetData("host mutation"); err != nil {
 		t.Fatal(err)
 	}
-	if environment, environmentErr := state.UserDataEnvironment(
+	if environment, environmentErr := userDataEnvironment(
 		sentinel,
 	); environmentErr != nil || environment != nil {
 		t.Fatalf(
@@ -489,8 +489,8 @@ return virtual,meta,writes
 
 	packageValue, _ := state.RawGlobal("package")
 	library, _ := packageValue.AsTable()
-	oldLoaded, _ := library.RawGetString("loaded").AsTable()
-	preload, _ := library.RawGetString("preload").AsTable()
+	oldLoaded, _ := rawStr(library, "loaded").AsTable()
+	preload, _ := rawStr(library, "preload").AsTable()
 	redirectLoader, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		return frame.ReturnNumber(94)
 	})
@@ -524,15 +524,15 @@ return virtual,meta,writes
 	assertTestValues(t, results, Number(94))
 	assertTestValue(
 		t,
-		redirectedLoaded.RawGetString("registry-redirect"),
+		rawStr(redirectedLoaded, "registry-redirect"),
 		Number(94),
 	)
 	assertTestValue(
 		t,
-		oldLoaded.RawGetString("registry-redirect"),
+		rawStr(oldLoaded, "registry-redirect"),
 		Nil(),
 	)
-	assertTestValue(t, library.RawGetString("loaded"), oldLoaded.Value())
+	assertTestValue(t, rawStr(library, "loaded"), oldLoaded.Value())
 }
 
 func TestPackageLuaSourceSearcherAndLoadLibStub(t *testing.T) {
@@ -593,7 +593,7 @@ func TestPackageLuaSourceSearcherAndLoadLibStub(t *testing.T) {
 	if err := state.OpenString(); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("fileMarker", Number(71)); err != nil {
+	if err := state.RawSetGlobal("fileMarker", Number(71)); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "?.lua") + ";" +
@@ -814,8 +814,8 @@ func TestPackageLuaLoaderPreservesResourceFailures(t *testing.T) {
 			err,
 		)
 	}
-	loaded, _ := library.RawGetString("loaded").AsTable()
-	assertTestValue(t, loaded.RawGetString("large"), Nil())
+	loaded, _ := rawStr(library, "loaded").AsTable()
+	assertTestValue(t, rawStr(loaded, "large"), Nil())
 }
 
 func TestPackageRequireCachedIsAllocationFree(t *testing.T) {
@@ -828,7 +828,7 @@ func TestPackageRequireCachedIsAllocationFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	library, _ := packageValue.AsTable()
-	preload, _ := library.RawGetString("preload").AsTable()
+	preload, _ := rawStr(library, "preload").AsTable()
 	loader, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		return frame.ReturnNumber(91)
 	})
@@ -890,7 +890,7 @@ func BenchmarkPackageRequireCached(b *testing.B) {
 	}
 	packageValue, _ := state.RawGlobal("package")
 	library, _ := packageValue.AsTable()
-	preload, _ := library.RawGetString("preload").AsTable()
+	preload, _ := rawStr(library, "preload").AsTable()
 	loader, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		return frame.ReturnNumber(1)
 	})

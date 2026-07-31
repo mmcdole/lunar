@@ -71,18 +71,21 @@ func TestFrameThrowFromHelperRaisesCatchableError(t *testing.T) {
 
 // Throw must complete a callback exactly as returning the matching Raise
 // would, so the two paths are compared on the same failure.
-func TestFrameThrowMatchesReturnedRaise(t *testing.T) {
+// A thrown failure and the sealed Outcome the runtime builds internally must
+// reach the native boundary identically. Throw delegates to the same private
+// raise the library paths return, so this pins that delegation.
+func TestFrameThrowMatchesSealedOutcome(t *testing.T) {
 	tests := []struct {
 		name    string
 		thrown  func(Frame)
-		raised  func(Frame) Outcome
+		sealed  func(Frame) Outcome
 		wantErr error
 	}{
 		{
 			name:   "string",
 			thrown: func(frame Frame) { frame.ThrowString("broken") },
-			raised: func(frame Frame) Outcome {
-				return frame.RaiseString("broken")
+			sealed: func(frame Frame) Outcome {
+				return frame.raiseString("broken")
 			},
 		},
 		{
@@ -90,28 +93,28 @@ func TestFrameThrowMatchesReturnedRaise(t *testing.T) {
 			thrown: func(frame Frame) {
 				frame.Throw(frame.State().String("as value"))
 			},
-			raised: func(frame Frame) Outcome {
-				return frame.Raise(frame.State().String("as value"))
+			sealed: func(frame Frame) Outcome {
+				return frame.raise(frame.State().String("as value"))
 			},
 		},
 		{
 			name:    "error",
 			thrown:  func(frame Frame) { frame.ThrowError(errTestHostFailure) },
-			raised:  func(frame Frame) Outcome { return frame.RaiseError(errTestHostFailure) },
+			sealed:  func(frame Frame) Outcome { return frame.raiseError(errTestHostFailure) },
 			wantErr: errTestHostFailure,
 		},
 		{
 			name:   "argument",
 			thrown: func(frame Frame) { frame.ThrowArgError(1, "must be positive") },
-			raised: func(frame Frame) Outcome {
-				return frame.ArgError(1, "must be positive")
+			sealed: func(frame Frame) Outcome {
+				return frame.argError(1, "must be positive")
 			},
 		},
 		{
 			name:   "argument type",
 			thrown: func(frame Frame) { frame.ThrowArgTypeError(0, NumberKind) },
-			raised: func(frame Frame) Outcome {
-				return frame.ArgTypeError(0, NumberKind)
+			sealed: func(frame Frame) Outcome {
+				return frame.argTypeError(0, NumberKind)
 			},
 		},
 	}
@@ -122,20 +125,20 @@ func TestFrameThrowMatchesReturnedRaise(t *testing.T) {
 				test.thrown(frame)
 				panic("Throw returned")
 			})
-			raisedFailure := runFailingCallback(t, test.raised)
+			sealedFailure := runFailingCallback(t, test.sealed)
 
-			if thrownFailure.Error() != raisedFailure.Error() {
+			if thrownFailure.Error() != sealedFailure.Error() {
 				t.Fatalf(
-					"thrown message = %q; raised message = %q",
+					"thrown message = %q; sealed message = %q",
 					thrownFailure.Error(),
-					raisedFailure.Error(),
+					sealedFailure.Error(),
 				)
 			}
-			if thrownFailure.Category() != raisedFailure.Category() {
+			if thrownFailure.Category() != sealedFailure.Category() {
 				t.Fatalf(
-					"thrown category = %v; raised category = %v",
+					"thrown category = %v; sealed category = %v",
 					thrownFailure.Category(),
-					raisedFailure.Category(),
+					sealedFailure.Category(),
 				)
 			}
 			if test.wantErr != nil && !errors.Is(thrownFailure, test.wantErr) {
@@ -197,7 +200,7 @@ func TestFrameThrowUnwindsToItsOwnBoundary(t *testing.T) {
 		outerResumed = true
 		var failure *Error
 		if !errors.As(callErr, &failure) {
-			return frame.RaiseString("nested error was not a *Error")
+			return frame.raiseString("nested error was not a *Error")
 		}
 		if !strings.Contains(failure.Error(), "inner failed") {
 			t.Errorf("nested failure = %q", failure.Error())

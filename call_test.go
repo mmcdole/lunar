@@ -160,9 +160,9 @@ func TestLuaCallBuildsLegacyArgOnlyWhenRequired(t *testing.T) {
 	if !ok {
 		t.Fatalf("legacy arg register = %v, want table", argValue)
 	}
-	assertTestValue(t, arg.RawGetInt(1), Nil())
-	assertTestValue(t, arg.RawGetInt(2), Number(40))
-	assertTestValue(t, arg.RawGetString("n"), Number(2))
+	assertTestValue(t, rawInt(arg, 1), Nil())
+	assertTestValue(t, rawInt(arg, 2), Number(40))
+	assertTestValue(t, rawStr(arg, "n"), Number(2))
 	thread.finishLuaCall(int(frame.base), 0)
 
 	modern := newTestLuaFunction(

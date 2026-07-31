@@ -67,15 +67,15 @@ func TestPrototypeSealOwnsCompactMetadata(t *testing.T) {
 	if first, last := prototype.LineRange(); first != 2 || last != 5 {
 		t.Fatalf("LineRange = (%d, %d)", first, last)
 	}
-	if prototype.ParameterCount() != 0 ||
-		prototype.RegisterCount() != 2 ||
-		prototype.UpvalueCount() != 1 ||
-		!prototype.IsVararg() ||
-		prototype.ChildCount() != 1 {
+	if parameterCount(prototype) != 0 ||
+		registerCount(prototype) != 2 ||
+		upvalueCount(prototype) != 1 ||
+		!isVararg(prototype) ||
+		childCount(prototype) != 1 {
 		t.Fatal("sealed metadata differs from its builder")
 	}
-	if prototype.LineAt(2) != 4 || prototype.LineAt(-1) != 0 ||
-		prototype.LineAt(len(code)) != 0 {
+	if prototype.lineAt(2) != 4 || prototype.lineAt(-1) != 0 ||
+		prototype.lineAt(len(code)) != 0 {
 		t.Fatal("LineAt returned invalid debug information")
 	}
 	if cap(prototype.code) != len(prototype.code) ||

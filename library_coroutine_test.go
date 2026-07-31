@@ -40,7 +40,7 @@ func TestCoroutineLibraryInstallationAndArgumentChecks(t *testing.T) {
 	}
 	oldFunctions := make(map[string]Value, len(coroutineLibraryFunctions))
 	for _, definition := range coroutineLibraryFunctions {
-		value := oldLibrary.RawGetString(definition.name)
+		value := rawStr(oldLibrary, definition.name)
 		if value.Kind() != FunctionKind {
 			t.Fatalf("coroutine.%s = %v; want function", definition.name, value)
 		}
@@ -53,7 +53,7 @@ func TestCoroutineLibraryInstallationAndArgumentChecks(t *testing.T) {
 	}
 	assertTestValues(t, results, state.String("suspended"))
 
-	if err := state.SetRawGlobal("coroutine", Number(1)); err != nil {
+	if err := state.RawSetGlobal("coroutine", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	// Lua 5.1's base-library opener includes the coroutine library. It must
@@ -73,7 +73,7 @@ func TestCoroutineLibraryInstallationAndArgumentChecks(t *testing.T) {
 		t.Fatal("reopening coroutine did not install a fresh table")
 	}
 	for _, definition := range coroutineLibraryFunctions {
-		value := newLibrary.RawGetString(definition.name)
+		value := rawStr(newLibrary, definition.name)
 		if value.Kind() != FunctionKind {
 			t.Fatalf("reopened coroutine.%s = %v; want function", definition.name, value)
 		}
@@ -88,7 +88,7 @@ func TestCoroutineLibraryInstallationAndArgumentChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("native_function", native.Value()); err != nil {
+	if err := state.RawSetGlobal("native_function", native.Value()); err != nil {
 		t.Fatal(err)
 	}
 	callable, err := state.NewTableWithCapacity(0, 0)
@@ -105,7 +105,7 @@ func TestCoroutineLibraryInstallationAndArgumentChecks(t *testing.T) {
 	if err := state.SetMetatable(callable.Value(), callableMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("callable", callable.Value()); err != nil {
+	if err := state.RawSetGlobal("callable", callable.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -357,17 +357,19 @@ func TestCoroutineResumeAndWrapPreserveErrorsAndValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("error_marker", marker.Value()); err != nil {
+	if err := state.RawSetGlobal("error_marker", marker.Value()); err != nil {
 		t.Fatal(err)
 	}
 	raiseValue, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		value, _ := frame.Argument(0)
-		return frame.Raise(value)
+		frame.Throw(value)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("raise_value", raiseValue.Value()); err != nil {
+	if err := state.RawSetGlobal("raise_value", raiseValue.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -495,7 +497,7 @@ func TestCoroutineNestedNativePanicRestoresExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("panic_in_child", panicking.Value()); err != nil {
+	if err := state.RawSetGlobal("panic_in_child", panicking.Value()); err != nil {
 		t.Fatal(err)
 	}
 	entry := mustLoadString(t, state, "@nested-panic.lua", `
@@ -628,7 +630,7 @@ end
 	if err := state.SetMetatable(target.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("yield_target", target.Value()); err != nil {
+	if err := state.RawSetGlobal("yield_target", target.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -685,7 +687,7 @@ end
 	if err := state.SetMetatable(callable.Value(), callableMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("yield_callable", callable.Value()); err != nil {
+	if err := state.RawSetGlobal("yield_callable", callable.Value()); err != nil {
 		t.Fatal(err)
 	}
 	results = runCoroutineLibraryChunk(t, state, "@allowed-yield.lua", `

@@ -185,7 +185,13 @@ func TestOSExecuteCancellationTerminatesAndReapsRoot(
 		pidResult <- waitForProcessIDs(pidPath, 5*time.Second)
 		cancel()
 	}()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	var failure *Error
 	if !errors.As(err, &failure) ||
 		failure.Category() != ContextError ||

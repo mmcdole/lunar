@@ -388,7 +388,9 @@ func TestFinalizerErrorConsumesCurrentAndPreservesQueue(t *testing.T) {
 	})
 	bad := newFinalizerFunction(state, func(frame Frame) Outcome {
 		order = append(order, "bad")
-		return frame.RaiseString("boom")
+		frame.ThrowString("boom")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	newFinalizerUserData(
 		state,
@@ -773,7 +775,9 @@ func TestFailingFinalizerMayLeaveCollectionStopped(t *testing.T) {
 
 	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
 		frame.thread.owner.collection.setStopped(true)
-		return frame.RaiseString("stopped")
+		frame.ThrowString("stopped")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	newFinalizerUserData(
 		state,
@@ -838,7 +842,9 @@ func TestPendingFinalizerGraphDoesNotDelayNewEligibility(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		return frame.RaiseString("stop")
+		frame.ThrowString("stop")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	newFinalizerUserData(
 		state,
@@ -910,7 +916,9 @@ func TestNoHandlerUserDataReachedOnlyFromPendingWorkFinalizesOnce(
 		); err != nil {
 			t.Fatal(err)
 		}
-		return frame.RaiseString("stop")
+		frame.ThrowString("stop")
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	newFinalizerUserData(
 		state,
@@ -1066,7 +1074,7 @@ func TestFinalizersPermitNestedCollectionAndDeferNewUserData(t *testing.T) {
 		nested := newFinalizerFunction(state, func(frame Frame) Outcome {
 			order = append(order, "new-enter")
 			if _, failure := frame.collectAndFinalize(); failure != nil {
-				return frame.Reraise(failure)
+				frame.Rethrow(failure)
 			}
 			order = append(order, "new-exit")
 			return frame.Return()
@@ -1156,10 +1164,10 @@ func TestFinalizersPermitNestedCollectionAndDeferNewUserData(t *testing.T) {
 				"large",
 				nilSlot,
 			); err != nil {
-				return frame.RaiseString(err.Error())
+				frame.ThrowString(err.Error())
 			}
 			if _, failure := frame.collectAndFinalize(); failure != nil {
-				return frame.Reraise(failure)
+				frame.Rethrow(failure)
 			}
 			nestedBaseline = state.runtime.collection.baseline
 			state.runtime.collection.pause = 300
@@ -1211,7 +1219,7 @@ func TestFinalizerCannotYieldAcrossTheCollectingFrame(t *testing.T) {
 	)
 	collector := newFinalizerFunction(state, func(frame Frame) Outcome {
 		if _, failure := frame.collectAndFinalize(); failure != nil {
-			return frame.Reraise(failure)
+			frame.Rethrow(failure)
 		}
 		return frame.Return()
 	})
@@ -1593,7 +1601,7 @@ func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
 		"@automatic-finalizer-trigger.lua",
 		`local scratch = {}; return 7`,
 	)
-	if err := state.SetRawGlobal("automatic_trigger", trigger.Value()); err != nil {
+	if err := state.RawSetGlobal("automatic_trigger", trigger.Value()); err != nil {
 		t.Fatal(err)
 	}
 	runner := mustLoadString(
@@ -1607,7 +1615,9 @@ func TestAutomaticFinalizerErrorIsCaughtAtTheTriggeringCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
-		return frame.Raise(marker.Value())
+		frame.Throw(marker.Value())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	metatable := newFinalizerMetatable(
 		t,
@@ -1735,7 +1745,7 @@ func TestStateCloseDrainsLuaFinalizersBeforeTeardown(t *testing.T) {
 		}
 		order = append(order, data.payload.(string))
 		if data.payload == "bad" {
-			return frame.RaiseString("ignored")
+			frame.ThrowString("ignored")
 		}
 		return frame.Return()
 	})
@@ -1886,7 +1896,7 @@ func TestStateCloseRunsExistingPendingWorkBeforeReachableUserData(
 		return newFinalizerFunction(state, func(frame Frame) Outcome {
 			order = append(order, name)
 			if fail {
-				return frame.RaiseString("stop")
+				frame.ThrowString("stop")
 			}
 			return frame.Return()
 		})
@@ -2036,7 +2046,7 @@ func TestFinalizerQueueDropsOversizedBackingAfterLastError(t *testing.T) {
 	handler := newFinalizerFunction(state, func(frame Frame) Outcome {
 		calls++
 		if calls == count {
-			return frame.RaiseString("last")
+			frame.ThrowString("last")
 		}
 		return frame.Return()
 	})

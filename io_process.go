@@ -145,11 +145,11 @@ func processFileOperationContext(
 	if handle == nil || handle.process == nil {
 		return nil
 	}
-	execution := &frame.thread.state.execution
-	if execution.done == nil {
+	state := frame.thread.state
+	if state.ambientDone == nil {
 		return nil
 	}
-	return execution.context
+	return state.ambient
 }
 
 func finishFileOperation(

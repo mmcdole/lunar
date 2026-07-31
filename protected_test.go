@@ -61,7 +61,7 @@ func TestProtectedFailureRemovesOnlyItsContinuations(t *testing.T) {
 	if err := state.SetMetatable(indexed.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("indexed", indexed.Value()); err != nil {
+	if err := state.RawSetGlobal("indexed", indexed.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,7 +71,7 @@ func TestProtectedFailureRemovesOnlyItsContinuations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("continuation_count", observer.Value()); err != nil {
+	if err := state.RawSetGlobal("continuation_count", observer.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,7 +96,7 @@ return 55
 	if err := state.SetMetatable(nestedIndex.Value(), nestedMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("nested_index", nestedIndex.Value()); err != nil {
+	if err := state.RawSetGlobal("nested_index", nestedIndex.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,10 +135,10 @@ func TestProtectedFailureRestoresEveryContinuationMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("continuation_count", observer.Value()); err != nil {
+	if err := state.RawSetGlobal("continuation_count", observer.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("failing_generator", failing.Value()); err != nil {
+	if err := state.RawSetGlobal("failing_generator", failing.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,7 +156,7 @@ func TestProtectedFailureRestoresEveryContinuationMode(t *testing.T) {
 	if err := state.SetMetatable(newIndexTarget.Value(), newIndexMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("newindex_target", newIndexTarget.Value()); err != nil {
+	if err := state.RawSetGlobal("newindex_target", newIndexTarget.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,10 +184,10 @@ func TestProtectedFailureRestoresEveryContinuationMode(t *testing.T) {
 	if err := state.SetMetatable(right.Value(), eventMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("left_operand", left.Value()); err != nil {
+	if err := state.RawSetGlobal("left_operand", left.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("right_operand", right.Value()); err != nil {
+	if err := state.RawSetGlobal("right_operand", right.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -255,7 +255,7 @@ func TestXPCallHandlerRunsOverTheLiveFailureStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("inspect_failure", handler.Value()); err != nil {
+	if err := state.RawSetGlobal("inspect_failure", handler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -323,7 +323,7 @@ return xpcall(
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetRawGlobal("panic_native", panicking.Value()); err != nil {
+			if err := state.RawSetGlobal("panic_native", panicking.Value()); err != nil {
 				t.Fatal(err)
 			}
 			chunk := mustLoadString(t, state, "@protected-panic.lua", test.source)
@@ -474,7 +474,7 @@ return xpcall(target, handler)
 	if err != nil {
 		t.Fatal(err)
 	}
-	valueLimit := prototype.RegisterCount() + 1
+	valueLimit := registerCount(prototype) + 1
 	state := newStateWithBase(t, Options{MaxValues: valueLimit})
 	defer state.Close()
 	chunk, err := state.LoadPrototype(prototype)
@@ -513,7 +513,7 @@ func TestNestedProtectedCallsRestoreNativeOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("native_target", target.Value()); err != nil {
+	if err := state.RawSetGlobal("native_target", target.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@nested-protected.lua", `
@@ -592,7 +592,7 @@ return xpcall(
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := state.SetRawGlobal(
+			if err := state.RawSetGlobal(
 				"raise_context",
 				raiser.Value(),
 			); err != nil {
@@ -649,7 +649,7 @@ func TestXPCallNativeHandlerCanReportNativeDepthOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("native_depth_handler", handler.Value()); err != nil {
+	if err := state.RawSetGlobal("native_depth_handler", handler.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@protected-native-depth.lua", `
@@ -693,7 +693,7 @@ func TestProtectedOpenResultsMayCrossTheCheckpointBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("many_results", producer.Value()); err != nil {
+	if err := state.RawSetGlobal("many_results", producer.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(
@@ -735,7 +735,7 @@ func TestCaughtFailureDoesNotCaptureATraceback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("raise_without_trace", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("raise_without_trace", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(
@@ -787,7 +787,7 @@ func protectedScratchLifetimeFixture(t *testing.T) (*State, <-chan struct{}) {
 	watch, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		table, ok := frame.Table(0)
 		if !ok {
-			return frame.ArgTypeError(0, TableKind)
+			frame.ThrowArgTypeError(0, TableKind)
 		}
 		runtime.SetFinalizer(table, func(*Table) {
 			collected <- struct{}{}
@@ -798,7 +798,7 @@ func protectedScratchLifetimeFixture(t *testing.T) (*State, <-chan struct{}) {
 		state.Close()
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("watch_scratch", watch.Value()); err != nil {
+	if err := state.RawSetGlobal("watch_scratch", watch.Value()); err != nil {
 		state.Close()
 		t.Fatal(err)
 	}
@@ -828,7 +828,7 @@ func TestXPCallReleasesDiscardedArgumentsBeforeCallingTarget(t *testing.T) {
 	makeWatched, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		table, tableErr := state.NewTableWithCapacity(0, 0)
 		if tableErr != nil {
-			return frame.RaiseString(tableErr.Error())
+			frame.ThrowString(tableErr.Error())
 		}
 		runtime.SetFinalizer(table, func(*Table) {
 			collected <- struct{}{}
@@ -854,10 +854,10 @@ func TestXPCallReleasesDiscardedArgumentsBeforeCallingTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("make_watched_extra", makeWatched.Value()); err != nil {
+	if err := state.RawSetGlobal("make_watched_extra", makeWatched.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("observe_discarded_extra", observe.Value()); err != nil {
+	if err := state.RawSetGlobal("observe_discarded_extra", observe.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -881,7 +881,7 @@ func TestWarmPCallSuccessDoesNotAllocate(t *testing.T) {
 	defer state.Close()
 
 	target := mustLoadString(t, state, "@protected-target.lua", `return ...`)
-	if err := state.SetRawGlobal("protected_target", target.Value()); err != nil {
+	if err := state.RawSetGlobal("protected_target", target.Value()); err != nil {
 		t.Fatal(err)
 	}
 	caller := mustLoadString(
@@ -935,10 +935,10 @@ func TestWarmCaughtFailurePlumbingDoesNotAllocate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("prebuilt_raise", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("prebuilt_raise", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("prebuilt_handler", handler.Value()); err != nil {
+	if err := state.RawSetGlobal("prebuilt_handler", handler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -987,7 +987,7 @@ func BenchmarkBasePCall(b *testing.B) {
 	state := newStateWithBase(b, Options{})
 	defer state.Close()
 	target := mustLoadString(b, state, "@benchmark-target.lua", `return ...`)
-	if err := state.SetRawGlobal("benchmark_target", target.Value()); err != nil {
+	if err := state.RawSetGlobal("benchmark_target", target.Value()); err != nil {
 		b.Fatal(err)
 	}
 	caller := mustLoadString(
@@ -1033,10 +1033,10 @@ func BenchmarkBaseXPCallCaught(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := state.SetRawGlobal("benchmark_raise", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("benchmark_raise", raiser.Value()); err != nil {
 		b.Fatal(err)
 	}
-	if err := state.SetRawGlobal("benchmark_handler", handler.Value()); err != nil {
+	if err := state.RawSetGlobal("benchmark_handler", handler.Value()); err != nil {
 		b.Fatal(err)
 	}
 	caller := mustLoadString(

@@ -273,14 +273,14 @@ func benchmarkLuaToGoScalarLunar(b *testing.B) {
 		left, leftOK := frame.Number(0)
 		right, rightOK := frame.Number(1)
 		if !leftOK || !rightOK {
-			return frame.RaiseString("host_add expects two numbers")
+			frame.ThrowString("host_add expects two numbers")
 		}
 		return frame.ReturnNumber(left + right)
 	})
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := state.SetRawGlobal("host_add", hostAdd.Value()); err != nil {
+	if err := state.RawSetGlobal("host_add", hostAdd.Value()); err != nil {
 		b.Fatal(err)
 	}
 	function := loadLunarFunctionInState(b, state, callbackCallSource)

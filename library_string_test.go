@@ -55,7 +55,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	// surface and must be the same canonical Function as gmatch.
 	want["gfind"] = true
 	for name := range want {
-		value := library.RawGetString(name)
+		value := rawStr(library, name)
 		if value.Kind() != FunctionKind {
 			t.Fatalf("string.%s = %v; want function", name, value)
 		}
@@ -98,7 +98,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	if metatable == nil {
 		t.Fatal("OpenString did not install a string metatable")
 	}
-	if same, applicable := metatable.RawGetString("__index").SameObject(
+	if same, applicable := rawStr(metatable, "__index").SameObject(
 		libraryValue,
 	); !applicable || !same {
 		t.Fatal("__index is not the string library")
@@ -116,7 +116,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	assertTestValues(t, results, state.String("ABC"))
 
 	// Reopening replaces the table, every Function, and the metatable.
-	if err := state.SetRawGlobal("string", Number(1)); err != nil {
+	if err := state.RawSetGlobal("string", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenString(); err != nil {
@@ -137,7 +137,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	}
 	for name := range want {
 		if same, applicable := previous[name].SameObject(
-			reopened.RawGetString(name),
+			rawStr(reopened, name),
 		); !applicable || same {
 			t.Fatalf("reopened string.%s is not a fresh Function", name)
 		}
@@ -149,7 +149,7 @@ func TestStringLibraryInstallationAndSurface(t *testing.T) {
 	if reopenedMetatable == metatable {
 		t.Fatal("reopening did not replace the string metatable")
 	}
-	if same, applicable := reopenedMetatable.RawGetString(
+	if same, applicable := rawStr(reopenedMetatable,
 		"__index",
 	).SameObject(reopenedValue); !applicable || !same {
 		t.Fatal("reopened __index is not the reopened library")
@@ -402,7 +402,13 @@ func TestStringPatternMatchingCooperatesWithContextCancellation(t *testing.T) {
 	timer := time.AfterFunc(5*time.Millisecond, cancel)
 	defer timer.Stop()
 	started := time.Now()
-	_, err := state.CallContext(ctx, chunk.Value())
+	_, err := func() ([]Value, error) {
+		if setErr := state.SetContext(ctx); setErr != nil {
+			t.Fatalf("SetContext: %v", setErr)
+		}
+		defer func() { _ = state.RemoveContext() }()
+		return state.Call(chunk.Value())
+	}()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("pattern cancellation = %v; want context.Canceled", err)
 	}

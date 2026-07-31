@@ -206,7 +206,7 @@ func TestRecursiveCollectionDuringCloseUsesShutdownResourcePolicy(
 	}
 	collector := newFinalizerFunction(state, func(frame Frame) Outcome {
 		if _, failure := frame.collectAndFinalize(); failure != nil {
-			return frame.Reraise(failure)
+			frame.Rethrow(failure)
 		}
 		return frame.Return()
 	})
@@ -521,7 +521,7 @@ func closeStateWithManagedResource(
 	runtime.SetFinalizer(unrelated, func(*Table) {
 		collected <- struct{}{}
 	})
-	if err := state.SetRawGlobal("unrelated", unrelated.Value()); err != nil {
+	if err := state.RawSetGlobal("unrelated", unrelated.Value()); err != nil {
 		panic(err)
 	}
 	object, err := state.newManagedUserData(
@@ -532,7 +532,7 @@ func closeStateWithManagedResource(
 		panic(err)
 	}
 	retained := object.owningHandle()
-	if err := state.SetUserDataEnvironment(retained, nil); err != nil {
+	if err := setUserDataEnvironment(retained, nil); err != nil {
 		panic(err)
 	}
 	if err := state.Close(); err != nil {

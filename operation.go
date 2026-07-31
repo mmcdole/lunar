@@ -1,10 +1,5 @@
 package lua
 
-import (
-	"context"
-	"math"
-)
-
 type luaOperation uint8
 
 const (
@@ -13,69 +8,15 @@ const (
 	luaToStringOperation
 	luaLengthOperation
 	luaEqualOperation
-	luaLessThanOperation
-	luaLessEqualOperation
-	luaConcatOperation
-	// The arithmetic operations stay contiguous and ordered like Operator
-	// so arithmeticOperation can map between them by offset.
-	luaAddOperation
-	luaSubtractOperation
-	luaMultiplyOperation
-	luaDivideOperation
-	luaModuloOperation
-	luaPowerOperation
-	luaNegateOperation
 	luaOperationCount
 )
 
 var luaOperationEntries = [...]NativeFunc{
-	luaIndexOperation:     luaIndexOperationEntry,
-	luaSetIndexOperation:  luaSetIndexOperationEntry,
-	luaToStringOperation:  luaToStringOperationEntry,
-	luaLengthOperation:    luaLengthOperationEntry,
-	luaEqualOperation:     luaEqualOperationEntry,
-	luaLessThanOperation:  luaLessThanOperationEntry,
-	luaLessEqualOperation: luaLessEqualOperationEntry,
-	luaConcatOperation:    luaConcatOperationEntry,
-	luaAddOperation:       arithmeticOperationEntry(AddOperator),
-	luaSubtractOperation:  arithmeticOperationEntry(SubtractOperator),
-	luaMultiplyOperation:  arithmeticOperationEntry(MultiplyOperator),
-	luaDivideOperation:    arithmeticOperationEntry(DivideOperator),
-	luaModuloOperation:    arithmeticOperationEntry(ModuloOperator),
-	luaPowerOperation:     arithmeticOperationEntry(PowerOperator),
-	luaNegateOperation:    arithmeticOperationEntry(NegateOperator),
-}
-
-func arithmeticOperation(operator Operator) luaOperation {
-	return luaAddOperation + luaOperation(operator)
-}
-
-func arithmeticOperationEntry(operator Operator) NativeFunc {
-	return func(frame Frame) Outcome {
-		left, leftPresent := frame.argument(0)
-		right, rightPresent := frame.argument(1)
-		if !leftPresent || !rightPresent {
-			panic("lua: invalid Arith operation invocation")
-		}
-		result, failure := frame.arithSlots(left, right, operator, false)
-		if failure != nil {
-			return frame.sealError(failure)
-		}
-		return frame.returnOne(frame.activation(), result)
-	}
-}
-
-func luaConcatOperationEntry(frame Frame) Outcome {
-	left, leftPresent := frame.argument(0)
-	right, rightPresent := frame.argument(1)
-	if !leftPresent || !rightPresent {
-		panic("lua: invalid Concat operation invocation")
-	}
-	result, failure := frame.concatSlots(left, right, false)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	return frame.returnOne(frame.activation(), result)
+	luaIndexOperation:    luaIndexOperationEntry,
+	luaSetIndexOperation: luaSetIndexOperationEntry,
+	luaToStringOperation: luaToStringOperationEntry,
+	luaLengthOperation:   luaLengthOperationEntry,
+	luaEqualOperation:    luaEqualOperationEntry,
 }
 
 func luaIndexOperationEntry(frame Frame) Outcome {
@@ -141,44 +82,7 @@ func luaEqualOperationEntry(frame Frame) Outcome {
 	return frame.ReturnBool(result)
 }
 
-func luaLessThanOperationEntry(frame Frame) Outcome {
-	left, leftPresent := frame.argument(0)
-	right, rightPresent := frame.argument(1)
-	if !leftPresent || !rightPresent {
-		panic("lua: invalid LessThan operation invocation")
-	}
-	result, failure := frame.orderSlots(
-		left,
-		right,
-		luaLessThanOperation,
-		false,
-	)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	return frame.ReturnBool(result)
-}
-
-func luaLessEqualOperationEntry(frame Frame) Outcome {
-	left, leftPresent := frame.argument(0)
-	right, rightPresent := frame.argument(1)
-	if !leftPresent || !rightPresent {
-		panic("lua: invalid LessEqual operation invocation")
-	}
-	result, failure := frame.orderSlots(
-		left,
-		right,
-		luaLessEqualOperation,
-		false,
-	)
-	if failure != nil {
-		return frame.sealError(failure)
-	}
-	return frame.ReturnBool(result)
-}
-
 func (state *State) runLuaOperation(
-	ctx context.Context,
 	operation luaOperation,
 	arguments []Value,
 	destination []Value,
@@ -203,7 +107,6 @@ func (state *State) runLuaOperation(
 		state.operationBridges[operation] = function
 	}
 	_, count, err := state.callMain(
-		ctx,
 		function.owningValue(),
 		arguments,
 		destination,
@@ -214,13 +117,11 @@ func (state *State) runLuaOperation(
 }
 
 func (state *State) luaOperationValue(
-	ctx context.Context,
 	operation luaOperation,
 	arguments []Value,
 ) (Value, error) {
 	var destination [1]Value
 	count, err := state.runLuaOperation(
-		ctx,
 		operation,
 		arguments,
 		destination[:],
@@ -235,11 +136,10 @@ func (state *State) luaOperationValue(
 }
 
 func (state *State) luaOperationBool(
-	ctx context.Context,
 	operation luaOperation,
 	arguments []Value,
 ) (bool, error) {
-	result, err := state.luaOperationValue(ctx, operation, arguments)
+	result, err := state.luaOperationValue(operation, arguments)
 	if err != nil {
 		return false, err
 	}
@@ -256,19 +156,7 @@ func (state *State) luaOperationBool(
 // execute Lua. Use Frame.Index from a native callback.
 func (state *State) Index(target, key Value) (Value, error) {
 	arguments := [2]Value{target, key}
-	return state.luaOperationValue(nil, luaIndexOperation, arguments[:])
-}
-
-// IndexContext applies Index while making ctx available to executing Lua.
-func (state *State) IndexContext(
-	ctx context.Context,
-	target, key Value,
-) (Value, error) {
-	if ctx == nil {
-		return Value{}, ErrNilContext
-	}
-	arguments := [2]Value{target, key}
-	return state.luaOperationValue(ctx, luaIndexOperation, arguments[:])
+	return state.luaOperationValue(luaIndexOperation, arguments[:])
 }
 
 // SetIndex applies an ordinary Lua assignment on the main Thread.
@@ -278,29 +166,6 @@ func (state *State) IndexContext(
 func (state *State) SetIndex(target, key, value Value) error {
 	arguments := [3]Value{target, key, value}
 	count, err := state.runLuaOperation(
-		nil,
-		luaSetIndexOperation,
-		arguments[:],
-		nil,
-	)
-	if err == nil && count != 0 {
-		panic("lua: SetIndex operation returned a result")
-	}
-	return err
-}
-
-// SetIndexContext applies SetIndex while making ctx available to executing
-// Lua.
-func (state *State) SetIndexContext(
-	ctx context.Context,
-	target, key, value Value,
-) error {
-	if ctx == nil {
-		return ErrNilContext
-	}
-	arguments := [3]Value{target, key, value}
-	count, err := state.runLuaOperation(
-		ctx,
 		luaSetIndexOperation,
 		arguments[:],
 		nil,
@@ -318,32 +183,6 @@ func (state *State) SetIndexContext(
 func (state *State) ToString(value Value) (string, error) {
 	arguments := [1]Value{value}
 	result, err := state.luaOperationValue(
-		nil,
-		luaToStringOperation,
-		arguments[:],
-	)
-	if err != nil {
-		return "", err
-	}
-	text, ok := result.AsString()
-	if !ok {
-		panic("lua: ToString operation returned a non-string")
-	}
-	return text, nil
-}
-
-// ToStringContext applies ToString while making ctx available to executing
-// Lua.
-func (state *State) ToStringContext(
-	ctx context.Context,
-	value Value,
-) (string, error) {
-	if ctx == nil {
-		return "", ErrNilContext
-	}
-	arguments := [1]Value{value}
-	result, err := state.luaOperationValue(
-		ctx,
 		luaToStringOperation,
 		arguments[:],
 	)
@@ -360,97 +199,22 @@ func (state *State) ToStringContext(
 // Len applies Lua's length operator and preserves an arbitrary __len result.
 func (state *State) Len(value Value) (Value, error) {
 	arguments := [1]Value{value}
-	return state.luaOperationValue(nil, luaLengthOperation, arguments[:])
-}
-
-// LenContext applies Len while making ctx available to executing Lua.
-func (state *State) LenContext(
-	ctx context.Context,
-	value Value,
-) (Value, error) {
-	if ctx == nil {
-		return Value{}, ErrNilContext
-	}
-	arguments := [1]Value{value}
-	return state.luaOperationValue(ctx, luaLengthOperation, arguments[:])
+	return state.luaOperationValue(luaLengthOperation, arguments[:])
 }
 
 // Equal applies ordinary Lua equality, including __eq where applicable.
 func (state *State) Equal(left, right Value) (bool, error) {
 	arguments := [2]Value{left, right}
-	return state.luaOperationBool(nil, luaEqualOperation, arguments[:])
-}
-
-// EqualContext applies Equal while making ctx available to executing Lua.
-func (state *State) EqualContext(
-	ctx context.Context,
-	left, right Value,
-) (bool, error) {
-	if ctx == nil {
-		return false, ErrNilContext
-	}
-	arguments := [2]Value{left, right}
-	return state.luaOperationBool(ctx, luaEqualOperation, arguments[:])
-}
-
-// LessThan applies Lua's < operation.
-func (state *State) LessThan(left, right Value) (bool, error) {
-	arguments := [2]Value{left, right}
-	return state.luaOperationBool(nil, luaLessThanOperation, arguments[:])
-}
-
-// LessThanContext applies LessThan while making ctx available to executing
-// Lua.
-func (state *State) LessThanContext(
-	ctx context.Context,
-	left, right Value,
-) (bool, error) {
-	if ctx == nil {
-		return false, ErrNilContext
-	}
-	arguments := [2]Value{left, right}
-	return state.luaOperationBool(ctx, luaLessThanOperation, arguments[:])
-}
-
-// LessEqual applies Lua's <= operation, including Lua 5.1's reversed __lt
-// fallback when no shared __le handler exists.
-func (state *State) LessEqual(left, right Value) (bool, error) {
-	arguments := [2]Value{left, right}
-	return state.luaOperationBool(nil, luaLessEqualOperation, arguments[:])
-}
-
-// LessEqualContext applies LessEqual while making ctx available to executing
-// Lua.
-func (state *State) LessEqualContext(
-	ctx context.Context,
-	left, right Value,
-) (bool, error) {
-	if ctx == nil {
-		return false, ErrNilContext
-	}
-	arguments := [2]Value{left, right}
-	return state.luaOperationBool(ctx, luaLessEqualOperation, arguments[:])
+	return state.luaOperationBool(luaEqualOperation, arguments[:])
 }
 
 // Global applies ordinary Lua indexing to the main Thread's global
 // environment.
 func (state *State) Global(name string) (Value, error) {
-	return state.global(nil, name)
-}
-
-// GlobalContext applies Global while making ctx available to executing Lua.
-func (state *State) GlobalContext(
-	ctx context.Context,
-	name string,
-) (Value, error) {
-	if ctx == nil {
-		return Value{}, ErrNilContext
-	}
-	return state.global(ctx, name)
+	return state.global(name)
 }
 
 func (state *State) global(
-	ctx context.Context,
 	name string,
 ) (Value, error) {
 	if err := state.checkOpen(); err != nil {
@@ -460,30 +224,16 @@ func (state *State) global(
 		state.main.globals.owningValue(),
 		state.String(name),
 	}
-	return state.luaOperationValue(ctx, luaIndexOperation, arguments[:])
+	return state.luaOperationValue(luaIndexOperation, arguments[:])
 }
 
 // SetGlobal applies an ordinary Lua assignment to the main Thread's global
 // environment.
 func (state *State) SetGlobal(name string, value Value) error {
-	return state.setGlobal(nil, name, value)
-}
-
-// SetGlobalContext applies SetGlobal while making ctx available to executing
-// Lua.
-func (state *State) SetGlobalContext(
-	ctx context.Context,
-	name string,
-	value Value,
-) error {
-	if ctx == nil {
-		return ErrNilContext
-	}
-	return state.setGlobal(ctx, name, value)
+	return state.setGlobal(name, value)
 }
 
 func (state *State) setGlobal(
-	ctx context.Context,
 	name string,
 	value Value,
 ) error {
@@ -496,7 +246,6 @@ func (state *State) setGlobal(
 		value,
 	}
 	count, err := state.runLuaOperation(
-		ctx,
 		luaSetIndexOperation,
 		arguments[:],
 		nil,
@@ -676,126 +425,6 @@ func (frame Frame) equalSlots(
 		return false, failure
 	}
 	return truthySlot(result), nil
-}
-
-// LessThan applies Lua's < operation from a native callback.
-func (frame Frame) LessThan(left, right Value) (bool, error) {
-	return frame.order(left, right, luaLessThanOperation)
-}
-
-// LessEqual applies Lua's <= operation from a native callback.
-func (frame Frame) LessEqual(left, right Value) (bool, error) {
-	return frame.order(left, right, luaLessEqualOperation)
-}
-
-func (frame Frame) order(
-	left, right Value,
-	operation luaOperation,
-) (bool, error) {
-	frame.activation()
-	if failure := frame.thread.state.execution.pendingExit; failure != nil {
-		return false, failure.exposeValue()
-	}
-	if err := frame.thread.owner.accept(left); err != nil {
-		return false, err
-	}
-	if err := frame.thread.owner.accept(right); err != nil {
-		return false, err
-	}
-	result, failure := frame.orderSlots(
-		slotFromValue(left),
-		slotFromValue(right),
-		operation,
-		true,
-	)
-	if failure != nil {
-		return false, failure.exposeValue()
-	}
-	return result, nil
-}
-
-func (frame Frame) orderSlots(
-	left, right slot,
-	operation luaOperation,
-	admitArguments bool,
-) (bool, *Error) {
-	leftKind := left.kind()
-	rightKind := right.kind()
-	if leftKind != rightKind {
-		return false, libraryFailure(
-			frame,
-			"attempt to compare %s with %s",
-			leftKind,
-			rightKind,
-		)
-	}
-	switch leftKind {
-	case NumberKind:
-		leftNumber := math.Float64frombits(left.bits)
-		rightNumber := math.Float64frombits(right.bits)
-		if operation == luaLessEqualOperation {
-			return leftNumber <= rightNumber, nil
-		}
-		return leftNumber < rightNumber, nil
-	case StringKind:
-		leftText := stringSlotText(left)
-		rightText := stringSlotText(right)
-		if operation == luaLessEqualOperation {
-			return leftText <= rightText, nil
-		}
-		return leftText < rightText, nil
-	}
-
-	event := metaLessThan
-	if operation == luaLessEqualOperation {
-		event = metaLessEqual
-	}
-	method, found := matchingMetamethod(
-		frame.thread,
-		left,
-		right,
-		event,
-	)
-	invert := false
-	if !found && operation == luaLessEqualOperation {
-		method, found = matchingMetamethod(
-			frame.thread,
-			right,
-			left,
-			metaLessThan,
-		)
-		if found {
-			left, right = right, left
-			invert = true
-		}
-	}
-	if !found {
-		return false, libraryFailure(
-			frame,
-			"attempt to compare two %s values",
-			leftKind,
-		)
-	}
-	arguments := [2]slot{left, right}
-	var result slot
-	var failure *Error
-	if admitArguments {
-		result, failure = frame.callBoundaryCompactOne(
-			method,
-			arguments[:],
-			compactCallAdmission(0)|compactCallAdmission(1),
-		)
-	} else {
-		result, failure = frame.callCompactOne(method, arguments[:])
-	}
-	if failure != nil {
-		return false, failure
-	}
-	ordered := truthySlot(result)
-	if invert {
-		ordered = !ordered
-	}
-	return ordered, nil
 }
 
 // Global applies ordinary Lua indexing to the executing Thread's global

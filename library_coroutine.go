@@ -69,7 +69,7 @@ func coroutineCreate(frame Frame) Outcome {
 		slotFromFunctionObject(function),
 	)
 	if err != nil {
-		return frame.RaiseString(err.Error())
+		return frame.raiseString(err.Error())
 	}
 	return frame.returnOne(frame.activation(), slotFromThreadObject(thread))
 }
@@ -150,14 +150,14 @@ func coroutineWrap(frame Frame) Outcome {
 		slotFromFunctionObject(function),
 	)
 	if err != nil {
-		return frame.RaiseString(err.Error())
+		return frame.raiseString(err.Error())
 	}
 	wrapper, err := frame.thread.state.newNativeFunctionObject(
 		coroutineWrappedResume,
 		[]slot{slotFromThreadObject(thread)},
 	)
 	if err != nil {
-		return frame.RaiseString(err.Error())
+		return frame.raiseString(err.Error())
 	}
 	return frame.returnOne(
 		frame.activation(),
@@ -214,7 +214,7 @@ func nativeCallerPrefix(frame Frame) string {
 	if !found {
 		return ""
 	}
-	line := prototype.LineAt(pc)
+	line := prototype.lineAt(pc)
 	if line == 0 {
 		return ""
 	}

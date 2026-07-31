@@ -236,7 +236,7 @@ func TestPublicPackageLoadingAndOrdinaryNativeAssignment(t *testing.T) {
 		key, _ := frame.Argument(1)
 		value, _ := frame.Argument(2)
 		if err := frame.SetIndex(table, key, value); err != nil {
-			return frame.RaiseString(err.Error())
+			frame.ThrowString(err.Error())
 		}
 		return frame.Return()
 	})

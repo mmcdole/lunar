@@ -78,11 +78,11 @@ func ExampleState_NewNativeFunction() {
 	add, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 		left, ok := frame.Number(0)
 		if !ok {
-			return frame.ArgTypeError(0, lua.NumberKind)
+			frame.ThrowArgTypeError(0, lua.NumberKind)
 		}
 		right, ok := frame.Number(1)
 		if !ok {
-			return frame.ArgTypeError(1, lua.NumberKind)
+			frame.ThrowArgTypeError(1, lua.NumberKind)
 		}
 		return frame.ReturnNumber(left + right)
 	})
@@ -121,7 +121,7 @@ func ExampleFrame_IntegerInRange() {
 	describe, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 		label, ok := frame.CoerceString(0)
 		if !ok {
-			return frame.ArgTypeError(
+			frame.ThrowArgTypeError(
 				0,
 				lua.StringKind,
 				lua.NumberKind,
@@ -132,7 +132,7 @@ func ExampleFrame_IntegerInRange() {
 		if !frame.IsMissingOrNil(1) {
 			limit, ok = frame.IntegerInRange(1, 1, 100)
 			if !ok {
-				return frame.ArgError(
+				frame.ThrowArgError(
 					1,
 					"integer from 1 through 100 expected",
 				)
@@ -179,7 +179,7 @@ func ExampleNewUserDataType() {
 			"add": func(frame lua.Frame) lua.Outcome {
 				counter, ok := counterType.FromArgument(frame, 0)
 				if !ok {
-					return frame.ArgError(
+					frame.ThrowArgError(
 						0,
 						counterType.Name()+" expected",
 					)
@@ -192,7 +192,7 @@ func ExampleNewUserDataType() {
 						1_000,
 					)
 					if !ok {
-						return frame.ArgError(
+						frame.ThrowArgError(
 							1,
 							"bounded integer expected",
 						)
@@ -216,13 +216,13 @@ func ExampleNewUserDataType() {
 		func(frame lua.Frame) lua.Outcome {
 			initial, ok := frame.Integer(0)
 			if !ok {
-				return frame.ArgTypeError(0, lua.NumberKind)
+				frame.ThrowArgTypeError(0, lua.NumberKind)
 			}
 			counter, createErr := counterType.New(
 				&exampleCounter{value: initial},
 			)
 			if createErr != nil {
-				return frame.RaiseError(createErr)
+				frame.ThrowError(createErr)
 			}
 			return frame.ReturnValue(counter.Value())
 		},

@@ -722,8 +722,10 @@ func TestTableNextErrors(t *testing.T) {
 	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := table.Next(Nil()); !errors.Is(err, ErrClosed) {
-		t.Fatalf("closed table Next error = %v, want ErrClosed", err)
+	// Next reads a closed State's table as the frozen snapshot Close leaves
+	// behind, matching RawGet and the other raw readers.
+	if _, _, _, err := table.Next(Nil()); err != nil {
+		t.Fatalf("closed table Next error = %v; want a readable snapshot", err)
 	}
 }
 
@@ -997,7 +999,7 @@ func BenchmarkTableRawInteger(b *testing.B) {
 		if err := table.RawSetInt(1, Number(float64(index))); err != nil {
 			b.Fatal(err)
 		}
-		runtime.KeepAlive(table.RawGetInt(1))
+		runtime.KeepAlive(rawInt(table, 1))
 	}
 }
 
@@ -1020,7 +1022,7 @@ func BenchmarkTableRawString(b *testing.B) {
 		if err := table.RawSetString("field", Number(float64(index))); err != nil {
 			b.Fatal(err)
 		}
-		runtime.KeepAlive(table.RawGetString("field"))
+		runtime.KeepAlive(rawStr(table, "field"))
 	}
 }
 

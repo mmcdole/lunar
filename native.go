@@ -66,18 +66,14 @@ type Frame struct {
 	depth  int
 }
 
-// NewNativeFunction constructs a canonical native Function with optional
-// captured Values.
+// NewNativeFunction constructs a canonical native Function.
 //
 // Its initial environment is the currently executing Function's environment,
-// or the main Thread's global environment outside a callback.
-//
-// Captures are copied into the Function's compact private storage. Reference
-// Values must belong to state; immutable strings and scalar Values are
-// State-neutral.
+// or the main Thread's global environment outside a callback. State to carry
+// alongside the function belongs in the Go closure; an owning Value held that
+// way keeps its Lua object reachable.
 func (state *State) NewNativeFunction(
 	entry NativeFunc,
-	captures ...Value,
 ) (*Function, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err
@@ -85,40 +81,13 @@ func (state *State) NewNativeFunction(
 	if entry == nil {
 		return nil, ErrInvalidNativeFunction
 	}
-	compact, err := state.compactNativeCaptures(captures)
-	if err != nil {
-		return nil, err
-	}
 	function := newNativeFunctionOwned(
 		state,
 		state.constructionEnvironment(),
 		entry,
-		compact,
+		nil,
 	)
 	return function.owningHandle(), nil
-}
-
-func (state *State) compactNativeCaptures(
-	captures []Value,
-) ([]slot, error) {
-	if len(captures) > maxNativeCaptures {
-		return nil, ErrNativeCaptureLimit
-	}
-	for _, capture := range captures {
-		if err := state.runtime.accept(capture); err != nil {
-			return nil, err
-		}
-	}
-	if len(captures) == 0 {
-		return nil, nil
-	}
-	compact := make([]slot, len(captures))
-	for index, capture := range captures {
-		compact[index] = state.runtime.importAcceptedSlot(
-			slotFromValue(capture),
-		)
-	}
-	return compact, nil
 }
 
 func (state *State) newNativeFunctionObject(
@@ -353,52 +322,13 @@ func (frame Frame) CurrentThread() *Thread {
 	return frame.thread.owningHandle()
 }
 
-// Environment returns the executing native Function's Lua 5.1 environment.
-func (frame Frame) Environment() *Table {
-	return frame.environmentObject().owningHandle()
-}
-
 func (frame Frame) environmentObject() *tableObject {
 	return frame.activation().function.environment
-}
-
-// GlobalEnvironment returns the executing Thread's Lua 5.1 global
-// environment. It can differ from Environment after setfenv(0, table).
-func (frame Frame) GlobalEnvironment() *Table {
-	return frame.globalEnvironmentObject().owningHandle()
 }
 
 func (frame Frame) globalEnvironmentObject() *tableObject {
 	frame.activation()
 	return frame.thread.globals
-}
-
-// CaptureCount returns the native Function's fixed capture count.
-func (frame Frame) CaptureCount() int {
-	call := frame.activation()
-	return len(call.function.nativeBodyUnchecked().captures)
-}
-
-// Capture returns captured Value index. An out-of-range index is a
-// programming error.
-func (frame Frame) Capture(index int) Value {
-	return frame.nativeCapture(index).owningValue()
-}
-
-// SetCapture replaces captured Value index.
-//
-// An invalid, foreign, or out-of-range Value is a programming error.
-func (frame Frame) SetCapture(index int, value Value) {
-	call := frame.activation()
-	frame.checkCaptureIndex(call.function, index)
-	compact, err := frame.thread.owner.importValue(value)
-	if err != nil {
-		panic(err)
-	}
-	writeSlot(
-		&call.function.nativeBodyUnchecked().captures[index],
-		compact,
-	)
 }
 
 // Return completes the callback without results.
@@ -681,8 +611,7 @@ func (frame Frame) YieldArguments() Outcome {
 	return frame.sealYield(argumentCount)
 }
 
-// Raise completes the callback with an arbitrary Lua error Value.
-func (frame Frame) Raise(value Value) Outcome {
+func (frame Frame) raise(value Value) Outcome {
 	frame.activation()
 	if err := frame.thread.owner.accept(value); err != nil {
 		panic(err)
@@ -707,16 +636,7 @@ func (frame Frame) raiseCompact(value slot) Outcome {
 	})
 }
 
-// RaiseString completes the callback with a string Lua error.
-func (frame Frame) RaiseString(message string) Outcome {
-	frame.activation()
-	return frame.raiseString(message)
-}
-
-// ArgError completes the callback with a Lua argument error.
-//
-// index is zero-based. It may name a missing argument.
-func (frame Frame) ArgError(index int, reason string) Outcome {
+func (frame Frame) argError(index int, reason string) Outcome {
 	frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
@@ -728,12 +648,7 @@ func (frame Frame) ArgError(index int, reason string) Outcome {
 	))
 }
 
-// ArgTypeError completes the callback with a Lua argument-type error.
-//
-// index is zero-based and may name a missing argument. At least one distinct
-// expected kind is required. InvalidKind and values outside the Kind range are
-// programming errors.
-func (frame Frame) ArgTypeError(index int, expected ...Kind) Outcome {
+func (frame Frame) argTypeError(index int, expected ...Kind) Outcome {
 	call := frame.activation()
 	if index < 0 {
 		panic("lua: negative native argument index")
@@ -768,7 +683,7 @@ func (frame Frame) ArgTypeError(index int, expected ...Kind) Outcome {
 	if index < count {
 		actual = frame.thread.values[int(call.base)+index].kind().String()
 	}
-	return frame.ArgError(index, fmt.Sprintf(
+	return frame.argError(index, fmt.Sprintf(
 		"%s expected, got %s",
 		expectedText,
 		actual,
@@ -777,58 +692,63 @@ func (frame Frame) ArgTypeError(index int, expected ...Kind) Outcome {
 
 // Throw raises an arbitrary Lua error Value and does not return.
 //
-// Throw is the unwinding form of Raise. Raise must be returned by the
-// NativeFunc itself, so a helper called by that function cannot use it;
-// Throw abandons the Go stack instead and may be called from any depth
-// inside the callback. The two are otherwise identical: Throw completes
-// the callback exactly as returning the corresponding Raise would.
+// A native callback ends in exactly one of three ways: it returns a Return*
+// Outcome, it returns a Yield* Outcome, or it throws. Throwing rather than
+// returning a failure lets a helper called at any depth inside the callback
+// report the error, which is where argument checks usually live.
 //
-// Throw unwinds with a private panic that Lunar recovers at the native
-// call boundary. Host code between the Throw and the NativeFunc must not
-// recover it; a deferred recover that swallows unknown panics will strand
-// the callback and is reported as an invalid outcome.
+// Throw unwinds with a private panic that Lunar recovers at the native call
+// boundary, so the thrown callback reaches that boundary in the same state a
+// returned one would. Host code between the Throw and the NativeFunc must not
+// recover it; a deferred recover that swallows unknown panics strands the
+// callback and is reported as an invalid outcome.
+//
+// Throw and its siblings return nothing, so they are written as statements.
+// A guard clause reads "if !ok { frame.ThrowArgTypeError(0, lua.StringKind) }"
+// and the callback continues below it only when the check passed.
 func (frame Frame) Throw(value Value) {
-	frame.throw(frame.Raise(value))
+	frame.throw(frame.raise(value))
 }
 
-// ThrowString raises a string Lua error and does not return. It is the
-// unwinding form of RaiseString; see Throw.
+// ThrowString raises a string Lua error and does not return. See Throw.
 func (frame Frame) ThrowString(message string) {
-	frame.throw(frame.RaiseString(message))
+	frame.activation()
+	frame.throw(frame.raiseString(message))
 }
 
-// ThrowError raises err as a Lua error and does not return. It is the
-// unwinding form of RaiseError; see Throw.
-func (frame Frame) ThrowError(err error) {
-	frame.throw(frame.RaiseError(err))
-}
-
-// Rethrow reraises a *Error returned by a nested Frame operation and does
-// not return. It is the unwinding form of Reraise; see Throw.
-func (frame Frame) Rethrow(failure *Error) {
-	frame.throw(frame.Reraise(failure))
-}
-
-// ThrowArgError raises a Lua argument error and does not return. It is the
-// unwinding form of ArgError; see Throw.
+// ThrowError raises err as a Lua error and does not return.
 //
-// index is zero-based. It may name a missing argument.
+// The Go error is preserved as the cause, so errors.Is and errors.As still
+// find it on the *Error a protected caller receives. See Throw.
+func (frame Frame) ThrowError(err error) {
+	frame.throw(frame.raiseError(err))
+}
+
+// Rethrow propagates a *Error returned by a nested Frame operation without
+// losing its Value, category, or nested traceback, and does not return.
+// See Throw.
+func (frame Frame) Rethrow(failure *Error) {
+	frame.throw(frame.reraise(failure))
+}
+
+// ThrowArgError raises a Lua argument error and does not return.
+//
+// index is zero-based. It may name a missing argument. See Throw.
 func (frame Frame) ThrowArgError(index int, reason string) {
-	frame.throw(frame.ArgError(index, reason))
+	frame.throw(frame.argError(index, reason))
 }
 
 // ThrowArgTypeError raises a Lua argument-type error and does not return.
-// It is the unwinding form of ArgTypeError; see Throw.
 //
-// index is zero-based and may name a missing argument. At least one
-// distinct expected kind is required.
+// index is zero-based and may name a missing argument. At least one distinct
+// expected kind is required. See Throw.
 func (frame Frame) ThrowArgTypeError(index int, expected ...Kind) {
-	frame.throw(frame.ArgTypeError(index, expected...))
+	frame.throw(frame.argTypeError(index, expected...))
 }
 
 // throw abandons the Go stack carrying an already sealed terminal Outcome.
-// Sealing happens in the Raise method that produced it, so a thrown
-// callback and a returned one reach invokeNativeCall in the same state.
+// Sealing happens in the private raise that produced it, so a thrown callback
+// and a returned one reach invokeNativeCall in the same state.
 func (frame Frame) throw(outcome Outcome) {
 	panic(nativeThrow{token: frame.token, outcome: outcome})
 }

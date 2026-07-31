@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"runtime"
@@ -121,60 +120,6 @@ func (thread *Thread) Resume(
 	return results, run.status, nil
 }
 
-// ResumeContext starts or continues a suspended coroutine like Resume while
-// making ctx available to native callbacks and interrupting Lua execution when
-// ctx is cancelled.
-//
-// A nil context returns ErrNilContext. A context already cancelled at
-// admission does not start or advance the coroutine. A cancellation observed
-// after execution starts leaves the coroutine dead; Lua-visible side effects
-// completed before cancellation remain.
-func (thread *Thread) ResumeContext(
-	ctx context.Context,
-	arguments ...Value,
-) (results []Value, status ThreadStatus, err error) {
-	if ctx == nil {
-		return nil, thread.Status(), ErrNilContext
-	}
-	object := thread.runtimeObject()
-	if object == nil {
-		return nil, ThreadClosed, ErrClosed
-	}
-	run, err := object.resumeExternalContext(
-		ctx,
-		resumeArguments{values: arguments},
-	)
-	if err != nil {
-		status := object.currentStatus()
-		exposed := exposeLuaError(err)
-		runtime.KeepAlive(thread)
-		return nil, status, exposed
-	}
-	results, status, err = collectResumeResults(&run)
-	runtime.KeepAlive(thread)
-	return results, status, err
-}
-
-func collectResumeResults(
-	run *threadResumeResult,
-) (results []Value, status ThreadStatus, err error) {
-	if run == nil {
-		panic("lua: nil coroutine result")
-	}
-	defer run.release()
-	if run.failure != nil {
-		return nil, run.status, run.failure.exposeValue()
-	}
-	if run.count == 0 {
-		return nil, run.status, nil
-	}
-	results = make([]Value, run.count)
-	for index := range results {
-		results[index] = run.thread.values[run.first+index].owningValue()
-	}
-	return results, run.status, nil
-}
-
 // ResumeInto starts or continues a suspended coroutine and writes its yielded
 // or returned values into destination.
 //
@@ -217,61 +162,6 @@ func (thread *Thread) ResumeInto(
 			run.thread.values[run.first+index].owningValue()
 	}
 	runtime.KeepAlive(thread)
-	return run.count, run.status, nil
-}
-
-// ResumeIntoContext starts or continues a suspended coroutine like
-// ResumeContext and writes yielded or returned values into destination.
-//
-// On cancellation count is zero and destination is unchanged.
-func (thread *Thread) ResumeIntoContext(
-	ctx context.Context,
-	arguments []Value,
-	destination []Value,
-) (count int, status ThreadStatus, err error) {
-	if ctx == nil {
-		return 0, thread.Status(), ErrNilContext
-	}
-	object := thread.runtimeObject()
-	if object == nil {
-		return 0, ThreadClosed, ErrClosed
-	}
-	run, err := object.resumeExternalContext(
-		ctx,
-		resumeArguments{values: arguments},
-	)
-	if err != nil {
-		status := object.currentStatus()
-		exposed := exposeLuaError(err)
-		runtime.KeepAlive(thread)
-		return 0, status, exposed
-	}
-	count, status, err = copyResumeResults(&run, destination)
-	runtime.KeepAlive(thread)
-	return count, status, err
-}
-
-func copyResumeResults(
-	run *threadResumeResult,
-	destination []Value,
-) (count int, status ThreadStatus, err error) {
-	if run == nil {
-		panic("lua: nil coroutine result")
-	}
-	defer run.release()
-	if run.failure != nil {
-		return 0, run.status, run.failure.exposeValue()
-	}
-	if run.count > len(destination) {
-		return run.count, run.status, newResultCapacityError(
-			run.thread.values[run.first:run.first+run.count],
-			len(destination),
-		)
-	}
-	for index := 0; index < run.count; index++ {
-		destination[index] =
-			run.thread.values[run.first+index].owningValue()
-	}
 	return run.count, run.status, nil
 }
 
@@ -359,9 +249,7 @@ func (thread *threadObject) resumeExternal(
 	if state.active != nil {
 		return threadResumeResult{}, ErrRunning
 	}
-	if state.execution.context != nil ||
-		state.execution.done != nil ||
-		state.execution.failure != nil ||
+	if state.execution.failure != nil ||
 		state.execution.pendingExit != nil ||
 		thread.contextBudget != 0 {
 		panic("lua: idle coroutine state retains execution context")
@@ -374,74 +262,22 @@ func (thread *threadObject) resumeExternal(
 			return threadResumeResult{}, err
 		}
 	}
-	// An installed interrupt guards host-resumed threads too; without this
-	// a runaway coroutine would be interruptible only through the context
-	// forms. The budget is zeroed on exit unconditionally so a suspended
-	// thread never retains one.
-	if state.interrupt != nil {
+	if failure := state.admitExecutionContext(); failure != nil {
+		return threadResumeResult{
+			thread:  thread,
+			failure: failure,
+			status:  thread.status,
+		}, nil
+	}
+	// The installed context guards host-resumed threads too. The budget is
+	// zeroed on exit unconditionally so a suspended thread never retains
+	// one.
+	if state.ambientDone != nil {
 		thread.resetContextBudget()
 	}
 	defer func() {
 		thread.contextBudget = 0
-		state.execution.pendingExit = nil
-	}()
-	return resumeThread(nil, thread, arguments), nil
-}
-
-func (thread *threadObject) resumeExternalContext(
-	ctx context.Context,
-	arguments resumeArguments,
-) (threadResumeResult, error) {
-	if thread == nil ||
-		thread.owner == nil ||
-		thread.state == nil ||
-		thread.owner.closed.Load() {
-		return threadResumeResult{}, ErrClosed
-	}
-	if thread.isMain() {
-		return threadResumeResult{}, ErrMainThread
-	}
-	state := thread.state
-	if state.active != nil {
-		return threadResumeResult{}, ErrRunning
-	}
-	if state.execution.context != nil ||
-		state.execution.done != nil ||
-		state.execution.failure != nil ||
-		state.execution.pendingExit != nil ||
-		thread.contextBudget != 0 {
-		panic("lua: idle coroutine state retains execution context")
-	}
-	if arguments.compact != nil {
-		panic("lua: compact arguments at public coroutine boundary")
-	}
-	for _, argument := range arguments.values {
-		if err := thread.owner.accept(argument); err != nil {
-			return threadResumeResult{}, err
-		}
-	}
-	if failure := thread.preflightExternalResume(
-		arguments.count(),
-	); failure != nil {
-		return threadResumeResult{
-			thread:  thread,
-			failure: failure,
-			status:  thread.status,
-		}, nil
-	}
-	execution, failure := prepareExecutionContext(ctx)
-	if failure != nil {
-		return threadResumeResult{
-			thread:  thread,
-			failure: failure,
-			status:  thread.status,
-		}, nil
-	}
-	state.beginExecutionContext(execution)
-	thread.resetContextBudget()
-	defer func() {
-		thread.contextBudget = 0
-		state.endExecutionContext()
+		state.endExecution()
 	}()
 	return resumeThread(nil, thread, arguments), nil
 }
@@ -511,11 +347,10 @@ func resumeThread(
 		frames: state.options.MaxFrames,
 	}
 	thread.status = ThreadRunning
-	// A coroutine resumed from Lua inherits the State's guards, so an
-	// interrupt is armed on the child as well; without this a script could
+	// A coroutine resumed from Lua inherits the State's guards, so the
+	// context is armed on the child as well; without this a script could
 	// escape one by looping inside a coroutine.
-	guardedChild := caller != nil &&
-		(state.execution.done != nil || state.interrupt != nil)
+	guardedChild := caller != nil && state.ambientDone != nil
 	if guardedChild {
 		thread.resetContextBudget()
 	}

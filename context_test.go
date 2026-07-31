@@ -47,7 +47,7 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 		contextTestKey{},
 		"request",
 	)
-	results, err = state.CallContext(ctx, probe.Value(), Number(2))
+	results, err = callWithContext(t, state, ctx, probe.Value(), Number(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,37 +57,14 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 	}
 
 	destination := []Value{Number(70), Number(71)}
-	if count, callErr := state.CallIntoContext(
-		nil,
-		probe.Value(),
-		[]Value{Number(3)},
-		destination,
-	); count != 0 || !errors.Is(callErr, ErrNilContext) {
-		t.Fatalf("nil-context CallInto = (%d, %v)", count, callErr)
+	if err := state.SetContext(nil); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("SetContext(nil) = %v; want ErrNilContext", err)
 	}
 	assertTestValues(t, destination, Number(70), Number(71))
 	if calls != 2 {
-		t.Fatalf("calls after nil admission = %d; want 2", calls)
+		t.Fatalf("calls after admission = %d; want 2", calls)
 	}
-	if _, callErr := state.CallContext(nil, probe.Value()); !errors.Is(
-		callErr,
-		ErrNilContext,
-	) {
-		t.Fatalf("nil-context Call = %v; want ErrNilContext", callErr)
-	}
-	if _, callErr := state.CallOneContext(nil, probe.Value()); !errors.Is(
-		callErr,
-		ErrNilContext,
-	) {
-		t.Fatalf("nil-context CallOne = %v; want ErrNilContext", callErr)
-	}
-	if callErr := state.CallDiscardContext(nil, probe.Value()); !errors.Is(
-		callErr,
-		ErrNilContext,
-	) {
-		t.Fatalf("nil-context CallDiscard = %v; want ErrNilContext", callErr)
-	}
-	result, oneCallErr := state.CallOneContext(ctx, probe.Value(), Number(5))
+	result, oneCallErr := callOneWithContext(t, state, ctx, probe.Value(), Number(5))
 	if oneCallErr != nil {
 		t.Fatal(oneCallErr)
 	}
@@ -95,7 +72,7 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 	if seen != ctx {
 		t.Fatal("CallOneContext did not install its context")
 	}
-	if callErr := state.CallDiscardContext(ctx, probe.Value(), Number(6)); callErr != nil {
+	if callErr := callDiscardWithContext(t, state, ctx, probe.Value(), Number(6)); callErr != nil {
 		t.Fatal(callErr)
 	}
 	if seen != ctx {
@@ -104,18 +81,13 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, callErr := state.CallContext(
-		cancelled,
-		Value{},
-	); !errors.Is(callErr, ErrInvalidValue) {
+	if _, callErr := callWithContext(t, state, cancelled, Value{}); !errors.Is(callErr, ErrInvalidValue) {
 		t.Fatalf(
 			"cancelled call with invalid callable = %v; want ErrInvalidValue",
 			callErr,
 		)
 	}
-	_, callErr := state.CallContext(
-		cancelled,
-		probe.Value(),
+	_, callErr := callWithContext(t, state, cancelled, probe.Value(),
 		Number(4),
 	)
 	failure := assertContextFailure(
@@ -138,7 +110,7 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 		contextTestKey{},
 		"fresh",
 	)
-	results, err = state.CallContext(fresh, probe.Value(), Number(5))
+	results, err = callWithContext(t, state, fresh, probe.Value(), Number(5))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +191,7 @@ func TestContextCausesPreserveStatusAndExplanation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			<-test.ctx.Done()
-			_, callErr := state.CallContext(test.ctx, target.Value())
+			_, callErr := callWithContext(t, state, test.ctx, target.Value())
 			failure := assertContextFailure(
 				t,
 				callErr,
@@ -252,7 +224,7 @@ func TestContextCancellationAfterNativeReturnIsAtomic(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancelNow, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.Context() != ctx {
-			return frame.RaiseString("native callback lost its context")
+			frame.ThrowString("native callback lost its context")
 		}
 		cancel(cause)
 		return frame.ReturnNumber(99)
@@ -260,7 +232,7 @@ func TestContextCancellationAfterNativeReturnIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("context_cancel_now", cancelNow.Value()); err != nil {
+	if err := state.RawSetGlobal("context_cancel_now", cancelNow.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@context-atomic.lua", `before_cancel = 17
@@ -269,9 +241,7 @@ after_cancel = 23
 return 1, 2`)
 
 	destination := []Value{Number(70), Number(71), Number(72)}
-	count, callErr := state.CallIntoContext(
-		ctx,
-		chunk.Value(),
+	count, callErr := callIntoWithContext(t, state, ctx, chunk.Value(),
 		nil,
 		destination,
 	)
@@ -324,7 +294,7 @@ return 1, 2`)
 	assertTestValues(t, results, Number(42))
 
 	live, cancelAfter := context.WithCancel(context.Background())
-	results, err = state.CallContext(live, success.Value())
+	results, err = callWithContext(t, state, live, success.Value())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +324,7 @@ func TestContextInterruptsLuaLoopsAndBlockingNativeCallbacks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("context_loop_started", start.Value()); err != nil {
+		if err := state.RawSetGlobal("context_loop_started", start.Value()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -374,7 +344,7 @@ func TestContextInterruptsLuaLoopsAndBlockingNativeCallbacks(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		go func() {
-			_, callErr := state.CallContext(ctx, loop.Value())
+			_, callErr := callWithContext(t, state, ctx, loop.Value())
 			result <- callErr
 		}()
 		select {
@@ -427,7 +397,7 @@ end`,
 		defer cancel()
 		result := make(chan error, 1)
 		go func() {
-			_, callErr := state.CallContext(ctx, loop.Value())
+			_, callErr := callWithContext(t, state, ctx, loop.Value())
 			result <- callErr
 		}()
 		select {
@@ -471,7 +441,7 @@ end`,
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		go func() {
-			_, callErr := state.CallContext(ctx, native.Value())
+			_, callErr := callWithContext(t, state, ctx, native.Value())
 			result <- callErr
 		}()
 		select {
@@ -589,7 +559,7 @@ return sum`, iteratorIterations),
 				"@context-resume-"+test.name+".lua",
 				test.source,
 			)
-			results, callErr := state.CallContext(ctx, target.Value())
+			results, callErr := callWithContext(t, state, ctx, target.Value())
 			if callErr != nil {
 				t.Fatal(callErr)
 			}
@@ -617,7 +587,7 @@ func TestNestedFrameCallInheritsContextAndAppendsTraceOnce(t *testing.T) {
 	cancelNow, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.Context() != ctx ||
 			frame.Context().Value(contextTestKey{}) != "nested" {
-			return frame.RaiseString("nested target lost its context")
+			frame.ThrowString("nested target lost its context")
 		}
 		cancel(cause)
 		return frame.Return()
@@ -625,7 +595,7 @@ func TestNestedFrameCallInheritsContextAndAppendsTraceOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("context_nested_cancel", cancelNow.Value()); err != nil {
+	if err := state.RawSetGlobal("context_nested_cancel", cancelNow.Value()); err != nil {
 		t.Fatal(err)
 	}
 	inner := mustLoadString(t, state, "@context-inner.lua", `local function inner()
@@ -638,22 +608,24 @@ inner()`)
 	frameRestored := false
 	bridge, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.Context() != ctx {
-			return frame.RaiseString("outer Frame did not inherit context")
+			frame.ThrowString("outer Frame did not inherit context")
 		}
 		_, callErr := frame.Call(inner.Value())
 		if !errors.As(callErr, &nestedFailure) {
-			return frame.RaiseString("nested cancellation was not a Lua error")
+			frame.ThrowString("nested cancellation was not a Lua error")
 		}
 		nestedTrace = nestedFailure.Traceback()
 		frameRestored = frame.Context() == ctx &&
 			frame.ArgumentCount() == 1 &&
 			frame.Kind(0) == NumberKind
-		return frame.Reraise(nestedFailure)
+		frame.Rethrow(nestedFailure)
+		// Unreachable: Rethrow does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("context_nested_bridge", bridge.Value()); err != nil {
+	if err := state.RawSetGlobal("context_nested_bridge", bridge.Value()); err != nil {
 		t.Fatal(err)
 	}
 	outer := mustLoadString(
@@ -662,7 +634,7 @@ inner()`)
 		"@context-outer.lua",
 		`context_nested_bridge(7)`,
 	)
-	_, callErr := state.CallContext(ctx, outer.Value())
+	_, callErr := callWithContext(t, state, ctx, outer.Value())
 	failure := assertContextFailure(
 		t,
 		callErr,
@@ -817,7 +789,7 @@ after_protected_context = true`,
 				"context_cancel_handler": handler,
 				"context_handler_called": observeHandler,
 			} {
-				if err := state.SetRawGlobal(name, function.Value()); err != nil {
+				if err := state.RawSetGlobal(name, function.Value()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -827,7 +799,7 @@ after_protected_context = true`,
 				test.sourceName,
 				test.source,
 			)
-			_, callErr := state.CallContext(ctx, chunk.Value())
+			_, callErr := callWithContext(t, state, ctx, chunk.Value())
 			failure := assertContextFailure(
 				t,
 				callErr,
@@ -874,7 +846,7 @@ func TestCoroutineContextsAreInheritedAndScopedPerResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("context_probe", probe.Value()); err != nil {
+	if err := state.RawSetGlobal("context_probe", probe.Value()); err != nil {
 		t.Fatal(err)
 	}
 	entry := mustLoadString(t, state, "@context-resume.lua", `context_probe()
@@ -893,7 +865,7 @@ return value`)
 			"first",
 		),
 	)
-	results, status, err := thread.ResumeContext(first)
+	results, status, err := resumeWithContext(t, thread, first)
 	if err != nil || status != ThreadSuspended {
 		t.Fatalf("first context resume = (status=%v, err=%v)", status, err)
 	}
@@ -916,7 +888,7 @@ return value`)
 		contextTestKey{},
 		"second",
 	)
-	results, status, err = thread.ResumeContext(second, Number(9))
+	results, status, err = resumeWithContext(t, thread, second, Number(9))
 	if err != nil || status != ThreadDead {
 		t.Fatalf("second context resume = (status=%v, err=%v)", status, err)
 	}
@@ -953,7 +925,7 @@ return value`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("context_inherited_child", child.Value()); err != nil {
+	if err := state.RawSetGlobal("context_inherited_child", child.Value()); err != nil {
 		t.Fatal(err)
 	}
 	parent := mustLoadString(t, state, "@context-parent-inherit.lua", `context_probe()
@@ -965,7 +937,7 @@ return ok, value`)
 		contextTestKey{},
 		"parent",
 	)
-	results, err = state.CallContext(parentContext, parent.Value())
+	results, err = callWithContext(t, state, parentContext, parent.Value())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -997,7 +969,7 @@ return ok, value`)
 		contextTestKey{},
 		"external child",
 	)
-	results, status, err = child.ResumeContext(childContext, Number(23))
+	results, status, err = resumeWithContext(t, child, childContext, Number(23))
 	if err != nil || status != ThreadDead {
 		t.Fatalf("external child resume = (status=%v, err=%v)", status, err)
 	}
@@ -1029,25 +1001,15 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 	}
 	destination := []Value{Number(70), Number(71)}
 
-	if count, status, resumeErr := thread.ResumeIntoContext(
-		nil,
-		nil,
-		destination,
-	); count != 0 ||
-		status != ThreadSuspended ||
-		!errors.Is(resumeErr, ErrNilContext) {
-		t.Fatalf(
-			"nil-context resume = (count=%d, status=%v, err=%v)",
-			count,
-			status,
-			resumeErr,
-		)
+	if err := state.SetContext(nil); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("SetContext(nil) = %v; want ErrNilContext", err)
 	}
-	assertTestValues(t, destination, Number(70), Number(71))
+	// A rejected context leaves the coroutine untouched: SetContext failed,
+	// so nothing was installed and no resume was attempted.
 	if calls != 0 ||
 		thread.runtimeObject().top != 1 ||
 		len(thread.runtimeObject().frames) != 0 {
-		t.Fatal("nil context changed the initial coroutine")
+		t.Fatal("rejected context changed the initial coroutine")
 	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -1061,9 +1023,7 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count, status, resumeErr := thread.ResumeIntoContext(
-		cancelled,
-		[]Value{foreign.Value()},
+	if count, status, resumeErr := resumeIntoWithContext(t, thread, cancelled, []Value{foreign.Value()},
 		destination,
 	); count != 0 ||
 		status != ThreadSuspended ||
@@ -1082,9 +1042,7 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 		t.Fatal("rejected resume argument changed the suspended coroutine")
 	}
 
-	count, status, resumeErr := thread.ResumeIntoContext(
-		cancelled,
-		nil,
+	count, status, resumeErr := resumeIntoWithContext(t, thread, cancelled, nil,
 		destination,
 	)
 	if count != 0 || status != ThreadSuspended {
@@ -1120,9 +1078,7 @@ func TestCoroutineContextAdmissionAndCancellationAreAtomic(t *testing.T) {
 		contextTestKey{},
 		"resume",
 	)
-	count, status, err = thread.ResumeIntoContext(
-		live,
-		nil,
+	count, status, err = resumeIntoWithContext(t, thread, live, nil,
 		destination,
 	)
 	if err != nil || count != 1 || status != ThreadDead {
@@ -1152,7 +1108,7 @@ func TestContextCancellationPropagatesAcrossCoroutines(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelNow, err := state.NewNativeFunction(func(frame Frame) Outcome {
 			if frame.Context() != ctx {
-				return frame.RaiseString("child lost parent context")
+				frame.ThrowString("child lost parent context")
 			}
 			cancel()
 			return frame.Return()
@@ -1160,7 +1116,7 @@ func TestContextCancellationPropagatesAcrossCoroutines(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal(
+		if err := state.RawSetGlobal(
 			"context_child_cancel",
 			cancelNow.Value(),
 		); err != nil {
@@ -1177,7 +1133,7 @@ child_after_context = true`,
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("context_cancel_child", child.Value()); err != nil {
+		if err := state.RawSetGlobal("context_cancel_child", child.Value()); err != nil {
 			t.Fatal(err)
 		}
 		parent := mustLoadString(
@@ -1188,7 +1144,7 @@ child_after_context = true`,
 parent_after_context = true`,
 		)
 
-		_, callErr := state.CallContext(ctx, parent.Value())
+		_, callErr := callWithContext(t, state, ctx, parent.Value())
 		failure := assertContextFailure(
 			t,
 			callErr,
@@ -1241,7 +1197,7 @@ parent_after_context = true`,
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("context_wrap_cancel", cancelNow.Value()); err != nil {
+		if err := state.RawSetGlobal("context_wrap_cancel", cancelNow.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := mustLoadString(t, state, "@context-wrap.lua", `local wrapped = coroutine.wrap(function()
@@ -1249,7 +1205,7 @@ parent_after_context = true`,
 end)
 wrapped()
 after_wrapped_context = true`)
-		_, callErr := state.CallContext(ctx, chunk.Value())
+		_, callErr := callWithContext(t, state, ctx, chunk.Value())
 		assertContextFailure(
 			t,
 			callErr,
@@ -1284,9 +1240,7 @@ after_wrapped_context = true`)
 			t.Fatal(err)
 		}
 		destination := []Value{Number(70), Number(71)}
-		count, status, resumeErr := thread.ResumeIntoContext(
-			ctx,
-			nil,
+		count, status, resumeErr := resumeIntoWithContext(t, thread, ctx, nil,
 			destination,
 		)
 		if count != 0 || status != ThreadDead {
@@ -1339,7 +1293,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 			defer func() {
 				recovered = recover()
 			}()
-			_, _ = state.CallContext(ctx, panicking.Value())
+			_, _ = callWithContext(t, state, ctx, panicking.Value())
 		}()
 		if recovered != marker {
 			t.Fatalf("context panic = %#v; want %#v", recovered, marker)
@@ -1369,7 +1323,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, callErr := state.CallContext(ctx, invalid.Value())
+		_, callErr := callWithContext(t, state, ctx, invalid.Value())
 		var failure *Error
 		if !errors.As(callErr, &failure) ||
 			failure.Category() != RuntimeError ||
@@ -1392,7 +1346,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		handler, err := state.NewNativeFunction(func(frame Frame) Outcome {
 			if frame.Context() != ctx {
-				return frame.RaiseString("error handler lost context")
+				frame.ThrowString("error handler lost context")
 			}
 			cancel()
 			return frame.ReturnString("ignored")
@@ -1400,7 +1354,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.SetRawGlobal("context_limit_handler", handler.Value()); err != nil {
+		if err := state.RawSetGlobal("context_limit_handler", handler.Value()); err != nil {
 			t.Fatal(err)
 		}
 		chunk := mustLoadString(t, state, "@context-limit.lua", `local function recurse()
@@ -1409,7 +1363,7 @@ func TestContextCleanupPreservesPanicsAndResourceLimits(t *testing.T) {
 end
 local ok = xpcall(recurse, context_limit_handler)
 after_context_limit = true`)
-		_, callErr := state.CallContext(ctx, chunk.Value())
+		_, callErr := callWithContext(t, state, ctx, chunk.Value())
 		assertContextFailure(
 			t,
 			callErr,
@@ -1487,7 +1441,7 @@ func completedContextLifetimeFixture(
 	)
 	probe, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.Context().Value(contextTestKey{}) == nil {
-			return frame.RaiseString("context marker missing")
+			frame.ThrowString("context marker missing")
 		}
 		return frame.Return()
 	})
@@ -1495,7 +1449,7 @@ func completedContextLifetimeFixture(
 		state.Close()
 		t.Fatal(err)
 	}
-	if _, err := state.CallContext(ctx, probe.Value()); err != nil {
+	if _, err := callWithContext(t, state, ctx, probe.Value()); err != nil {
 		state.Close()
 		t.Fatal(err)
 	}
@@ -1523,7 +1477,7 @@ func suspendedContextLifetimeFixture(
 	)
 	entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		if frame.Context().Value(contextTestKey{}) == nil {
-			return frame.RaiseString("context marker missing")
+			frame.ThrowString("context marker missing")
 		}
 		return frame.Yield()
 	})
@@ -1536,7 +1490,7 @@ func suspendedContextLifetimeFixture(
 		state.Close()
 		t.Fatal(err)
 	}
-	if _, status, err := thread.ResumeContext(ctx); err != nil ||
+	if _, status, err := resumeWithContext(t, thread, ctx); err != nil ||
 		status != ThreadSuspended {
 		state.Close()
 		t.Fatalf(
@@ -1580,7 +1534,7 @@ func failedContextLifetimeFixture(
 		state.Close()
 		t.Fatal(err)
 	}
-	_, callErr := state.CallContext(ctx, target.Value())
+	_, callErr := callWithContext(t, state, ctx, target.Value())
 	var failure *Error
 	if !errors.As(callErr, &failure) {
 		state.Close()
@@ -1639,9 +1593,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		for range 8 {
-			count, callErr := state.CallIntoContext(
-				ctx,
-				target.Value(),
+			count, callErr := callIntoWithContext(t, state, ctx, target.Value(),
 				arguments,
 				destination,
 			)
@@ -1650,9 +1602,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 			}
 		}
 		allocations := testing.AllocsPerRun(1_000, func() {
-			count, callErr := state.CallIntoContext(
-				ctx,
-				target.Value(),
+			count, callErr := callIntoWithContext(t, state, ctx, target.Value(),
 				arguments,
 				destination,
 			)
@@ -1682,7 +1632,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 		defer cancel()
 		host, err := state.NewNativeFunction(func(frame Frame) Outcome {
 			if frame.Context() != ctx {
-				return frame.RaiseString("warm nested context mismatch")
+				frame.ThrowString("warm nested context mismatch")
 			}
 			count, callErr := frame.CallInto(
 				target.Value(),
@@ -1690,7 +1640,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 				nestedDestination,
 			)
 			if callErr != nil || count != 1 {
-				return frame.RaiseString("warm nested call failed")
+				frame.ThrowString("warm nested call failed")
 			}
 			return frame.ReturnValue(nestedDestination[0])
 		})
@@ -1699,9 +1649,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 		}
 		destination := make([]Value, 1)
 		for range 8 {
-			if count, callErr := state.CallIntoContext(
-				ctx,
-				host.Value(),
+			if count, callErr := callIntoWithContext(t, state, ctx, host.Value(),
 				nil,
 				destination,
 			); callErr != nil || count != 1 {
@@ -1709,9 +1657,7 @@ func TestWarmContextBoundariesDoNotAllocate(t *testing.T) {
 			}
 		}
 		allocations := testing.AllocsPerRun(1_000, func() {
-			if count, callErr := state.CallIntoContext(
-				ctx,
-				host.Value(),
+			if count, callErr := callIntoWithContext(t, state, ctx, host.Value(),
 				nil,
 				destination,
 			); callErr != nil || count != 1 {
@@ -1745,9 +1691,7 @@ end`)
 		defer cancel()
 		destination := make([]Value, 1)
 		for range 8 {
-			count, status, resumeErr := thread.ResumeIntoContext(
-				ctx,
-				nil,
+			count, status, resumeErr := resumeIntoWithContext(t, thread, ctx, nil,
 				destination,
 			)
 			if resumeErr != nil ||
@@ -1762,9 +1706,7 @@ end`)
 			}
 		}
 		allocations := testing.AllocsPerRun(1_000, func() {
-			count, status, resumeErr := thread.ResumeIntoContext(
-				ctx,
-				nil,
+			count, status, resumeErr := resumeIntoWithContext(t, thread, ctx, nil,
 				destination,
 			)
 			if resumeErr != nil ||
@@ -1814,9 +1756,7 @@ func BenchmarkContextCallBoundary(b *testing.B) {
 	b.Run("background", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			if _, callErr := state.CallIntoContext(
-				background,
-				target.Value(),
+			if _, callErr := callIntoWithContext(b, state, background, target.Value(),
 				arguments,
 				destination,
 			); callErr != nil {
@@ -1827,9 +1767,7 @@ func BenchmarkContextCallBoundary(b *testing.B) {
 	b.Run("cancelable", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			if _, callErr := state.CallIntoContext(
-				active,
-				target.Value(),
+			if _, callErr := callIntoWithContext(b, state, active, target.Value(),
 				arguments,
 				destination,
 			); callErr != nil {
@@ -1884,8 +1822,7 @@ func BenchmarkContextDispatch256Moves(b *testing.B) {
 						destination,
 					)
 				} else {
-					_, callErr = state.CallIntoContext(
-						test.ctx,
+					_, callErr = callIntoWithContext(b, state, test.ctx,
 						targetValue,
 						nil,
 						destination,
@@ -1941,8 +1878,7 @@ return sum`,
 						destination,
 					)
 				} else {
-					_, callErr = state.CallIntoContext(
-						test.ctx,
+					_, callErr = callIntoWithContext(b, state, test.ctx,
 						target.Value(),
 						nil,
 						destination,
@@ -1975,15 +1911,13 @@ end`)
 	destination := make([]Value, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	b.Cleanup(cancel)
-	if _, _, err := thread.ResumeIntoContext(ctx, nil, destination); err != nil {
+	if _, _, err := resumeIntoWithContext(b, thread, ctx, nil, destination); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		if _, _, err := thread.ResumeIntoContext(
-			ctx,
-			nil,
+		if _, _, err := resumeIntoWithContext(b, thread, ctx, nil,
 			destination,
 		); err != nil {
 			b.Fatal(err)
@@ -2088,4 +2022,110 @@ func assertContextStateIdle(t *testing.T, state *State) {
 			state.main.contextBudget,
 		)
 	}
+}
+
+// The per-operation Context methods were replaced by one ambient SetContext.
+// These helpers install a context for exactly one operation, which is the
+// shape the tests below were written against.
+
+func withContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	operation func(),
+) {
+	t.Helper()
+	if err := state.SetContext(ctx); err != nil {
+		t.Fatalf("SetContext: %v", err)
+	}
+	defer func() {
+		if err := state.RemoveContext(); err != nil && err != ErrClosed {
+			t.Fatalf("RemoveContext: %v", err)
+		}
+	}()
+	operation()
+}
+
+func callWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) (results []Value, err error) {
+	t.Helper()
+	withContext(t, state, ctx, func() {
+		results, err = state.Call(callable, arguments...)
+	})
+	return results, err
+}
+
+func callOneWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) (result Value, err error) {
+	t.Helper()
+	withContext(t, state, ctx, func() {
+		result, err = state.CallOne(callable, arguments...)
+	})
+	return result, err
+}
+
+func callDiscardWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) (err error) {
+	t.Helper()
+	withContext(t, state, ctx, func() {
+		err = state.CallDiscard(callable, arguments...)
+	})
+	return err
+}
+
+func callIntoWithContext(
+	t testing.TB,
+	state *State,
+	ctx context.Context,
+	callable Value,
+	arguments []Value,
+	destination []Value,
+) (count int, err error) {
+	t.Helper()
+	withContext(t, state, ctx, func() {
+		count, err = state.CallInto(callable, arguments, destination)
+	})
+	return count, err
+}
+
+func resumeWithContext(
+	t testing.TB,
+	thread *Thread,
+	ctx context.Context,
+	arguments ...Value,
+) (results []Value, status ThreadStatus, err error) {
+	t.Helper()
+	withContext(t, thread.State(), ctx, func() {
+		results, status, err = thread.Resume(arguments...)
+	})
+	return results, status, err
+}
+
+func resumeIntoWithContext(
+	t testing.TB,
+	thread *Thread,
+	ctx context.Context,
+	arguments []Value,
+	destination []Value,
+) (count int, status ThreadStatus, err error) {
+	t.Helper()
+	withContext(t, thread.State(), ctx, func() {
+		count, status, err = thread.ResumeInto(arguments, destination)
+	})
+	return count, status, err
 }

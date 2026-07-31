@@ -104,10 +104,10 @@ func TestOpenBaseIsExplicitAndUsesTheGlobalEnvironment(t *testing.T) {
 	for _, name := range baseFunctions {
 		oldFunctions[name], _ = state.RawGlobal(name)
 	}
-	if err := state.SetRawGlobal("pcall", Number(1)); err != nil {
+	if err := state.RawSetGlobal("pcall", Number(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("_G", Nil()); err != nil {
+	if err := state.RawSetGlobal("_G", Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenBase(); err != nil {
@@ -556,7 +556,7 @@ func TestSuccessfulFinalizerRestoresOuterCollectionSchedule(t *testing.T) {
 			"held",
 			slotFromTableObject(child),
 		); err != nil {
-			return frame.RaiseString(err.Error())
+			return frame.raiseString(err.Error())
 		}
 		return frame.Return()
 	})
@@ -613,7 +613,7 @@ func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 	before := count()
 	text := strings.Repeat("retained string ", 1<<16)
 	value := state.String(text)
-	if err := state.SetRawGlobal("largeRetainedString", value); err != nil {
+	if err := state.RawSetGlobal("largeRetainedString", value); err != nil {
 		t.Fatal(err)
 	}
 	after := count()
@@ -625,7 +625,7 @@ func TestBaseCollectionCountIncludesRetainedStringBacking(t *testing.T) {
 		)
 	}
 
-	if err := state.SetRawGlobal("largeRetainedString", Nil()); err != nil {
+	if err := state.RawSetGlobal("largeRetainedString", Nil()); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.Collect(); err != nil {
@@ -810,18 +810,18 @@ func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
 	state := newStateWithBase(t, Options{})
 	defer state.Close()
 
-	original, err := state.ThreadEnvironment(state.MainThread())
+	original, err := threadEnvironment(state.MainThread())
 	if err != nil {
 		t.Fatal(err)
 	}
-	originalPCall := original.RawGetString("pcall")
-	originalCoroutine := original.RawGetString("coroutine")
+	originalPCall := rawStr(original, "pcall")
+	originalCoroutine := rawStr(original, "coroutine")
 
 	replacement, err := state.NewTableWithCapacity(0, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetThreadEnvironment(
+	if err := setThreadEnvironment(
 		state.MainThread(),
 		replacement,
 	); err != nil {
@@ -859,17 +859,17 @@ func TestOpenBaseReopensIntoTheCurrentMainEnvironment(t *testing.T) {
 			replacement,
 		)
 	}
-	if same, applicable := original.RawGetString("pcall").SameObject(
+	if same, applicable := rawStr(original, "pcall").SameObject(
 		originalPCall,
 	); !applicable || !same {
 		t.Fatal("reopening changed the old environment's pcall")
 	}
-	if same, applicable := original.RawGetString("coroutine").SameObject(
+	if same, applicable := rawStr(original, "coroutine").SameObject(
 		originalCoroutine,
 	); !applicable || !same {
 		t.Fatal("reopening changed the old environment's coroutine library")
 	}
-	if replacement.RawGetString("coroutine").Kind() != TableKind {
+	if rawStr(replacement, "coroutine").Kind() != TableKind {
 		t.Fatal("reopening did not install coroutine into the replacement environment")
 	}
 }
@@ -983,7 +983,7 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 	if err := state.SetMetatable(callable.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("callable", callable.Value()); err != nil {
+	if err := state.RawSetGlobal("callable", callable.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -992,12 +992,14 @@ func TestBasePCallPreservesCallableAndErrorIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.Raise(marker.Value())
+		frame.Throw(marker.Value())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("raise_marker", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("raise_marker", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1134,12 +1136,14 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 		t.Fatal(err)
 	}
 	raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.Raise(marker.Value())
+		frame.Throw(marker.Value())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("raise_marker", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("raise_marker", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1163,7 +1167,7 @@ func TestBaseXPCallPreservesErrorIdentityAndRejectsCallableHandler(t *testing.T)
 	if err := state.SetMetatable(callableHandler.Value(), handlerMetatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("callable_handler", callableHandler.Value()); err != nil {
+	if err := state.RawSetGlobal("callable_handler", callableHandler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1240,7 +1244,9 @@ func TestProtectedCallsPreserveAnExplicitNilError(t *testing.T) {
 	defer state.Close()
 
 	raiser, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.Raise(Nil())
+		frame.Throw(Nil())
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1254,10 +1260,10 @@ func TestProtectedCallsPreserveAnExplicitNilError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("raise_nil", raiser.Value()); err != nil {
+	if err := state.RawSetGlobal("raise_nil", raiser.Value()); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("handle_nil", handler.Value()); err != nil {
+	if err := state.RawSetGlobal("handle_nil", handler.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1288,7 +1294,7 @@ func TestBaseErrorPreservesObjectIdentityAndHonorsLuaLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("marker", marker.Value()); err != nil {
+	if err := state.RawSetGlobal("marker", marker.Value()); err != nil {
 		t.Fatal(err)
 	}
 	chunk := mustLoadString(t, state, "@base-error-level.lua", `local objectOK,object=pcall(function() error(marker) end)

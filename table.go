@@ -455,13 +455,14 @@ func (table *tableObject) setStringSlot(key string, value slot) error {
 // permitted between calls. Adding a new field during traversal makes the
 // traversal order and visited set undefined. A continuation key that Lua
 // cannot locate returns ErrInvalidNextKey.
+//
+// Like the other raw readers, Next observes a closed State's tables as the
+// frozen snapshot State.Close leaves behind.
 func (table *Table) Next(
 	after Value,
 ) (key, value Value, ok bool, err error) {
 	object := table.runtimeObject()
-	if object == nil ||
-		object.owner == nil ||
-		object.owner.closed.Load() {
+	if object == nil || object.owner == nil {
 		runtime.KeepAlive(table)
 		return Value{}, Value{}, false, ErrClosed
 	}
@@ -544,7 +545,7 @@ func (table *tableObject) rawLen() int {
 }
 
 func (table *tableObject) next(previous slot) (key, value slot, found bool, err error) {
-	if table == nil || table.owner == nil || table.owner.closed.Load() {
+	if table == nil || table.owner == nil {
 		return nilSlot, nilSlot, false, ErrClosed
 	}
 

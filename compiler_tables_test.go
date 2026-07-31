@@ -127,10 +127,10 @@ func TestCompileSourceReusesIndexedTemporaryAcrossChain(t *testing.T) {
 			)
 		}
 	}
-	if prototype.RegisterCount() > 3 {
+	if registerCount(prototype) > 3 {
 		t.Fatalf(
 			"indexed chain requires %d registers, want at most 3",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 	for index := 1; index < len(gets); index++ {
@@ -386,10 +386,10 @@ func TestCompileSourceFlushesConstructorListsInBlocks(t *testing.T) {
 		lists[1].c() != 2 {
 		t.Fatalf("SETLIST blocks = %#v", lists)
 	}
-	if prototype.RegisterCount() > fieldsPerFlush+1 {
+	if registerCount(prototype) > fieldsPerFlush+1 {
 		t.Fatalf(
 			"constructor requires %d registers, want at most %d",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 			fieldsPerFlush+1,
 		)
 	}
@@ -568,10 +568,10 @@ func TestCompileSourceEnforcesConstructorRegisterLimit(t *testing.T) {
 	if syntaxError != nil {
 		t.Fatal(syntaxError)
 	}
-	if prototype.RegisterCount() != maxLuaRegisters {
+	if registerCount(prototype) != maxLuaRegisters {
 		t.Fatalf(
 			"constructor register count = %d, want %d",
-			prototype.RegisterCount(),
+			registerCount(prototype),
 			maxLuaRegisters,
 		)
 	}

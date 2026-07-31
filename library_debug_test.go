@@ -46,7 +46,7 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 	previous := make(map[string]Value, len(debugLibraryFunctions))
 	for _, definition := range debugLibraryFunctions {
 		want[definition.name] = FunctionKind
-		previous[definition.name] = library.RawGetString(definition.name)
+		previous[definition.name] = rawStr(library, definition.name)
 	}
 	assertTableSurface(t, library, want)
 
@@ -66,14 +66,14 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 	if !ok {
 		t.Fatalf("registry _LOADED = %v; want table", loaded)
 	}
-	if current := loadedTable.RawGetString("debug"); !sameTestObject(
+	if current := rawStr(loadedTable, "debug"); !sameTestObject(
 		current,
 		libraryValue,
 	) {
 		t.Fatal("_LOADED.debug does not identify the debug library")
 	}
 
-	if err := state.SetRawGlobal("debug", Number(1)); err != nil {
+	if err := state.RawSetGlobal("debug", Number(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.OpenDebug(); err != nil {
@@ -91,7 +91,7 @@ func TestOpenDebugInstallsFreshCanonicalLibrary(t *testing.T) {
 		t.Fatal("reopening did not replace the debug table")
 	}
 	for name, old := range previous {
-		current := reopened.RawGetString(name)
+		current := rawStr(reopened, name)
 		if sameTestObject(old, current) {
 			t.Fatalf("reopened debug.%s is not a fresh Function", name)
 		}
@@ -180,14 +180,17 @@ func TestDebugUpvaluesPreserveExactArityAndNativePrivacy(t *testing.T) {
 	state := newStateWithDebug(t, Options{})
 	defer state.Close()
 
-	native, err := state.NewNativeFunction(
+	// Native captures are private runtime machinery; the debug library must
+	// still refuse to expose them.
+	nativeObject, err := state.newNativeFunctionObject(
 		func(frame Frame) Outcome { return frame.Return() },
-		Number(91),
+		[]slot{numberSlot(91)},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("captured_native", native.Value()); err != nil {
+	native := nativeObject.owningHandle()
+	if err := state.RawSetGlobal("captured_native", native.Value()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -230,15 +233,15 @@ func TestDebugInfoCoversFunctionsCallsLinesAndTailFrames(t *testing.T) {
 	state := newStateWithDebug(t, Options{})
 	defer state.Close()
 
-	native, err := state.NewNativeFunction(
+	nativeObject, err := state.newNativeFunctionObject(
 		func(frame Frame) Outcome { return frame.Return() },
-		Number(1),
-		Number(2),
+		[]slot{numberSlot(1), numberSlot(2)},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal("debug_native", native.Value()); err != nil {
+	native := nativeObject.owningHandle()
+	if err := state.RawSetGlobal("debug_native", native.Value()); err != nil {
 		t.Fatal(err)
 	}
 

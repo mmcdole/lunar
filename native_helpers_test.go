@@ -104,12 +104,14 @@ func TestNativeFrameArgTypeErrorAcceptsSeveralKinds(t *testing.T) {
 	defer state.Close()
 
 	function, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.ArgTypeError(
+		frame.ThrowArgTypeError(
 			0,
 			StringKind,
 			NumberKind,
 			NilKind,
 		)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +144,9 @@ func TestNativeFrameArgTypeErrorRejectsInvalidExpectedKinds(t *testing.T) {
 			}
 			defer state.Close()
 			function, err := state.NewNativeFunction(func(frame Frame) Outcome {
-				return frame.ArgTypeError(0, test.expected...)
+				frame.ThrowArgTypeError(0, test.expected...)
+				// Unreachable: the throw above does not return.
+				return Outcome{}
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -227,7 +231,9 @@ func TestNativeFrameRaiseErrorPreservesOrdinaryGoCause(t *testing.T) {
 
 	cause := errors.New("host lookup failed")
 	function, err := state.NewNativeFunction(func(frame Frame) Outcome {
-		return frame.RaiseError(cause)
+		frame.ThrowError(cause)
+		// Unreachable: the throw above does not return.
+		return Outcome{}
 	})
 	if err != nil {
 		t.Fatal(err)

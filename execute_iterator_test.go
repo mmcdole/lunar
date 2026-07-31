@@ -126,7 +126,7 @@ return control, control * 2
 	if err := state.SetMetatable(generator.Value(), metatable); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SetRawGlobal(
+	if err := state.RawSetGlobal(
 		"expected_generator",
 		generator.Value(),
 	); err != nil {

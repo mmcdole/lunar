@@ -22,11 +22,11 @@ func TestCompileSourceDirectExpressionSlice(t *testing.T) {
 	}
 	if !prototype.isSealed() ||
 		prototype.SourceName() != "@sample.lua" ||
-		prototype.ParameterCount() != 0 ||
-		!prototype.IsVararg() {
+		parameterCount(prototype) != 0 ||
+		!isVararg(prototype) {
 		t.Fatal("main chunk metadata is incomplete")
 	}
-	if prototype.RegisterCount() < 2 ||
+	if registerCount(prototype) < 2 ||
 		prototype.debug == nil ||
 		len(prototype.debug.lines) != len(prototype.code) ||
 		len(prototype.debug.locals) != 2 {
@@ -834,11 +834,11 @@ func TestCompileSourceKeepsHighRKSpillAboveActiveLocals(t *testing.T) {
 			add = code
 		}
 	}
-	if spill < 3 || spill >= prototype.RegisterCount() {
+	if spill < 3 || spill >= registerCount(prototype) {
 		t.Fatalf(
 			"spill register = R%d outside temporary suffix [R3,R%d)",
 			spill,
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 	if add.opcode() != opAdd ||
@@ -902,13 +902,13 @@ func TestCompileSourceKeepsConcatOperandsContiguousAfterRKSpill(t *testing.T) {
 	if concatCount != 1 ||
 		concat.b() < 3 ||
 		concat.c()-concat.b() != 2 ||
-		concat.c() >= prototype.RegisterCount() {
+		concat.c() >= registerCount(prototype) {
 		t.Fatalf(
 			"CONCAT = count:%d B:%d C:%d registers:%d",
 			concatCount,
 			concat.b(),
 			concat.c(),
-			prototype.RegisterCount(),
+			registerCount(prototype),
 		)
 	}
 	if spill < concat.b() || spill > concat.c() {

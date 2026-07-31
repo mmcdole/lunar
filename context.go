@@ -7,53 +7,102 @@ import (
 
 const contextPollInterval uint16 = 256
 
-// ErrNilContext reports a nil context passed to a context-aware operation.
+// ErrNilContext reports a nil context passed to SetContext.
 var ErrNilContext = errors.New("lua: nil context")
 
-// executionControl belongs only to one active public call or resume. Context
-// fields are populated only for context-aware entry points. pendingExit makes
-// the first os.exit request terminal across nested native calls, even if a Go
-// callback ignores a returned error. The whole record is cleared before the
-// public operation returns.
+// executionControl belongs only to one active public call or resume.
+// pendingExit makes the first os.exit request terminal across nested native
+// calls, even if a Go callback ignores a returned error. The record is
+// cleared before the public operation returns.
 type executionControl struct {
-	context     context.Context
-	done        <-chan struct{}
 	failure     *Error
 	pendingExit *Error
 }
 
-func prepareExecutionContext(
-	ctx context.Context,
-) (executionControl, *Error) {
+// SetContext installs the context the runtime observes while Lua executes.
+//
+// The context is ambient: it outlives one call and applies to every thread of
+// the State until SetContext replaces it or RemoveContext clears it.
+// Cancellation stops execution and surfaces as a *Error in the ContextError
+// category, so Lua pcall cannot catch it and a script cannot outlast it.
+//
+// The runtime observes cancellation at bounded safe points between
+// instructions and around native calls, never inside one, so cancellation
+// cannot preempt host code that is already running; a long-running callback
+// observes its own Context. Loading also polls while reading, compiling, and
+// decoding.
+//
+// SetContext takes effect immediately, including when a native callback
+// installs a new deadline during the call it is running under. It is a State
+// operation and must be serialized like any other; a host deciding to cancel
+// from another goroutine does so through its own context.
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+//	defer cancel()
+//	state.SetContext(ctx)
+//	defer state.RemoveContext()
+//	results, err := state.Call(handler)
+//
+// A context left installed applies to later operations. A host that cancels
+// per operation clears it when that operation completes.
+func (state *State) SetContext(ctx context.Context) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
 	if ctx == nil {
-		return executionControl{}, nil
+		return ErrNilContext
 	}
-	execution := executionControl{
-		context: ctx,
-		done:    ctx.Done(),
-	}
-	if execution.done != nil && contextChannelClosed(execution.done) {
-		return executionControl{}, newContextError(ctx, false)
-	}
-	return execution, nil
+	state.ambient = ctx
+	state.ambientDone = ctx.Done()
+	state.armExecutingThread()
+	return nil
 }
 
-func (state *State) beginExecutionContext(execution executionControl) {
-	if state.execution.context != nil ||
-		state.execution.done != nil ||
-		state.execution.failure != nil ||
-		state.execution.pendingExit != nil {
-		panic("lua: nested public execution context")
+// RemoveContext clears the installed context. Execution already stopped by
+// cancellation is not resumed.
+func (state *State) RemoveContext() error {
+	if err := state.checkOpen(); err != nil {
+		return err
 	}
-	state.execution = execution
+	state.ambient = nil
+	state.ambientDone = nil
+	state.armExecutingThread()
+	return nil
 }
 
-func (state *State) endExecutionContext() {
+// armExecutingThread refreshes the polling budget so a context installed or
+// cleared from a native callback takes effect during the call that changed it.
+//
+// Only an executing thread is touched. An idle State arms its budget at call
+// entry, and leaving a ready main thread with a polling budget would break the
+// invariant that it retains no execution state.
+func (state *State) armExecutingThread() {
+	if state.active != nil {
+		state.active.resetContextBudget()
+	}
+}
+
+// admitExecutionContext rejects an already-cancelled context before an
+// operation starts, so lifecycle and ownership failures keep reporting first.
+//
+// An installed context outlives the operation that motivated it, so a State
+// whose context was cancelled refuses every later operation until the host
+// clears it. The failure reports the host's own cause unchanged; SetContext
+// documents the lifetime that produced it.
+func (state *State) admitExecutionContext() *Error {
+	if state.ambientDone == nil ||
+		!contextChannelClosed(state.ambientDone) {
+		return nil
+	}
+	return newContextError(state.ambient, false)
+}
+
+func (state *State) endExecution() {
 	state.execution = executionControl{}
 }
 
 func (thread *threadObject) resetContextBudget() {
-	if thread.state.execution.done == nil && thread.state.interrupt == nil {
+	if thread.state.ambientDone == nil {
 		thread.contextBudget = 0
 		return
 	}
@@ -72,14 +121,15 @@ func (thread *threadObject) contextStepDue() bool {
 
 func pollExecutionContext(thread *threadObject) *Error {
 	thread.resetContextBudget()
-	execution := &thread.state.execution
-	if execution.done != nil && contextChannelClosed(execution.done) {
-		if execution.failure == nil {
-			execution.failure = newContextError(execution.context, true)
-		}
-		return execution.failure
+	state := thread.state
+	if state.ambientDone == nil ||
+		!contextChannelClosed(state.ambientDone) {
+		return nil
 	}
-	return pollInterrupt(thread.state)
+	if state.execution.failure == nil {
+		state.execution.failure = newContextError(state.ambient, true)
+	}
+	return state.execution.failure
 }
 
 func contextChannelClosed(done <-chan struct{}) bool {
@@ -119,12 +169,12 @@ func newContextError(
 
 // Context returns the context governing this native callback.
 //
-// Context-aware calls return the exact context supplied by their caller.
-// Ordinary calls return context.Background. The Context may be retained after
-// the callback returns; the borrowed Frame may not.
+// It is the context installed with SetContext, or context.Background when none
+// is installed. The Context may be retained after the callback returns; the
+// borrowed Frame may not.
 func (frame Frame) Context() context.Context {
 	frame.activation()
-	ctx := frame.thread.state.execution.context
+	ctx := frame.thread.state.ambient
 	if ctx == nil {
 		return context.Background()
 	}
