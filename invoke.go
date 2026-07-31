@@ -270,9 +270,12 @@ func (state *State) callMain(
 		state.beginExecutionContext(execution)
 	}
 	// Polling is armed for an installed interrupt too, so an ordinary call
-	// observes one. resetContextBudget disables polling when neither is
-	// present, keeping uninterrupted execution free of the check.
-	thread.resetContextBudget()
+	// observes one. A call with neither guard leaves the budget alone: it
+	// is already zero, and skipping the write keeps unguarded calls on
+	// exactly the path they had before interrupts existed.
+	if contextInstalled || state.interrupt != nil {
+		thread.resetContextBudget()
+	}
 	state.active = thread
 	thread.status = ThreadRunning
 	defer func() {

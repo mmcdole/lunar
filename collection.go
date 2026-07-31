@@ -104,21 +104,34 @@ func (control *collectionControl) charge(bytes uint64) {
 	if control.budget == 0 {
 		control.budget = minimumAutomaticCollectionDebt
 	}
-	if !control.requested &&
-		(control.debt >= control.budget || control.overHeapLimit()) {
+	if control.requested {
+		return
+	}
+	if control.debt >= control.budget {
+		control.requestCycle()
+		return
+	}
+	// A limited State schedules collection ahead of the ordinary debt
+	// budget so it measures its heap promptly instead of waiting for the
+	// heap to double. An unlimited one pays one compare against zero.
+	if control.heapLimit == 0 {
+		return
+	}
+	// A measured heap already over the limit has an enforcement raise
+	// pending; schedule it without waiting for debt.
+	if control.baseline > control.heapLimit {
+		control.requestCycle()
+		return
+	}
+	// Under the limit, the estimate overstates the heap by whatever has
+	// died since the last cycle, so crossing it does not mean retention
+	// crossed it. Requiring the collector's minimum debt before another
+	// limit-triggered cycle keeps a State parked just under its limit
+	// from running a full collection every few kilobytes of churn.
+	if control.debt >= minimumAutomaticCollectionDebt &&
+		control.baseline+control.debt > control.heapLimit {
 		control.requestCycle()
 	}
-}
-
-// overHeapLimit reports whether the running estimate has crossed the
-// configured heap limit. It schedules collection ahead of the ordinary
-// debt budget so a limited State measures its heap promptly instead of
-// waiting for the heap to double.
-func (control *collectionControl) overHeapLimit() bool {
-	if control.heapLimit == 0 {
-		return false
-	}
-	return control.baseline+control.debt > control.heapLimit
 }
 
 func (control *collectionControl) refreshRunnable() {

@@ -1036,7 +1036,7 @@ func (frame Frame) seal() {
 	frame.thread.activeNativeToken = frame.token | nativeTerminalBit
 }
 
-func invokeNativeCall(thread *threadObject) *Error {
+func invokeNativeCall(thread *threadObject) (failure *Error) {
 	if thread == nil ||
 		thread.state == nil ||
 		thread.owner == nil ||
@@ -1074,15 +1074,46 @@ func invokeNativeCall(thread *threadObject) *Error {
 	callbackReturned := false
 	nativeFrameDepth := len(thread.frames) - 1
 	defer func() {
+		// Frame.Throw unwinds to here. Recovering in this defer rather
+		// than in a wrapper around the callback keeps the native call
+		// path at one defer, and callbackReturned gates the recover so a
+		// callback that returned normally never pays for it: reaching
+		// here without it means a panic is in flight.
+		var propagate any
+		if !callbackReturned {
+			recovered := recover()
+			if thrown, ok := recovered.(nativeThrow); ok &&
+				thrown.token == token {
+				// Mirror the returned-error path, whose outcome this
+				// already is: the frames stay for the failure to unwind,
+				// and a pending exit outranks the callback's failure.
+				// One divergence: the returned path polls the context
+				// after the callback, so an expired context overrides
+				// the callback's error there but not here. The next
+				// instruction-level poll fires the same ContextError, so
+				// the difference is a few instructions of visibility,
+				// not outcome.
+				callbackReturned = true
+				failure = thrown.outcome.failure
+				if pending := thread.state.execution.pendingExit; pending != nil {
+					failure = pending
+				}
+			} else {
+				propagate = recovered
+			}
+		}
 		thread.activeNativeToken = parentToken
 		thread.nativeCallDepth--
 		thread.owner.nativeCallDepth--
 		if !callbackReturned {
 			thread.unwindCalls(nativeFrameDepth)
 		}
+		if propagate != nil {
+			panic(propagate)
+		}
 	}()
 
-	outcome := runNativeBody(body.entry, Frame{
+	outcome := body.entry(Frame{
 		thread: thread,
 		token:  token,
 		depth:  len(thread.frames),
@@ -1117,25 +1148,6 @@ func invokeNativeCall(thread *threadObject) *Error {
 	default:
 		panic("lua: validated invalid native outcome")
 	}
-}
-
-// runNativeBody invokes one callback and converts a matching Frame.Throw
-// unwind back into the terminal Outcome it sealed. Any other panic keeps
-// unwinding into the host, preserving Lunar's rule that a Go panic is not
-// a Lua error.
-func runNativeBody(entry NativeFunc, frame Frame) (outcome Outcome) {
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			return
-		}
-		thrown, ok := recovered.(nativeThrow)
-		if !ok || thrown.token != frame.token {
-			panic(recovered)
-		}
-		outcome = thrown.outcome
-	}()
-	return entry(frame)
 }
 
 func validateNativeOutcome(
