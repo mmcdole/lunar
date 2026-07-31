@@ -320,6 +320,7 @@ type State struct {
 	modulePreloads   *tableObject
 	resources        *nativeResourceRegistry
 	execution        executionControl
+	interrupt        func() error
 	operationBridges [luaOperationCount]*functionObject
 	typeMetatables   [TableKind + 1]*tableObject
 	userDataTypes    map[string]*userDataTypeRegistration

@@ -374,7 +374,15 @@ func (thread *threadObject) resumeExternal(
 			return threadResumeResult{}, err
 		}
 	}
+	// An installed interrupt guards host-resumed threads too; without this
+	// a runaway coroutine would be interruptible only through the context
+	// forms. The budget is zeroed on exit unconditionally so a suspended
+	// thread never retains one.
+	if state.interrupt != nil {
+		thread.resetContextBudget()
+	}
 	defer func() {
+		thread.contextBudget = 0
 		state.execution.pendingExit = nil
 	}()
 	return resumeThread(nil, thread, arguments), nil
@@ -503,7 +511,11 @@ func resumeThread(
 		frames: state.options.MaxFrames,
 	}
 	thread.status = ThreadRunning
-	guardedChild := caller != nil && state.execution.done != nil
+	// A coroutine resumed from Lua inherits the State's guards, so an
+	// interrupt is armed on the child as well; without this a script could
+	// escape one by looping inside a coroutine.
+	guardedChild := caller != nil &&
+		(state.execution.done != nil || state.interrupt != nil)
 	if guardedChild {
 		thread.resetContextBudget()
 	}
@@ -515,9 +527,11 @@ func resumeThread(
 		}
 		state.limits = previousLimits
 		state.active = previousActive
-		if guardedChild {
-			thread.contextBudget = 0
-		}
+		// Unconditional: an interrupt installed by a callback inside this
+		// child armed its budget after guardedChild was computed, and a
+		// suspended thread must never retain one — the external resume
+		// paths treat a leftover budget as corrupted execution state.
+		thread.contextBudget = 0
 		if caller != nil {
 			caller.status = ThreadRunning
 		}

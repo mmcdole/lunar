@@ -545,6 +545,43 @@ Ordinary non-context methods do not install cancellation polling. Lunar cannot
 preempt a callback while it is running Go code; blocking or long-running
 callbacks must observe `Frame.Context()` themselves.
 
+## Interrupt execution
+
+A context is captured when a call begins, so it cannot be re-armed or detached
+while that call runs. `SetInterrupt` installs an ambient callback instead: it
+outlives one call, applies to every thread of the State, and can be changed
+from a native callback:
+
+```go
+var cancelled atomic.Bool
+
+state.SetInterrupt(func() error {
+	if cancelled.Load() {
+		return errCancelled
+	}
+	return nil
+})
+```
+
+Returning a non-nil error stops execution and surfaces that error as a
+`*lua.Error` in the `lua.ContextError` category, so `errors.Is` still finds the
+host's error and Lua `pcall` cannot catch it. Coroutines are covered too, so a
+script cannot escape an interrupt by looping inside one.
+
+The callback runs on the executing goroutine between instructions and around
+native calls, never inside one, so it cannot preempt host code that is already
+running. `SetInterrupt` is a State operation and must be serialized like any
+other; a host deciding to interrupt from another goroutine publishes that
+decision through its own synchronization, as the atomic flag above does.
+
+Use this for a watchdog that must pause while a callback legitimately blocks:
+`RemoveInterrupt` before handing control to the user, then `SetInterrupt`
+again with a fresh deadline afterwards. `State.Traceback` reports where the
+executing thread is when the interrupt fires.
+
+Ordinary execution installs no polling at all. The check is armed only while a
+context or an interrupt is present.
+
 ## Inspect the call stack
 
 `Frame.Where` reports the source position of an activation, formatted the way

@@ -53,7 +53,7 @@ func (state *State) endExecutionContext() {
 }
 
 func (thread *threadObject) resetContextBudget() {
-	if thread.state.execution.done == nil {
+	if thread.state.execution.done == nil && thread.state.interrupt == nil {
 		thread.contextBudget = 0
 		return
 	}
@@ -73,13 +73,13 @@ func (thread *threadObject) contextStepDue() bool {
 func pollExecutionContext(thread *threadObject) *Error {
 	thread.resetContextBudget()
 	execution := &thread.state.execution
-	if execution.done == nil || !contextChannelClosed(execution.done) {
-		return nil
+	if execution.done != nil && contextChannelClosed(execution.done) {
+		if execution.failure == nil {
+			execution.failure = newContextError(execution.context, true)
+		}
+		return execution.failure
 	}
-	if execution.failure == nil {
-		execution.failure = newContextError(execution.context, true)
-	}
-	return execution.failure
+	return pollInterrupt(thread.state)
 }
 
 func contextChannelClosed(done <-chan struct{}) bool {
