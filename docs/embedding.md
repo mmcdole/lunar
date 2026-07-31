@@ -321,6 +321,44 @@ A Go panic is not converted into a Lua error. It propagates to Go after Lunar
 restores the Frame. Use `Raise*`, `ArgError`, or `ArgTypeError` for failures
 that Lua should be able to catch.
 
+## Fail from a helper
+
+An `Outcome` must be returned by the `NativeFunc` itself, so a helper called
+by that function cannot report failure with `Raise*`. Each `Raise*` method has
+an unwinding `Throw*` counterpart that never returns and may be called from any
+depth inside the callback:
+
+| returned            | unwinding              |
+| ------------------- | ---------------------- |
+| `Raise(value)`      | `Throw(value)`         |
+| `RaiseString(text)` | `ThrowString(text)`    |
+| `RaiseError(err)`   | `ThrowError(err)`      |
+| `Reraise(failure)`  | `Rethrow(failure)`     |
+| `ArgError`          | `ThrowArgError`        |
+| `ArgTypeError`      | `ThrowArgTypeError`    |
+
+A `Throw*` completes the callback exactly as returning the corresponding
+`Raise*` would, which makes shared argument checks possible:
+
+```go
+func checkString(frame lua.Frame, index int) string {
+	text, ok := frame.String(index)
+	if !ok {
+		frame.ThrowArgTypeError(index, lua.StringKind)
+	}
+	return text
+}
+
+greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+	return frame.ReturnString("hello " + checkString(frame, 0))
+})
+```
+
+`Throw*` unwinds with a private panic that Lunar recovers at the native call
+boundary. Host code between the `Throw*` and the `NativeFunc` must not recover
+it, so a deferred recover in that range should re-panic values it does not
+recognize. Panics that are not throws keep propagating to Go unchanged.
+
 Use `RaiseError(err)` for an ordinary host failure. Lunar raises `err.Error()`
 as the Lua value and retains `err` as the Go cause, so a later host caller can
 use `errors.Is` or `errors.As`. Use `Reraise(failure)` for a `*lua.Error`

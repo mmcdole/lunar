@@ -775,6 +775,72 @@ func (frame Frame) ArgTypeError(index int, expected ...Kind) Outcome {
 	))
 }
 
+// Throw raises an arbitrary Lua error Value and does not return.
+//
+// Throw is the unwinding form of Raise. Raise must be returned by the
+// NativeFunc itself, so a helper called by that function cannot use it;
+// Throw abandons the Go stack instead and may be called from any depth
+// inside the callback. The two are otherwise identical: Throw completes
+// the callback exactly as returning the corresponding Raise would.
+//
+// Throw unwinds with a private panic that Lunar recovers at the native
+// call boundary. Host code between the Throw and the NativeFunc must not
+// recover it; a deferred recover that swallows unknown panics will strand
+// the callback and is reported as an invalid outcome.
+func (frame Frame) Throw(value Value) {
+	frame.throw(frame.Raise(value))
+}
+
+// ThrowString raises a string Lua error and does not return. It is the
+// unwinding form of RaiseString; see Throw.
+func (frame Frame) ThrowString(message string) {
+	frame.throw(frame.RaiseString(message))
+}
+
+// ThrowError raises err as a Lua error and does not return. It is the
+// unwinding form of RaiseError; see Throw.
+func (frame Frame) ThrowError(err error) {
+	frame.throw(frame.RaiseError(err))
+}
+
+// Rethrow reraises a *Error returned by a nested Frame operation and does
+// not return. It is the unwinding form of Reraise; see Throw.
+func (frame Frame) Rethrow(failure *Error) {
+	frame.throw(frame.Reraise(failure))
+}
+
+// ThrowArgError raises a Lua argument error and does not return. It is the
+// unwinding form of ArgError; see Throw.
+//
+// index is zero-based. It may name a missing argument.
+func (frame Frame) ThrowArgError(index int, reason string) {
+	frame.throw(frame.ArgError(index, reason))
+}
+
+// ThrowArgTypeError raises a Lua argument-type error and does not return.
+// It is the unwinding form of ArgTypeError; see Throw.
+//
+// index is zero-based and may name a missing argument. At least one
+// distinct expected kind is required.
+func (frame Frame) ThrowArgTypeError(index int, expected ...Kind) {
+	frame.throw(frame.ArgTypeError(index, expected...))
+}
+
+// throw abandons the Go stack carrying an already sealed terminal Outcome.
+// Sealing happens in the Raise method that produced it, so a thrown
+// callback and a returned one reach invokeNativeCall in the same state.
+func (frame Frame) throw(outcome Outcome) {
+	panic(nativeThrow{token: frame.token, outcome: outcome})
+}
+
+// nativeThrow carries a Frame.Throw outcome out of a callback. Only the
+// boundary that opened the matching token recovers it; every other panic,
+// including a nativeThrow belonging to an outer frame, keeps unwinding.
+type nativeThrow struct {
+	token   uint64
+	outcome Outcome
+}
+
 func (frame Frame) raiseString(message string) Outcome {
 	value := frame.thread.state.String(message)
 	return frame.sealError(&Error{
@@ -1016,7 +1082,7 @@ func invokeNativeCall(thread *threadObject) *Error {
 		}
 	}()
 
-	outcome := body.entry(Frame{
+	outcome := runNativeBody(body.entry, Frame{
 		thread: thread,
 		token:  token,
 		depth:  len(thread.frames),
@@ -1051,6 +1117,25 @@ func invokeNativeCall(thread *threadObject) *Error {
 	default:
 		panic("lua: validated invalid native outcome")
 	}
+}
+
+// runNativeBody invokes one callback and converts a matching Frame.Throw
+// unwind back into the terminal Outcome it sealed. Any other panic keeps
+// unwinding into the host, preserving Lunar's rule that a Go panic is not
+// a Lua error.
+func runNativeBody(entry NativeFunc, frame Frame) (outcome Outcome) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		thrown, ok := recovered.(nativeThrow)
+		if !ok || thrown.token != frame.token {
+			panic(recovered)
+		}
+		outcome = thrown.outcome
+	}()
+	return entry(frame)
 }
 
 func validateNativeOutcome(
