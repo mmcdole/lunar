@@ -144,6 +144,52 @@ return first, middle, last, nil
 	}
 }
 
+func TestFrameCallOneAndCallDiscardUseLuaResultAdjustment(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	empty := mustLoadString(t, state, "@nested-empty.lua", `return`)
+	producer := mustLoadString(t, state, "@nested-producer.lua", `
+nested_call_count = nested_call_count + 1
+return 41, 42, 43
+`)
+	if err := state.SetRawGlobal("nested_call_count", Number(0)); err != nil {
+		t.Fatal(err)
+	}
+
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		emptyResult, callErr := frame.CallOne(empty.Value())
+		if callErr != nil {
+			return frame.RaiseError(callErr)
+		}
+		first, callErr := frame.CallOne(producer.Value())
+		if callErr != nil {
+			return frame.RaiseError(callErr)
+		}
+		if callErr := frame.CallDiscard(producer.Value()); callErr != nil {
+			return frame.RaiseError(callErr)
+		}
+		return frame.ReturnValues(emptyResult, first)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(host.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Nil(), Number(41))
+	calls, err := state.RawGlobal("nested_call_count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, calls, Number(2))
+	assertRootThreadReady(t, state.main)
+}
+
 func TestFrameIndexAppliesLuaTableSemantics(t *testing.T) {
 	requireStableAllocationAccounting(t)
 	state, err := New(Options{})
@@ -638,6 +684,13 @@ return 1, nil, 3
 			capacityFailure,
 		)
 	}
+	assertTestValues(
+		t,
+		capacityError.Results(),
+		Number(1),
+		Nil(),
+		Number(3),
+	)
 	assertTestValues(t, destination, Number(80), Number(81))
 	sideEffect, err := state.RawGlobal("nested_side_effect")
 	if err != nil {

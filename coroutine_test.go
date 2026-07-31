@@ -1128,6 +1128,13 @@ return 2, nil, 4
 			err,
 		)
 	}
+	assertTestValues(
+		t,
+		capacityError.Results(),
+		Number(2),
+		Nil(),
+		Number(4),
+	)
 	assertTestValues(t, destination, Number(99))
 	assertDeadCoroutineClean(t, thread)
 }

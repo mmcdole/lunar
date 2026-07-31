@@ -158,6 +158,7 @@ func (state *State) runLuaOperation(
 		arguments,
 		destination,
 		false,
+		allResults,
 	)
 	return count, err
 }

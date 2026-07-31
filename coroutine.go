@@ -205,10 +205,10 @@ func (thread *Thread) ResumeInto(
 		return 0, run.status, failure
 	}
 	if run.count > len(destination) {
-		failure := &ResultCapacityError{
-			Required:  run.count,
-			Available: len(destination),
-		}
+		failure := newResultCapacityError(
+			run.thread.values[run.first:run.first+run.count],
+			len(destination),
+		)
 		runtime.KeepAlive(thread)
 		return run.count, run.status, failure
 	}
@@ -263,10 +263,10 @@ func copyResumeResults(
 		return 0, run.status, run.failure.exposeValue()
 	}
 	if run.count > len(destination) {
-		return run.count, run.status, &ResultCapacityError{
-			Required:  run.count,
-			Available: len(destination),
-		}
+		return run.count, run.status, newResultCapacityError(
+			run.thread.values[run.first:run.first+run.count],
+			len(destination),
+		)
 	}
 	for index := 0; index < run.count; index++ {
 		destination[index] =

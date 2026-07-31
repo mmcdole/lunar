@@ -461,8 +461,44 @@ func (frame Frame) Call(
 		arguments,
 		nil,
 		true,
+		allResults,
 	)
 	return results, err
+}
+
+// CallOne invokes callable like Call and applies Lua's one-result adjustment.
+// A call with no results returns Nil; extra results are discarded.
+func (frame Frame) CallOne(
+	callable Value,
+	arguments ...Value,
+) (Value, error) {
+	var destination [1]Value
+	_, _, err := frame.callNested(
+		callable,
+		arguments,
+		destination[:],
+		false,
+		1,
+	)
+	if err != nil {
+		return Value{}, err
+	}
+	return destination[0], nil
+}
+
+// CallDiscard invokes callable like Call and discards all results.
+func (frame Frame) CallDiscard(
+	callable Value,
+	arguments ...Value,
+) error {
+	_, _, err := frame.callNested(
+		callable,
+		arguments,
+		nil,
+		false,
+		0,
+	)
+	return err
 }
 
 // CallInto invokes callable synchronously and in protected mode, writing its
@@ -489,6 +525,7 @@ func (frame Frame) CallInto(
 		arguments,
 		destination,
 		false,
+		allResults,
 	)
 	return count, err
 }
@@ -498,6 +535,7 @@ func (frame Frame) callNested(
 	arguments []Value,
 	destination []Value,
 	allocateResults bool,
+	wantedResults int,
 ) (owned []Value, count int, err error) {
 	frame.activation()
 	thread := frame.thread
@@ -527,7 +565,7 @@ func (frame Frame) callNested(
 			owning:    arguments,
 			admission: callCallableAdmission,
 		},
-		allResults,
+		wantedResults,
 	)
 	if failure == nil {
 		result := driveExecution(thread, checkpoint.frameDepth)
@@ -569,12 +607,13 @@ func (frame Frame) callNested(
 		}
 	} else {
 		if count > len(destination) {
+			capacityError := newResultCapacityError(
+				thread.values[resultBase:resultBase+count],
+				len(destination),
+			)
 			checkpoint.restore(thread, true)
 			restored = true
-			return nil, count, &ResultCapacityError{
-				Required:  count,
-				Available: len(destination),
-			}
+			return nil, count, capacityError
 		}
 		for index := 0; index < count; index++ {
 			destination[index] =

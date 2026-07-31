@@ -248,6 +248,43 @@ func TestStateCallReturnsValuesAndClearsRootExecution(t *testing.T) {
 	}
 }
 
+func TestStateCallOneAndCallDiscardUseLuaResultAdjustment(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	empty := mustLoadString(t, state, "@empty.lua", `return`)
+	result, err := state.CallOne(empty.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, result, Nil())
+
+	producer := mustLoadString(t, state, "@producer.lua", `
+call_count = call_count + 1
+return 41, 42, 43
+`)
+	if err := state.SetRawGlobal("call_count", Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	result, err = state.CallOne(producer.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, result, Number(41))
+	if err := state.CallDiscard(producer.Value()); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := state.RawGlobal("call_count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, calls, Number(2))
+	assertRootThreadReady(t, state.main)
+}
+
 func TestStateCallUsesRootCallMetamethodLayout(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -472,6 +509,22 @@ return 1, 2, 3
 		count != 3 {
 		t.Fatalf("capacity result = (%d, %#v)", count, callErr)
 	}
+	assertTestValues(
+		t,
+		capacityErr.Results(),
+		Number(1),
+		Number(2),
+		Number(3),
+	)
+	copyOfResults := capacityErr.Results()
+	copyOfResults[0] = Number(99)
+	assertTestValues(
+		t,
+		capacityErr.Results(),
+		Number(1),
+		Number(2),
+		Number(3),
+	)
 	assertTestValues(t, destination, Number(70), Number(71))
 	sideEffect, err := state.RawGlobal("side_effect")
 	if err != nil {
@@ -479,6 +532,41 @@ return 1, 2, 3
 	}
 	assertTestValue(t, sideEffect, Number(1))
 	assertRootThreadReady(t, state.main)
+}
+
+func TestResultCapacityErrorOwnsReferenceResults(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := state.NewTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := mustLoadString(t, state, "@overflow-owner.lua", `return ...`)
+
+	count, callErr := state.CallInto(
+		identity.Value(),
+		[]Value{table.Value(), Nil()},
+		nil,
+	)
+	var capacityError *ResultCapacityError
+	if !errors.As(callErr, &capacityError) || count != 2 {
+		t.Fatalf("short call = (%d, %#v)", count, callErr)
+	}
+	if err := state.CallDiscard(identity.Value()); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	results := capacityError.Results()
+	assertTestValues(t, results, table.Value(), Nil())
+	resultTable, ok := results[0].AsTable()
+	if !ok || resultTable != table {
+		t.Fatal("overflow result lost table identity after State.Close")
+	}
 }
 
 func TestStateCallIntoLeavesDestinationUntouchedOnFailure(t *testing.T) {

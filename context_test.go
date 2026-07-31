@@ -75,6 +75,32 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 	) {
 		t.Fatalf("nil-context Call = %v; want ErrNilContext", callErr)
 	}
+	if _, callErr := state.CallOneContext(nil, probe.Value()); !errors.Is(
+		callErr,
+		ErrNilContext,
+	) {
+		t.Fatalf("nil-context CallOne = %v; want ErrNilContext", callErr)
+	}
+	if callErr := state.CallDiscardContext(nil, probe.Value()); !errors.Is(
+		callErr,
+		ErrNilContext,
+	) {
+		t.Fatalf("nil-context CallDiscard = %v; want ErrNilContext", callErr)
+	}
+	result, oneCallErr := state.CallOneContext(ctx, probe.Value(), Number(5))
+	if oneCallErr != nil {
+		t.Fatal(oneCallErr)
+	}
+	assertTestValue(t, result, Number(5))
+	if seen != ctx {
+		t.Fatal("CallOneContext did not install its context")
+	}
+	if callErr := state.CallDiscardContext(ctx, probe.Value(), Number(6)); callErr != nil {
+		t.Fatal(callErr)
+	}
+	if seen != ctx {
+		t.Fatal("CallDiscardContext did not install its context")
+	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -102,7 +128,7 @@ func TestContextAdmissionAndFrameContext(t *testing.T) {
 	if len(failure.Traceback()) != 0 {
 		t.Fatalf("pre-entry cancellation traceback = %+v; want none", failure.Traceback())
 	}
-	if calls != 2 {
+	if calls != 4 {
 		t.Fatalf("pre-entry cancellation invoked native target %d times", calls)
 	}
 	assertContextStateIdle(t, state)

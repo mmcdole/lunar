@@ -5,15 +5,16 @@ import (
 	"fmt"
 )
 
-// ResultCapacityError reports that CallInto produced more results than its
-// destination can hold.
+// ResultCapacityError reports that an Into operation produced more results
+// than its destination can hold.
 //
 // Required is the exact result count produced by Lua. Available is the length
 // of the supplied destination. Lua side effects have already occurred, but
-// the destination remains unchanged.
+// the destination remains unchanged. Results returns the completed values.
 type ResultCapacityError struct {
 	Required  int
 	Available int
+	results   []Value
 }
 
 // Error returns a stable description of the insufficient result capacity.
@@ -22,10 +23,37 @@ func (err *ResultCapacityError) Error() string {
 		return "lua: insufficient result capacity"
 	}
 	return fmt.Sprintf(
-		"lua: call produced %d results; destination holds %d",
+		"lua: operation produced %d results; destination holds %d",
 		err.Required,
 		err.Available,
 	)
+}
+
+// Results returns a caller-owned copy of the completed results.
+//
+// The Values remain valid across later operations and after State.Close.
+func (err *ResultCapacityError) Results() []Value {
+	if err == nil || len(err.results) == 0 {
+		return nil
+	}
+	results := make([]Value, len(err.results))
+	copy(results, err.results)
+	return results
+}
+
+func newResultCapacityError(
+	results []slot,
+	available int,
+) *ResultCapacityError {
+	owned := make([]Value, len(results))
+	for index := range results {
+		owned[index] = results[index].owningValue()
+	}
+	return &ResultCapacityError{
+		Required:  len(results),
+		Available: available,
+		results:   owned,
+	}
 }
 
 // Call invokes callable in protected mode on state's main Thread.
@@ -51,6 +79,7 @@ func (state *State) Call(
 		arguments,
 		nil,
 		true,
+		allResults,
 	)
 	return results, err
 }
@@ -76,8 +105,94 @@ func (state *State) CallContext(
 		arguments,
 		nil,
 		true,
+		allResults,
 	)
 	return results, err
+}
+
+// CallOne invokes callable like Call and applies Lua's one-result adjustment.
+//
+// A call with no results returns Nil. If callable returns several results,
+// only the first is retained.
+func (state *State) CallOne(
+	callable Value,
+	arguments ...Value,
+) (Value, error) {
+	var destination [1]Value
+	_, _, err := state.callMain(
+		nil,
+		callable,
+		arguments,
+		destination[:],
+		false,
+		1,
+	)
+	if err != nil {
+		return Value{}, err
+	}
+	return destination[0], nil
+}
+
+// CallOneContext invokes callable like CallContext and applies Lua's
+// one-result adjustment.
+func (state *State) CallOneContext(
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) (Value, error) {
+	if ctx == nil {
+		return Value{}, ErrNilContext
+	}
+	var destination [1]Value
+	_, _, err := state.callMain(
+		ctx,
+		callable,
+		arguments,
+		destination[:],
+		false,
+		1,
+	)
+	if err != nil {
+		return Value{}, err
+	}
+	return destination[0], nil
+}
+
+// CallDiscard invokes callable like Call and discards all results.
+func (state *State) CallDiscard(
+	callable Value,
+	arguments ...Value,
+) error {
+	_, _, err := state.callMain(
+		nil,
+		callable,
+		arguments,
+		nil,
+		false,
+		0,
+	)
+	return err
+}
+
+// CallDiscardContext invokes callable like CallContext and discards all
+// results.
+func (state *State) CallDiscardContext(
+	ctx context.Context,
+	callable Value,
+	arguments ...Value,
+) error {
+	if ctx == nil {
+		return ErrNilContext
+	}
+	_, _, err := state.callMain(
+		ctx,
+		callable,
+		arguments,
+		nil,
+		false,
+		0,
+	)
+	return err
 }
 
 // CallInto invokes callable in protected mode on state's main Thread and
@@ -102,6 +217,7 @@ func (state *State) CallInto(
 		arguments,
 		destination,
 		false,
+		allResults,
 	)
 	return count, err
 }
@@ -127,6 +243,7 @@ func (state *State) CallIntoContext(
 		arguments,
 		destination,
 		false,
+		allResults,
 	)
 	return count, err
 }
@@ -137,6 +254,7 @@ func (state *State) callMain(
 	arguments []Value,
 	destination []Value,
 	allocateResults bool,
+	wantedResults int,
 ) (owned []Value, count int, err error) {
 	thread, err := state.prepareMainCall(callable, arguments)
 	if err != nil {
@@ -172,7 +290,7 @@ func (state *State) callMain(
 			owning:    arguments,
 			admission: callCallableAdmission,
 		},
-		allResults,
+		wantedResults,
 	)
 	if failure != nil {
 		return nil, 0, failure.exposeValue()
@@ -204,10 +322,10 @@ func (state *State) callMain(
 		return owned, count, nil
 	}
 	if count > len(destination) {
-		return nil, count, &ResultCapacityError{
-			Required:  count,
-			Available: len(destination),
-		}
+		return nil, count, newResultCapacityError(
+			thread.values[:count],
+			len(destination),
+		)
 	}
 	for index := 0; index < count; index++ {
 		destination[index] = thread.values[index].owningValue()
