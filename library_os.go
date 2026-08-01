@@ -21,8 +21,8 @@ var osLibraryFunctions = [...]struct {
 
 // OpenOS installs Lua 5.1's operating-system library.
 //
-// Opening is explicit and idempotent in effect. Each call replaces the global
-// os table and every installed function with fresh canonical objects.
+// Each call replaces the global os table and every installed function with
+// fresh canonical objects.
 func (state *State) OpenOS() error {
 	if err := state.checkOpen(); err != nil {
 		return err

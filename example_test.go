@@ -21,16 +21,13 @@ func ExampleFSLoader() {
 		},
 	}
 	state, err := lua.New(lua.Options{
+		Libraries:    lua.LibrarySet{lua.PackageLibrary},
 		ScriptLoader: lua.FSLoader(scripts),
 	})
 	if err != nil {
 		panic(err)
 	}
 	defer state.Close()
-	if err := state.OpenPackage(); err != nil {
-		panic(err)
-	}
-
 	results, err := state.DoFile("main.lua")
 	if err != nil {
 		panic(err)

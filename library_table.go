@@ -33,8 +33,8 @@ var tableLibraryFunctions = [...]struct {
 
 // OpenTable installs the Lua 5.1 table library.
 //
-// Opening is explicit and idempotent in effect. Each call replaces the global
-// table library and its functions with fresh canonical objects.
+// Each call replaces the global table library and its functions with fresh
+// canonical objects.
 //
 // Every entry operates on raw storage, as Lua 5.1 does: element access uses
 // raw integer reads and writes, and the sequence length is the same border the

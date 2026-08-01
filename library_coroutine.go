@@ -16,8 +16,8 @@ var coroutineLibraryFunctions = [...]struct {
 
 // OpenCoroutine installs the Lua 5.1 coroutine library.
 //
-// Opening is explicit and idempotent in effect. Each call replaces the global
-// coroutine table and its functions with fresh canonical objects.
+// Each call replaces the global coroutine table and its functions with fresh
+// canonical objects.
 func (state *State) OpenCoroutine() error {
 	if err := state.checkOpen(); err != nil {
 		return err

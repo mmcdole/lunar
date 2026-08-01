@@ -63,9 +63,8 @@ var mathLibraryRandomFunctions = [...]struct {
 
 // OpenMath installs the Lua 5.1 math library.
 //
-// Opening is explicit and idempotent in effect. Each call replaces the global
-// math table, its functions, and its private random generator with fresh
-// canonical objects.
+// Each call replaces the global math table, its functions, and its private
+// random generator with fresh canonical objects.
 func (state *State) OpenMath() error {
 	if err := state.checkOpen(); err != nil {
 		return err

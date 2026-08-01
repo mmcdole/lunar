@@ -50,6 +50,10 @@ var ErrReadOnlyUserData = errors.New(
 // Options is copied by New. Mutating the caller's value after construction
 // does not affect a live State.
 type Options struct {
+	// Libraries selects the Lua standard libraries installed by New. Its zero
+	// value installs none. CoreLibraries and FullLibraries provide common
+	// profiles; a LibrarySet literal selects any other subset.
+	Libraries LibrarySet
 	// ScriptLoader controls file-backed script loading for State.LoadFile,
 	// State.DoFile, Lua loadfile and dofile, and require. Its zero value
 	// denies script-file access. Reader- and string-backed loading remain
@@ -328,7 +332,7 @@ type State struct {
 	userDataTypes    map[string]*userDataTypeRegistration
 }
 
-// New constructs an empty State.
+// New constructs a State and installs the selected standard libraries.
 func New(options Options) (*State, error) {
 	if options.MaxValues < 0 ||
 		options.MaxFrames < 0 ||
@@ -345,6 +349,11 @@ func New(options Options) (*State, error) {
 	if options.MaxLoadBytes == 0 {
 		options.MaxLoadBytes = defaultMaxLoadBytes
 	}
+	libraries, err := normalizeLibrarySet(options.Libraries)
+	if err != nil {
+		return nil, err
+	}
+	options.Libraries = append(LibrarySet(nil), options.Libraries...)
 	loader, err := normalizeScriptLoader(options.ScriptLoader)
 	if err != nil {
 		return nil, err
@@ -395,6 +404,9 @@ func New(options Options) (*State, error) {
 	}
 	state.registerThread(state.main)
 	state.registry = newTable(state, 0, 0)
+	if err := state.openLibraries(libraries); err != nil {
+		return nil, errors.Join(err, state.Close())
+	}
 	return state, nil
 }
 
@@ -460,6 +472,7 @@ func (state *State) Close() error {
 	state.options.Stdin = nil
 	state.options.Stdout = nil
 	state.options.Stderr = nil
+	state.options.Libraries = nil
 	state.options.ScriptLoader = ScriptLoader{}
 	state.options.Location = nil
 	state.options.Now = nil

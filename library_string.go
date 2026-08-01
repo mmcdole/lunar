@@ -31,9 +31,9 @@ var stringLibraryFunctions = [...]struct {
 // OpenString installs the Lua 5.1 string library and the shared string
 // metatable.
 //
-// Opening is explicit and idempotent in effect. Each call replaces the global
-// string table, its functions, and the metatable every Lua string indexes
-// through, so ("x"):upper() resolves to the freshly installed library.
+// Each call replaces the global string table, its functions, and the metatable
+// every Lua string indexes through, so ("x"):upper() resolves to the freshly
+// installed library.
 //
 // Positions follow Lua 5.1 exactly: they are one-based, a negative position
 // counts back from the end, and out-of-range positions clamp rather than fail.

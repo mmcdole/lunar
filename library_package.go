@@ -23,10 +23,9 @@ const (
 // this pure-Go runtime, so package.cpath is empty and package.loadlib reports
 // that dynamic libraries are unavailable.
 //
-// Opening is explicit and idempotent in effect. Each call installs fresh
-// package, loader, and Function objects while preserving the State-owned
-// package.preload table, the registry-backed package.loaded table, and its
-// cached modules.
+// Each call installs fresh package, loader, and Function objects while
+// preserving the State-owned package.preload table, the registry-backed
+// package.loaded table, and its cached modules.
 func (state *State) OpenPackage() error {
 	if err := state.checkOpen(); err != nil {
 		return err

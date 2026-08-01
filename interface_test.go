@@ -107,14 +107,13 @@ func TestZeroPublicObjectsAreNotCanonical(t *testing.T) {
 }
 
 func TestPublicBaseLibraryProtectedCalls(t *testing.T) {
-	state, err := lua.New(lua.Options{})
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{lua.BaseLibrary},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.OpenBase(); err != nil {
-		t.Fatal(err)
-	}
 	chunk, err := state.LoadString("@public-base.lua", `
 local ok, value = pcall(function() return 42 end)
 return ok, value
@@ -132,6 +131,25 @@ return ok, value
 	number, ok := results[1].AsNumber()
 	if !ok || number != 42 {
 		t.Fatalf("pcall value = (%v, %v); want 42", number, ok)
+	}
+}
+
+func TestPublicLibraryCanOpenAfterConstruction(t *testing.T) {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	if err := state.OpenString(); err != nil {
+		t.Fatal(err)
+	}
+	value, err := state.RawGlobal("string")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Kind() != lua.TableKind {
+		t.Fatalf("string kind = %v; want table", value.Kind())
 	}
 }
 
@@ -186,6 +204,7 @@ func TestPublicReaderAndFileLoading(t *testing.T) {
 func TestPublicStandardStreams(t *testing.T) {
 	var output, diagnostic bytes.Buffer
 	state, err := lua.New(lua.Options{
+		Libraries:    lua.LibrarySet{lua.BaseLibrary},
 		ScriptLoader: lua.HostLoader(),
 		Stdin:        strings.NewReader(`return 41`),
 		Stdout:       &output,
@@ -195,10 +214,6 @@ func TestPublicStandardStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.OpenBase(); err != nil {
-		t.Fatal(err)
-	}
-
 	chunk, err := state.LoadString(
 		"@standard-streams.lua",
 		`local loaded=assert(loadfile()); print(loaded())`,
@@ -218,15 +233,13 @@ func TestPublicStandardStreams(t *testing.T) {
 }
 
 func TestPublicPackageLoadingAndOrdinaryNativeAssignment(t *testing.T) {
-	state, err := lua.New(lua.Options{})
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{lua.PackageLibrary},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	if err := state.OpenPackage(); err != nil {
-		t.Fatal(err)
-	}
-
 	target, err := state.NewTableWithCapacity(0, 1)
 	if err != nil {
 		t.Fatal(err)

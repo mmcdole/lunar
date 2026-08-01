@@ -406,7 +406,17 @@ func prepareLunarProgram(
 	spec programSpec,
 	source string,
 ) (*preparedProgram, error) {
-	state, err := lunar.New(lunar.Options{})
+	var libraries lunar.LibrarySet
+	if spec.libraries&programLibraryBase != 0 {
+		libraries = append(libraries, lunar.BaseLibrary)
+	}
+	if spec.libraries&programLibraryString != 0 {
+		libraries = append(libraries, lunar.StringLibrary)
+	}
+	if spec.libraries&programLibraryMath != 0 {
+		libraries = append(libraries, lunar.MathLibrary)
+	}
+	state, err := lunar.New(lunar.Options{Libraries: libraries})
 	if err != nil {
 		return nil, fmt.Errorf("create Lunar state: %w", err)
 	}
@@ -414,22 +424,6 @@ func prepareLunarProgram(
 		_ = state.Close()
 		return nil, err
 	}
-	if spec.libraries&programLibraryBase != 0 {
-		if err := state.OpenBase(); err != nil {
-			return fail(fmt.Errorf("open Lunar base library: %w", err))
-		}
-	}
-	if spec.libraries&programLibraryString != 0 {
-		if err := state.OpenString(); err != nil {
-			return fail(fmt.Errorf("open Lunar string library: %w", err))
-		}
-	}
-	if spec.libraries&programLibraryMath != 0 {
-		if err := state.OpenMath(); err != nil {
-			return fail(fmt.Errorf("open Lunar math library: %w", err))
-		}
-	}
-
 	sourceName := "@programs/wrapped-" + spec.sourceFile
 	chunk, err := state.LoadString(sourceName, source)
 	if err != nil {

@@ -33,6 +33,7 @@ func NewState(options Options) (*State, error) {
 		now = func() time.Time { return fixed }
 	}
 	runtime, err := engine.New(engine.Options{
+		Libraries:    engine.FullLibraries(),
 		ScriptLoader: engine.HostLoader(),
 		Now:          now,
 	})
@@ -43,22 +44,6 @@ func NewState(options Options) (*State, error) {
 		_ = runtime.Close()
 		return nil, failure
 	}
-	for _, open := range []func() error{
-		runtime.OpenBase,
-		runtime.OpenPackage,
-		runtime.OpenMath,
-		runtime.OpenTable,
-		runtime.OpenString,
-		runtime.OpenIO,
-		runtime.OpenOS,
-		runtime.OpenDebug,
-		runtime.OpenCoroutine,
-	} {
-		if err := open(); err != nil {
-			return closeOnError(err)
-		}
-	}
-
 	bridge := &State{state: runtime}
 	chunk, err := runtime.LoadString("@cbor-iterator.lua", `
 return function(target, emit)
