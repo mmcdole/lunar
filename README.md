@@ -13,9 +13,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
-Lunar implements Lua 5.1 entirely in Go: compiler, bytecode VM, coroutines,
-binary chunks, and standard libraries. Its compiler, VM, libraries, and
-pattern engine are checked against the
+Lunar implements Lua 5.1, plus Lua 5.2-style `goto` and labels, entirely in
+Go: compiler, bytecode VM, coroutines, binary chunks, and standard libraries.
+Its compiler, VM, libraries, and pattern engine are checked against the
 [Lua 5.1 reference implementation](https://www.lua.org/ftp/).
 
 ## Quick start
@@ -118,7 +118,7 @@ runtime versions.
 
 | | Lunar | [GopherLua](https://github.com/yuin/gopher-lua) | [Shopify go-lua](https://github.com/Shopify/go-lua) |
 | --- | --- | --- | --- |
-| Lua version | Lua 5.1 | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
+| Lua version | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
 | Go API | Functions return typed values; callbacks use typed `Frame` accessors | Values are `LValue` objects; callbacks pass arguments and results through an `LState` stack | Mirrors the Lua C API; values are addressed by numeric stack position |
 | Libraries in a new state | None by default; select any subset at construction or open one later | All standard libraries | None; call `OpenLibraries` or open them individually |
 | Script-file loading | Denied by default; select host files, an `fs.FS`, or a host function | Ambient OS file access | Ambient OS file access when the applicable libraries are open |
@@ -150,6 +150,8 @@ The public embedding API is still stabilizing.
   errors, and lifecycle
 - [Architecture](docs/architecture.md): compiler, VM, runtime representation,
   and API boundaries
+- [Language compatibility](docs/language-compatibility.md): the `goto`
+  extension and intentional Lua 5.1/5.2/LuaJIT choices
 - [Collection](docs/collection.md): Lua reachability, weak tables, and
   finalization
 - [Performance](docs/performance.md): measurement groups and regression policy

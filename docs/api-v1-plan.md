@@ -7,9 +7,10 @@ recorded in [ADR 0006](adr/0006-cut-to-a-demand-backed-surface.md),
 phase text below wherever the two disagree. The phases remain as the record of
 how the surface was built before it was measured.
 
-Lunar is not released or in production. Public interface changes in this plan
-are therefore clean breaks: the implementation will not retain aliases or
-deprecation shims for accidental pre-release names.
+Lunar's pre-v0.1 interface was not in production. The public-interface changes
+recorded in this historical plan were therefore clean breaks: the
+implementation did not retain aliases or deprecation shims for accidental
+pre-release names.
 
 ## Goals
 
@@ -334,9 +335,10 @@ Deferred until use or profiling justifies them:
 - streaming bytecode encoding; and
 - debug hooks.
 
-## Final release gate
+## Historical first-release gate
 
-Before the first public release:
+The first public-release review used this gate; the items remain useful toward
+v1 where they still apply:
 
 1. all breaking names and behavioral decision gates are settled;
 2. every operation that may execute Lua documents context, yielding, side
