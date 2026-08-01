@@ -194,8 +194,7 @@ interface over the same runtime:
 - `State.Call` returns an owned result slice.
 - `State.CallOne` applies Lua's one-result adjustment, while
   `State.CallDiscard` requests no results.
-- `State.CallInto` and `State.CallIntoContext` write into caller-provided
-  result storage.
+- `State.CallInto` writes into caller-provided result storage.
 - `NativeFunc` receives a borrowed `Frame` with typed argument access and
   terminal `Outcome` methods.
 - `Frame.Call`, `Frame.CallOne`, `Frame.CallDiscard`, and `Frame.CallInto` make
@@ -211,13 +210,12 @@ It returns the required count in `ResultCapacityError`; `Results` recovers an
 owned copy after the completed call or coroutine transition. Lua side effects
 are not rolled back.
 
-Native callbacks return through `Frame.Return*`, `Frame.Raise*`, or
-`Frame.Yield*`. An `Outcome` is tied to the invocation that created it. A
-callback may retain owning values read from the Frame, but it must not retain
-the Frame itself. A callback ends by returning a `Return*` Outcome, returning a
-`Yield*` Outcome, or throwing. `Throw*` unwinds with a private panic recovered
-at the native call boundary, so a helper called at any depth inside the
-callback can report a failure that a returned Outcome cannot express.
+An `Outcome` is tied to the invocation that created it. A callback may retain
+owning values read from the Frame, but it must not retain the Frame itself. A
+callback ends by returning a `Return*` Outcome, returning a `Yield*` Outcome,
+or calling `Throw*`. `Throw*` unwinds with a private panic recovered at the
+native call boundary, so a helper called at any depth inside the callback can
+report a failure that a returned Outcome cannot express.
 `ThrowError` converts an ordinary Go error and preserves it as the cause;
 `Rethrow` propagates an existing Lua error without losing its value, category,
 or nested traceback.
@@ -292,9 +290,17 @@ contracts are in [Semantic collection](collection.md).
 
 ## Libraries and native resources
 
-`New` installs no Lua libraries. Each opener installs fresh native functions
-and any table owned by that library. `OpenBase` installs base globals and the
-coroutine library; other libraries can be opened independently.
+`Options.Libraries` selects any standard-library subset during `New`; its zero
+value installs none. `CoreLibraries` selects base, package, table, string, and
+math, with coroutine supplied by Lua 5.1's base library. `FullLibraries` also
+selects IO, OS, and debug. Selection is validated before construction,
+duplicates are ignored, and installation follows one canonical order.
+
+The individual `OpenBase`, `OpenString`, and other library methods remain
+available for deliberate post-construction grants. Each opener installs fresh
+native functions and any table owned by that library. `OpenBase` also installs
+the coroutine library; `OpenCoroutine` permits that library without base
+globals.
 
 The standard library implementation uses native Frames and compact runtime
 objects. Lua-visible calls, indexing, errors, and yields reenter through the
@@ -313,9 +319,9 @@ that reports dynamic libraries are unavailable.
 ## Limits and validation
 
 `Options` provides deterministic limits for value-stack entries, activations,
-and loaded chunk bytes. Limit failures are ordinary Lua errors in the
-`ResourceError` category. `string.rep`, large IO reads, and `os.date`
-formatting apply a shared 1 GiB contiguous-result limit.
+loaded chunk bytes, and retained logical Lua heap bytes. Limit failures are
+ordinary Lua errors in the `ResourceError` category. `string.rep`, large IO
+reads, and `os.date` formatting apply a shared 1 GiB contiguous-result limit.
 
 Correctness tests cover public ownership, lifecycle, race behavior, compiler
 and VM semantics, libraries, collection, and supported platform paths.

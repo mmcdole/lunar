@@ -33,8 +33,8 @@ const (
 // so a State can expose coroutines without the base globals.
 type LibrarySet []Library
 
-// CoreLibraries returns the standard libraries that do not grant ambient
-// file, process, environment, or debug access.
+// CoreLibraries returns the standard libraries that do not themselves grant
+// ambient file, process, environment, or debug access.
 //
 // The set contains the base (including coroutine), package, table, string,
 // and math libraries. The package library can use preloaded modules without a

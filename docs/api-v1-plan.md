@@ -26,15 +26,36 @@ The v1 interface should preserve Lunar's defining boundaries:
 
 ## Execution rules
 
-Operations that may execute Lua have host-side `State` forms and, when
-applicable, context-aware forms. The corresponding operation on a live native
-callback belongs to `Frame` and inherits the enclosing context and execution
-budget.
+Operations that may execute Lua observe the `State`'s installed ambient
+context. The corresponding operation on a live native callback belongs to
+`Frame` and inherits that context and the enclosing execution budget.
 
 A callback must use `Frame` for reentrant Lua work. Panics remain reserved for
 callback-author invariants such as a negative argument index, stale Frame, or
 Outcome from the wrong invocation. Closed States, foreign Values, invalid
 keys, capacity failures, and Lua execution failures return errors.
+
+## Standard-library selection
+
+`Options.Libraries` accepts an arbitrary `LibrarySet`. Its zero value installs
+no libraries. `CoreLibraries()` and `FullLibraries()` return common presets;
+they are conveniences, not separate construction modes.
+
+`CoreLibraries` contains base (including coroutine), package, table, string,
+and math. The package library has no script-file authority without a
+`ScriptLoader`.
+`FullLibraries` adds IO, OS, and debug and is therefore intended only for
+trusted scripts.
+
+Selection order does not affect installation and duplicates are ignored. `New`
+validates every selection before installing anything and returns no State if a
+library fails to initialize. A literal supports unusual subsets, including
+`CoroutineLibrary` without `BaseLibrary`.
+
+Retain the individual `OpenBase`, `OpenString`, and other library methods for
+hosts that deliberately grant capabilities after construction. Do not add a
+second bulk `OpenLibraries` or `OpenStandardLibraries` API for v1; constructor
+profiles cover the common bulk cases.
 
 ## Phase 0: canonical identity and vocabulary
 
@@ -136,7 +157,7 @@ Decisions:
 - `WithPackagePath` sets the initial `package.path`, which Lua may later
   mutate without changing the script backend;
 - only `fs.ErrNotExist` advances `require` to another candidate;
-- opening base or package grants no source authority;
+- selecting or opening base or package grants no script-file authority;
 - the script loader does not govern the separate IO-library filesystem surface;
   and
 - the pure-Go package library has no C searchers, exposes an empty
@@ -172,17 +193,17 @@ Decisions:
 - `IntegerInRange` applies an inclusive range and rejects an inverted range;
 - `IsMissingOrNil` composes with every exact or coercing helper instead of
   multiplying the API into `Optional*` variants; and
-- variadic `ArgTypeError` requires one or more distinct valid Kinds and
+- variadic `ThrowArgTypeError` requires one or more distinct valid Kinds and
   preserves caller order in its diagnostic.
 
 Do not expose the standard libraries' truncating or saturating integer
 compatibility behavior until a concrete module needs it.
 
-Rename the current `Frame.RaiseError(*Error)` to `Frame.Reraise(*Error)`. Add
-`Frame.RaiseError(error)` to preserve an ordinary Go error as the cause of a
-Lua runtime error, and export `Frame.ReturnArguments`. A direct `*Error`
-passed to `RaiseError` is reraised defensively; code handling a nested Lua
-failure should still say `Reraise` explicitly.
+Use `Frame.Rethrow(*Error)` for a nested Lua failure and
+`Frame.ThrowError(error)` to preserve an ordinary Go error as the cause of a
+Lua runtime error. Export `Frame.ReturnArguments`. A direct `*Error` passed to
+`ThrowError` is rethrown defensively; code handling a nested Lua failure should
+still say `Rethrow` explicitly.
 
 Exit criteria:
 
@@ -282,16 +303,12 @@ Expose `Prototype.MarshalBinary`, `Prototype.InstructionCount`, and bounds-safe
 child access. Defer `WriteTo` until it can use the standard
 `io.WriterTo` signature and a genuinely streaming encoder.
 
-Add `OpenStandardLibraries` with explicit documentation that it includes
-package, IO, OS, and debug capabilities and is not a sandbox-safe default.
-
 Add stable traceback-string formatting that never invokes Lua.
 
 Exit criteria:
 
 - `Prototype` implements `encoding.BinaryMarshaler`;
 - serialized chunks round-trip through the verifier;
-- the standard-library opener matches the documented complete set; and
 - traceback formatting remains safe after State closure.
 
 ## Deferred or rejected
@@ -303,7 +320,8 @@ Rejected for v1:
 - panic conversion for ordinary State and Table failures;
 - an unchecked `lua.Int(int)` constructor;
 - package name `lunar`;
-- renaming `Kind` to `Type`; and
+- renaming `Kind` to `Type`;
+- a generic `OpenLibraries` or `OpenStandardLibraries` method; and
 - legacy global-module registration.
 
 Deferred until use or profiling justifies them:
@@ -323,7 +341,7 @@ Before the first public release:
 1. all breaking names and behavioral decision gates are settled;
 2. every operation that may execute Lua documents context, yielding, side
    effects, and reentry;
-3. all source-loading paths obey one policy;
+3. all script-file loading paths obey one `ScriptLoader`;
 4. native modules and typed userdata have complete examples;
 5. call and coroutine results are never lost;
 6. host ceilings have precise adversarial tests;

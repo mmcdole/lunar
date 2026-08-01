@@ -30,68 +30,56 @@ import (
 )
 
 func main() {
-	state, err := lua.New(lua.Options{})
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{
+			lua.BaseLibrary,
+			lua.StringLibrary,
+			lua.TableLibrary,
+		},
+	})
 	if err != nil {
 		panic(err)
 	}
 	defer state.Close()
 
-	results, err := state.DoString("@answer.lua", `return 6 * 7`)
+	greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+		name, ok := frame.String(0)
+		if !ok {
+			frame.ThrowArgTypeError(0, lua.StringKind)
+		}
+		return frame.ReturnString("hello, " + name)
+	})
+	if err != nil {
+		panic(err)
+	}
+	if err := state.SetGlobal("greet", greet.Value()); err != nil {
+		panic(err)
+	}
+
+	results, err := state.DoString(
+		"@hello.lua",
+		`return greet("world"):upper()`,
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	answer, _ := results[0].AsNumber()
-	fmt.Println(answer)
+	greeting, _ := results[0].AsString()
+	fmt.Println(greeting)
 }
 ```
 
-`DoString` and `DoFile` load and execute a chunk, returning owned Lua values.
-The zero-value `ScriptLoader` denies script-file loading; applications that need
-`DoFile`, Lua `loadfile`/`dofile`, or file-backed `require` explicitly grant
-`lua.HostLoader()`, `lua.FSLoader(fsys)`, or `lua.FuncLoader(opener)`. Use the
-separate `Load*` and `Call` APIs when a compiled chunk will be called more than
-once.
+The library list is an allow-list. Its zero value installs no standard
+libraries; the example chooses only base, string, and table. `:upper()` works
+because `StringLibrary` installed the string metatable. Use
+`lua.CoreLibraries()` for the usual capability-safe profile,
+`lua.FullLibraries()` for trusted scripts, or an exact `lua.LibrarySet` like
+the example. Individual `Open*` methods remain available for deliberate later
+grants.
 
-## Call Go from Lua
-
-Register a native function to make Go code available to Lua. With a `State`
-created as above:
-
-```go
-prices := map[string]float64{
-	"widget": 12.50,
-}
-
-unitPrice, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
-	sku, ok := frame.String(0)
-	if !ok {
-		frame.ThrowArgTypeError(0, lua.StringKind)
-	}
-	price, ok := prices[sku]
-	if !ok {
-		frame.ThrowString("unknown product: " + sku)
-	}
-	return frame.ReturnNumber(price)
-})
-if err != nil {
-	panic(err)
-}
-if err := state.SetGlobal("unit_price", unitPrice.Value()); err != nil {
-	panic(err)
-}
-
-results, err := state.DoString("@checkout.lua", `
-	local subtotal = unit_price("widget") * 4
-	return subtotal * 0.90
-`)
-if err != nil {
-	panic(err)
-}
-
-total, _ := results[0].AsNumber()
-fmt.Printf("%.2f\n", total)
-```
+`DoString` loads source supplied directly by Go. Named script-file loading is a
+separate permission: `ScriptLoader` defaults to denied, while `HostLoader`,
+`FSLoader`, and `FuncLoader` explicitly select where scripts may come from.
 
 See [Embedding Lunar](docs/embedding.md) for callbacks, tables, contexts,
 errors, coroutines, and lifecycle management.
@@ -132,8 +120,8 @@ runtime versions.
 | --- | --- | --- | --- |
 | Lua version | Lua 5.1 | Lua 5.1 with Lua 5.2-style `goto` | Lua 5.2 |
 | Go API | Functions return typed values; callbacks use typed `Frame` accessors | Values are `LValue` objects; callbacks pass arguments and results through an `LState` stack | Mirrors the Lua C API; values are addressed by numeric stack position |
-| Libraries in a new state | None; open each library explicitly | All standard libraries | None; call `OpenLibraries` or open them individually |
-| Source-file access | Denied by default; grant an OS file system, `fs.FS`, or host opener | Ambient OS file access | Ambient OS file access when the applicable libraries are open |
+| Libraries in a new state | None by default; select any subset at construction or open one later | All standard libraries | None; call `OpenLibraries` or open them individually |
+| Script-file loading | Denied by default; select host files, an `fs.FS`, or a host function | Ambient OS file access | Ambient OS file access when the applicable libraries are open |
 | Coroutines | Supported from Lua and Go | Supported from Lua and Go | Not implemented |
 | Cancellation | One installed context covers execution, loading, and coroutines | One context on the state, execution only | No context-based cancellation |
 | `os.exit` | Returns an `*lua.ExitRequest` to Go | Exits the entire Go process | Exits the entire Go process |
@@ -147,7 +135,7 @@ and finalizers are implemented. Current intentional limits are:
 - no C ABI, native C-module loading, or light userdata;
 - no `debug.sethook` or `debug.gethook`;
 - garbage collection runs synchronously rather than incrementally;
-- no retained-heap quota; and
+- no deterministic VM-instruction budget; and
 - no high-level table iteration convenience beyond the precise `Table.Next`
   primitive.
 

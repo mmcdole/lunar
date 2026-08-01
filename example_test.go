@@ -40,7 +40,13 @@ func ExampleFSLoader() {
 }
 
 func Example() {
-	state, err := lua.New(lua.Options{})
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{
+			lua.BaseLibrary,
+			lua.StringLibrary,
+			lua.TableLibrary,
+		},
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -50,15 +56,32 @@ func Example() {
 		}
 	}()
 
-	results, err := state.DoString("@answer.lua", `return 6 * 7`)
+	greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+		name, ok := frame.String(0)
+		if !ok {
+			frame.ThrowArgTypeError(0, lua.StringKind)
+		}
+		return frame.ReturnString("hello, " + name)
+	})
 	if err != nil {
 		panic(err)
 	}
-	answer, _ := results[0].AsNumber()
-	fmt.Println(answer)
+	if err := state.SetGlobal("greet", greet.Value()); err != nil {
+		panic(err)
+	}
+
+	results, err := state.DoString(
+		"@hello.lua",
+		`return greet("world"):upper()`,
+	)
+	if err != nil {
+		panic(err)
+	}
+	greeting, _ := results[0].AsString()
+	fmt.Println(greeting)
 
 	// Output:
-	// 42
+	// HELLO, WORLD
 }
 
 func ExampleState_NewNativeFunction() {
