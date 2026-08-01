@@ -16,7 +16,8 @@ import (
 // ErrClosed reports an operation that requires a live State.
 var ErrClosed = errors.New("lua: state is closed")
 
-// ErrRunning reports an operation that cannot run while Lua is executing.
+// ErrRunning reports an operation that requires an idle State while Lua is
+// executing. A NativeFunc reenters Lua through its borrowed Frame instead.
 var ErrRunning = errors.New("lua: state is executing")
 
 // ErrForeignValue reports a reference value owned by another State.

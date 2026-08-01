@@ -191,13 +191,15 @@ need a second open-versus-closed representation.
 The public API has an owning interface and a borrowed native-callback
 interface over the same runtime:
 
+- `State.Call*` methods enter Lua from an idle State; they return `ErrRunning`
+  rather than recursively entering a State whose executor is already active.
 - `State.Call` returns an owned result slice.
 - `State.CallN` applies Lua's fixed-result adjustment for an exact arity.
 - `State.CallOne` applies the common one-result adjustment, while
   `State.CallDiscard` requests no results without allocating a result slice.
 - `State.CallInto` writes into caller-provided result storage.
-- `NativeFunc` receives a borrowed `Frame` with typed argument access and
-  terminal `Outcome` methods.
+- `NativeFunc` receives the active borrowed `Frame` with typed argument access,
+  terminal `Outcome` methods, and the capability to reenter Lua synchronously.
 - `Frame.Call`, `Frame.CallN`, `Frame.CallOne`, `Frame.CallDiscard`, and
   `Frame.CallInto` make protected reentrant calls.
 - `Frame.Index` and `Frame.SetIndex` perform Lua indexing from a callback.

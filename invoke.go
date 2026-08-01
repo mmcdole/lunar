@@ -67,12 +67,17 @@ func newResultCapacityError(
 // remain valid across later calls and after State.Close. A call with no
 // results returns a nil slice.
 //
-// Invalid or foreign Values and a State already executing are rejected before
-// Lua runs. Execution failures are returned as *Error. An ExitError unwraps
-// to *ExitRequest and asks the host to apply its own lifecycle policy; Lunar
-// neither closes the State nor terminates the process. A panic from a
-// NativeFunc is propagated after the State has been restored to a callable
-// state.
+// Call and the other State.Call* methods are outer entry points and require an
+// idle State. A NativeFunc that calls Lua synchronously, including through
+// helper or application code, must pass its borrowed Frame along and use the
+// matching Frame.Call* method. Calling through this State or frame.State()
+// while the callback is active returns ErrRunning.
+//
+// Invalid or foreign Values are rejected before Lua runs. Execution failures
+// are returned as *Error. An ExitError unwraps to *ExitRequest and asks the
+// host to apply its own lifecycle policy; Lunar neither closes the State nor
+// terminates the process. A panic from a NativeFunc is propagated after the
+// State has been restored to a callable state.
 func (state *State) Call(
 	callable Value,
 	arguments ...Value,

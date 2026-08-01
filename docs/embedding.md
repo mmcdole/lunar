@@ -159,8 +159,9 @@ if errors.As(err, &capacity) {
 
 ### Expose a Go function
 
-`NativeFunc` receives a borrowed `Frame`. Argument indexes are zero-based and
-typed accessors do not coerce values.
+`NativeFunc` receives a borrowed `Frame`. The Frame is both the argument view
+and the active execution capability for that callback. Argument indexes are
+zero-based and typed accessors do not coerce values.
 
 ```go
 multiply, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
@@ -181,6 +182,26 @@ if err := state.SetGlobal("host_multiply", multiply.Value()); err != nil {
 	return err
 }
 ```
+
+An outer Go caller enters an idle State through `State.Call*`. Once Lua calls
+a `NativeFunc`, that State is already executing. Any synchronous call back
+into Lua must therefore use the callback's `Frame.Call*`, even when the call
+happens indirectly through application helpers:
+
+```go
+func callHook(
+	frame lua.Frame,
+	hook lua.Value,
+	event lua.Value,
+) (lua.Value, error) {
+	return frame.CallOne(hook, event)
+}
+```
+
+Pass the Frame through every helper that may reenter Lua. `frame.State()`
+returns the owning State for State-bound operations such as constructing or
+loading values; it does not turn the active State into an idle one. Calling
+`State.Call*` through it during the callback returns `lua.ErrRunning`.
 
 Use the helper whose name matches the contract you want:
 
@@ -244,7 +265,8 @@ Outcome from a yieldable coroutine, or calling a `Throw*` method.
 The Frame becomes invalid after a terminal outcome or callback return. Owning
 `Value`s and typed handles read from it may be retained. `Frame.Call`,
 `Frame.CallN`, `Frame.CallOne`, `Frame.CallDiscard`, `Frame.CallInto`,
-`Frame.Index`, and `Frame.SetIndex` are the supported reentrant operations.
+`Frame.Index`, and `Frame.SetIndex` continue the active execution and are the
+supported reentrant operations.
 
 State a callback needs travels in the Go closure. An owning `Value` held that
 way keeps its Lua object reachable, so a closure is both the simpler and the

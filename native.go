@@ -22,12 +22,17 @@ var ErrNativeCaptureLimit = errors.New("lua: native function capture limit excee
 
 // NativeFunc is a Go function callable by Lua.
 //
-// The Frame is borrowed for the duration of the call. The callback must
-// return an Outcome produced by that Frame. Retaining a Frame or using it
-// after producing a terminal Outcome is a programming error. Go panics are
-// propagated after the borrowed activation is removed. The Throw* methods
-// are the protected Lua-error paths, while Yield* outcomes suspend a
-// yieldable coroutine.
+// The Frame is borrowed for the duration of the call and is the callback's
+// active execution capability. A callback that calls Lua synchronously,
+// directly or through helper code, must pass that Frame along and use its
+// Call* methods. State.Call* methods are outer entry points and return
+// ErrRunning while the callback is active.
+//
+// The callback must return an Outcome produced by that Frame. Retaining a
+// Frame or using it after producing a terminal Outcome is a programming
+// error. Go panics are propagated after the borrowed activation is removed.
+// The Throw* methods are the protected Lua-error paths, while Yield* outcomes
+// suspend a yieldable coroutine.
 type NativeFunc func(Frame) Outcome
 
 type nativeOutcomeKind uint8
@@ -53,13 +58,16 @@ type Outcome struct {
 	kind        nativeOutcomeKind
 }
 
-// Frame is a borrowed view of one native call.
+// Frame is the borrowed activation and execution capability for one native
+// call.
 //
 // Argument indexes are zero-based. Typed argument methods perform exact Lua
-// type checks and do not coerce values. Owning Values and object handles read
-// from a Frame may be retained, but the Frame itself is valid only until a
-// terminal Return* or Yield* method is called, a Throw* method unwinds, or
-// the NativeFunc returns.
+// type checks and do not coerce values. Call*, Index, and SetIndex continue
+// execution reentrantly on the callback's Thread; equivalent State execution
+// methods cannot reenter an already-running State. Owning Values and object
+// handles read from a Frame may be retained, but the Frame itself is valid
+// only until a terminal Return* or Yield* method is called, a Throw* method
+// unwinds, or the NativeFunc returns.
 type Frame struct {
 	thread *threadObject
 	token  uint64
@@ -310,7 +318,12 @@ func (frame Frame) threadObject(index int) (*threadObject, bool) {
 	return threadObjectFromSlot(value), true
 }
 
-// State returns the State executing this callback.
+// State returns the State that owns this callback.
+//
+// The returned State is useful for State-bound construction and loading, but
+// it is not the callback's execution capability. State.Call* returns
+// ErrRunning while the callback is active; use this Frame's matching Call*
+// method for synchronous Lua reentry.
 func (frame Frame) State() *State {
 	frame.activation()
 	return frame.thread.state
