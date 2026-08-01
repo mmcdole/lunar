@@ -22,6 +22,8 @@ type activeLocal struct {
 type blockState struct {
 	localBase     int
 	registerFloor int
+	firstGoto     int
+	firstLabel    int
 	captured      bool
 }
 
@@ -92,6 +94,9 @@ type functionState struct {
 	registerFloor   int
 	unresolvedJumps int
 	pendingResults  int
+	pendingGotos    []pendingGoto
+	labels          []definedLabel
+	gotoError       *Error
 }
 
 func (unit *compileUnit) newFunction(
@@ -343,6 +348,8 @@ func (function *functionState) enterBlock() {
 	function.blocks = append(function.blocks, blockState{
 		localBase:     len(function.locals),
 		registerFloor: function.registerFloor,
+		firstGoto:     len(function.pendingGotos),
+		firstLabel:    len(function.labels),
 	})
 }
 
@@ -355,6 +362,8 @@ func (function *functionState) enterFunctionBlock() {
 	}
 	function.blocks = append(function.blocks, blockState{
 		registerFloor: 0,
+		firstGoto:     len(function.pendingGotos),
+		firstLabel:    len(function.labels),
 	})
 	function.registerFloor = 0
 }
@@ -372,7 +381,9 @@ func (function *functionState) leaveBlock(line uint32) {
 	}
 	if index != 0 {
 		function.emitCloseForExit(index, line)
+		function.moveGotosOut(index)
 	}
+	function.labels = function.labels[:block.firstLabel]
 	function.blocks = function.blocks[:index]
 	function.locals = function.locals[:block.localBase]
 	function.registerFloor = block.registerFloor
@@ -716,6 +727,18 @@ func (function *functionState) finish(
 	}
 	if len(function.loops) != 0 {
 		panic("lua: compiler sealed a function with an active loop")
+	}
+	if function.gotoError != nil {
+		return nil, function.gotoError
+	}
+	if len(function.pendingGotos) != 0 {
+		pending := function.pendingGotos[0]
+		return nil, newSourceSyntaxError(
+			function.unit.sourceName.text,
+			pending.line,
+			"no visible label '%s' for <goto>",
+			pending.name.text,
+		)
 	}
 	if function.unresolvedJumps != 0 {
 		return nil, newSourceSyntaxError(

@@ -246,6 +246,15 @@ func (parser *sourceParser) parseBlock() (bool, *Error) {
 }
 
 func (parser *sourceParser) parseStatement() *Error {
+	if parser.current.kind == tokenName && parser.current.text == "goto" {
+		next, syntaxError := parser.peekToken()
+		if syntaxError != nil {
+			return syntaxError
+		}
+		if next.kind == tokenName {
+			return parser.parseGoto()
+		}
+	}
 	switch parser.current.kind {
 	case tokenDo:
 		return parser.parseDo()
@@ -261,6 +270,8 @@ func (parser *sourceParser) parseStatement() *Error {
 		return parser.parseRepeat()
 	case tokenWhile:
 		return parser.parseWhile()
+	case tokenDoubleColon:
+		return parser.parseLabel()
 	case tokenName, '(':
 		return parser.parsePrefixStatement()
 	default:

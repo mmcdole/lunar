@@ -31,6 +31,7 @@ const (
 	tokenUntil
 	tokenWhile
 	tokenConcat
+	tokenDoubleColon
 	tokenDots
 	tokenEqual
 	tokenGreaterEqual
@@ -65,6 +66,7 @@ var tokenNames = [...]string{
 	tokenUntil - 256:        "until",
 	tokenWhile - 256:        "while",
 	tokenConcat - 256:       "..",
+	tokenDoubleColon - 256:  "::",
 	tokenDots - 256:         "...",
 	tokenEqual - 256:        "==",
 	tokenGreaterEqual - 256: ">=",
@@ -455,6 +457,14 @@ func (lex *lexer) scan() (token, error) {
 			return lex.readNumber(line, &capture)
 		}
 		return lex.token('.', line), nil
+	case ':':
+		lex.advance(1)
+		if matched, err := lex.acceptByte(':'); err != nil {
+			return token{}, err
+		} else if matched {
+			return lex.token(tokenDoubleColon, line), nil
+		}
+		return lex.token(':', line), nil
 	case '=':
 		lex.advance(1)
 		if matched, err := lex.acceptByte('='); err != nil {

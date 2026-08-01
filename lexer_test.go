@@ -149,7 +149,7 @@ func TestLexerFragmentationMatchesFixedInput(t *testing.T) {
 	source := "-- heading\r\n" +
 		"--[==[ignored\n\rcomment]==]\n" +
 		"and identifier_123 = 0x1e + .5e1; " +
-		"... .. . == = >= > <= < ~= ~ " +
+		"... .. . :: : == = >= > <= < ~= ~ " +
 		"\"a\\n\\097\\255\\q\\\"continued\\\r\nline\" " +
 		"'plain' [==[\r\nfirst\rsecond\n\rthird ]=] inner]==] " +
 		"[=[left]===]=] tail 1e2..3"
@@ -191,6 +191,8 @@ func TestLexerFragmentationMatchesFixedInput(t *testing.T) {
 		tokenDots,
 		tokenConcat,
 		'.',
+		tokenDoubleColon,
+		':',
 		tokenEqual,
 		'=',
 		tokenGreaterEqual,
@@ -611,6 +613,7 @@ func TestLexerRejectsMalformedInput(t *testing.T) {
 func TestTokenNames(t *testing.T) {
 	if tokenAnd.String() != "and" ||
 		tokenConcat.String() != ".." ||
+		tokenDoubleColon.String() != "::" ||
 		tokenEOF.String() != "<eof>" ||
 		tokenKind('+').String() != "'+'" {
 		t.Fatal("token diagnostics are incorrect")
