@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 )
 
-func TestZeroSourcePolicyDeniesFileLoadingButKeepsPreloads(t *testing.T) {
+func TestZeroScriptLoaderDeniesFileLoadingButKeepsPreloads(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -21,9 +21,9 @@ func TestZeroSourcePolicyDeniesFileLoadingButKeepsPreloads(t *testing.T) {
 
 	if _, err := state.LoadFile("unreachable.lua"); !errors.Is(
 		err,
-		ErrSourceLoadingDisabled,
+		ErrScriptLoadingDisabled,
 	) {
-		t.Fatalf("LoadFile error = %v; want ErrSourceLoadingDisabled", err)
+		t.Fatalf("LoadFile error = %v; want ErrScriptLoadingDisabled", err)
 	}
 	if err := state.OpenBase(); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ return require("host"),
 	loaded==nil,type(loadError),
 	doOK,type(doError),
 	requireOK,type(requireError),
-	string.find(requireError,"source-file loading is disabled",1,true)~=nil
+	string.find(requireError,"script-file loading is disabled",1,true)~=nil
 `)
 	results, err := state.Call(chunk.Value())
 	if err != nil {
@@ -71,7 +71,7 @@ return require("host"),
 	)
 }
 
-func TestOSSourceLoadsFilesSnapshotsLuaPathAndAllowsStdin(t *testing.T) {
+func TestHostLoaderLoadsFilesSnapshotsLuaPathAndAllowsStdin(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "direct.lua")
 	if err := os.WriteFile(path, []byte(`return 41`), 0o600); err != nil {
@@ -80,8 +80,8 @@ func TestOSSourceLoadsFilesSnapshotsLuaPathAndAllowsStdin(t *testing.T) {
 	t.Setenv("LUA_PATH", "snapshot/?.lua")
 
 	state, err := New(Options{
-		Source: OSSource(),
-		Stdin:  strings.NewReader(`return 42`),
+		ScriptLoader: HostLoader(),
+		Stdin:        strings.NewReader(`return 42`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestOSSourceLoadsFilesSnapshotsLuaPathAndAllowsStdin(t *testing.T) {
 	)
 }
 
-func TestFSSourceLoadsLogicalPathsAndRequiredModules(t *testing.T) {
+func TestFSLoaderLoadsLogicalPathsAndRequiredModules(t *testing.T) {
 	t.Setenv("LUA_PATH", "ambient/?.lua")
 	files := fstest.MapFS{
 		"direct.lua": {
@@ -155,8 +155,8 @@ func TestFSSourceLoadsLogicalPathsAndRequiredModules(t *testing.T) {
 		},
 	}
 	state, err := New(Options{
-		Source: FSSource(files),
-		Stdin:  strings.NewReader(`return "must not load"`),
+		ScriptLoader: FSLoader(files),
+		Stdin:        strings.NewReader(`return "must not load"`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ local beta=require("beta")
 local stdin,stdinError=loadfile()
 return alpha.name,nested.name,beta.name,
 	stdin==nil,
-	string.find(stdinError,"source-file loading is disabled",1,true)~=nil
+	string.find(stdinError,"script-file loading is disabled",1,true)~=nil
 `)
 	results, err = state.Call(chunk.Value())
 	if err != nil {
@@ -209,10 +209,10 @@ return alpha.name,nested.name,beta.name,
 
 func TestWithPackagePathIsImmutableAndOverridesTheDefault(t *testing.T) {
 	files := fstest.MapFS{}
-	original := FSSource(files)
+	original := FSLoader(files)
 	customized := original.WithPackagePath("modules/?.luau")
 
-	originalState, err := New(Options{Source: original})
+	originalState, err := New(Options{ScriptLoader: original})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestWithPackagePathIsImmutableAndOverridesTheDefault(t *testing.T) {
 		originalState.String("?.lua;?/init.lua"),
 	)
 
-	customState, err := New(Options{Source: customized})
+	customState, err := New(Options{ScriptLoader: customized})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func (reader *trackedSourceReader) Close() error {
 	return nil
 }
 
-func TestCustomSourceReceivesContextClosesReadersAndSearchesCandidates(t *testing.T) {
+func TestFuncLoaderReceivesContextClosesReadersAndSearchesCandidates(t *testing.T) {
 	type openCall struct {
 		ctx  context.Context
 		name string
@@ -280,7 +280,7 @@ func TestCustomSourceReceivesContextClosesReadersAndSearchesCandidates(t *testin
 		readers = append(readers, reader)
 		return reader, nil
 	}
-	state, err := New(Options{Source: CustomSource(opener)})
+	state, err := New(Options{ScriptLoader: FuncLoader(opener)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,10 +332,10 @@ func TestCustomSourceReceivesContextClosesReadersAndSearchesCandidates(t *testin
 	}
 }
 
-func TestCustomSourceOpenFailuresPreserveCauses(t *testing.T) {
+func TestFuncLoaderOpenFailuresPreserveCauses(t *testing.T) {
 	sentinel := errors.New("source backend unavailable")
 	state, err := New(Options{
-		Source: CustomSource(func(
+		ScriptLoader: FuncLoader(func(
 			context.Context,
 			string,
 		) (io.ReadCloser, error) {
@@ -378,7 +378,7 @@ func TestCustomSourceOpenFailuresPreserveCauses(t *testing.T) {
 
 	readSentinel := errors.New("source reader failed")
 	readState, err := New(Options{
-		Source: CustomSource(func(
+		ScriptLoader: FuncLoader(func(
 			context.Context,
 			string,
 		) (io.ReadCloser, error) {
@@ -407,25 +407,25 @@ func TestCustomSourceOpenFailuresPreserveCauses(t *testing.T) {
 	}
 }
 
-func TestSourcePolicyRejectsNilBackendsAndNilReaders(t *testing.T) {
-	if _, err := New(Options{Source: FSSource(nil)}); !errors.Is(
+func TestScriptLoaderRejectsNilBackendsAndNilReaders(t *testing.T) {
+	if _, err := New(Options{ScriptLoader: FSLoader(nil)}); !errors.Is(
 		err,
-		ErrNilSourceFS,
+		ErrNilScriptFS,
 	) {
-		t.Fatalf("nil FSSource error = %v; want ErrNilSourceFS", err)
+		t.Fatalf("nil FSLoader error = %v; want ErrNilScriptFS", err)
 	}
-	if _, err := New(Options{Source: CustomSource(nil)}); !errors.Is(
+	if _, err := New(Options{ScriptLoader: FuncLoader(nil)}); !errors.Is(
 		err,
-		ErrNilSourceOpener,
+		ErrNilScriptOpener,
 	) {
 		t.Fatalf(
-			"nil CustomSource error = %v; want ErrNilSourceOpener",
+			"nil FuncLoader error = %v; want ErrNilScriptOpener",
 			err,
 		)
 	}
 
 	state, err := New(Options{
-		Source: CustomSource(func(
+		ScriptLoader: FuncLoader(func(
 			context.Context,
 			string,
 		) (io.ReadCloser, error) {
@@ -443,7 +443,7 @@ func TestSourcePolicyRejectsNilBackendsAndNilReaders(t *testing.T) {
 	sentinel := errors.New("open failed with reader")
 	returned := &trackedSourceReader{Reader: strings.NewReader("")}
 	errorState, err := New(Options{
-		Source: CustomSource(func(
+		ScriptLoader: FuncLoader(func(
 			context.Context,
 			string,
 		) (io.ReadCloser, error) {
@@ -465,11 +465,11 @@ func TestSourcePolicyRejectsNilBackendsAndNilReaders(t *testing.T) {
 	}
 }
 
-func TestCustomSourceCancellationWinsAfterOpening(t *testing.T) {
+func TestFuncLoaderCancellationWinsAfterOpening(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	reader := &trackedSourceReader{Reader: strings.NewReader(`return 1`)}
 	state, err := New(Options{
-		Source: CustomSource(func(
+		ScriptLoader: FuncLoader(func(
 			openCtx context.Context,
 			name string,
 		) (io.ReadCloser, error) {

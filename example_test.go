@@ -11,7 +11,7 @@ type exampleCounter struct {
 	value int64
 }
 
-func ExampleFSSource() {
+func ExampleFSLoader() {
 	scripts := fstest.MapFS{
 		"main.lua": {
 			Data: []byte(`return require("modules.answer")`),
@@ -21,7 +21,7 @@ func ExampleFSSource() {
 		},
 	}
 	state, err := lua.New(lua.Options{
-		Source: lua.FSSource(scripts),
+		ScriptLoader: lua.FSLoader(scripts),
 	})
 	if err != nil {
 		panic(err)

@@ -862,7 +862,7 @@ return remaining,exhausted,all
 
 func TestIOReadSurfaceSharesStandardInputWithLoadFile(t *testing.T) {
 	state := newStateWithIO(t, Options{
-		Source: OSSource(),
+		ScriptLoader: HostLoader(),
 		Stdin: strings.NewReader(
 			"discarded\nreturn 42",
 		),

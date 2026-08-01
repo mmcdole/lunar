@@ -17,7 +17,7 @@ const (
 // OpenPackage installs Lua 5.1's package table plus the global require and
 // module functions.
 //
-// Lua modules load through the State's SourcePolicy and the same bounded
+// Lua modules load through the State's ScriptLoader and the same bounded
 // source and binary pipeline as LoadFile. package.loaders contains the preload
 // and Lua-source searchers. Native C modules are deliberately unavailable in
 // this pure-Go runtime, so package.cpath is empty and package.loadlib reports
@@ -100,14 +100,14 @@ func (state *State) OpenPackage() error {
 		{
 			name: "path",
 			value: stringSlot(
-				state.runtime.strings.make(state.source.packagePath),
+				state.runtime.strings.make(state.scriptLoader.packagePath),
 			),
 		},
 		{name: "cpath", value: stringSlot(state.runtime.strings.make(""))},
 		{
 			name: "config",
 			value: stringSlot(state.runtime.strings.make(
-				state.source.separator + "\n;\n?\n!\n-",
+				state.scriptLoader.separator + "\n;\n?\n!\n-",
 			)),
 		},
 		{name: "loaded", value: slotFromTableObject(loaded)},
@@ -461,7 +461,7 @@ func packageFindSource(
 	path = luaCString(path)
 	mappedName := packageModuleName(
 		name,
-		frame.thread.state.source.separator,
+		frame.thread.state.scriptLoader.separator,
 	)
 
 	var diagnostics strings.Builder
@@ -483,7 +483,7 @@ func packageFindSource(
 		}
 		template := path[cursor:end]
 		filename := strings.ReplaceAll(template, "?", mappedName)
-		reader, err := frame.thread.state.source.open(
+		reader, err := frame.thread.state.scriptLoader.open(
 			frame.Context(),
 			filename,
 			control,

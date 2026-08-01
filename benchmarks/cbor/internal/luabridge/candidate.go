@@ -33,8 +33,8 @@ func NewState(options Options) (*State, error) {
 		now = func() time.Time { return fixed }
 	}
 	runtime, err := engine.New(engine.Options{
-		Source: engine.OSSource(),
-		Now:    now,
+		ScriptLoader: engine.HostLoader(),
+		Now:          now,
 	})
 	if err != nil {
 		return nil, err

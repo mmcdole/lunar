@@ -17,7 +17,7 @@ func (state *State) DoString(
 	return state.Call(chunk.Value())
 }
 
-// DoFile opens path through the State's SourcePolicy, then loads and executes
+// DoFile opens path through the State's ScriptLoader, then loads and executes
 // a Lua 5.1 source or native binary chunk.
 //
 // The source name is "@" followed by path. A leading Unix interpreter line is

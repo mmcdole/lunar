@@ -28,7 +28,7 @@ An operation that observes or changes stored Lua data without consulting
 metamethods.
 _Avoid_: Direct operation, unsafe operation
 
-**Source Policy**:
-The host's decision about where Lua source files may be opened, or whether
-source-file access is allowed at all.
-_Avoid_: Filesystem, loader
+**Script Loader**:
+The State configuration that controls how named Lua scripts are opened, or
+denies script-file access entirely.
+_Avoid_: Source policy, filesystem

@@ -46,7 +46,7 @@ func TestOpenPackageInstallsSupportedLua51Surface(t *testing.T) {
 	t.Setenv("LUA_PATH", "before;;after")
 	t.Setenv("LUA_CPATH", "ignored/?.so")
 
-	state, err := New(Options{Source: OSSource()})
+	state, err := New(Options{ScriptLoader: HostLoader()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestPackageLuaSourceSearcherAndLoadLibStub(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	state := newStateWithPackage(t, Options{Source: OSSource()})
+	state := newStateWithPackage(t, Options{ScriptLoader: HostLoader()})
 	defer state.Close()
 	if err := state.OpenString(); err != nil {
 		t.Fatal(err)
@@ -785,7 +785,7 @@ func TestPackageLuaLoaderPreservesResourceFailures(t *testing.T) {
 	}
 
 	state := newStateWithPackage(t, Options{
-		Source:       OSSource(),
+		ScriptLoader: HostLoader(),
 		MaxLoadBytes: 32,
 	})
 	defer state.Close()

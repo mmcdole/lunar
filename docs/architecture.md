@@ -116,22 +116,22 @@ State and creates the executable function and environment.
 
 ## Loading and binary chunks
 
-Source and binary loaders accept strings, readers, and policy-controlled
+Source and binary loaders accept strings, readers, and `ScriptLoader`-controlled
 logical files. `DoString` and `DoFile` combine loading and execution when a
 compiled chunk does not need to be retained. Reader-backed loading uses bounded
 refill windows and preserves reader errors. Loading polls the State's installed
 context while opening, reading, compiling, and decoding.
 
-One normalized SourcePolicy belongs to each State. Its zero value has no
-opener. OS mode snapshots `LUA_PATH` during `New`; `fs.FS` and custom-opener
+One normalized `ScriptLoader` belongs to each State. Its zero value has no
+opener. `HostLoader` snapshots `LUA_PATH` during `New`; `fs.FS` and custom-opener
 modes use slash-separated names and default `package.path` to
 `?.lua;?/init.lua`. `LoadFile`, `DoFile`, base-library file loading, and the
 Lua package source searcher all pass through the same opener. Only
 `fs.ErrNotExist` advances a module search to the next path candidate.
 
-The source backend is immutable for the State's lifetime. Lua may mutate
+The script backend is immutable for the State's lifetime. Lua may mutate
 `package.path`, which changes template expansion without changing authority.
-Source access is independent of the IO library's file capabilities.
+Script-file access is independent of the IO library's file capabilities.
 
 Lua 5.1 binary chunks describe a native ABI: byte order, integer widths,
 `size_t`, instruction layout, and number layout are encoded in the header.

@@ -136,7 +136,7 @@ return ok, value
 }
 
 func TestPublicReaderAndFileLoading(t *testing.T) {
-	state, err := lua.New(lua.Options{Source: lua.OSSource()})
+	state, err := lua.New(lua.Options{ScriptLoader: lua.HostLoader()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,10 +186,10 @@ func TestPublicReaderAndFileLoading(t *testing.T) {
 func TestPublicStandardStreams(t *testing.T) {
 	var output, diagnostic bytes.Buffer
 	state, err := lua.New(lua.Options{
-		Source: lua.OSSource(),
-		Stdin:  strings.NewReader(`return 41`),
-		Stdout: &output,
-		Stderr: &diagnostic,
+		ScriptLoader: lua.HostLoader(),
+		Stdin:        strings.NewReader(`return 41`),
+		Stdout:       &output,
+		Stderr:       &diagnostic,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -123,11 +123,11 @@ func loadFrameFilePrototype(
 			control,
 		)
 	}
-	if !state.source.stdin {
+	if !state.scriptLoader.stdin {
 		return nil, &fileLoadError{
 			operation: "open",
 			name:      "stdin",
-			cause:     ErrSourceLoadingDisabled,
+			cause:     ErrScriptLoadingDisabled,
 		}
 	}
 	return loadFileEndpointPrototype(

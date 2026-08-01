@@ -106,8 +106,8 @@ return type(loaded),message,loaded()`,
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			state := newStateWithBase(t, Options{
-				Source: OSSource(),
-				Stdin:  strings.NewReader(test.source),
+				ScriptLoader: HostLoader(),
+				Stdin:        strings.NewReader(test.source),
 			})
 			defer state.Close()
 			chunk := mustLoadString(
@@ -316,7 +316,7 @@ func TestBaseLoadFileAndDoFile(t *testing.T) {
 	}
 	missingPath := filepath.Join(directory, "missing.lua")
 
-	state := newStateWithBase(t, Options{Source: OSSource()})
+	state := newStateWithBase(t, Options{ScriptLoader: HostLoader()})
 	defer state.Close()
 	source := `
 local valuesPath=` + quoteLuaString(valuesPath) + `

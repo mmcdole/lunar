@@ -25,20 +25,20 @@ const (
 )
 
 var (
-	// ErrSourceLoadingDisabled reports an attempt to open source through a
-	// State whose SourcePolicy grants no source-file access.
-	ErrSourceLoadingDisabled = errors.New(
-		"lua: source-file loading is disabled",
+	// ErrScriptLoadingDisabled reports an attempt to open a script through a
+	// State whose ScriptLoader grants no script-file access.
+	ErrScriptLoadingDisabled = errors.New(
+		"lua: script-file loading is disabled",
 	)
 
-	// ErrNilSourceFS reports FSSource called with a nil filesystem.
-	ErrNilSourceFS = errors.New("lua: nil source filesystem")
+	// ErrNilScriptFS reports FSLoader called with a nil filesystem.
+	ErrNilScriptFS = errors.New("lua: nil script filesystem")
 
-	// ErrNilSourceOpener reports CustomSource called with a nil opener.
-	ErrNilSourceOpener = errors.New("lua: nil source opener")
+	// ErrNilScriptOpener reports FuncLoader called with a nil opener.
+	ErrNilScriptOpener = errors.New("lua: nil script opener")
 )
 
-// SourceOpener opens one logical source name.
+// ScriptOpener opens one logical script name.
 //
 // Lunar always supplies a non-nil context. The opener should return
 // fs.ErrNotExist when a require search may continue with its next
@@ -48,96 +48,96 @@ var (
 // The opener runs under the State's single-executor contract and must not
 // reenter that State. An opener shared by multiple States may be called
 // concurrently and must provide its own synchronization.
-type SourceOpener func(
+type ScriptOpener func(
 	ctx context.Context,
 	name string,
 ) (io.ReadCloser, error)
 
-type sourcePolicyMode uint8
+type scriptLoaderMode uint8
 
 const (
-	sourcePolicyDisabled sourcePolicyMode = iota
-	sourcePolicyOS
-	sourcePolicyFS
-	sourcePolicyCustom
+	scriptLoaderDisabled scriptLoaderMode = iota
+	scriptLoaderHost
+	scriptLoaderFS
+	scriptLoaderFunc
 )
 
-// SourcePolicy controls where a State may open Lua source files.
+// ScriptLoader controls how a State opens named Lua scripts.
 //
-// Its zero value denies source-file access. SourcePolicy values are immutable
+// Its zero value denies script-file access. ScriptLoader values are immutable
 // configuration values: modifier methods return a changed copy.
-type SourcePolicy struct {
-	mode           sourcePolicyMode
+type ScriptLoader struct {
+	mode           scriptLoaderMode
 	filesystem     fs.FS
-	opener         SourceOpener
+	opener         ScriptOpener
 	packagePath    string
 	packagePathSet bool
 }
 
-// OSSource grants access to operating-system files.
+// HostLoader loads scripts from the host operating system.
 //
 // New snapshots LUA_PATH for each State unless WithPackagePath supplies an
-// explicit initial package.path. This is the only policy that also permits
+// explicit initial package.path. This is the only loader that also permits
 // filename-less Lua loadfile and dofile to consume Options.Stdin.
-func OSSource() SourcePolicy {
-	return SourcePolicy{mode: sourcePolicyOS}
+func HostLoader() ScriptLoader {
+	return ScriptLoader{mode: scriptLoaderHost}
 }
 
-// FSSource grants access through filesystem.
+// FSLoader loads scripts from filesystem.
 //
 // Names use fs.FS's slash-separated logical-path contract. The default
-// package.path is "?.lua;?/init.lua". New returns ErrNilSourceFS if filesystem
+// package.path is "?.lua;?/init.lua". New returns ErrNilScriptFS if filesystem
 // is nil.
-func FSSource(filesystem fs.FS) SourcePolicy {
-	return SourcePolicy{
-		mode:       sourcePolicyFS,
+func FSLoader(filesystem fs.FS) ScriptLoader {
+	return ScriptLoader{
+		mode:       scriptLoaderFS,
 		filesystem: filesystem,
 	}
 }
 
-// CustomSource grants access through opener.
+// FuncLoader loads scripts through opener.
 //
 // The default package.path is "?.lua;?/init.lua". New returns
-// ErrNilSourceOpener if opener is nil.
-func CustomSource(opener SourceOpener) SourcePolicy {
-	return SourcePolicy{
-		mode:   sourcePolicyCustom,
+// ErrNilScriptOpener if opener is nil.
+func FuncLoader(opener ScriptOpener) ScriptLoader {
+	return ScriptLoader{
+		mode:   scriptLoaderFunc,
 		opener: opener,
 	}
 }
 
-// WithPackagePath returns a policy whose initial Lua package.path is path.
+// WithPackagePath returns a loader whose initial Lua package.path is path.
 //
 // The string uses Lua 5.1's semicolon-separated templates. Lua may later
-// replace package.path without changing the State's source backend.
-func (policy SourcePolicy) WithPackagePath(path string) SourcePolicy {
-	policy.packagePath = path
-	policy.packagePathSet = true
-	return policy
+// replace package.path without changing the State's script backend.
+func (loader ScriptLoader) WithPackagePath(path string) ScriptLoader {
+	loader.packagePath = path
+	loader.packagePathSet = true
+	return loader
 }
 
-type sourceConfig struct {
-	opener      SourceOpener
+type scriptLoaderConfig struct {
+	opener      ScriptOpener
 	packagePath string
 	separator   string
 	stdin       bool
 }
 
-func normalizeSourcePolicy(
-	policy SourcePolicy,
-) (sourceConfig, error) {
-	config := sourceConfig{
+func normalizeScriptLoader(
+	loader ScriptLoader,
+) (scriptLoaderConfig, error) {
+	config := scriptLoaderConfig{
 		separator: "/",
 	}
-	switch policy.mode {
-	case sourcePolicyDisabled:
-		if policy.packagePathSet {
-			config.packagePath = policy.packagePath
+	switch loader.mode {
+	case scriptLoaderDisabled:
+		if loader.packagePathSet {
+			config.packagePath = loader.packagePath
 		} else {
 			config.packagePath = defaultLogicalPackagePath
 		}
 		return config, nil
-	case sourcePolicyOS:
+	case scriptLoaderHost:
 		config.opener = func(
 			_ context.Context,
 			name string,
@@ -146,36 +146,36 @@ func normalizeSourcePolicy(
 		}
 		config.separator = string(os.PathSeparator)
 		config.stdin = true
-		if policy.packagePathSet {
-			config.packagePath = policy.packagePath
+		if loader.packagePathSet {
+			config.packagePath = loader.packagePath
 			return config, nil
 		}
 		path, err := initialOSPackagePath()
 		if err != nil {
-			return sourceConfig{}, err
+			return scriptLoaderConfig{}, err
 		}
 		config.packagePath = path
 		return config, nil
-	case sourcePolicyFS:
-		if policy.filesystem == nil {
-			return sourceConfig{}, ErrNilSourceFS
+	case scriptLoaderFS:
+		if loader.filesystem == nil {
+			return scriptLoaderConfig{}, ErrNilScriptFS
 		}
 		config.opener = func(
 			_ context.Context,
 			name string,
 		) (io.ReadCloser, error) {
-			return policy.filesystem.Open(name)
+			return loader.filesystem.Open(name)
 		}
-	case sourcePolicyCustom:
-		if policy.opener == nil {
-			return sourceConfig{}, ErrNilSourceOpener
+	case scriptLoaderFunc:
+		if loader.opener == nil {
+			return scriptLoaderConfig{}, ErrNilScriptOpener
 		}
-		config.opener = policy.opener
+		config.opener = loader.opener
 	default:
-		panic("lua: invalid SourcePolicy mode")
+		panic("lua: invalid ScriptLoader mode")
 	}
-	if policy.packagePathSet {
-		config.packagePath = policy.packagePath
+	if loader.packagePathSet {
+		config.packagePath = loader.packagePath
 	} else {
 		config.packagePath = defaultLogicalPackagePath
 	}
@@ -217,7 +217,7 @@ func packageEnvironmentPath(name, fallback string) string {
 	return strings.ReplaceAll(path, ";;", ";"+fallback+";")
 }
 
-func (config *sourceConfig) open(
+func (config *scriptLoaderConfig) open(
 	ctx context.Context,
 	name string,
 	control *loadControl,
@@ -226,7 +226,7 @@ func (config *sourceConfig) open(
 		return nil, failure
 	}
 	if config == nil || config.opener == nil {
-		return nil, ErrSourceLoadingDisabled
+		return nil, ErrScriptLoadingDisabled
 	}
 	if ctx == nil {
 		ctx = context.Background()

@@ -15,7 +15,7 @@ const (
 )
 
 // ErrNilReader reports a nil Reader passed to Load or returned by a
-// SourceOpener.
+// ScriptOpener.
 var ErrNilReader = errors.New("lua: nil source reader")
 
 // Load reads a Lua 5.1 source or native binary chunk from reader and returns a
@@ -58,7 +58,7 @@ func (state *State) loadReader(
 	return state.loadPrototypeObject(prototype).owningHandle(), nil
 }
 
-// LoadFile opens path through the State's SourcePolicy and loads a Lua 5.1
+// LoadFile opens path through the State's ScriptLoader and loads a Lua 5.1
 // source or native binary chunk. The source name is "@" followed by path. A
 // leading Unix interpreter line is ignored in the same way as Lua 5.1's
 // loadfile. LoadFile closes the opened reader on every outcome and does not
@@ -206,7 +206,7 @@ func (state *State) loadNamedSourcePrototype(
 	path string,
 	control *loadControl,
 ) (*Prototype, error) {
-	reader, err := state.source.open(ctx, path, control)
+	reader, err := state.scriptLoader.open(ctx, path, control)
 	if err != nil {
 		if _, hostFailure := err.(*Error); hostFailure {
 			return nil, err

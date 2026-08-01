@@ -47,9 +47,9 @@ func main() {
 ```
 
 `DoString` and `DoFile` load and execute a chunk, returning owned Lua values.
-The zero-value source policy denies file loading; applications that need
+The zero-value `ScriptLoader` denies script-file loading; applications that need
 `DoFile`, Lua `loadfile`/`dofile`, or file-backed `require` explicitly grant
-`lua.OSSource()`, `lua.FSSource(fsys)`, or `lua.CustomSource(opener)`. Use the
+`lua.HostLoader()`, `lua.FSLoader(fsys)`, or `lua.FuncLoader(opener)`. Use the
 separate `Load*` and `Call` APIs when a compiled chunk will be called more than
 once.
 
