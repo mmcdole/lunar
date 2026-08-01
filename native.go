@@ -25,9 +25,9 @@ var ErrNativeCaptureLimit = errors.New("lua: native function capture limit excee
 // The Frame is borrowed for the duration of the call. The callback must
 // return an Outcome produced by that Frame. Retaining a Frame or using it
 // after producing a terminal Outcome is a programming error. Go panics are
-// propagated after the borrowed activation is removed; the Raise and
-// argument-error methods are the protected Lua-error paths, while Yield
-// suspends a yieldable coroutine.
+// propagated after the borrowed activation is removed. The Throw* methods
+// are the protected Lua-error paths, while Yield* outcomes suspend a
+// yieldable coroutine.
 type NativeFunc func(Frame) Outcome
 
 type nativeOutcomeKind uint8
@@ -58,8 +58,8 @@ type Outcome struct {
 // Argument indexes are zero-based. Typed argument methods perform exact Lua
 // type checks and do not coerce values. Owning Values and object handles read
 // from a Frame may be retained, but the Frame itself is valid only until a
-// terminal Return, Raise, ArgError, or Yield method is called, or until the
-// NativeFunc returns.
+// terminal Return* or Yield* method is called, a Throw* method unwinds, or
+// the NativeFunc returns.
 type Frame struct {
 	thread *threadObject
 	token  uint64

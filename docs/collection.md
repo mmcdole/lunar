@@ -216,4 +216,4 @@ The collector is not incremental. A cycle, including any Lua finalizers it
 runs, is synchronous. `Options.MaxHeapBytes` bounds sustained logical Lua heap
 retention at execution safe points; a single allocation may temporarily
 overshoot the configured limit before the runtime can collect or report a
-`ResourceError`.
+`LimitError`.

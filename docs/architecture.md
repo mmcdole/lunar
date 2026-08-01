@@ -319,9 +319,11 @@ that reports dynamic libraries are unavailable.
 ## Limits and validation
 
 `Options` provides deterministic limits for value-stack entries, activations,
-loaded chunk bytes, and retained logical Lua heap bytes. Limit failures are
-ordinary Lua errors in the `ResourceError` category. `string.rep`, large IO
-reads, and `os.date` formatting apply a shared 1 GiB contiguous-result limit.
+loaded chunk bytes, and retained logical Lua heap bytes. Value-stack,
+activation, load, and contiguous-result limits are ordinary Lua errors in the
+`ResourceError` category. The host-enforced logical-heap ceiling instead
+reports an uncatchable `LimitError`. `string.rep`, large IO reads, and
+`os.date` formatting apply a shared 1 GiB contiguous-result limit.
 
 Correctness tests cover public ownership, lifecycle, race behavior, compiler
 and VM semantics, libraries, collection, and supported platform paths.

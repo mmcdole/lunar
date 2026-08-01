@@ -390,11 +390,13 @@ if errors.As(err, &failure) {
 	case lua.SyntaxError:
 		// Source or bytecode was rejected.
 	case lua.ResourceError:
-		// A configured deterministic limit was exceeded.
+		// A Lua-compatible execution or loading limit was exceeded.
 	case lua.ContextError:
 		// The host context was cancelled or expired.
 	case lua.ExitError:
 		// Lua requested os.exit; inspect ExitRequest as below.
+	case lua.LimitError:
+		// A host-enforced ceiling such as MaxHeapBytes was exceeded.
 	}
 }
 ```
@@ -575,16 +577,16 @@ The limit bounds the logical Lua heap `HeapBytes` measures — Lua objects and
 their owned storage, not process memory. Opaque userdata payloads and Go
 allocator overhead sit outside the count, so actual process usage is higher.
 
-Crossing the limit schedules a collection, and the runtime raises a
-`ResourceError` only if the heap is still over the limit once unreachable
-objects are gone. A program that allocates far more than the limit in total
-therefore runs normally as long as it retains little; one that retains more
-than the limit fails. Because the check happens at execution safe points
-rather than inside the allocator, a single allocation can overshoot the limit
-before the runtime observes it, so `MaxHeapBytes` bounds sustained retention
-rather than peak allocation. Collection runs more often as retention
-approaches the limit, so a State held near saturation trades throughput for
-enforcement.
+Crossing the limit schedules a collection, and the runtime raises an
+uncatchable `LimitError` only if the heap is still over the limit once
+unreachable objects are gone. A program that allocates far more than the
+limit in total therefore runs normally as long as it retains little; one that
+retains more than the limit fails. Because the check happens at execution
+safe points rather than inside the allocator, a single allocation can
+overshoot the limit before the runtime observes it, so `MaxHeapBytes` bounds
+sustained retention rather than peak allocation. Collection runs more often
+as retention approaches the limit, so a State held near saturation trades
+throughput for enforcement.
 
 While an xpcall error handler runs, the limit widens by
 `max(64 KiB, MaxHeapBytes/8)` so the handler can allocate its report,
@@ -761,6 +763,7 @@ host ABI in their header rather than defining a portable encoding, so the bytes
 load only on a matching byte order, pointer width, and number format. Treat
 them as an architecture-keyed cache and keep the source to recompile from.
 
-Binary chunks encode structure a decoder must trust. `UnmarshalPrototype`
-applies the default load limit; load untrusted chunks through a State whose
-`MaxLoadBytes` reflects the host's policy.
+Binary chunks encode structure a decoder must trust. `State.Load` and
+`State.LoadString` apply the State's configured load limit while decoding;
+load untrusted chunks through a State whose `MaxLoadBytes` reflects the host's
+policy.

@@ -110,7 +110,7 @@ type Options struct {
 	// the heap unlimited.
 	//
 	// The limit is enforced at execution safe points: crossing it schedules
-	// a collection, and the runtime raises a ResourceError only if the heap
+	// a collection, and the runtime raises a LimitError only if the heap
 	// is still over the limit once unreachable objects are gone. A single
 	// allocation can therefore overshoot the limit before the runtime
 	// observes it, so MaxHeapBytes bounds sustained retention rather than
