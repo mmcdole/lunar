@@ -190,6 +190,136 @@ return 41, 42, 43
 	assertRootThreadReady(t, state.main)
 }
 
+func TestFrameCallNAppliesFixedResultAdjustment(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	producer := mustLoadString(t, state, "@nested-call-n.lua", `
+nested_call_n_count = nested_call_n_count + 1
+return 41, 42, 43
+`)
+	if err := state.RawSetGlobal(
+		"nested_call_n_count",
+		Number(0),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		two, callErr := frame.CallN(producer.Value(), 2)
+		if callErr != nil {
+			frame.ThrowError(callErr)
+		}
+		padded, callErr := frame.CallN(producer.Value(), 5)
+		if callErr != nil {
+			frame.ThrowError(callErr)
+		}
+		discarded, callErr := frame.CallN(producer.Value(), 0)
+		if callErr != nil {
+			frame.ThrowError(callErr)
+		}
+		if discarded != nil {
+			frame.ThrowString("zero-result slice is not nil")
+		}
+		if _, callErr := frame.CallN(producer.Value(), -1); !errors.Is(
+			callErr,
+			ErrInvalidResultCount,
+		) {
+			frame.ThrowString("negative result count was not rejected")
+		}
+		return frame.ReturnValues(append(two, padded...)...)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(host.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		Number(41),
+		Number(42),
+		Number(41),
+		Number(42),
+		Number(43),
+		Nil(),
+		Nil(),
+	)
+	calls, err := state.RawGlobal("nested_call_n_count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, calls, Number(3))
+	assertRootThreadReady(t, state.main)
+}
+
+func TestFrameCallNRejectsUnavailableResultWindowAndRestoresFrame(
+	t *testing.T,
+) {
+	state, err := New(Options{MaxValues: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	marker, err := state.NewTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetCalls := 0
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		targetCalls++
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nestedErr error
+	frameValid := false
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		_, nestedErr = frame.CallN(
+			target.Value(),
+			state.options.MaxValues,
+		)
+		discarded, recoveryErr := frame.CallN(target.Value(), 0)
+		if recoveryErr != nil {
+			frame.ThrowError(recoveryErr)
+		}
+		if discarded != nil {
+			frame.ThrowString("recovery call returned a non-nil slice")
+		}
+		argument, present := frame.Argument(0)
+		same, applicable := argument.SameObject(marker.Value())
+		frameValid = present && applicable && same
+		return frame.ReturnValue(argument)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(host.Value(), marker.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, marker.Value())
+	var luaErr *Error
+	if !errors.As(nestedErr, &luaErr) ||
+		luaErr.Category() != ResourceError {
+		t.Fatalf("nested result-window error = %#v", nestedErr)
+	}
+	if targetCalls != 1 {
+		t.Fatalf("nested target calls = %d; want 1", targetCalls)
+	}
+	if !frameValid {
+		t.Fatal("result-window failure invalidated outer Frame")
+	}
+	assertRootThreadReady(t, state.main)
+}
+
 func TestFrameIndexAppliesLuaTableSemantics(t *testing.T) {
 	requireStableAllocationAccounting(t)
 	state, err := New(Options{})

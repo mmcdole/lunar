@@ -285,6 +285,142 @@ return 41, 42, 43
 	assertRootThreadReady(t, state.main)
 }
 
+func TestStateCallNAppliesFixedResultAdjustment(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	producer := mustLoadString(t, state, "@call-n.lua", `
+call_n_count = call_n_count + 1
+return 41, 42, 43
+`)
+	if err := state.RawSetGlobal("call_n_count", Number(0)); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name  string
+		count int
+		want  []Value
+	}{
+		{name: "discard", count: 0},
+		{name: "one", count: 1, want: []Value{Number(41)}},
+		{
+			name:  "discard extras",
+			count: 2,
+			want:  []Value{Number(41), Number(42)},
+		},
+		{
+			name:  "pad missing",
+			count: 5,
+			want: []Value{
+				Number(41),
+				Number(42),
+				Number(43),
+				Nil(),
+				Nil(),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			results, callErr := state.CallN(
+				producer.Value(),
+				test.count,
+			)
+			if callErr != nil {
+				t.Fatal(callErr)
+			}
+			assertTestValues(t, results, test.want...)
+			if test.count == 0 && results != nil {
+				t.Fatalf("zero-result slice = %#v; want nil", results)
+			}
+		})
+	}
+	calls, err := state.RawGlobal("call_n_count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValue(t, calls, Number(float64(len(tests))))
+
+	empty := mustLoadString(t, state, "@call-n-empty.lua", `return`)
+	results, err := state.CallN(empty.Value(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Nil(), Nil(), Nil())
+
+	nativeCalls := 0
+	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		nativeCalls++
+		return frame.ReturnValues(Number(51), Number(52), Number(53))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err = state.CallN(native.Value(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(51), Number(52))
+
+	if _, err := state.CallN(native.Value(), -1); !errors.Is(
+		err,
+		ErrInvalidResultCount,
+	) {
+		t.Fatalf("negative result-count error = %v", err)
+	}
+	unsupported64 := int64(^uint32(0)>>1) + 1
+	if unsupported := int(unsupported64); int64(unsupported) == unsupported64 {
+		if _, err := state.CallN(native.Value(), unsupported); !errors.Is(
+			err,
+			ErrInvalidResultCount,
+		) {
+			t.Fatalf("unsupported result-count error = %v", err)
+		}
+	}
+	if nativeCalls != 1 {
+		t.Fatalf("native calls = %d; want 1", nativeCalls)
+	}
+	assertRootThreadReady(t, state.main)
+}
+
+func TestStateCallNRejectsUnavailableResultWindowBeforeExecution(t *testing.T) {
+	state, err := New(Options{MaxValues: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	calls := 0
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		calls++
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.CallN(target.Value(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Nil(), Nil(), Nil(), Nil())
+	if _, callErr := state.CallN(target.Value(), 5); callErr == nil {
+		t.Fatal("result-window limit returned nil")
+	} else {
+		var luaErr *Error
+		if !errors.As(callErr, &luaErr) ||
+			luaErr.Category() != ResourceError {
+			t.Fatalf("result-window limit error = %#v", callErr)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("native calls = %d; want 1", calls)
+	}
+	assertRootThreadReady(t, state.main)
+}
+
 func TestStateCallUsesRootCallMetamethodLayout(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
@@ -333,6 +469,23 @@ end
 		callable.Value(),
 		Number(7),
 		state.String("value"),
+	)
+	results, err = state.CallN(
+		callable.Value(),
+		4,
+		Number(8),
+		state.String("adjusted"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		callable.Value(),
+		Number(8),
+		state.String("adjusted"),
+		Nil(),
 	)
 }
 
@@ -800,6 +953,12 @@ func TestStateCallRejectsNativeReentry(t *testing.T) {
 		) {
 			frame.ThrowString("nested call was not rejected")
 		}
+		if _, callErr := frame.State().CallN(Value{}, -1); !errors.Is(
+			callErr,
+			ErrRunning,
+		) {
+			frame.ThrowString("nested CallN was not rejected")
+		}
 		return frame.ReturnBool(true)
 	})
 	if err != nil {
@@ -1250,6 +1409,12 @@ func TestStateCallRejectsClosedState(t *testing.T) {
 		ErrClosed,
 	) {
 		t.Fatalf("closed Call error = %v", callErr)
+	}
+	if _, callErr := state.CallN(function.Value(), -1); !errors.Is(
+		callErr,
+		ErrClosed,
+	) {
+		t.Fatalf("closed CallN error = %v", callErr)
 	}
 	destination := []Value{Number(9)}
 	if count, callErr := state.CallInto(

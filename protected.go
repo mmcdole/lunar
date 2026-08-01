@@ -348,6 +348,9 @@ func startStagedCall(
 	arguments callArguments,
 	wantedResults int,
 ) (int, *Error) {
+	if wantedResults < allResults || wantedResults > maxFixedResults {
+		panic("lua: invalid requested result count")
+	}
 	if failure := thread.state.execution.pendingExit; failure != nil {
 		return 0, failure
 	}

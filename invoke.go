@@ -1,8 +1,13 @@
 package lua
 
 import (
+	"errors"
 	"fmt"
 )
+
+// ErrInvalidResultCount reports a fixed result count outside the supported
+// range for CallN or Frame.CallN.
+var ErrInvalidResultCount = errors.New("lua: invalid result count")
 
 // ResultCapacityError reports that an Into operation produced more results
 // than its destination can hold.
@@ -82,6 +87,35 @@ func (state *State) Call(
 	return results, err
 }
 
+// CallN invokes callable like Call and applies Lua's fixed-result adjustment.
+//
+// Exactly resultCount owning Values are returned. Missing results are padded
+// with Nil and extra results are discarded. A zero resultCount executes the
+// call and returns a nil slice. An unsupported resultCount returns
+// ErrInvalidResultCount before Lua executes.
+func (state *State) CallN(
+	callable Value,
+	resultCount int,
+	arguments ...Value,
+) ([]Value, error) {
+	thread, err := state.prepareMainCall(callable, arguments)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFixedResultCount(resultCount); err != nil {
+		return nil, err
+	}
+	results, _, err := state.runMainCall(
+		thread,
+		callable,
+		arguments,
+		nil,
+		true,
+		resultCount,
+	)
+	return results, err
+}
+
 // CallOne invokes callable like Call and applies Lua's one-result adjustment.
 //
 // A call with no results returns Nil. If callable returns several results,
@@ -145,6 +179,13 @@ func (state *State) CallInto(
 	return count, err
 }
 
+func validateFixedResultCount(resultCount int) error {
+	if resultCount < 0 || resultCount > maxFixedResults {
+		return ErrInvalidResultCount
+	}
+	return nil
+}
+
 func (state *State) callMain(
 	callable Value,
 	arguments []Value,
@@ -156,7 +197,24 @@ func (state *State) callMain(
 	if err != nil {
 		return nil, 0, err
 	}
+	return state.runMainCall(
+		thread,
+		callable,
+		arguments,
+		destination,
+		allocateResults,
+		wantedResults,
+	)
+}
 
+func (state *State) runMainCall(
+	thread *threadObject,
+	callable Value,
+	arguments []Value,
+	destination []Value,
+	allocateResults bool,
+	wantedResults int,
+) (owned []Value, count int, err error) {
 	if failure := state.admitExecutionContext(); failure != nil {
 		return nil, 0, failure
 	}

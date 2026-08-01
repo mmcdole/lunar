@@ -497,10 +497,12 @@ native_followup_ran = true
 	var nestedFailure error
 	var followupFailure error
 	var invalidFailure error
+	var callNFailure error
 	native, err := state.NewNativeFunction(func(frame Frame) Outcome {
 		_, nestedFailure = frame.Call(exit.Value())
 		_, followupFailure = frame.Call(followup.Value())
 		_, invalidFailure = frame.Call(Value{})
+		_, callNFailure = frame.CallN(Value{}, -1)
 		return frame.ReturnString("ignored")
 	})
 	if err != nil {
@@ -513,12 +515,14 @@ native_followup_ran = true
 	failure, _ := requireExitRequest(t, err, 42)
 	if nestedFailure != failure ||
 		followupFailure != failure ||
-		invalidFailure != failure {
+		invalidFailure != failure ||
+		callNFailure != failure {
 		t.Fatalf(
-			"nested failures = (%p, %p, %p); want first request %p",
+			"nested failures = (%p, %p, %p, %p); want first request %p",
 			nestedFailure,
 			followupFailure,
 			invalidFailure,
+			callNFailure,
 			failure,
 		)
 	}

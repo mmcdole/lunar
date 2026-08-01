@@ -4,6 +4,12 @@ status: accepted
 
 # Use intent-named call result shapes and recover overflow results
 
+The decision below remains in force for the lossless default, the named zero-
+and one-result forms, overflow recovery, and coroutine results.
+[ADR 0009](0009-add-demand-backed-fixed-result-calls.md) supersedes only the
+decision to omit `CallN`, after Rune supplied a concrete fixed-arity embedding
+use case.
+
 ## Context
 
 Lua functions can return zero, one, or many values. Lunar does not expose an

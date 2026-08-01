@@ -466,6 +466,36 @@ func (frame Frame) Call(
 	return results, err
 }
 
+// CallN invokes callable like Call and applies Lua's fixed-result adjustment.
+//
+// Exactly resultCount owning Values are returned. Missing results are padded
+// with Nil and extra results are discarded. A zero resultCount executes the
+// call and returns a nil slice. An unsupported resultCount returns
+// ErrInvalidResultCount before Lua executes. The borrowed Frame remains valid
+// after return.
+func (frame Frame) CallN(
+	callable Value,
+	resultCount int,
+	arguments ...Value,
+) ([]Value, error) {
+	thread, err := frame.prepareNestedCall(callable, arguments)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFixedResultCount(resultCount); err != nil {
+		return nil, err
+	}
+	results, _, err := frame.runNestedCall(
+		thread,
+		callable,
+		arguments,
+		nil,
+		true,
+		resultCount,
+	)
+	return results, err
+}
+
 // CallOne invokes callable like Call and applies Lua's one-result adjustment.
 // A call with no results returns Nil; extra results are discarded.
 func (frame Frame) CallOne(
@@ -537,19 +567,48 @@ func (frame Frame) callNested(
 	allocateResults bool,
 	wantedResults int,
 ) (owned []Value, count int, err error) {
+	thread, err := frame.prepareNestedCall(callable, arguments)
+	if err != nil {
+		return nil, 0, err
+	}
+	return frame.runNestedCall(
+		thread,
+		callable,
+		arguments,
+		destination,
+		allocateResults,
+		wantedResults,
+	)
+}
+
+func (frame Frame) prepareNestedCall(
+	callable Value,
+	arguments []Value,
+) (*threadObject, error) {
 	frame.activation()
 	thread := frame.thread
 	if failure := thread.state.execution.pendingExit; failure != nil {
-		return nil, 0, failure
+		return nil, failure
 	}
 	if err := thread.owner.accept(callable); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	for _, argument := range arguments {
 		if err := thread.owner.accept(argument); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 	}
+	return thread, nil
+}
+
+func (frame Frame) runNestedCall(
+	thread *threadObject,
+	callable Value,
+	arguments []Value,
+	destination []Value,
+	allocateResults bool,
+	wantedResults int,
+) (owned []Value, count int, err error) {
 	checkpoint := captureExecutionCheckpoint(frame)
 	restored := false
 	defer func() {

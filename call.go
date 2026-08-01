@@ -5,7 +5,10 @@ import (
 	"unsafe"
 )
 
-const allResults = -1
+const (
+	allResults      = -1
+	maxFixedResults = int(^uint32(0) >> 1)
+)
 
 // activation is the complete persistent state of one call. The executor
 // keeps its hot program counter, base, code, and constants in local variables
@@ -616,8 +619,7 @@ func (thread *threadObject) checkFunctionCallWindow(
 		argumentCount > thread.top-callBase-1 {
 		panic("lua: call range is outside the active value stack")
 	}
-	if wantedResults < allResults ||
-		int64(wantedResults) > int64(^uint32(0)>>1) {
+	if wantedResults < allResults || wantedResults > maxFixedResults {
 		panic("lua: invalid requested result count")
 	}
 }

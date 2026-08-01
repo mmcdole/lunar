@@ -102,7 +102,22 @@ total, _ := result.AsNumber()
 normal adjustment rule: no result becomes Lua nil and extra results are
 discarded. Use `Call` when every result matters; it returns an owned slice
 whose values remain valid across later calls and after State closure. Use
-`CallDiscard` for a side-effect-only call:
+`CallN` when a protocol expects an exact result arity greater than one:
+
+```go
+coordinates, err := state.CallN(position.Value(), 2, entity.Value())
+if err != nil {
+	return err
+}
+x, _ := coordinates[0].AsNumber()
+y, _ := coordinates[1].AsNumber()
+```
+
+`CallN` pads missing results with Lua nil and discards extras inside the VM. A
+count of zero executes the call and returns a nil slice. A negative or
+unsupported count returns `lua.ErrInvalidResultCount`. The intent-named forms
+remain clearer for zero and one result, and `CallOne` avoids a result-slice
+allocation. Use `CallDiscard` for a side-effect-only call:
 
 ```go
 if err := state.CallDiscard(notify.Value(), result); err != nil {
@@ -228,8 +243,8 @@ Outcome from a yieldable coroutine, or calling a `Throw*` method.
 
 The Frame becomes invalid after a terminal outcome or callback return. Owning
 `Value`s and typed handles read from it may be retained. `Frame.Call`,
-`Frame.CallOne`, `Frame.CallDiscard`, `Frame.CallInto`, `Frame.Index`, and
-`Frame.SetIndex` are the supported reentrant operations.
+`Frame.CallN`, `Frame.CallOne`, `Frame.CallDiscard`, `Frame.CallInto`,
+`Frame.Index`, and `Frame.SetIndex` are the supported reentrant operations.
 
 State a callback needs travels in the Go closure. An owning `Value` held that
 way keeps its Lua object reachable, so a closure is both the simpler and the

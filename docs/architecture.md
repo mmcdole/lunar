@@ -192,13 +192,14 @@ The public API has an owning interface and a borrowed native-callback
 interface over the same runtime:
 
 - `State.Call` returns an owned result slice.
-- `State.CallOne` applies Lua's one-result adjustment, while
-  `State.CallDiscard` requests no results.
+- `State.CallN` applies Lua's fixed-result adjustment for an exact arity.
+- `State.CallOne` applies the common one-result adjustment, while
+  `State.CallDiscard` requests no results without allocating a result slice.
 - `State.CallInto` writes into caller-provided result storage.
 - `NativeFunc` receives a borrowed `Frame` with typed argument access and
   terminal `Outcome` methods.
-- `Frame.Call`, `Frame.CallOne`, `Frame.CallDiscard`, and `Frame.CallInto` make
-  protected reentrant calls.
+- `Frame.Call`, `Frame.CallN`, `Frame.CallOne`, `Frame.CallDiscard`, and
+  `Frame.CallInto` make protected reentrant calls.
 - `Frame.Index` and `Frame.SetIndex` perform Lua indexing from a callback.
 
 Frame argument indexes are zero-based. Exact typed accessors never coerce;

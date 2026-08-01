@@ -3,9 +3,10 @@
 Status: superseded in part. The surface decisions this plan reached are
 recorded in [ADR 0006](adr/0006-cut-to-a-demand-backed-surface.md),
 [ADR 0007](adr/0007-use-one-ambient-context.md), and
-[ADR 0008](adr/0008-throw-is-the-callback-failure-path.md), which override the
-phase text below wherever the two disagree. The phases remain as the record of
-how the surface was built before it was measured.
+[ADR 0008](adr/0008-throw-is-the-callback-failure-path.md), and
+[ADR 0009](adr/0009-add-demand-backed-fixed-result-calls.md), which override
+the phase text below wherever they disagree. The phases remain as the record
+of how the surface was built before it was measured.
 
 Lunar's pre-v0.1 interface was not in production. The public-interface changes
 recorded in this historical plan were therefore clean breaks: the
@@ -258,9 +259,10 @@ complete result list and exposes a caller-owned copy through `Results()`. Its
 error text is operation-neutral because calls and coroutine transitions share
 the type.
 
-Do not add a numeric result-count API, `CallN`, `ResumeOne`, or
-`ResumeDiscard` for v1. These can be added later if real embedding code
-demonstrates a need.
+The original phase deferred a numeric result-count API, `CallN`, until real
+embedding code demonstrated a need. Rune supplied that evidence, so ADR 0009
+adds `State.CallN` and `Frame.CallN`. `ResumeOne` and `ResumeDiscard` remain
+deferred because coroutine results commonly form a protocol.
 
 Exit criteria:
 
