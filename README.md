@@ -13,10 +13,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
-Lunar implements Lua 5.1, plus Lua 5.2-style `goto` and labels, entirely in
-Go: compiler, bytecode VM, coroutines, binary chunks, and standard libraries.
-Its compiler, VM, libraries, and pattern engine are checked against the
-[Lua 5.1 reference implementation](https://www.lua.org/ftp/).
+Lunar is a complete implementation of Lua 5.1 (plus 5.2-style `goto` and
+labels) in pure Go. The compiler, VM, and standard libraries are all tested
+against the [reference implementation](https://www.lua.org/ftp/).
 
 ## Quick start
 
@@ -30,64 +29,60 @@ import (
 )
 
 func main() {
-	state, err := lua.New(lua.Options{
-		Libraries: lua.LibrarySet{
-			lua.BaseLibrary,
-			lua.StringLibrary,
-			lua.TableLibrary,
-		},
-	})
+	state, err := lua.New(lua.Options{Libraries: lua.CoreLibraries()})
 	if err != nil {
 		panic(err)
 	}
 	defer state.Close()
 
-	greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
-		name, ok := frame.String(0)
-		if !ok {
-			frame.ThrowArgTypeError(0, lua.StringKind)
-		}
-		return frame.ReturnString("hello, " + name)
-	})
-	if err != nil {
-		panic(err)
-	}
-	if err := state.SetGlobal("greet", greet.Value()); err != nil {
-		panic(err)
-	}
-
-	results, err := state.DoString(
-		"@hello.lua",
-		`return greet("world"):upper()`,
-	)
+	results, err := state.DoString("@demo.lua", `return ("lunar"):upper()`)
 	if err != nil {
 		panic(err)
 	}
 
-	greeting, _ := results[0].AsString()
-	fmt.Println(greeting)
+	text, _ := results[0].AsString()
+	fmt.Println(text) // LUNAR
 }
 ```
 
-The library list is an allow-list. Its zero value installs no standard
-libraries; the example chooses only base, string, and table. `:upper()` works
-because `StringLibrary` installed the string metatable. Use
-`lua.CoreLibraries()` for the usual capability-safe profile,
-`lua.FullLibraries()` for trusted scripts, or an exact `lua.LibrarySet` like
-the example. Individual `Open*` methods remain available for deliberate later
-grants.
+Libraries and file access are opt-in. `lua.CoreLibraries()` installs
+everything that can't touch the host, and `lua.FullLibraries()` adds IO, OS,
+and debug for scripts you trust. Loading scripts from disk is disabled until
+you configure a `ScriptLoader`.
 
-`DoString` loads source supplied directly by Go. Named script-file loading is a
-separate permission: `ScriptLoader` defaults to denied, while `HostLoader`,
-`FSLoader`, and `FuncLoader` explicitly select where scripts may come from.
+## Calling Go from Lua
 
-See [Embedding Lunar](docs/embedding.md) for callbacks, tables, contexts,
-errors, coroutines, and lifecycle management.
+`NewNativeFunction` wraps a Go function as a Lua value. Inside the callback,
+everything goes through the `Frame`: read arguments with its typed accessors,
+then return a result or throw a Lua error:
+
+```go
+// Callable from Lua as greet(name).
+greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
+	name, ok := frame.String(0) // first argument, must be a string
+	if !ok {
+		frame.ThrowArgTypeError(0, lua.StringKind)
+	}
+	return frame.ReturnString("hello, " + name)
+})
+if err != nil {
+	panic(err)
+}
+if err := state.SetGlobal("greet", greet.Value()); err != nil {
+	panic(err)
+}
+
+// results[0] is "hello, moon"
+results, err := state.DoString("@hello.lua", `return greet("moon")`)
+```
+
+See [Embedding Lunar](docs/embedding.md) for the full guide: calls,
+callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-These results are medians from 15 runs on an Apple M3 Pro with Go 1.25.1 at
-source revision `1d43aec`. Lower is better.
+Medians from 15 runs on an Apple M3 Pro with Go 1.25.1 at source revision
+`1d43aec`. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
@@ -110,7 +105,7 @@ source revision `1d43aec`. Lower is better.
 | Live heap added after garbage collection | **72.24 MiB** | 542.26 MiB |
 
 The [full results](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/) include
-confidence intervals, allocation counts, and raw output. The
+confidence intervals, allocation counts, and raw output; the
 [benchmark protocol](benchmarks/README.md) lists the commands, inputs, and
 runtime versions.
 
@@ -130,16 +125,15 @@ runtime versions.
 ## Scope
 
 The compiler, VM, standard libraries, coroutines, binary chunks, weak tables,
-and finalizers are implemented. Current intentional limits are:
+and finalizers are implemented. Current intentional limits:
 
 - no C ABI, native C-module loading, or light userdata;
 - no `debug.sethook` or `debug.gethook`;
 - garbage collection runs synchronously rather than incrementally;
 - no deterministic VM-instruction budget; and
-- no high-level table iteration convenience beyond the precise `Table.Next`
-  primitive.
+- no table-iteration helpers beyond the `Table.Next` primitive.
 
-One `State` can execute one goroutine at a time. Separate States may run
+A `State` serves one goroutine at a time; separate States can run
 concurrently.
 
 The public embedding API is still stabilizing.
@@ -154,7 +148,6 @@ The public embedding API is still stabilizing.
   extension and intentional Lua 5.1/5.2/LuaJIT choices
 - [Collection](docs/collection.md): Lua reachability, weak tables, and
   finalization
-- [Performance](docs/performance.md): measurement groups and regression policy
 - [Third-party notices](THIRD_PARTY_NOTICES.md): adapted algorithms, artwork,
   and benchmark sources
 

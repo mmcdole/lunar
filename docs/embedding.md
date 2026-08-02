@@ -3,20 +3,25 @@
 This guide follows the path most embedders take:
 
 - [Getting started](#getting-started): create a State and run Lua.
-- [Crossing the boundary](#crossing-the-boundary): expose Go code and exchange
-  values.
+- [Calling Go from Lua](#calling-go-from-lua): expose Go functions and report
+  failures.
+- [Values and tables](#values-and-tables): build Lua data and apply Lua
+  operators.
 - [Handling failure](#handling-failure): inspect Lua errors and exit requests.
-- [Host policy](#host-policy): control script files, cancellation, and host
-  capabilities.
+- [Host policy](#host-policy): control script files, cancellation, and memory.
 - [Going further](#going-further): typed userdata, coroutines, and compiled
   chunks.
 
 ## Getting started
 
+A `State` is one self-contained Lua universe: its globals, heap, loaded
+libraries, and coroutines. Everything in this guide happens through a State,
+and separate States are isolated from each other.
+
 ### Create a State
 
-Standard libraries are an allow-list. Select the exact set the application
-permits when constructing the State:
+Standard libraries are an allow-list. Pick the set your application permits
+when constructing the State:
 
 ```go
 state, err := lua.New(lua.Options{
@@ -32,28 +37,24 @@ if err != nil {
 defer state.Close()
 ```
 
-The zero value of `Options.Libraries` installs none. `CoreLibraries()` selects
-base (including coroutine), package, table, string, and math; package can use
-preloaded Go modules but has no script-file authority without a `ScriptLoader`.
-`FullLibraries()` adds IO, OS, and debug, so it is intended for trusted scripts.
+The zero value of `Options.Libraries` installs nothing. `CoreLibraries()`
+selects base (including coroutine), package, table, string, and math;
+`FullLibraries()` adds IO, OS, and debug, so reserve it for trusted scripts.
+The package library can use preloaded Go modules, but it has no script-file
+authority without a `ScriptLoader`. Individual methods such as `OpenString`
+and `OpenIO` let you grant a library later, but prefer construction-time
+selection when you know the permissions up front: `New` reports one error and
+never returns a partially configured State.
 
-Selection order does not matter and duplicates are ignored. `BaseLibrary`
-includes Lua 5.1's coroutine library; select `CoroutineLibrary` alone to expose
-coroutines without base globals. Individual methods such as `OpenString` and
-`OpenIO` remain available when a host deliberately grants a library later.
-Prefer construction-time selection when permissions are known up front: `New`
-reports one error and never returns a partially configured State.
-
-`Options` configures script loading, State-local streams, time, timezone,
-execution limits, and load limits. A State owns native resources created by
-its libraries. Always close the State. `Close` can report buffered-write or
-native-resource cleanup errors; applications using IO or process resources
-should handle that error.
+`Options` also configures script loading, State-local streams, time, timezone,
+and execution and load limits. A State owns native resources created by its
+libraries, so always close it. `Close` can report buffered-write or cleanup
+errors; handle that error if you use the IO or OS libraries.
 
 ### Run Lua code
 
-`DoString` and, when the `ScriptLoader` permits it, `DoFile` load and execute a
-chunk in one operation:
+`DoString` (and `DoFile`, when the `ScriptLoader` permits it) loads and runs a
+chunk in one step:
 
 ```go
 results, err := state.DoString("@answer.lua", `return 6 * 7`)
@@ -63,10 +64,8 @@ if err != nil {
 answer, _ := results[0].AsNumber()
 ```
 
-Loading and execution both observe the State's installed context.
-
-Use the separate loading and calling APIs when a compiled chunk will be called
-more than once. Loading compiles source but does not execute it:
+If you'll call a chunk more than once, load it once and keep the function.
+Loading compiles source without executing it:
 
 ```go
 chunk, err := state.LoadString("@price.lua", `
@@ -87,81 +86,40 @@ if !ok {
 	return fmt.Errorf("chunk did not return a function")
 }
 
-result, err := state.CallOne(
-	price.Value(),
-	lua.Number(6),
-	lua.Number(7.5),
-)
+total, err := state.CallOne(price.Value(), lua.Number(6), lua.Number(7.5))
 if err != nil {
 	return err
 }
-total, _ := result.AsNumber()
+amount, _ := total.AsNumber()
 ```
 
-`CallOne` is the usual choice when one value is expected. It follows Lua's
-normal adjustment rule: no result becomes Lua nil and extra results are
-discarded. Use `Call` when every result matters; it returns an owned slice
-whose values remain valid across later calls and after State closure. Use
-`CallN` when a protocol expects an exact result arity greater than one:
+The call methods differ only in how they treat results:
 
-```go
-coordinates, err := state.CallN(position.Value(), 2, entity.Value())
-if err != nil {
-	return err
-}
-x, _ := coordinates[0].AsNumber()
-y, _ := coordinates[1].AsNumber()
-```
+- `CallOne` returns exactly one value, following Lua's normal adjustment rule:
+  no result becomes nil, extras are discarded. It also avoids a result-slice
+  allocation, so it's the usual choice.
+- `Call` returns every result as an owned slice whose values stay valid across
+  later calls and after State closure.
+- `CallN` returns an exact count, padding with nil and discarding extras
+  inside the VM. A count of zero runs the call and returns a nil slice; a
+  negative count returns `lua.ErrInvalidResultCount`.
+- `CallDiscard` runs a side-effect-only call.
+- `CallInto` writes results into caller-provided storage and returns the
+  count. If the destination is too short it's left unchanged and the error is
+  a `*lua.ResultCapacityError`; the call has already run, and
+  `ResultCapacityError.Results` recovers every completed result as
+  caller-owned Values.
 
-`CallN` pads missing results with Lua nil and discards extras inside the VM. A
-count of zero executes the call and returns a nil slice. A negative or
-unsupported count returns `lua.ErrInvalidResultCount`. The intent-named forms
-remain clearer for zero and one result, and `CallOne` avoids a result-slice
-allocation. Use `CallDiscard` for a side-effect-only call:
+Loading and execution both observe the State's installed context (see
+[Cancellation](#cancellation)).
 
-```go
-if err := state.CallDiscard(notify.Value(), result); err != nil {
-	return err
-}
-```
-
-Use `CallInto` when the caller already has result storage:
-
-```go
-var destination [1]lua.Value
-count, err := state.CallInto(
-	price.Value(),
-	[]lua.Value{lua.Number(6), lua.Number(7.5)},
-	destination[:],
-)
-if err != nil {
-	return err
-}
-if count != 1 {
-	return fmt.Errorf("price returned %d results", count)
-}
-total, _ := destination[0].AsNumber()
-```
-
-If the destination is too short, `CallInto` leaves it unchanged and returns a
-`*lua.ResultCapacityError`. The Lua call has already run, so its side effects
-are not rolled back, but the values remain recoverable:
-
-```go
-var capacity *lua.ResultCapacityError
-if errors.As(err, &capacity) {
-	results := capacity.Results()
-	_ = results // Every completed result, as caller-owned Values.
-}
-```
-
-## Crossing the boundary
+## Calling Go from Lua
 
 ### Expose a Go function
 
-`NativeFunc` receives a borrowed `Frame`. The Frame is both the argument view
-and the active execution capability for that callback. Argument indexes are
-zero-based and typed accessors do not coerce values.
+A `NativeFunc` receives a borrowed `Frame`. The Frame is how the callback
+reads its arguments and how it acts on the running State. Argument indexes
+are zero-based, and the typed accessors do not coerce:
 
 ```go
 multiply, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
@@ -183,10 +141,10 @@ if err := state.SetGlobal("host_multiply", multiply.Value()); err != nil {
 }
 ```
 
-An outer Go caller enters an idle State through `State.Call*`. Once Lua calls
-a `NativeFunc`, that State is already executing. Any synchronous call back
-into Lua must therefore use the callback's `Frame.Call*`, even when the call
-happens indirectly through application helpers:
+Go enters an idle State through `State.Call*`. Once Lua calls a `NativeFunc`,
+the State is already executing, so any synchronous call back into Lua must go
+through the callback's `Frame.Call*`, even when it happens indirectly through
+application helpers:
 
 ```go
 func callHook(
@@ -199,11 +157,11 @@ func callHook(
 ```
 
 Pass the Frame through every helper that may reenter Lua. `frame.State()`
-returns the owning State for State-bound operations such as constructing or
-loading values; it does not turn the active State into an idle one. Calling
-`State.Call*` through it during the callback returns `lua.ErrRunning`.
+returns the owning State for State-bound work such as constructing values, but
+it does not make the State idle: calling `State.Call*` through it during a
+callback returns `lua.ErrRunning`.
 
-Use the helper whose name matches the contract you want:
+Pick the accessor whose name matches the contract you want:
 
 - `Number` and `String` require the exact Lua kind.
 - `CoerceNumber` additionally accepts a complete numeric string.
@@ -226,60 +184,21 @@ if !frame.IsMissingOrNil(1) {
 }
 ```
 
-For example, this callback accepts a string-or-number label and an optional
-bounded integer:
+These methods report invalid input with `ok == false`; they never panic or
+silently truncate. `ThrowArgTypeError` accepts one or more expected kinds and
+translates the zero-based Go index to a one-based Lua argument ordinal.
 
-```go
-describe, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
-	label, ok := frame.CoerceString(0)
-	if !ok {
-		frame.ThrowArgTypeError(
-			0,
-			lua.StringKind,
-			lua.NumberKind,
-		)
-	}
-
-	limit := int64(25)
-	if !frame.IsMissingOrNil(1) {
-		limit, ok = frame.IntegerInRange(1, 1, 100)
-		if !ok {
-			frame.ThrowArgError(
-				1,
-				"integer from 1 through 100 expected",
-			)
-		}
-	}
-	return frame.ReturnString(fmt.Sprintf("%s:%d", label, limit))
-})
-```
-
-These methods report invalid Lua input with `ok == false`; they do not panic
-or silently truncate it. `ThrowArgTypeError` accepts one or more distinct
-expected kinds and translates the zero-based Go index to a one-based Lua
-argument ordinal.
-
-A callback completes by returning a `Return*` Outcome, returning a `Yield*`
-Outcome from a yieldable coroutine, or calling a `Throw*` method.
-
-The Frame becomes invalid after a terminal outcome or callback return. Owning
-`Value`s and typed handles read from it may be retained. `Frame.Call`,
-`Frame.CallN`, `Frame.CallOne`, `Frame.CallDiscard`, `Frame.CallInto`,
-`Frame.Index`, and `Frame.SetIndex` continue the active execution and are the
-supported reentrant operations.
-
-State a callback needs travels in the Go closure. An owning `Value` held that
-way keeps its Lua object reachable, so a closure is both the simpler and the
-safer place for it.
+A callback completes in exactly one of three ways: it returns a `Return*`
+Outcome, it returns a `Yield*` Outcome from a yieldable coroutine, or it calls
+a `Throw*` method. The Frame becomes invalid afterwards, though owning
+`Value`s and typed handles read from it may be retained. Keep any other state
+a callback needs in its Go closure; an owning `Value` held there stays
+reachable.
 
 ### Report failures from a callback
 
-A Go panic is not converted into a Lua error. It propagates to Go after Lunar
-restores the Frame. Use `Throw*` for failures that Lua should be able to
-catch.
-
-A callback ends in exactly one of three ways: it returns a `Return*` Outcome,
-it returns a `Yield*` Outcome, or it throws.
+A Go panic is not converted into a Lua error; it propagates to Go after Lunar
+restores the Frame. Use `Throw*` for failures Lua should be able to catch:
 
 | method                       | raises                                    |
 | ---------------------------- | ----------------------------------------- |
@@ -290,9 +209,8 @@ it returns a `Yield*` Outcome, or it throws.
 | `ThrowArgError(i, reason)`   | `bad argument #i (reason)`                |
 | `ThrowArgTypeError(i, kind)` | `bad argument #i (kind expected, got …)`  |
 
-Throwing rather than returning a failure is what lets a helper called at any
-depth inside the callback report the error, which is where argument checks
-usually live:
+Because throws unwind rather than return, a helper at any depth inside the
+callback can report the error, which is where argument checks usually live:
 
 ```go
 func checkString(frame lua.Frame, index int) string {
@@ -309,22 +227,19 @@ greet, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 ```
 
 Throws are statements, not expressions, so a guard clause reads as one and the
-callback continues below it only when the check passed. A callback whose whole
-body is a failure still needs a terminal return that never executes.
+code below it runs only when the check passed. A callback whose whole body is
+a failure still needs a terminal return that never executes.
 
-`Throw*` unwinds with a private panic that Lunar recovers at the native call
-boundary, leaving the callback in the same state a returned Outcome would.
-Host code between the `Throw*` and the `NativeFunc` must not recover it, so a
-deferred recover in that range should re-panic values it does not recognize.
-Panics that are not throws keep propagating to Go unchanged.
+Under the hood, `Throw*` unwinds with a private panic that Lunar recovers at
+the native call boundary. Host code between the `Throw*` and the `NativeFunc`
+must not swallow it: a deferred recover in that range should re-panic values
+it does not recognize. Ordinary panics keep propagating to Go unchanged.
 
-Use `ThrowError(err)` for an ordinary host failure. Lunar raises `err.Error()`
-as the Lua value and retains `err` as the Go cause, so a later host caller can
-use `errors.Is` or `errors.As`. Use `Rethrow(failure)` for a `*lua.Error`
-returned by a nested Frame operation; it preserves the original arbitrary Lua
-value, category, cause, and traceback. A direct `*lua.Error` passed to
-`ThrowError` is defensively rethrown, but explicit `Rethrow` documents the
-intended boundary.
+Use `ThrowError(err)` for an ordinary host failure: Lunar raises
+`err.Error()` as the Lua value and retains `err` as the Go cause, so a later
+host caller can use `errors.Is` or `errors.As`. Use `Rethrow(failure)` for a
+`*lua.Error` returned by a nested Frame operation, since it preserves the
+original Lua value, category, cause, and traceback:
 
 ```go
 results, err := frame.Call(callback, arguments...)
@@ -338,15 +253,15 @@ if err != nil {
 return frame.ReturnValues(results...)
 ```
 
-`ReturnArguments` is the allocation-conscious echo path when a callback wants
-to return every argument unchanged.
+`ReturnArguments` returns every argument unchanged without allocating a
+result slice.
 
-### Values and tables
+## Values and tables
 
-Use `lua.Nil`, `lua.Bool`, `lua.Number`, and `lua.String` for State-neutral
-scalar values. `state.String` may reuse the State's short-string cache when
-constructing the same strings repeatedly. A `Value` can expose its exact kind
-or convert to a typed object handle.
+Build scalars with `lua.Nil`, `lua.Bool`, `lua.Number`, and `lua.String`;
+they belong to no particular State. `state.String` may reuse the State's
+short-string cache when you construct the same strings repeatedly. A `Value` can expose its exact kind or
+convert to a typed object handle.
 
 ```go
 table, err := state.NewTableWithCapacity(4, 2)
@@ -364,10 +279,10 @@ if err := state.SetGlobal("config", table.Value()); err != nil {
 }
 ```
 
-`Table.RawGet*` and `Table.RawSet*` never invoke metamethods. A native callback
-that needs ordinary Lua `__index` or `__newindex` behavior can use
-`Frame.Index` and `Frame.SetIndex`. `Table.Next` walks a table in Lua's raw
-traversal order; start with `lua.Nil()` and pass each returned key back.
+`Table.RawGet*` and `Table.RawSet*` never invoke metamethods; a callback that
+wants ordinary `__index` or `__newindex` behavior uses `Frame.Index` and
+`Frame.SetIndex`. `Table.Next` walks a table in Lua's raw traversal order:
+start with `lua.Nil()` and pass each returned key back.
 
 Data that already exists as a Go tree crosses in one pass:
 
@@ -381,7 +296,7 @@ config, err := state.NewTableFrom(map[string]any{
 
 `NewTableFrom` converts scalars, `[]byte`, `[]any`, `map[string]any`, and an
 owning `Value` that already belongs to this State. Slices become one-based
-sequences and nested maps become nested tables. Any other Go type reports
+sequences; nested maps become nested tables. Any other Go type reports
 `ErrUnsupportedTreeValue` rather than guessing, and no partially built table
 becomes reachable. Conversion performs raw assignments only, so it never
 invokes `__newindex` and is usable from a callback through `Frame.State`.
@@ -389,7 +304,7 @@ invokes `__newindex` and is usable from a callback through `Frame.State`.
 ### Apply Lua operators
 
 `Index`, `SetIndex`, `Len`, `Equal`, and `ToString` apply Lua's own semantics,
-including metamethods. Each exists on both `State` and `Frame`:
+metamethods included. Each exists on both `State` and `Frame`:
 
 ```go
 name, err := state.Index(config.Value(), lua.String("name"))
@@ -399,24 +314,21 @@ same, err := state.Equal(left, right)
 
 These share the executor's implementation, so a host operation and the
 equivalent Lua expression agree on coercion, metamethod selection, and float
-edge cases. `Raw` operations on `Table` bypass metamethods; unqualified
-operations do not.
-
-Lunar deliberately stops there. Arithmetic, concatenation, and ordering are
-things Go does directly on values you have already extracted, and routing them
-back through the VM buys only metamethod dispatch that host code rarely wants.
+edge cases. Lunar deliberately stops there: arithmetic, concatenation, and
+ordering are things Go does directly on extracted values, and routing them
+through the VM would buy only metamethod dispatch that host code rarely wants.
 `Equal` is the exception because `__eq` has no Go equivalent.
 
 Tables, functions, threads, and userdata belong to the State that created
-them. Importing one into another State returns `lua.ErrForeignValue`. Scalars
-and immutable strings may be used by more than one State.
+them; importing one into another State returns `lua.ErrForeignValue`. Scalars
+and immutable strings may be shared.
 
 ## Handling failure
 
 ### Errors and exit requests
 
-Execution failures are returned as `*lua.Error`. The error owns the original
-Lua value and a traceback:
+Execution failures come back as `*lua.Error`, which owns the original Lua
+value and a traceback:
 
 ```go
 var failure *lua.Error
@@ -449,12 +361,15 @@ if errors.As(err, &request) {
 }
 ```
 
+For a whole stack, `Error.Traceback` returns the activations a failure unwound
+through, and `TraceFrame.String` renders one the way Lua would. Neither
+executes Lua, so both stay valid after the State closes.
+
 ### Position a host failure
 
 `Frame.Where` reports the source position of an activation, formatted the way
 Lua positions runtime errors. Level 0 is the native call itself and level 1 is
-the activation that called it, so `Where(1)` attributes a failure to the call
-site:
+its caller, so `Where(1)` attributes a failure to the call site:
 
 ```go
 reject, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
@@ -464,13 +379,9 @@ reject, err := state.NewNativeFunction(func(frame lua.Frame) lua.Outcome {
 // chunk.lua:12: host rejected the request
 ```
 
-`Throw*` never positions the message it is given, so a host that wants
-runtime-identical attribution adds it with `Where`, and one that wants a bare
-message simply omits it.
-
-For a whole stack, `Error.Traceback` returns the activations a failure unwound
-through, and `TraceFrame.String` renders one the way Lua would. Neither
-executes Lua, so both stay valid after the State closes.
+`Throw*` never adds position information to the message it is given: prepend
+`Where` when you want the failure attributed like a runtime error, or omit it
+for a bare message.
 
 ## Host policy
 
@@ -485,8 +396,7 @@ state, err := lua.New(lua.Options{})
 // LoadFile and DoFile return lua.ErrScriptLoadingDisabled.
 ```
 
-Use `HostLoader` for trusted applications that intentionally expose paths from
-the host operating system:
+`HostLoader` intentionally exposes paths from the host operating system:
 
 ```go
 state, err := lua.New(lua.Options{
@@ -495,12 +405,11 @@ state, err := lua.New(lua.Options{
 })
 ```
 
-`HostLoader` snapshots `LUA_PATH` during `New` and uses OS path syntax. It is
-also the only loader with which filename-less Lua `loadfile()` and `dofile()`
-may read `Options.Stdin`.
+It snapshots `LUA_PATH` during `New` and uses OS path syntax. It is also the
+only loader with which filename-less Lua `loadfile()` and `dofile()` may read
+`Options.Stdin`.
 
-Use `FSLoader` to restrict loading to an `fs.FS`, including an embedded script
-tree:
+`FSLoader` restricts loading to an `fs.FS`, such as an embedded script tree:
 
 ```go
 //go:embed scripts
@@ -516,13 +425,13 @@ state, err := lua.New(lua.Options{
 })
 ```
 
-Filesystem names are slash-separated logical paths. `FSLoader` does not read
-`LUA_PATH` or consult the process working directory. Its default module search
-path is `?.lua;?/init.lua`, so `require("tools.json")` tries
-`tools/json.lua`, then `tools/json/init.lua`.
+Filesystem names are slash-separated logical paths; `FSLoader` reads neither
+`LUA_PATH` nor the process working directory. Its default module search path
+is `?.lua;?/init.lua`, so `require("tools.json")` tries `tools/json.lua`, then
+`tools/json/init.lua`.
 
 `FuncLoader` accepts a context-aware host opener for generated, database,
-network, overlay, or application-specific scripts:
+network, overlay, or otherwise application-specific scripts:
 
 ```go
 state, err := lua.New(lua.Options{
@@ -537,25 +446,25 @@ state, err := lua.New(lua.Options{
 ```
 
 The opener receives a non-nil operation context, and Lunar closes every reader
-it returns. During `require`, an error matching `fs.ErrNotExist` tries the next
-candidate; other errors stop the search and remain available to Go through
+it returns. During `require`, an error matching `fs.ErrNotExist` tries the
+next candidate; other errors stop the search and remain visible to Go through
 `errors.Is` or `errors.As` if Lua does not catch them.
 
-All loaders can replace the initial Lua path templates:
+Every loader can replace the initial Lua path templates:
 
 ```go
 loader := lua.FSLoader(scripts).
 	WithPackagePath("modules/?.lua;modules/?/init.lua")
 ```
 
-Lua may later assign `package.path`; that changes candidate names but never the
-State's script backend. Preloaded Go modules remain usable when script loading
-is denied. `package.cpath` is empty, there are no C-module searchers, and
-`package.loadlib` reports that dynamic libraries are unavailable.
+Lua may later assign `package.path`; that changes candidate names but never
+the State's script backend. Preloaded Go modules remain usable when script
+loading is denied. `package.cpath` is empty, there are no C-module searchers,
+and `package.loadlib` reports that dynamic libraries are unavailable.
 
-`ScriptLoader` governs program loading only. Selecting or opening the IO or OS
-library grants its separate host capabilities; selecting or opening base or
-package does not grant script-file access.
+`ScriptLoader` governs program loading only. The IO and OS libraries carry
+their own host capabilities; selecting base or package grants no script-file
+access.
 
 ### Cancellation
 
@@ -573,36 +482,33 @@ defer func() { _ = state.RemoveContext() }()
 results, err := state.Call(handler)
 ```
 
-The context is ambient. It outlives one call, applies to every thread of the
+The context is ambient: it outlives one call, applies to every thread of the
 State including coroutines, and governs loading as well as execution, so a
 script cannot escape it by looping inside a coroutine or a `require`.
 Cancellation returns a `*lua.Error` in the `lua.ContextError` category, and
-Lua `pcall` cannot catch it.
+Lua `pcall` cannot catch it. Because the context outlives the operation, a
+cancelled context left installed refuses every later operation on that State.
+If you cancel per operation, clear the context afterwards, as the `defer`
+above does.
 
-`SetContext` takes effect immediately, including from inside a native callback,
-so a watchdog can be re-armed during the call it governs — pause it before
-handing control to code that legitimately blocks, then install a fresh deadline
-afterwards. `Frame.Context` returns the installed context, or
+`SetContext` takes effect immediately, including from inside a native
+callback, so a watchdog can be re-armed during the call it governs: pause it
+before handing control to code that legitimately blocks, then install a fresh
+deadline afterwards. `Frame.Context` returns the installed context, or
 `context.Background` when none is installed.
 
-Because the context outlives the operation, a cancelled context that is left
-installed refuses every later operation on that State. A host that cancels per
-operation clears it afterwards, as the `defer` above does.
-
-`SetContext` is a State operation and must be serialized like any other. A host
-deciding to cancel from another goroutine does so through its own context,
-which is what `context.WithCancel` already provides.
-
-A State with no installed context arms no polling at all: the check exists only
-while a context is present. Lunar cannot preempt a callback while it is running
-Go code, so blocking or long-running callbacks observe `Frame.Context`
+`SetContext` is a State operation and must be serialized like any other; to
+cancel from another goroutine, cancel the context itself, which is what
+`context.WithCancel` already provides. A State with no installed context arms
+no polling at all. Lunar cannot preempt a callback while it is running Go
+code, so blocking or long-running callbacks should observe `Frame.Context`
 themselves.
 
 ### Bound memory
 
-`MaxValues` and `MaxFrames` bound execution slots and activations; they say
-nothing about bytes, so one slot may hold an arbitrarily large string.
-`MaxHeapBytes` bounds the logical Lua heap that `HeapBytes` measures:
+`MaxValues` and `MaxFrames` bound execution slots and activations. They say
+nothing about bytes (one slot may hold an arbitrarily large string), so
+`MaxHeapBytes` separately bounds the logical Lua heap:
 
 ```go
 state, err := lua.New(lua.Options{
@@ -610,34 +516,33 @@ state, err := lua.New(lua.Options{
 })
 ```
 
-The limit bounds the logical Lua heap `HeapBytes` measures — Lua objects and
-their owned storage, not process memory. Opaque userdata payloads and Go
-allocator overhead sit outside the count, so actual process usage is higher.
+The limit covers what `HeapBytes` measures: Lua objects and their owned
+storage, not process memory. Opaque userdata payloads and Go allocator
+overhead sit outside the count, so actual process usage is higher.
 
 Crossing the limit schedules a collection, and the runtime raises an
 uncatchable `LimitError` only if the heap is still over the limit once
-unreachable objects are gone. A program that allocates far more than the
-limit in total therefore runs normally as long as it retains little; one that
-retains more than the limit fails. Because the check happens at execution
-safe points rather than inside the allocator, a single allocation can
-overshoot the limit before the runtime observes it, so `MaxHeapBytes` bounds
-sustained retention rather than peak allocation. Collection runs more often
-as retention approaches the limit, so a State held near saturation trades
-throughput for enforcement.
+unreachable objects are gone. A program that allocates freely but retains
+little runs normally; one that retains more than the limit fails. The check
+happens at execution safe points rather than inside the allocator, so a
+single allocation can overshoot before the runtime observes it;
+`MaxHeapBytes` bounds sustained retention, not peak allocation. Collection
+runs more often as retention approaches the limit, so a State held near
+saturation trades throughput for enforcement.
 
 While an xpcall error handler runs, the limit widens by
 `max(64 KiB, MaxHeapBytes/8)` so the handler can allocate its report,
 mirroring the emergency capacity `MaxValues` and `MaxFrames` grant handlers.
 
 Every operation that runs the executor observes the limit, including
-host-initiated Lua operations such as `Call`, `SetGlobal`, and `Index`. Raw
-operations and explicit `Collect` do not, so a host can still build and
-inspect a State that holds more than the limit allows.
+host-initiated ones such as `Call`, `SetGlobal`, and `Index`. Raw operations
+and explicit `Collect` do not, so a host can still build and inspect a State
+that holds more than the limit allows.
 
 ### Control the collector
 
-`Collect` performs a full collection and runs pending finalizers.
-`HeapBytes` measures the live heap.
+`Collect` performs a full collection and runs pending finalizers; `HeapBytes`
+measures the live heap.
 
 ```go
 if err := state.StopGC(); err != nil {
@@ -649,28 +554,23 @@ defer func() { _ = state.RestartGC() }()
 `StopGC` and `RestartGC` keep a latency-sensitive section free of collection.
 Both require an idle State and return `ErrRunning` otherwise. They drive the
 same control block as Lua's `collectgarbage`, so a change made through either
-is visible to the other, and everything else `collectgarbage` exposes stays
-available to scripts.
+is visible to the other.
 
 Nothing is reclaimed while the collector is stopped. Explicit `Collect` still
-works, and a State with `MaxHeapBytes` still enforces it, so a long stop can
-surface a limit that automatic collection would have avoided.
+works, and `MaxHeapBytes` is still enforced, so a long stop can surface a
+limit that automatic collection would have avoided.
 
-Lunar's collector is synchronous — a cycle runs to completion at a safe
-point — so `Collect` is a complete step and there is no separate `StepGC`.
+Lunar's collector is synchronous: a cycle runs to completion at a safe
+point, so `Collect` is a complete step and there is no separate `StepGC`.
 
 ## Going further
 
 ### Typed userdata
 
 Use `UserDataType[T]` when a Lua userdata represents a particular Go class.
-The descriptor combines two checks that are easy to omit when using bare
-`UserData`:
-
-- exact identity of the class's Lua metatable; and
-- assignability of the stored Go payload to `T`.
-
-Registration is State-local:
+The descriptor combines two checks that are easy to omit with bare
+`UserData`: exact identity of the class's Lua metatable, and assignability of
+the stored Go payload to `T`. Registration is State-local:
 
 ```go
 counterType, err := lua.NewUserDataType[*Counter](
@@ -679,10 +579,10 @@ counterType, err := lua.NewUserDataType[*Counter](
 )
 ```
 
-Repeating the same name and `T` reuses the canonical metatable. Reusing the
-name with another Go type returns `ErrUserDataTypeConflict`. Registrations live
-outside the Lua registry, so `debug.getregistry` cannot replace the name-to-
-metatable association.
+Repeating the same name and `T` reuses the canonical metatable; reusing the
+name with another Go type returns `ErrUserDataTypeConflict`. Registrations
+live outside the Lua registry, so `debug.getregistry` cannot replace the
+name-to-metatable association.
 
 Build normal Lua methods by using a methods table as `__index`:
 
@@ -744,7 +644,7 @@ if err := state.SetGlobal("counter", counter.Value()); err != nil {
 }
 ```
 
-Lua can then use ordinary colon calls:
+Lua then uses ordinary colon calls:
 
 ```lua
 counter:add(5)
@@ -753,54 +653,51 @@ counter:add(5)
 The receiver is Frame argument zero. `FromArgument` rejects another userdata
 class even if it carries the same Go payload type, and rejects the registered
 metatable if its payload is not assignable to `T`. `FromValue` performs the
-same checks for an owning Value:
+same checks for an owning Value.
 
-```go
-counter, ok := counterType.FromValue(value)
-```
-
-The metatable is the Lua class authority, not an unforgeable creation marker.
-Host code may intentionally classify compatible bare userdata by installing
+The metatable is the Lua class authority, not an unforgeable creation marker:
+host code may intentionally classify compatible bare userdata by installing
 the exact metatable. Opening the debug library gives Lua raw metatable powers
-that bypass normal `__metatable` protection, so it remains an explicitly
-trusted capability.
+that bypass `__metatable` protection, which is why debug remains an
+explicitly trusted capability.
 
 Descriptor metadata and `FromValue` remain readable after State closure, like
-the underlying owning `UserData`. `New` returns `ErrClosed` after closure.
-Changing a typed userdata's payload through `SetData` is allowed, but later
-typed extraction fails safely if the new payload no longer satisfies `T`.
+the underlying owning `UserData`; `New` returns `ErrClosed` once the State is
+closed. Changing a typed
+userdata's payload through `SetData` is allowed, but later typed extraction
+fails safely if the new payload no longer satisfies `T`.
 
 ### Coroutines and concurrency
 
 `State.NewThread` creates a coroutine from a callable Lua value. `Resume`
-returns an owned result slice; `ResumeInto` uses caller-provided storage. If
-that storage is too short, the coroutine has already advanced but the values
-remain available from `ResultCapacityError.Results`. `Resume` and `ResumeInto`
-observe the State's installed context under the same rules as State calls.
+returns an owned result slice; `ResumeInto` uses caller-provided storage, and
+if that storage is too short the coroutine has already advanced but the values
+remain available from `ResultCapacityError.Results`. Both observe the State's
+installed context under the same rules as State calls.
 
-One State permits one active executor. Serialize State methods, thread resumes,
-and mutation through owning object handles. While Lua is executing, reentry
-from a native callback must use the Frame APIs. Separate States may execute
-concurrently.
+One State permits one active executor. Serialize State methods, thread
+resumes, and mutation through owning object handles; while Lua is executing,
+reentry from a native callback must use the Frame APIs. Separate States may
+execute concurrently.
 
-Owning reference values participate in State-local Lua reachability. The
+Owning reference values participate in State-local Lua reachability; the
 ownership and collection rules are described in
 [Semantic collection](collection.md).
 
 ### Cache compiled chunks
 
 `Compile` produces a `*Prototype` without a State, and `LoadPrototype`
-installs one into any State, so a build step can compile once and every State
-pays only the binding. Lua's own `string.dump` still produces a binary chunk
-that `LoadString` accepts when bytes on disk are what a host wants.
+installs one into any State, so a build step can compile once and each State
+pays only the cost of binding it. Lua's own `string.dump` still produces a binary chunk
+that `LoadString` accepts when bytes on disk are what you want.
 
-The format is Lua 5.1's binary chunk, which `string.dump` also writes, so
-chunks move between Lua and Go in both directions. Lua 5.1 chunks describe the
-host ABI in their header rather than defining a portable encoding, so the bytes
-load only on a matching byte order, pointer width, and number format. Treat
-them as an architecture-keyed cache and keep the source to recompile from.
+The format is Lua 5.1's binary chunk, so chunks move between Lua and Go in
+both directions. Lua 5.1 chunks describe the host ABI in their header rather
+than defining a portable encoding, and the bytes load only on a matching byte
+order, pointer width, and number format. Treat them as an architecture-keyed
+cache and keep the source to recompile from.
 
 Binary chunks encode structure a decoder must trust. `State.Load` and
 `State.LoadString` apply the State's configured load limit while decoding;
-load untrusted chunks through a State whose `MaxLoadBytes` reflects the host's
+load untrusted chunks through a State whose `MaxLoadBytes` reflects your
 policy.
