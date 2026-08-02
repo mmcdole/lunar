@@ -3,12 +3,30 @@
 package fixture
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestWorkloadProvenanceMatchesSource(t *testing.T) {
+	root := fixturePath(t)
+	workload, err := os.ReadFile(filepath.Join(root, "workload.lua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance, err := os.ReadFile(filepath.Join(root, "PROVENANCE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(workload)
+	digest := []byte(hex.EncodeToString(sum[:]))
+	if !bytes.Contains(provenance, digest) {
+		t.Fatalf("PROVENANCE.md does not record workload SHA-256 %s", digest)
+	}
+}
 
 func TestSmallPresetHasPublishedLunarChecksum(t *testing.T) {
 	preset, ok := Lookup("small")

@@ -1,19 +1,24 @@
-# Lunar v1 public interface plan
+# Archived Lunar v1 public interface plan
 
-Status: superseded in part. The surface decisions this plan reached are
+> [!IMPORTANT]
+> This document is a non-normative historical record. Its imperative phase
+> text does not describe current work and must not be used as implementation
+> direction. The current interface is documented in the package, README, and
+> architecture guide; accepted decisions are recorded in the ADRs.
+
+Status: archived and superseded. The surface decisions this plan reached are
 recorded in [ADR 0006](adr/0006-cut-to-a-demand-backed-surface.md),
 [ADR 0007](adr/0007-use-one-ambient-context.md), and
 [ADR 0008](adr/0008-throw-is-the-callback-failure-path.md), and
-[ADR 0009](adr/0009-add-demand-backed-fixed-result-calls.md), which override
-the phase text below wherever they disagree. The phases remain as the record
-of how the surface was built before it was measured.
+[ADR 0009](adr/0009-add-demand-backed-fixed-result-calls.md). The phases below
+remain only as the record of how the surface was built before it was measured.
 
 Lunar's pre-v0.1 interface was not in production. The public-interface changes
 recorded in this historical plan were therefore clean breaks: the
 implementation did not retain aliases or deprecation shims for accidental
 pre-release names.
 
-## Goals
+## Historical goals
 
 The v1 interface should preserve Lunar's defining boundaries:
 
@@ -26,7 +31,7 @@ The v1 interface should preserve Lunar's defining boundaries:
 - contexts and deterministic budgets belong to an outer operation; and
 - libraries, script-file access, and other host capabilities remain explicit.
 
-## Execution rules
+## Historical execution rules
 
 Operations that may execute Lua observe the `State`'s installed ambient
 context. The corresponding operation on a live native callback belongs to
@@ -37,7 +42,7 @@ callback-author invariants such as a negative argument index, stale Frame, or
 Outcome from the wrong invocation. Closed States, foreign Values, invalid
 keys, capacity failures, and Lua execution failures return errors.
 
-## Standard-library selection
+## Historical standard-library selection
 
 `Options.Libraries` accepts an arbitrary `LibrarySet`. Its zero value installs
 no libraries. `CoreLibraries()` and `FullLibraries()` return common presets;
@@ -59,7 +64,7 @@ hosts that deliberately grant capabilities after construction. Do not add a
 second bulk `OpenLibraries` or `OpenStandardLibraries` API for v1; constructor
 profiles cover the common bulk cases.
 
-## Phase 0: canonical identity and vocabulary
+## Historical phase 0: canonical identity and vocabulary
 
 1. Change the module path and all internal modules to
    `github.com/mmcdole/lunar`.
@@ -84,7 +89,7 @@ Exit criteria:
 - all module paths and product prose say Lunar; and
 - the repository builds and tests under the renamed module.
 
-## Phase 1: primitive traversal and Lua operations
+## Historical phase 1: primitive traversal and Lua operations
 
 Add `Table.Next(after)` as the exact traversal primitive. It starts with Lua
 nil, reports completion separately from errors, supports deleting the current
@@ -114,7 +119,7 @@ Exit criteria:
   traceback behavior are covered; and
 - raw operations are proven not to execute Lua.
 
-## Phase 2: Go module workflow
+## Historical phase 2: Go module workflow
 
 Add `State.PreloadModule` and `State.SetFunctions`.
 
@@ -133,7 +138,7 @@ Exit criteria:
 - replacement of a named preload is deterministic; and
 - invalid functions, captures, and foreign tables leave the target unchanged.
 
-## Phase 3: unified script loading
+## Historical phase 3: unified script loading
 
 One State-owned `ScriptLoader` governs `LoadFile`, `DoFile`, Lua `loadfile`, Lua
 `dofile`, and the Lua source searcher used by `require`.
@@ -173,7 +178,7 @@ Exit criteria:
 - Windows and slash-based `fs.FS` paths have explicit tests; and
 - errors retain useful logical filenames and underlying causes.
 
-## Phase 4: native callback authoring
+## Historical phase 4: native callback authoring
 
 Keep exact, non-coercing typed argument methods. Add deliberately named helpers
 for:
@@ -214,7 +219,7 @@ Exit criteria:
 - ordinary Go causes survive through `errors.Is` and `errors.As`; and
 - zero-based error ordinals remain correct for calls and method receivers.
 
-## Phase 5: typed userdata
+## Historical phase 5: typed userdata
 
 Add a State-bound `UserDataType[T]` descriptor. Successful extraction requires
 exact metatable identity and a Go type assertion to `T`.
@@ -241,7 +246,7 @@ Exit criteria:
 - duplicate registrations have a deterministic contract; and
 - an end-to-end example implements `__index` and colon-called Go methods.
 
-## Phase 6: result-safe calls
+## Historical phase 6: result-safe calls
 
 The contract and competitive rationale are recorded in
 [ADR 0005](adr/0005-use-intent-named-call-result-shapes.md).
@@ -271,7 +276,7 @@ Exit criteria:
 - destinations remain unchanged on every failure; and
 - the sufficient-capacity fast paths retain their allocation behavior.
 
-## Phase 7: deterministic host ceilings
+## Historical phase 7: deterministic host ceilings
 
 Add logical-heap and VM-instruction limits.
 
@@ -300,7 +305,7 @@ Exit criteria:
 - the State remains usable according to the documented recovery contract; and
 - disabled ceilings add no meaningful regression to the hot VM benchmarks.
 
-## Phase 8: bytecode and release conveniences
+## Historical phase 8: bytecode and release conveniences
 
 Expose `Prototype.MarshalBinary`, `Prototype.InstructionCount`, and bounds-safe
 child access. Defer `WriteTo` until it can use the standard
@@ -314,7 +319,7 @@ Exit criteria:
 - serialized chunks round-trip through the verifier;
 - traceback formatting remains safe after State closure.
 
-## Deferred or rejected
+## Historically deferred or rejected
 
 Rejected for v1:
 

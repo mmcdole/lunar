@@ -37,20 +37,6 @@ type nativeFunctionAllocation struct {
 	data nativeFunctionData
 }
 
-func newLuaFunction(
-	state *State,
-	prototype *Prototype,
-	environment *tableObject,
-	upvalues []*upvalue,
-) *functionObject {
-	return newLuaFunctionOwned(
-		state,
-		prototype,
-		environment,
-		exactSlice(upvalues),
-	)
-}
-
 func newLuaFunctionOwned(
 	state *State,
 	prototype *Prototype,
@@ -240,12 +226,6 @@ type upvalue struct {
 	cell    *slot
 	next    *upvalue
 	storage slot
-}
-
-func newClosedUpvalue(value slot) *upvalue {
-	created := &upvalue{storage: value}
-	created.cell = &created.storage
-	return created
 }
 
 func (thread *threadObject) captureUpvalue(index int) *upvalue {

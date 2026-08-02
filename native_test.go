@@ -19,6 +19,63 @@ func TestNativeFrameRepresentation(t *testing.T) {
 	}
 }
 
+func TestFrameTypedBooleanAndObjectArguments(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	data, err := state.NewUserData("payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := mustLoadString(t, state, "@typed-thread.lua", "return")
+	thread, err := state.NewThread(entry.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if value, ok := frame.Bool(0); !ok || value {
+			frame.ThrowString("false boolean argument was not accepted")
+		}
+		if value, ok := frame.Bool(1); !ok || !value {
+			frame.ThrowString("true boolean argument was not accepted")
+		}
+		if _, ok := frame.Bool(2); ok {
+			frame.ThrowString("userdata was accepted as a boolean")
+		}
+		if _, ok := frame.Bool(4); ok {
+			frame.ThrowString("missing argument was accepted as a boolean")
+		}
+		if got, ok := frame.UserData(2); !ok || got != data {
+			frame.ThrowString("userdata argument lost canonical identity")
+		}
+		if _, ok := frame.UserData(3); ok {
+			frame.ThrowString("thread was accepted as userdata")
+		}
+		if got, ok := frame.Thread(3); !ok || got != thread {
+			frame.ThrowString("thread argument lost canonical identity")
+		}
+		if _, ok := frame.Thread(2); ok {
+			frame.ThrowString("userdata was accepted as a thread")
+		}
+		return frame.Return()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.CallDiscard(
+		probe.Value(),
+		Bool(false),
+		Bool(true),
+		data.Value(),
+		thread.Value(),
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConstructionUsesFunctionAndThreadEnvironmentsByObjectKind(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

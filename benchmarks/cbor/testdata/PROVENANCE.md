@@ -40,6 +40,6 @@ current deterministic generator, their reproducibility records are:
 | large | 9,208,046 | `65c43f4abd104fb629f22aee7801d3b458a93e24e6a6ec6dffb4c4b02252ab7c` |
 
 At this revision, `workload.lua` has SHA-256
-`c40cc49147b444257ed2fe1a7e9ba54d51a8a3b714c63d2315cac4b90f6b3c9d`.
+`a4666b04a45cb89eeb3ca6b7701e3e4ad2e17af0e3b7eab7f9e01410a9baacbd`.
 Generation commands and independent structural counts are in the benchmark
 README.

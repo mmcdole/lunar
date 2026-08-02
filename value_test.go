@@ -1663,16 +1663,26 @@ func TestZeroStateRejectsOperations(t *testing.T) {
 }
 
 func TestInvalidOptions(t *testing.T) {
-	if _, err := New(Options{MaxValues: -1}); !errors.Is(err, ErrNegativeCapacity) {
-		t.Fatalf("negative MaxValues error = %v", err)
-	}
-	if _, err := New(Options{MaxFrames: -1}); !errors.Is(err, ErrNegativeCapacity) {
-		t.Fatalf("negative MaxFrames error = %v", err)
-	}
-	if _, err := New(Options{
-		MaxLoadBytes: -1,
-	}); !errors.Is(err, ErrNegativeCapacity) {
-		t.Fatalf("negative MaxLoadBytes error = %v", err)
+	for _, test := range []struct {
+		name    string
+		options Options
+	}{
+		{name: "MaxValues", options: Options{MaxValues: -1}},
+		{name: "MaxFrames", options: Options{MaxFrames: -1}},
+		{name: "MaxLoadBytes", options: Options{MaxLoadBytes: -1}},
+		{name: "MaxHeapBytes", options: Options{MaxHeapBytes: -1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, optionErr := New(test.options)
+			if !errors.Is(optionErr, ErrNegativeCapacity) ||
+				!strings.Contains(optionErr.Error(), test.name) {
+				t.Fatalf(
+					"negative %s error = %v; want named ErrNegativeCapacity",
+					test.name,
+					optionErr,
+				)
+			}
+		})
 	}
 	state, err := New(Options{})
 	if err != nil {

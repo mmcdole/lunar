@@ -1387,7 +1387,7 @@ func TestCollectionHostSurfaceUsesTheSemanticCollector(t *testing.T) {
 	for index, result := range results {
 		number, ok := result.AsNumber()
 		if !ok || number <= 0 {
-			t.Fatalf("Frame HeapBytes result %d = %v", index, result)
+			t.Fatalf("Frame collection observation %d = %v", index, result)
 		}
 	}
 

@@ -307,15 +307,6 @@ func intToFloatingByte(value int) int {
 	return encoded
 }
 
-func floatingByteToInt(value int) int {
-	decoded := floatingByteToUint64(value)
-	maxInt := uint64(^uint(0) >> 1)
-	if decoded > maxInt {
-		panic("lua: floating byte exceeds integer range")
-	}
-	return int(decoded)
-}
-
 func floatingByteToUint64(value int) uint64 {
 	if value < 0 || value > 0xff {
 		panic("lua: floating byte is out of range")

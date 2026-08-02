@@ -328,10 +328,6 @@ func (kind Kind) isReference() bool {
 	}
 }
 
-func objectValue(kind Kind, pointer unsafe.Pointer) Value {
-	return objectSlot(kind, pointer).owningValue()
-}
-
 func objectSlot(kind Kind, pointer unsafe.Pointer) slot {
 	if !kind.isReference() || pointer == nil {
 		panic("lua: invalid canonical object")

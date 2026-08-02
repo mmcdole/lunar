@@ -174,14 +174,7 @@ func (state *State) NewLogFunction(verbose bool) (Value, error) {
 }
 
 func (state *State) CallOne(function Value, argument Value) (Value, error) {
-	results, err := state.state.Call(function, argument)
-	if err != nil {
-		return Value{}, err
-	}
-	if len(results) != 1 {
-		return Value{}, fmt.Errorf("call returned %d results, want 1", len(results))
-	}
-	return results[0], nil
+	return state.state.CallOne(function, argument)
 }
 
 func (state *State) CallGlobalBool(name string) error {

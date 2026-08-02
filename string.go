@@ -316,10 +316,6 @@ func finalizeStringHash(hash stringHash) stringHash {
 	return normalizeStringHash(uint64(hash))
 }
 
-func newInternedText(text string) *internedText {
-	return newHashedInternedText(text, hashString(text))
-}
-
 func newHashedInternedText(
 	text string,
 	hash stringHash,

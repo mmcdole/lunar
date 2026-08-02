@@ -3,6 +3,7 @@ package lua
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"runtime"
@@ -33,8 +34,9 @@ var ErrInvalidKey = errors.New("lua: invalid table key")
 // traversal.
 var ErrInvalidNextKey = errors.New("lua: invalid key to next")
 
-// ErrNegativeCapacity reports a negative collection capacity hint.
-var ErrNegativeCapacity = errors.New("lua: capacity hint is negative")
+// ErrNegativeCapacity reports a negative collection capacity hint or State
+// resource limit.
+var ErrNegativeCapacity = errors.New("lua: capacity or limit is negative")
 
 // ErrCapacity reports a collection capacity hint too large for eager
 // allocation. Tables may still grow beyond this size incrementally.
@@ -335,11 +337,22 @@ type State struct {
 
 // New constructs a State and installs the selected standard libraries.
 func New(options Options) (*State, error) {
-	if options.MaxValues < 0 ||
-		options.MaxFrames < 0 ||
-		options.MaxLoadBytes < 0 ||
-		options.MaxHeapBytes < 0 {
-		return nil, ErrNegativeCapacity
+	for _, option := range []struct {
+		name  string
+		value int
+	}{
+		{name: "MaxValues", value: options.MaxValues},
+		{name: "MaxFrames", value: options.MaxFrames},
+		{name: "MaxLoadBytes", value: options.MaxLoadBytes},
+		{name: "MaxHeapBytes", value: options.MaxHeapBytes},
+	} {
+		if option.value < 0 {
+			return nil, fmt.Errorf(
+				"%w: %s",
+				ErrNegativeCapacity,
+				option.name,
+			)
+		}
 	}
 	if options.MaxValues == 0 {
 		options.MaxValues = defaultMaxValues
@@ -743,45 +756,6 @@ func (state *State) acceptFunction(
 	object := (*functionObject)(token.object)
 	runtime.KeepAlive(function)
 	return object, nil
-}
-
-func (state *State) acceptThread(
-	thread *Thread,
-) (*threadObject, error) {
-	if err := state.checkOpen(); err != nil {
-		return nil, err
-	}
-	token := thread.token()
-	if token == nil ||
-		token.owner == nil ||
-		token.kind != ThreadKind ||
-		token.object == nil {
-		return nil, ErrInvalidValue
-	}
-	if token.owner != state.runtime {
-		return nil, ErrForeignValue
-	}
-	object := (*threadObject)(token.object)
-	runtime.KeepAlive(thread)
-	return object, nil
-}
-
-func (state *State) checkUserData(data *UserData) error {
-	if err := state.checkOpen(); err != nil {
-		return err
-	}
-	token := data.token()
-	if token == nil ||
-		token.owner == nil ||
-		token.kind != UserDataKind ||
-		token.object == nil {
-		return ErrInvalidValue
-	}
-	if token.owner != state.runtime {
-		return ErrForeignValue
-	}
-	runtime.KeepAlive(data)
-	return nil
 }
 
 func (rt *runtimeState) accept(value Value) error {

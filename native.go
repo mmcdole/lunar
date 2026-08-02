@@ -16,9 +16,9 @@ const (
 // ErrInvalidNativeFunction reports construction with a nil native entry.
 var ErrInvalidNativeFunction = errors.New("lua: native function is nil")
 
-// ErrNativeCaptureLimit reports a native function with more than 255
-// captures.
-var ErrNativeCaptureLimit = errors.New("lua: native function capture limit exceeded")
+var errNativeCaptureLimit = errors.New(
+	"lua: native function capture limit exceeded",
+)
 
 // NativeFunc is a Go function callable by Lua.
 //
@@ -109,7 +109,7 @@ func (state *State) newNativeFunctionObject(
 		return nil, ErrInvalidNativeFunction
 	}
 	if len(captures) > maxNativeCaptures {
-		return nil, ErrNativeCaptureLimit
+		return nil, errNativeCaptureLimit
 	}
 	for _, capture := range captures {
 		if err := state.runtime.acceptSlot(capture); err != nil {
@@ -337,11 +337,6 @@ func (frame Frame) CurrentThread() *Thread {
 
 func (frame Frame) environmentObject() *tableObject {
 	return frame.activation().function.environment
-}
-
-func (frame Frame) globalEnvironmentObject() *tableObject {
-	frame.activation()
-	return frame.thread.globals
 }
 
 // Return completes the callback without results.

@@ -24,10 +24,10 @@ const maxTreeDepth = 256
 // a slice becomes a one-based sequence. Any other Go type reports
 // ErrUnsupportedTreeValue and leaves no partially built table reachable.
 //
-// Integers wider than float64 can represent lose precision, as they would
+// Integers outside float64's exact range can lose precision, as they would
 // through any Lua number. Conversion performs raw assignments only: it never
-// invokes __newindex and never executes Lua, so it is also usable from a
-// native callback through Frame.State.
+// invokes __newindex and never executes Lua, so it is also usable from a native
+// callback through Frame.State.
 func (state *State) NewTableFrom(tree any) (*Table, error) {
 	if err := state.checkOpen(); err != nil {
 		return nil, err

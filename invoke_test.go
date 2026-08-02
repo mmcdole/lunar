@@ -722,6 +722,18 @@ func TestResultCapacityErrorOwnsReferenceResults(t *testing.T) {
 	}
 }
 
+func TestResultCapacityErrorFormatting(t *testing.T) {
+	var nilError *ResultCapacityError
+	if got := nilError.Error(); got != "lua: insufficient result capacity" {
+		t.Fatalf("nil Error = %q", got)
+	}
+	capacityError := &ResultCapacityError{Required: 3, Available: 2}
+	const want = "lua: operation produced 3 results; destination holds 2"
+	if got := capacityError.Error(); got != want {
+		t.Fatalf("Error = %q; want %q", got, want)
+	}
+}
+
 func TestStateCallIntoLeavesDestinationUntouchedOnFailure(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

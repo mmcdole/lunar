@@ -353,6 +353,123 @@ func TestStateToStringAndLenApplyLuaSemantics(t *testing.T) {
 	}
 }
 
+func TestStateEqualAppliesLuaSemantics(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	for _, test := range []struct {
+		name  string
+		left  Value
+		right Value
+		want  bool
+	}{
+		{name: "numbers", left: Number(1), right: Number(1), want: true},
+		{name: "different numbers", left: Number(1), right: Number(2)},
+		{name: "strings", left: String("same"), right: String("same"), want: true},
+		{name: "different kinds", left: Number(1), right: String("1")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, equalErr := state.Equal(test.left, test.right)
+			if equalErr != nil {
+				t.Fatal(equalErr)
+			}
+			if got != test.want {
+				t.Fatalf("Equal = %v, want %v", got, test.want)
+			}
+		})
+	}
+
+	equalCalls := 0
+	equalHandler, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		equalCalls++
+		return frame.ReturnString("truthy")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metatable, err := state.NewTableWithCapacity(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := metatable.RawSetString("__eq", equalHandler.Value()); err != nil {
+		t.Fatal(err)
+	}
+	left, err := state.NewUserData("left")
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := state.NewUserData("right")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(left.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetMetatable(right.Value(), metatable); err != nil {
+		t.Fatal(err)
+	}
+	if equal, equalErr := state.Equal(left.Value(), right.Value()); equalErr != nil {
+		t.Fatal(equalErr)
+	} else if !equal {
+		t.Fatal("shared __eq result was not truthy")
+	}
+	if equalCalls != 1 {
+		t.Fatalf("__eq calls = %d, want 1", equalCalls)
+	}
+}
+
+func TestFrameSemanticOperations(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	host, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		if err := frame.SetGlobal("frame_value", Number(11)); err != nil {
+			frame.ThrowString(err.Error())
+		}
+		global, err := frame.Global("frame_value")
+		if err != nil {
+			frame.ThrowString(err.Error())
+		}
+		text, err := frame.ToString(global)
+		if err != nil {
+			frame.ThrowString(err.Error())
+		}
+		length, err := frame.Len(String("abc"))
+		if err != nil {
+			frame.ThrowString(err.Error())
+		}
+		equal, err := frame.Equal(global, Number(11))
+		if err != nil {
+			frame.ThrowString(err.Error())
+		}
+		return frame.ReturnValues(
+			String(text),
+			length,
+			Bool(equal),
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(host.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(
+		t,
+		results,
+		String("11"),
+		Number(3),
+		Bool(true),
+	)
+}
+
 func TestSemanticGlobalsAndRawGlobalsRemainDistinct(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {

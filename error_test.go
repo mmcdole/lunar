@@ -37,6 +37,49 @@ func TestSourceIDFormatting(t *testing.T) {
 	}
 }
 
+func TestTraceFrameStringFormatting(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		frame TraceFrame
+		want  string
+	}{
+		{
+			name: "named Lua function",
+			frame: TraceFrame{
+				Source:   "@chunk.lua",
+				Function: "worker",
+				Line:     12,
+			},
+			want: "chunk.lua:12: in function 'worker'",
+		},
+		{
+			name:  "native function",
+			frame: TraceFrame{Source: "=[Go]"},
+			want:  "[Go]: in native function",
+		},
+		{
+			name:  "anonymous function",
+			frame: TraceFrame{},
+			want:  "?: in function <anonymous>",
+		},
+		{
+			name: "tail calls",
+			frame: TraceFrame{
+				Source:    "@tail.lua",
+				Line:      7,
+				TailCalls: 2,
+			},
+			want: "tail.lua:7: in function <anonymous> (+2 tail call(s))",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.frame.String(); got != test.want {
+				t.Fatalf("String = %q; want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRuntimeTypeErrorsNameOperandsLikeLua51(t *testing.T) {
 	tests := []struct {
 		name   string

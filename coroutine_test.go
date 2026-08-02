@@ -3,7 +3,6 @@ package lua
 import (
 	"errors"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -1574,11 +1573,4 @@ func assertStateExecutionIdle(t *testing.T, state *State) {
 		)
 	}
 	assertRootThreadReady(t, state.main)
-}
-
-func assertCoroutineErrorContains(t *testing.T, err error, text string) {
-	t.Helper()
-	if err == nil || !strings.Contains(err.Error(), text) {
-		t.Fatalf("error = %v; want text %q", err, text)
-	}
 }

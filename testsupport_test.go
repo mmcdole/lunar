@@ -6,6 +6,42 @@ import (
 	"testing"
 )
 
+// Constructors used only by white-box tests live here so the shipped runtime
+// contains only construction paths used by production code.
+
+func newLuaFunction(
+	state *State,
+	prototype *Prototype,
+	environment *tableObject,
+	upvalues []*upvalue,
+) *functionObject {
+	return newLuaFunctionOwned(
+		state,
+		prototype,
+		environment,
+		exactSlice(upvalues),
+	)
+}
+
+func newClosedUpvalue(value slot) *upvalue {
+	created := &upvalue{storage: value}
+	created.cell = &created.storage
+	return created
+}
+
+func floatingByteToInt(value int) int {
+	decoded := floatingByteToUint64(value)
+	maxInt := uint64(^uint(0) >> 1)
+	if decoded > maxInt {
+		panic("lua: floating byte exceeds integer range")
+	}
+	return int(decoded)
+}
+
+func newInternedText(text string) *internedText {
+	return newHashedInternedText(text, hashString(text))
+}
+
 // Helpers for tests written against accessors that are no longer public.
 // Tests live in the package, so they read the compact representation
 // directly rather than keeping a shipped accessor alive for their sake.

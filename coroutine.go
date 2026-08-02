@@ -442,19 +442,6 @@ func resumeThread(
 	}
 }
 
-func (thread *threadObject) preflightExternalResume(argumentCount int) *Error {
-	if thread.status != ThreadSuspended {
-		return newCoroutineFailure(
-			thread.state,
-			fmt.Sprintf(
-				"cannot resume %s coroutine",
-				coroutineStatusName(nil, thread),
-			),
-		)
-	}
-	return thread.preflightResume(argumentCount)
-}
-
 func (thread *threadObject) preflightResume(argumentCount int) *Error {
 	if argumentCount < 0 {
 		panic("lua: negative coroutine argument count")

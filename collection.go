@@ -326,13 +326,6 @@ type semanticHeapSummary struct {
 	textBackings int
 }
 
-func (summary semanticHeapSummary) objects() int {
-	return summary.tables +
-		summary.functions +
-		summary.threads +
-		summary.userData
-}
-
 func (thread *threadObject) collectionMark() objectMark {
 	return objectMark(thread.flags & threadFlagMarked)
 }

@@ -194,12 +194,13 @@ finalizers.
 
 ## Heap accounting
 
-`State.HeapBytes`, `Frame.HeapBytes`, `collectgarbage("count")`, and `gcinfo`
-use one logical Lua heap definition. It includes registered objects currently
-retained by the State and their subordinate storage, reachable prototype data,
-captured upvalues, table capacity, thread stacks, and attributable runtime
-strings. Callers that need a post-collection live-graph measurement should
-collect first.
+`State.HeapBytes`, `collectgarbage("count")`, and `gcinfo` use one logical Lua
+heap definition. It includes registered objects currently retained by the State
+and their subordinate storage, reachable prototype data, captured upvalues,
+table capacity, thread stacks, and attributable runtime strings. Callers that
+need a post-collection live-graph measurement should collect first. A native
+callback may call `Frame.Collect`, then obtain the measurement from its owning
+State after the callback returns.
 
 It excludes Go allocator size classes, unused collector work capacity, weak
 pointer metadata, opaque userdata payloads, public host tokens, and fixed State
