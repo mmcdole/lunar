@@ -11,10 +11,15 @@ benchmark groups:
 
 The large synthetic CBOR graph has a separate fresh-process harness under
 [`cbor/`](cbor/README.md). Retained memory from that harness is not combined
-with the Go benchmark allocation counters.
+with the Go benchmark allocation counters. The same module carries the
+controlled table-shape suite, which decomposes the CBOR retained-memory
+result into single-variable cases and is recollected whenever table storage
+or string interning changes.
 
 Published raw output and summaries are under
-[`results/2026-07-28-darwin-arm64-m3-pro/`](results/2026-07-28-darwin-arm64-m3-pro/).
+[`results/2026-07-28-darwin-arm64-m3-pro/`](results/2026-07-28-darwin-arm64-m3-pro/)
+and, for the table-shape suite,
+[`results/2026-08-05-darwin-arm64-m3-pro/`](results/2026-08-05-darwin-arm64-m3-pro/).
 
 ## Runtime versions
 

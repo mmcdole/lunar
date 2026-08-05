@@ -81,8 +81,8 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-Medians from 15 runs on an Apple M3 Pro with Go 1.25.1 at source revision
-`1d43aec`. Lower is better.
+Medians from 15 runs on an Apple M3 Pro with Go 1.25.1; each linked result
+set records its exact source revision. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
@@ -99,13 +99,24 @@ Medians from 15 runs on an Apple M3 Pro with Go 1.25.1 at source revision
 | Lua checksums a reused Go-built table | **312.4 ns** | 578.3 ns | 972.9 ns |
 | Build a table in Go, then checksum it in Lua | 2.230 µs | **1.405 µs** | 1.645 µs |
 
-| Loading a 9 MB CBOR graph | Lunar | GopherLua |
-| --- | ---: | ---: |
-| Total memory allocated while loading | **107.5 MB** | 784.6 MB |
-| Live heap added after garbage collection | **72.24 MiB** | 542.26 MiB |
+| Live heap added after loading and GC | Lunar | GopherLua | Ratio |
+| --- | ---: | ---: | ---: |
+| 9 MB CBOR graph: 183,513 tables, 938,452 entries | **72.2 MiB** | 542.3 MiB | 7.5× |
+| 25,000 four-field tables, repeated 16 B keys | **7.3 MiB** | 72.0 MiB | 9.9× |
+| 25,000 four-field tables, unique 16 B keys | **8.8 MiB** | 72.0 MiB | 8.2× |
+| 25,000 four-field tables, repeated 80 B keys | **14.9 MiB** | 78.1 MiB | 5.3× |
+| One table, 100,000 unique 16 B keys | **6.5 MiB** | 14.7 MiB | 2.26× |
+| One table, 100,000 unique 256 B keys | **29.4 MiB** | 37.6 MiB | 1.28× |
+| One table, 100,000 unique 1 KiB keys | **102.7 MiB** | 110.9 MiB | 1.08× |
 
-The [full results](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/) include
-confidence intervals, allocation counts, and raw output; the
+The ratio depends on workload shape: Lunar wins on per-table overhead and
+on reusing repeated strings up to 64 bytes, while raw string bytes cost
+both runtimes the same, so the gap narrows toward 1× as string payload
+dominates. Loading the CBOR graph also allocates 7.3× less transient
+memory (**107.5 MB** versus 784.6 MB).
+
+The [full results](benchmarks/results/) include confidence intervals,
+allocation counts, and raw output; the
 [benchmark protocol](benchmarks/README.md) lists the commands, inputs, and
 runtime versions.
 
