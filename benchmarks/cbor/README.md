@@ -15,6 +15,8 @@ workload, validation, and reporting code.
 
 Published paired retained-memory records and summaries are in the
 [`2026-07-28 Apple M3 Pro archive`](../results/2026-07-28-darwin-arm64-m3-pro/).
+The controlled table-shape suite below has its own archive in
+[`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
 
 ## Deterministic synthetic fixtures
 
@@ -177,6 +179,50 @@ the other.
 For a one-process smoke check, invoke either worker directly with
 `-measurement retained -format jsonl`. Do not use that single result as a
 published comparison.
+
+## Controlled table-shape suite
+
+The CBOR graph is a real-world composite. The shape suite in `cmd/shapes`
+decomposes its retained-memory result into single-variable cases: table
+count, key reuse, the 64-byte string-reuse limit, and raw key payload. Each
+worker process builds one shape through the same two-engine bridge, anchors
+it in a Lua global, and reports `heap_before`, `heap_retained`, and
+`heap_delta` under the same double-collection stabilization as the CBOR
+worker.
+
+Shape construction rules keep every difference attributable to the runtime:
+
+- tables are created without capacity hints, matching a dynamic decoder;
+- values are boolean `true`, keeping boxed-number allocation out of scope;
+- repeated keys are freshly cloned before every insertion, so retained
+  sharing can come only from the runtime; and
+- unique keys derive from chained SHA-256 blocks, so distinguishing bytes
+  span the whole key rather than a counter suffix.
+
+Every process self-verifies its built shape — table count, entry count, and
+total key bytes — after the measured samples are captured.
+
+Collect a published result set with the round-alternating fresh-process
+script, which builds both workers and reports per-case medians:
+
+```sh
+scripts/shapes.sh /tmp/shape-results
+```
+
+List the cases or take a one-process smoke sample directly:
+
+```sh
+go run ./cmd/shapes -list
+go run ./cmd/shapes -case one-unique-16 -format jsonl
+```
+
+Published shape results follow the same conventions as the CBOR archive:
+one JSONL evidence file per engine, medians in the dated results README,
+and SHA-256 hashes of the raw files. The current archive is
+[`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
+Recollect the suite whenever table storage, string interning, or the
+allocator changes, and publish a new dated directory rather than editing an
+existing one.
 
 ## Native timing references
 
