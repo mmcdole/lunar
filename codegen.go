@@ -432,17 +432,19 @@ func (parser *sourceParser) emitBinary(
 		return folded, nil
 	}
 
+	rightRK, syntaxError := parser.expressionToRK(&right, line)
+	if syntaxError != nil {
+		return compiledExpression{}, syntaxError
+	}
 	leftRK := preparedRK
-	var syntaxError *Error
 	if !prepared {
+		// Only side-effect-free numeric constants remain unprepared so they
+		// can be folded. Resolve the right operand first so a left constant
+		// spill cannot cover a call result that must be at the register top.
 		leftRK, syntaxError = parser.expressionToRK(&left, line)
 		if syntaxError != nil {
 			return compiledExpression{}, syntaxError
 		}
-	}
-	rightRK, syntaxError := parser.expressionToRK(&right, line)
-	if syntaxError != nil {
-		return compiledExpression{}, syntaxError
 	}
 
 	emitter := parser.function
