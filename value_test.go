@@ -50,6 +50,9 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(stringPool{}); size > 224 {
 			t.Fatalf("stringPool header size = %d, want at most 224", size)
 		}
+		if size := unsafe.Sizeof(runtimeState{}); size != 344 {
+			t.Fatalf("runtimeState size = %d, want 344", size)
+		}
 	}
 	if reflect.TypeOf(Value{}).Comparable() {
 		t.Fatal("Value must not be Go-comparable")
@@ -831,8 +834,7 @@ func TestTableHandleSupportsNestedPublicationAfterClose(t *testing.T) {
 		text != longText {
 		t.Fatalf("post-close string = (%q, %v)", text, ok)
 	}
-	if state.runtime.collection.attributedStrings != nil ||
-		state.runtime.collection.attributedStringHighWater != 0 {
+	if state.runtime.collection.attributedStrings != nil {
 		t.Fatal("post-close string read recreated collection attribution")
 	}
 	if err := outer.RawSetString("blocked", Bool(true)); !errors.Is(
@@ -1494,6 +1496,382 @@ func TestStringIdentityAndBoundedAdmission(t *testing.T) {
 	}
 }
 
+func TestLongStringIdentityCache(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Clone(strings.Repeat("identity-cache-", 10))
+	first := state.String(text)
+	if state.runtime.collection.attributedStrings != nil {
+		t.Fatal("State.String alone allocated the attribution set")
+	}
+	if _, found := state.runtime.collection.attributedStrings.lookup(
+		text,
+	); found {
+		t.Fatal("State.String alone populated the attribution set")
+	}
+	if _, err := state.runtime.importValue(first); err != nil {
+		t.Fatal(err)
+	}
+	set := state.runtime.collection.attributedStrings
+	reference := stringRef{ref: first.ref, bits: first.bits}
+	recentIndex := attributedStringRecentSlot(stringRefBacking(reference))
+	if set == nil || set.recent[recentIndex] != reference {
+		t.Fatal("first import did not populate the attribution set")
+	}
+
+	second := state.String(text)
+	if second.ref != first.ref || second.bits != first.bits {
+		t.Fatal("exact-backing cache hit changed the string reference")
+	}
+	if _, err := state.runtime.importValue(second); err != nil {
+		t.Fatal(err)
+	}
+
+	equalBacking := strings.Clone(text)
+	if unsafe.StringData(equalBacking) == unsafe.StringData(text) {
+		t.Fatal("equal-content test strings unexpectedly share backing")
+	}
+	equal := state.String(equalBacking)
+	if equal.ref == first.ref {
+		t.Fatal("equal content with distinct backing used an identity hit")
+	}
+	if !rawSlotEqual(slotFromValue(first), slotFromValue(equal)) {
+		t.Fatal("equal-content long strings compared unequal")
+	}
+	if set.recent[recentIndex] != reference {
+		t.Fatal("an identity-cache miss replaced an attributed entry")
+	}
+
+	shared := strings.Clone(strings.Repeat("s", shortStringLimit+2))
+	shorter := shared[:shortStringLimit+1]
+	longer := shared[:shortStringLimit+2]
+	if unsafe.StringData(shorter) != unsafe.StringData(longer) {
+		t.Fatal("length test strings do not share their starting address")
+	}
+	shorterValue := state.String(shorter)
+	if _, err := state.runtime.importValue(shorterValue); err != nil {
+		t.Fatal(err)
+	}
+	longerValue := state.String(longer)
+	if got, ok := longerValue.AsString(); !ok || got != longer {
+		t.Fatalf("same-backing longer string = (%q, %v)", got, ok)
+	}
+	if longerValue.bits == shorterValue.bits {
+		t.Fatal("one backing address with different lengths used an identity hit")
+	}
+	if _, err := state.runtime.importValue(longerValue); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := set.lookup(shorter); found {
+		t.Fatal("same-address longer string retained the shorter cache entry")
+	}
+	if _, found := set.lookup(longer); !found {
+		t.Fatal("same-address longer string did not enter the cache")
+	}
+	shorterAgain := state.String(shorter)
+	if _, err := state.runtime.importValue(shorterAgain); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := set.lookup(shorter); !found {
+		t.Fatal("same-address shorter string did not reclaim the cache slot")
+	}
+	if _, found := set.lookup(longer); found {
+		t.Fatal("same-address shorter string retained the longer cache entry")
+	}
+
+	beforeShort := set.recent
+	_ = state.String("short strings stay in the ordinary pool")
+	if set.recent != beforeShort {
+		t.Fatal("short-string construction changed the long-string cache")
+	}
+
+	peer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	if peer.runtime.collection.attributedStrings != nil {
+		t.Fatal("a new State allocated the attribution set")
+	}
+	if _, found := peer.runtime.collection.attributedStrings.lookup(
+		text,
+	); found {
+		t.Fatal("a different State observed the attribution set")
+	}
+
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if set.entries != nil ||
+		set.recent != [attributedStringRecentSlots]stringRef{} ||
+		state.runtime.collection.attributedStrings != nil {
+		t.Fatal("Close retained the attribution set")
+	}
+	postClose := state.String(text)
+	if got, ok := postClose.AsString(); !ok || got != text {
+		t.Fatalf("post-Close State.String = (%q, %v)", got, ok)
+	}
+	if state.runtime.collection.attributedStrings != nil {
+		t.Fatal("post-Close State.String repopulated the attribution set")
+	}
+	runtime.KeepAlive(first)
+}
+
+func TestLongStringIdentityCacheUsesAllSlots(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	texts := longStringCacheSlotInputs(
+		t,
+		shortStringLimit+8,
+		attributedStringRecentSlots,
+		true,
+	)
+	var references [attributedStringRecentSlots]stringRef
+	var cachedTexts [attributedStringRecentSlots]string
+	for _, text := range texts[:attributedStringRecentSlots] {
+		value := state.String(text)
+		if _, err := state.runtime.importValue(value); err != nil {
+			t.Fatal(err)
+		}
+		reference := stringRef{ref: value.ref, bits: value.bits}
+		index := attributedStringRecentSlot(stringRefBacking(reference))
+		references[index] = reference
+		cachedTexts[index] = text
+	}
+	set := state.runtime.collection.attributedStrings
+	if set == nil {
+		t.Fatal("long-string admissions did not create an attribution set")
+	}
+	for index, text := range texts[:attributedStringRecentSlots] {
+		if _, found := set.lookup(text); !found {
+			t.Fatalf("cache slot input %d was not retained", index)
+		}
+	}
+	for index, reference := range references {
+		if set.recent[index] != reference {
+			t.Fatalf("cached attribution %d did not bypass its map lookup", index)
+		}
+	}
+
+	replacementValue := state.String(texts[attributedStringRecentSlots])
+	if _, err := state.runtime.importValue(replacementValue); err != nil {
+		t.Fatal(err)
+	}
+	replacement := stringRef{
+		ref:  replacementValue.ref,
+		bits: replacementValue.bits,
+	}
+	replacedIndex := attributedStringRecentSlot(
+		stringRefBacking(replacement),
+	)
+	if set.recent[replacedIndex] != replacement {
+		t.Fatal("colliding admission did not replace its direct cache slot")
+	}
+	if set.recent[replacedIndex] ==
+		references[replacedIndex] {
+		t.Fatal("colliding admission retained the evicted cache entry")
+	}
+	evictedText := cachedTexts[replacedIndex]
+	if _, found := set.lookup(evictedText); found {
+		t.Fatal("colliding admission still found the evicted cache entry")
+	}
+	evictedValue := state.String(evictedText)
+	if _, err := state.runtime.importValue(evictedValue); err != nil {
+		t.Fatal(err)
+	}
+	evicted := stringRef{ref: evictedValue.ref, bits: evictedValue.bits}
+	if set.recent[replacedIndex] != evicted {
+		t.Fatal("evicted cache entry did not reclaim its direct slot")
+	}
+	if _, found := set.lookup(
+		texts[attributedStringRecentSlots],
+	); found {
+		t.Fatal("reclaimed cache slot still found the colliding replacement")
+	}
+}
+
+func TestLongStringIdentityCacheBatchedCall(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	function := mustLoadString(
+		t,
+		state,
+		"@long-string-cache-batch.lua",
+		"return ...",
+	)
+	texts := longStringCacheSlotInputs(
+		t,
+		128,
+		attributedStringRecentSlots,
+		false,
+	)
+	arguments := make([]Value, len(texts))
+	results := make([]Value, len(texts))
+	for index, text := range texts {
+		admitted := state.String(text)
+		if _, err := state.runtime.importValue(admitted); err != nil {
+			t.Fatal(err)
+		}
+		arguments[index] = state.String(text)
+		if arguments[index].ref != admitted.ref ||
+			arguments[index].bits != admitted.bits {
+			t.Fatalf("argument %d did not use its cache slot", index)
+		}
+	}
+
+	count, err := state.CallInto(function.Value(), arguments, results)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != len(arguments) {
+		t.Fatalf("batched call returned %d values; want %d", count, len(arguments))
+	}
+	for index := range results {
+		if results[index].ref != arguments[index].ref ||
+			results[index].bits != arguments[index].bits {
+			t.Fatalf("batched result %d changed its string reference", index)
+		}
+	}
+}
+
+func longStringCacheSlotInputs(
+	tb testing.TB,
+	size int,
+	slots int,
+	includeCollision bool,
+) []string {
+	tb.Helper()
+	if size <= shortStringLimit || slots < 1 ||
+		slots > attributedStringRecentSlots {
+		tb.Fatalf("invalid long-string cache input shape: size=%d slots=%d", size, slots)
+	}
+	backing := strings.Clone(strings.Repeat("x", size+(1<<13)))
+	want := slots
+	if includeCollision {
+		want++
+	}
+	inputs := make([]string, 0, want)
+	var occupied [attributedStringRecentSlots]bool
+	firstSlot := -1
+	for offset := 0; offset+size <= len(backing); offset++ {
+		text := backing[offset : offset+size]
+		identity := stringBacking{
+			data:   unsafe.Pointer(unsafe.StringData(text)),
+			length: len(text),
+		}
+		index := attributedStringRecentSlot(identity)
+		if len(inputs) < slots {
+			if occupied[index] {
+				continue
+			}
+			occupied[index] = true
+			inputs = append(inputs, text)
+			if firstSlot < 0 {
+				firstSlot = index
+			}
+			continue
+		}
+		if includeCollision && index == firstSlot &&
+			unsafe.StringData(text) != unsafe.StringData(inputs[0]) {
+			inputs = append(inputs, text)
+			break
+		}
+	}
+	runtime.KeepAlive(backing)
+	if len(inputs) != want {
+		tb.Fatalf("constructed %d of %d requested cache inputs", len(inputs), want)
+	}
+	return inputs
+}
+
+func TestWarmLongStringIdentityCacheDoesNotAllocate(t *testing.T) {
+	requireStableAllocationAccounting(t)
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	text := strings.Clone(strings.Repeat("allocation-cache-", 8))
+	value := state.String(text)
+	if _, err := state.runtime.importValue(value); err != nil {
+		t.Fatal(err)
+	}
+
+	var compact slot
+	allocations := testing.AllocsPerRun(1_000, func() {
+		compact = state.runtime.importAcceptedSlot(
+			slotFromValue(state.String(text)),
+		)
+	})
+	if allocations != 0 {
+		t.Fatalf(
+			"warm long-string construction and ingress allocated %.2f times",
+			allocations,
+		)
+	}
+	runtime.KeepAlive(compact)
+}
+
+func TestLongStringIdentityCacheSupportsSentinelLength(t *testing.T) {
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	table, err := state.NewTableWithCapacity(1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Repeat("z", stringLengthSentinel)
+	first := state.String(text)
+	if encoded := int(
+		first.bits >> stringLengthShift & stringLengthSentinel,
+	); encoded != stringLengthSentinel {
+		t.Fatalf("encoded length = %d; want sentinel", encoded)
+	}
+	if _, err := state.runtime.importValue(first); err != nil {
+		t.Fatal(err)
+	}
+	second := state.String(text)
+	if second.ref != first.ref || second.bits != first.bits {
+		t.Fatal("sentinel-length identity cache changed the string reference")
+	}
+	if got, ok := second.AsString(); !ok || len(got) != len(text) ||
+		got[0] != 'z' || got[len(got)-1] != 'z' {
+		t.Fatal("sentinel-length identity cache changed the string contents")
+	}
+	if err := table.RawSetInt(1, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	third := state.String(text)
+	if third.ref != first.ref || third.bits != first.bits {
+		t.Fatal("collection discarded a live sentinel-length cache entry")
+	}
+	if err := table.RawSetInt(1, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	if _, found := state.runtime.collection.attributedStrings.lookup(
+		text,
+	); found {
+		t.Fatal("collection retained a dead sentinel-length cache entry")
+	}
+	runtime.KeepAlive(text)
+}
+
 func TestSingleByteStringsUseCanonicalStorage(t *testing.T) {
 	firstState, err := New(Options{})
 	if err != nil {
@@ -1775,6 +2153,72 @@ func BenchmarkCachedString(b *testing.B) {
 	b.ReportAllocs()
 	for range b.N {
 		runtime.KeepAlive(state.String("destination"))
+	}
+}
+
+func BenchmarkLongStringAdmissionCache(b *testing.B) {
+	tests := []struct {
+		name      string
+		size      int
+		slots     int
+		collision bool
+		cold      int
+	}{
+		{name: "hot_1", size: 65, slots: 1},
+		{name: "hot_1", size: 128, slots: 1},
+		{name: "hot_1", size: 4096, slots: 1},
+		{name: "alternating_2_slots", size: 128, slots: 2},
+		{name: "round_robin_4_slots", size: 128, slots: 4},
+		{name: "4_slots_plus_collision", size: 128, slots: 4, collision: true},
+		{name: "cold_4096", size: 128, cold: 4096},
+	}
+	for _, test := range tests {
+		b.Run(
+			test.name+"/bytes="+strconv.Itoa(test.size),
+			func(b *testing.B) {
+				state, err := New(Options{})
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer state.Close()
+				var texts []string
+				if test.cold == 0 {
+					texts = longStringCacheSlotInputs(
+						b,
+						test.size,
+						test.slots,
+						test.collision,
+					)
+				} else {
+					texts = make([]string, test.cold)
+					for index := range texts {
+						prefix := strconv.Itoa(index) + ":"
+						texts[index] = strings.Clone(
+							prefix + strings.Repeat("x", test.size-len(prefix)),
+						)
+					}
+				}
+				for index := range texts {
+					value := state.String(texts[index])
+					state.runtime.importAcceptedSlot(slotFromValue(value))
+				}
+
+				index := 0
+				var compact slot
+				b.ReportAllocs()
+				b.ResetTimer()
+				for range b.N {
+					compact = state.runtime.importAcceptedSlot(slotFromValue(
+						state.String(texts[index]),
+					))
+					index++
+					if index == len(texts) {
+						index = 0
+					}
+				}
+				runtime.KeepAlive(compact)
+			},
+		)
 	}
 }
 

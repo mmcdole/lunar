@@ -556,7 +556,7 @@ func TestNativeFrameStringRoundTripChargesAtImport(t *testing.T) {
 			want,
 		)
 	}
-	if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+	if !state.runtime.collection.attributedStrings.contains(reference) {
 		t.Fatal("Frame.String round-trip import did not record attribution")
 	}
 	if thread.top != 1 ||
@@ -626,7 +626,7 @@ func TestCompactErrorStringAttributionBeginsOnReimport(t *testing.T) {
 		beforeCatch+stringRefRetainedBytes(reference); got != want {
 		t.Fatalf("compact error reimport debt = %d; want %d", got, want)
 	}
-	if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+	if !state.runtime.collection.attributedStrings.contains(reference) {
 		t.Fatal("compact error reimport did not record attribution")
 	}
 }
@@ -701,7 +701,7 @@ return ok, message`,
 		if got, ok := results[1].AsString(); !ok || got != value.String() {
 			t.Fatalf("caught error = (%q, %v)", got, ok)
 		}
-		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+		if !state.runtime.collection.attributedStrings.contains(reference) {
 			t.Fatal("caught error bypassed long-string attribution")
 		}
 		if state.runtime.collection.debt < stringRefRetainedBytes(reference) {

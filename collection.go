@@ -46,6 +46,8 @@ const (
 	defaultCollectionStepMultiplier       = 200
 	minimumAutomaticCollectionDebt        = 256 << 10
 	minimumAttributedStringCompactionPeak = 256
+	// Four direct slots cover small recurring argument sets at a fixed cost.
+	attributedStringRecentSlots = 4
 )
 
 // collectionControl is scheduling policy, kept separate from the object
@@ -69,17 +71,34 @@ type collectionControl struct {
 	// baseline after that cycle is what the safe point enforces.
 	heapLimit uint64
 
-	// attributedStrings records long string backing admitted and charged to
-	// this State. A completed semantic scan removes entries not retained by
-	// the Lua graph, making this a swept attribution set rather than a
-	// permanent string store.
-	attributedStrings         map[stringRef]struct{}
-	attributedStringHighWater int
+	// attributedStrings is allocated lazily on the first long-string
+	// admission and dropped whenever a sweep empties it.
+	attributedStrings *attributedStringSet
 }
 
 type stringBacking struct {
 	data   unsafe.Pointer
 	length int
+}
+
+// attributedStringSet is the swept attribution set for long strings admitted
+// and charged across the owning Go API, fronted by a small direct-mapped
+// view of its own membership. entries records string backing charged to this
+// State once; a completed semantic scan removes entries the Lua graph no
+// longer retains, making this an accounting record rather than a permanent
+// string store.
+//
+// The recent slots front only this attribution set. Pool-built strings from
+// library and callback paths (for example Frame.ReturnString) charge debt per
+// creation and are never attributed, so routing them here would change the
+// accounting model, not merely their lookup cost.
+type attributedStringSet struct {
+	entries   map[stringRef]struct{}
+	highWater int
+	// recent caches members by exact backing identity so a repeated host
+	// string skips hashing and the map probe. Slots hold only current
+	// members: admit fills them and sweep clears the ones whose member left.
+	recent [attributedStringRecentSlots]stringRef
 }
 
 func defaultCollectionControl() collectionControl {
@@ -156,67 +175,150 @@ func (control *collectionControl) setServicing(servicing bool) {
 	control.refreshRunnable()
 }
 
+// lookup returns the admitted string sharing text's exact backing array and
+// length. Only admitted strings can hit; an equal string with distinct
+// backing constructs normally. A nil set never hits.
+func (set *attributedStringSet) lookup(text string) (stringRef, bool) {
+	if set == nil {
+		return stringRef{}, false
+	}
+	backing := stringBacking{
+		data:   unsafe.Pointer(unsafe.StringData(text)),
+		length: len(text),
+	}
+	value := set.recent[attributedStringRecentSlot(backing)]
+	found := value.valid() && stringRefBacking(value) == backing
+	runtime.KeepAlive(text)
+	if !found {
+		return stringRef{}, false
+	}
+	return value, true
+}
+
+// admit records value as attributed and reports whether it was newly added
+// and still owes its retained-byte charge. A repeat admission only refreshes
+// the value's recent slot.
+func (set *attributedStringSet) admit(value stringRef) bool {
+	index := attributedStringRecentSlot(stringRefBacking(value))
+	if set.recent[index] == value {
+		return false
+	}
+	if set.entries == nil {
+		set.entries = make(map[stringRef]struct{})
+	}
+	if _, found := set.entries[value]; found {
+		set.recent[index] = value
+		return false
+	}
+	set.entries[value] = struct{}{}
+	set.recent[index] = value
+	if size := len(set.entries); size > set.highWater {
+		set.highWater = size
+	}
+	return true
+}
+
+// sweep drops members the completed semantic scan no longer retains, clears
+// recent slots whose member left, and compacts after a large die-off.
+func (set *attributedStringSet) sweep(ledger *objectLedger) {
+	if size := len(set.entries); size > set.highWater {
+		set.highWater = size
+	}
+	for value := range set.entries {
+		if ledger.retainsString(value) {
+			continue
+		}
+		delete(set.entries, value)
+	}
+	for index, value := range set.recent {
+		if !value.valid() {
+			continue
+		}
+		if _, found := set.entries[value]; !found {
+			set.recent[index] = stringRef{}
+		}
+	}
+	if len(set.entries) == 0 {
+		set.entries = nil
+		set.highWater = 0
+		return
+	}
+	if set.highWater < minimumAttributedStringCompactionPeak ||
+		len(set.entries) >= set.highWater/4 {
+		return
+	}
+	compacted := make(map[stringRef]struct{}, len(set.entries))
+	for value := range set.entries {
+		compacted[value] = struct{}{}
+	}
+	set.entries = compacted
+	set.highWater = len(compacted)
+}
+
+// clear empties the set in place so a caller retaining the allocation cannot
+// keep swept strings reachable.
+func (set *attributedStringSet) clear() {
+	if set == nil {
+		return
+	}
+	*set = attributedStringSet{}
+}
+
+// size reports current membership; a nil set is empty.
+func (set *attributedStringSet) size() int {
+	if set == nil {
+		return 0
+	}
+	return len(set.entries)
+}
+
+// contains reports membership without consulting the recent slots.
+func (set *attributedStringSet) contains(value stringRef) bool {
+	if set == nil {
+		return false
+	}
+	_, found := set.entries[value]
+	return found
+}
+
+func attributedStringRecentSlot(backing stringBacking) int {
+	address := uintptr(backing.data)
+	mixed := address>>7 ^ address>>12
+	return int(mixed % uintptr(attributedStringRecentSlots))
+}
+
 func (control *collectionControl) attributeString(value stringRef) {
 	bytes := stringRefRetainedBytes(value)
 	if bytes == 0 {
 		return
 	}
-	if control.attributedStrings == nil {
-		control.attributedStrings = make(map[stringRef]struct{})
+	set := control.attributedStrings
+	if set == nil {
+		set = new(attributedStringSet)
+		control.attributedStrings = set
 	}
-	if _, found := control.attributedStrings[value]; found {
-		return
+	if set.admit(value) {
+		control.charge(bytes)
 	}
-	control.attributedStrings[value] = struct{}{}
-	if size := len(control.attributedStrings); size >
-		control.attributedStringHighWater {
-		control.attributedStringHighWater = size
-	}
-	control.charge(bytes)
 }
 
 func (control *collectionControl) sweepAttributedStrings(
 	ledger *objectLedger,
 ) {
-	if control == nil || len(control.attributedStrings) == 0 {
+	if control == nil || control.attributedStrings == nil {
 		return
 	}
-	if size := len(control.attributedStrings); size >
-		control.attributedStringHighWater {
-		control.attributedStringHighWater = size
-	}
-	for value := range control.attributedStrings {
-		if ledger.retainsString(value) {
-			continue
-		}
-		delete(control.attributedStrings, value)
-	}
-	if len(control.attributedStrings) == 0 {
+	control.attributedStrings.sweep(ledger)
+	if control.attributedStrings.size() == 0 {
 		control.attributedStrings = nil
-		control.attributedStringHighWater = 0
-		return
 	}
-	if control.attributedStringHighWater <
-		minimumAttributedStringCompactionPeak ||
-		len(control.attributedStrings) >=
-			control.attributedStringHighWater/4 {
-		return
-	}
-	compacted := make(
-		map[stringRef]struct{},
-		len(control.attributedStrings),
-	)
-	for value := range control.attributedStrings {
-		compacted[value] = struct{}{}
-	}
-	control.attributedStrings = compacted
-	control.attributedStringHighWater = len(compacted)
 }
 
 func (control *collectionControl) release() {
 	if control == nil {
 		return
 	}
+	control.attributedStrings.clear()
 	*control = collectionControl{}
 }
 

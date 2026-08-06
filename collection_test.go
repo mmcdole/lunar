@@ -1029,7 +1029,7 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 	if err := table.RawSetString("external", external); err != nil {
 		t.Fatal(err)
 	}
-	if len(state.runtime.collection.attributedStrings) == 0 {
+	if state.runtime.collection.attributedStrings.size() == 0 {
 		t.Fatal("test did not populate long-string attribution")
 	}
 	data, err := state.NewUserData("retained")
@@ -1073,7 +1073,6 @@ func TestStateCloseDetachesLedgerWithoutBreakingOwningHandles(t *testing.T) {
 		t.Fatal("Close retained an object-ledger head")
 	}
 	if state.runtime.collection.attributedStrings != nil ||
-		state.runtime.collection.attributedStringHighWater != 0 ||
 		state.runtime.collection.debt != 0 ||
 		state.runtime.collection.budget != 0 ||
 		state.runtime.collection.requested ||
@@ -1629,9 +1628,8 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 			t.Fatalf("retained long-string debt = %d; want %d", got, want)
 		}
 		beforeExport := state.runtime.collection.debt
-		beforeAttribution := len(
-			state.runtime.collection.attributedStrings,
-		)
+		beforeAttribution :=
+			state.runtime.collection.attributedStrings.size()
 		runtimeValue := stringValue(runtimeString)
 		if got := state.runtime.collection.debt; got != beforeExport {
 			t.Fatalf(
@@ -1640,7 +1638,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 				got,
 			)
 		}
-		if got := len(state.runtime.collection.attributedStrings); got !=
+		if got := state.runtime.collection.attributedStrings.size(); got !=
 			beforeAttribution {
 			t.Fatalf(
 				"runtime string export attribution count = %d; want %d",
@@ -1730,7 +1728,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 				want,
 			)
 		}
-		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+		if !state.runtime.collection.attributedStrings.contains(reference) {
 			t.Fatal("same-State string re-entry did not record attribution")
 		}
 		afterReentry := state.runtime.collection.debt
@@ -1756,7 +1754,7 @@ func TestAutomaticCollectionDebtTracksRetainedGrowth(t *testing.T) {
 		if _, failure := state.collectAndFinalize(); failure != nil {
 			t.Fatal(failure)
 		}
-		if _, found := state.runtime.collection.attributedStrings[reference]; !found {
+		if !state.runtime.collection.attributedStrings.contains(reference) {
 			t.Fatal("collection discarded live imported string attribution")
 		}
 		if got := state.runtime.collection.debt; got != 0 {
@@ -1958,7 +1956,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"read-only native lookup changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 	if state.runtime.strings.lookupProtected(shortText, hash).valid() {
@@ -2010,7 +2008,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"table-valued __index changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 
@@ -2024,7 +2022,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"absent nil write changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 
@@ -2038,7 +2036,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"equal-content key update changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 
@@ -2066,7 +2064,7 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"generic tombstone revival changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 
@@ -2138,14 +2136,13 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Fatalf(
 			"table-valued __newindex changed collection state: debt=%d attributed=%d",
 			control.debt,
-			len(control.attributedStrings),
+			control.attributedStrings.size(),
 		)
 	}
 
 	requireStableAllocationAccounting(t)
 	indexAllocations := testing.AllocsPerRun(100, func() {
 		control.attributedStrings = nil
-		control.attributedStringHighWater = 0
 		control.debt = 0
 		control.requested = false
 		control.refreshRunnable()
@@ -2166,7 +2163,6 @@ func TestNonRetainingBoundariesDoNotAdmitStrings(t *testing.T) {
 	}
 	absentAllocations := testing.AllocsPerRun(100, func() {
 		control.attributedStrings = nil
-		control.attributedStringHighWater = 0
 		control.debt = 0
 		control.requested = false
 		control.refreshRunnable()
@@ -2196,7 +2192,7 @@ func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
 		t.Helper()
 		compact := slotFromValue(value)
 		reference := stringRef{ref: compact.ref, bits: compact.bits}
-		if _, found := state.runtime.collection.attributedStrings[reference]; found {
+		if state.runtime.collection.attributedStrings.contains(reference) {
 			t.Fatalf("%q was attributed by a failed boundary", stringSlotText(compact))
 		}
 	}
@@ -2426,7 +2422,7 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 	assertAttribution := func(value slot, want bool) {
 		t.Helper()
 		reference := stringRef{ref: value.ref, bits: value.bits}
-		_, found := control.attributedStrings[reference]
+		found := control.attributedStrings.contains(reference)
 		if found != want {
 			t.Fatalf(
 				"string %q attribution = %v; want %v",
@@ -2440,6 +2436,85 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 	assertAttribution(slotFromValue(indexKey), true)
 	assertAttribution(slotFromValue(setKey), true)
 	assertAttribution(slotFromValue(setValue), true)
+}
+
+func TestLongStringIdentityCacheTracksAttributionSweep(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+	table, err := state.NewTableWithCapacity(1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Clone(strings.Repeat("sweep-cache-", 8))
+	external := state.String(text)
+	reference := stringRef{ref: external.ref, bits: external.bits}
+	retainedBytes := stringRefRetainedBytes(reference)
+	state.resetCollectionDebt()
+
+	if err := table.RawSetInt(1, external); err != nil {
+		t.Fatal(err)
+	}
+	control := &state.runtime.collection
+	set := control.attributedStrings
+	if got := control.debt; got != retainedBytes {
+		t.Fatalf("first import debt = %d; want %d", got, retainedBytes)
+	}
+	recentIndex := attributedStringRecentSlot(stringRefBacking(reference))
+	if set == nil || set.recent[recentIndex] != reference {
+		t.Fatal("first import did not enter the recent attribution cache")
+	}
+	if _, err := state.runtime.importValue(external); err != nil {
+		t.Fatal(err)
+	}
+	if got := control.debt; got != retainedBytes {
+		t.Fatalf("repeated import debt = %d; want %d", got, retainedBytes)
+	}
+
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	if !control.attributedStrings.contains(reference) {
+		t.Fatal("collection discarded a live attribution")
+	}
+	if _, found := control.attributedStrings.lookup(text); !found {
+		t.Fatal("collection discarded a live recent attribution")
+	}
+	if _, err := state.runtime.importValue(external); err != nil {
+		t.Fatal(err)
+	}
+	if got := control.debt; got != 0 {
+		t.Fatalf("live post-collection import charged %d bytes", got)
+	}
+
+	if err := table.RawSetInt(1, Nil()); err != nil {
+		t.Fatal(err)
+	}
+	if _, failure := state.collectAndFinalize(); failure != nil {
+		t.Fatal(failure)
+	}
+	if control.attributedStrings != nil {
+		t.Fatal("collection retained a dead attribution")
+	}
+	if _, found := control.attributedStrings.lookup(text); found {
+		t.Fatal("collection retained a dead recent attribution")
+	}
+	if set.entries != nil ||
+		set.recent != [attributedStringRecentSlots]stringRef{} {
+		t.Fatal("collection dropped the set without clearing its entries")
+	}
+
+	if _, err := state.runtime.importValue(external); err != nil {
+		t.Fatal(err)
+	}
+	if got := control.debt; got != retainedBytes {
+		t.Fatalf("post-sweep reimport debt = %d; want %d", got, retainedBytes)
+	}
+	set = control.attributedStrings
+	if set == nil || set.recent[recentIndex] != reference {
+		t.Fatal("post-sweep reimport did not restore the cache")
+	}
+	runtime.KeepAlive(external)
+	state.resetCollectionDebt()
 }
 
 func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
@@ -2472,14 +2547,14 @@ func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	control := &state.runtime.collection
-	if got := len(control.attributedStrings); got != attributedStringCount {
+	if got := control.attributedStrings.size(); got != attributedStringCount {
 		t.Fatalf(
 			"attribution size before collection = %d; want %d",
 			got,
 			attributedStringCount,
 		)
 	}
-	if got := control.attributedStringHighWater; got !=
+	if got := control.attributedStrings.highWater; got !=
 		attributedStringCount {
 		t.Fatalf(
 			"attribution high-water before collection = %d; want %d",
@@ -2491,17 +2566,17 @@ func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
 	if _, failure := state.collectAndFinalize(); failure != nil {
 		t.Fatal(failure)
 	}
-	if got := len(control.attributedStrings); got != 1 {
+	if got := control.attributedStrings.size(); got != 1 {
 		t.Fatalf("attribution size after collection = %d; want 1", got)
 	}
 	reference := stringRef{
 		ref:  slotFromValue(survivor).ref,
 		bits: slotFromValue(survivor).bits,
 	}
-	if _, found := control.attributedStrings[reference]; !found {
+	if !control.attributedStrings.contains(reference) {
 		t.Fatal("compaction discarded the live string attribution")
 	}
-	if got := control.attributedStringHighWater; got != 1 {
+	if got := control.attributedStrings.highWater; got != 1 {
 		t.Fatalf(
 			"attribution high-water after compaction = %d; want 1",
 			got,
@@ -2511,7 +2586,7 @@ func TestLongStringAttributionCompactsAfterChurn(t *testing.T) {
 	if _, failure := state.collectAndFinalize(); failure != nil {
 		t.Fatal(failure)
 	}
-	if got := control.attributedStringHighWater; got != 1 {
+	if got := control.attributedStrings.highWater; got != 1 {
 		t.Fatalf(
 			"stable collection changed attribution high-water to %d",
 			got,

@@ -346,6 +346,25 @@ func stringLength(reference unsafe.Pointer, bits uint64) int {
 	return length
 }
 
+// stringRefBacking decodes the exact backing-array identity a stringRef
+// retains. Flat references carry the address and length in their own
+// encoding; sentinel-length references read both from their longString.
+func stringRefBacking(value stringRef) stringBacking {
+	encodedLength := int(
+		value.bits >> stringLengthShift & stringLengthSentinel,
+	)
+	if encodedLength != stringLengthSentinel {
+		return stringBacking{data: value.ref, length: encodedLength}
+	}
+	text := (*longString)(value.ref).text
+	backing := stringBacking{
+		data:   unsafe.Pointer(unsafe.StringData(text)),
+		length: len(text),
+	}
+	runtime.KeepAlive(text)
+	return backing
+}
+
 func (value stringRef) hash() stringHash {
 	if !value.valid() || Kind(value.bits&0xff) != StringKind {
 		panic("lua: invalid string reference")

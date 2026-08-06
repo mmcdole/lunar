@@ -527,6 +527,9 @@ func (state *State) String(text string) Value {
 	var value stringRef
 	if len(text) <= shortStringLimit {
 		value = state.runtime.strings.make(text)
+	} else if recent, found :=
+		state.runtime.collection.attributedStrings.lookup(text); found {
+		value = recent
 	} else {
 		value = newStateNeutralLongString(text)
 	}
@@ -771,7 +774,8 @@ func (rt *runtimeState) accept(value Value) error {
 // importValue crosses the owning Go API into the compact runtime. Short
 // strings become runtime-local cache entries; longer State-neutral strings
 // retain their existing immutable backing and enter the State's swept
-// attribution set. Internal compact seams never pay this boundary work.
+// attribution set, fronted by a tiny exact-backing cache. Internal compact
+// seams never pay this boundary work.
 func (rt *runtimeState) importValue(
 	value Value,
 ) (compact slot, err error) {

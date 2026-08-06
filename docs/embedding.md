@@ -259,9 +259,9 @@ result slice.
 ## Values and tables
 
 Build scalars with `lua.Nil`, `lua.Bool`, `lua.Number`, and `lua.String`;
-they belong to no particular State. `state.String` may reuse the State's
-short-string cache when you construct the same strings repeatedly. A `Value` can expose its exact kind or
-convert to a typed object handle.
+they belong to no particular State. `state.String` may reuse a cached
+representation when the same immutable Go string is passed repeatedly. A
+`Value` can expose its exact kind or convert to a typed object handle.
 
 ```go
 table, err := state.NewTableWithCapacity(4, 2)

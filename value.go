@@ -140,8 +140,8 @@ func Number(value float64) Value {
 // String returns a State-neutral Lua string.
 //
 // The returned Value may be shared among States and remains valid after any
-// State is closed. State.String may reuse a State's short-string cache when
-// constructing strings repeatedly.
+// State is closed. State.String may reuse a cached representation when the
+// same immutable Go string is passed repeatedly.
 func String(text string) Value {
 	return stringValue(newStringRef(text))
 }
