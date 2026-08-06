@@ -790,6 +790,70 @@ func TestCompileSourceSpillsLargeRKConstants(t *testing.T) {
 	}
 }
 
+func TestCompileSourceSpillsLeftConstantAfterRightCall(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("local values = {")
+	for number := 0; number < 300; number++ {
+		if number != 0 {
+			source.WriteByte(',')
+		}
+		source.WriteString(strconv.Itoa(number))
+	}
+	source.WriteString("}\nlocal result = 302 - math.floor(self)\nreturn result")
+
+	prototype, syntaxError := compileSource("@constants.lua", source.String())
+	if syntaxError != nil {
+		t.Fatal(syntaxError)
+	}
+
+	constantIndex := -1
+	for index, constant := range prototype.constants {
+		if constant.kind() == NumberKind &&
+			constant.bits == math.Float64bits(302) {
+			constantIndex = index
+			break
+		}
+	}
+	if constantIndex <= maxRegisterConstant {
+		t.Fatalf(
+			"left constant index = %d, want above RK limit %d",
+			constantIndex,
+			maxRegisterConstant,
+		)
+	}
+
+	spillRegister := -1
+	var call instruction
+	var subtraction instruction
+	for _, code := range prototype.code {
+		switch code.opcode() {
+		case opCall:
+			call = code
+		case opLoadK:
+			if code.bx() == constantIndex {
+				spillRegister = code.a()
+			}
+		case opSub:
+			subtraction = code
+		}
+	}
+	if call.opcode() != opCall ||
+		call.c() != 2 ||
+		spillRegister <= call.a() ||
+		subtraction.opcode() != opSub ||
+		subtraction.b() != spillRegister ||
+		subtraction.c() != call.a() {
+		t.Fatalf(
+			"CALL A:%d C:%d, spill R%d, SUB B:%d C:%d",
+			call.a(),
+			call.c(),
+			spillRegister,
+			subtraction.b(),
+			subtraction.c(),
+		)
+	}
+}
+
 func TestCompileSourceKeepsHighRKSpillAboveActiveLocals(t *testing.T) {
 	var source strings.Builder
 	source.WriteString("local sink = 0\n")
