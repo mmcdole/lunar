@@ -81,19 +81,19 @@ type stringBacking struct {
 	length int
 }
 
-// attributedStringSet is the swept attribution set for long strings admitted
-// and charged across the owning Go API, fronted by a small direct-mapped
-// view of its own membership. entries records string backing charged to this
-// State once; a completed semantic scan removes entries the Lua graph no
-// longer retains, making this an accounting record rather than a permanent
-// string store.
+// attributedStringSet tracks long Go strings whose storage has been charged
+// to this State. entries is the authoritative record. A completed semantic
+// collection removes entries no longer reachable from Lua, so the set does
+// not become a permanent string store.
 //
-// The recent slots front only this attribution set. Pool-built strings from
-// library and callback paths (for example Frame.ReturnString) charge debt when
-// created and do not enter attribution merely because of that creation. They
-// can still be attributed if later exported and reimported through the owning
-// boundary. Routing their internal construction here would therefore change
-// the accounting model, not merely their lookup cost.
+// recent is only a fast view of entries. Admissions fill its slots, and a
+// sweep clears slots for removed entries, so it never extends string lifetime.
+//
+// Strings created inside the VM, including Frame.ReturnString results, use a
+// different accounting path: their storage is charged when they are created.
+// They join this set only if an owning Value is later exported to Go and passed
+// back into the State. Routing their creation through this set would therefore
+// change memory accounting, not just lookup speed.
 type attributedStringSet struct {
 	entries   map[stringRef]struct{}
 	highWater int
