@@ -81,23 +81,28 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-Medians from 15 runs on an Apple M3 Pro with Go 1.25.1; each linked result
-set records its exact source revision. Lower is better.
+Timing medians are from 15 runs on an Apple M3 Pro with Go 1.25.1. The
+[`2026-08-07` result set](benchmarks/results/2026-08-07-darwin-arm64-m3-pro/)
+records the exact source revision, confidence intervals, allocation counts,
+and raw output. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | **162.2 ms** | 172.4 ms | 179.8 ms |
-| fannkuch-redux | **23.63 ms** | 33.17 ms | 40.14 ms |
-| n-body | **59.03 ms** | 193.39 ms | 197.77 ms |
-| spectral-norm | **52.82 ms** | 160.14 ms | 153.66 ms |
+| binary-trees | **162.0 ms** | 173.1 ms | 180.9 ms |
+| fannkuch-redux | **24.18 ms** | 33.35 ms | 40.14 ms |
+| n-body | **59.33 ms** | 192.63 ms | 199.87 ms |
+| spectral-norm | **52.05 ms** | 161.44 ms | 153.64 ms |
 
 | Embedding operation | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | **61.21 ns** | 61.51 ns | 146.80 ns |
-| Lua calls Go 1,000 times | **62.49 µs** | 99.58 µs | 84.37 µs |
-| Lua echoes a 128-byte Go string | 86.20 ns | **81.41 ns** | 144.00 ns |
-| Lua checksums a reused Go-built table | **312.4 ns** | 578.3 ns | 972.9 ns |
-| Build a table in Go, then checksum it in Lua | 2.230 µs | **1.405 µs** | 1.645 µs |
+| Go calls Lua with scalar arguments | 62.82 ns | **61.93 ns** | 146.40 ns |
+| Lua calls Go 1,000 times | **63.35 µs** | 100.33 µs | 84.96 µs |
+| Convert and echo one reused 128-byte Go string | **63.06 ns** | 83.18 ns | 144.20 ns |
+| Lua checksums a reused Go-built table | **318.3 ns** | 592.2 ns | 981.9 ns |
+| Build a table in Go, then checksum it in Lua | 2.228 µs | **1.408 µs** | 1.641 µs |
+
+The string row reuses one Go string across calls. The linked result set also
+reports cache-cold strings and first-use lifecycle overhead.
 
 | Live heap added after loading and GC | Lunar | GopherLua | Ratio |
 | --- | ---: | ---: | ---: |

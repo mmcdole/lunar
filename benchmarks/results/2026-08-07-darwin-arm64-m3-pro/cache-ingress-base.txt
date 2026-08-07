@@ -1,0 +1,150 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17646387	        34.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16186376	        37.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16320942	        36.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       568.2 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1837902	       325.7 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	18445764	        33.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16505469	        36.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16693832	        35.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       566.5 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1821847	       329.2 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17901318	        33.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16056357	        36.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16493503	        36.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       565.4 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1813610	       338.0 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17471148	        34.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15933679	        37.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16241547	        36.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       568.4 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1778793	       336.6 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17617587	        34.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16181265	        37.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16510050	        36.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       569.5 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1796968	       333.5 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	18045676	        33.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16068182	        37.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16462165	        36.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       567.0 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1801239	       332.9 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17621014	        34.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16052706	        37.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16318315	        36.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       568.5 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1797621	       333.5 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17628932	        34.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16074118	        37.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16279390	        36.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       568.0 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1793929	       334.4 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17551771	        34.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15798688	        38.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16205011	        37.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       571.5 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1789233	       333.8 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17734885	        34.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15969870	        37.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16353693	        36.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       569.6 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1788571	       335.9 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	18010558	        34.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15779646	        37.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16318592	        36.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       567.9 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1800871	       332.6 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17708560	        34.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15778400	        38.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16230014	        37.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       573.6 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1780462	       335.1 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17636835	        34.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15656666	        38.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16278064	        36.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       569.9 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1795369	       333.4 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17607613	        34.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	15939235	        37.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16336699	        36.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       571.2 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1790961	       334.1 ns/op	     256 B/op	       2 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar
+cpu: Apple M3 Pro
+BenchmarkReviewLongStringIngress/hot_reused_128         	17571432	        34.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_unique_128   	16070404	        37.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewLongStringIngress/cold_4096_equal_128    	16288044	        36.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewFirstLongStringAdmission                 	 1000000	       571.4 ns/op	    2136 B/op	      11 allocs/op
+BenchmarkReviewEmptySweepReadmission                    	 1785234	       335.3 ns/op	     256 B/op	       2 allocs/op
+PASS

@@ -1,0 +1,869 @@
+# revision: d9c162801840b7f7091b2bb4d337ff1f358bf900
+# go: go version go1.25.1 darwin/arm64
+# gopherlua: v1.1.2
+# golua: v0.0.0-20250718183320-1e37f32ad7d0
+# platform: darwin/arm64
+# system: Darwin 24.6.0 Darwin Kernel Version 24.6.0: Wed Nov  5 21:33:32 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T6030 arm64
+# machine_model: MacBook Pro Mac15,6; 18 GB
+# cpu_model: Apple M3 Pro; 12 cores (6 performance, 6 efficiency)
+# power_policy: AC power reported; Low Power Mode off; foreground collection with normal macOS services; no affinity or frequency control
+# GOGC: 100
+# GOMEMLIMIT: off
+# GOMAXPROCS: 1
+# samples: 15
+# benchtime: 500ms
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   11793	     47596 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26200	     22747 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2605	    226648 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14695	     41079 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9530692	        63.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9549	     63483 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9468345	        62.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1888285	       317.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  326204	      2170 ns/op	     647 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 162261438 ns/op	69057632 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24178781 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59827157 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  51839008 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.309s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2013	    283421 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     81659 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     714	    844055 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14274	     42181 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9703674	        61.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7812	    100607 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7413729	        83.18 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       581.3 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  439728	      1411 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 172909528 ns/op	75631890 B/op	 1009812 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33409282 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 191987070 ns/op	46728482 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 161284771 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	9.234s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1489	    396569 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     73284 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     603	   1019310 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9934	     60276 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4150725	       145.6 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7700	     84365 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4153813	       675.3 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  645730	       977.0 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  386947	      1644 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       2	 280397750 ns/op	103845464 B/op	 2533643 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	       7	  78859417 ns/op	11959582 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 197781833 ns/op	74249192 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 153149510 ns/op	79431620 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	12.321s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2035	    290567 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     77110 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     722	    808345 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15171	     39447 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	10031683	        75.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    4548	    172325 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 4368902	       139.5 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	  848251	      1447 ns/op	      39 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  155488	      4070 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       1	 659641500 ns/op	75631960 B/op	 1009812 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	       4	 141465490 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       2	 433488438 ns/op	46728556 B/op	  376440 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       3	 253469111 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	11.620s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1758	    325736 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     61003 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     645	   4610364 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    8529	     65623 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4046161	       143.8 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7953	     81235 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4450282	       139.6 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  691831	       929.2 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  408682	      1543 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 171543014 ns/op	103845429 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  37988887 ns/op	11959593 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 185138181 ns/op	74249192 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 148810521 ns/op	79431644 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	13.647s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12782	     45857 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   28058	     21396 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2830	    221655 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   15133	     39780 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9561048	        61.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	   10000	     63167 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9442832	        62.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1917608	       308.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  326094	      2317 ns/op	     693 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 156771021 ns/op	68820896 B/op	 1009050 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24579207 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  73954903 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  51580033 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.482s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1891	    302661 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     64378 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     620	   1002521 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     58443 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4197034	       141.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7947	     85940 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4348438	       142.3 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  696058	       912.7 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  396686	      1568 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 184153042 ns/op	103845400 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39042631 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 191076139 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       3	 182163542 ns/op	79431650 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.529s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12025	     45510 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26631	     22554 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2674	    223086 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   15189	     39318 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9940975	        60.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9768	     62020 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9710570	        60.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1904606	       364.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  265011	      2465 ns/op	     638 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 161823792 ns/op	68952064 B/op	 1009050 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24028521 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  58809042 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  51777975 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	11.135s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2199	    270655 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     78593 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     726	    828072 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15050	     39794 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9986420	        59.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    8262	     99997 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 6980913	        85.10 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       595.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  441697	      1571 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 167244750 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  32893340 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 187534722 ns/op	46728514 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 160152562 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.917s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12884	     45061 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   27171	     22098 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2770	    220970 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   15178	     40744 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9772099	        61.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9601	     62590 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9664681	        61.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1925586	       311.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  303627	      2041 ns/op	     647 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 155698364 ns/op	68994240 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      25	  23480615 ns/op	    1217 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  58751005 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  49528153 ns/op	   28725 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.243s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2197	    271167 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     89509 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     715	    853827 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14632	     40981 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9729807	        61.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7874	    101157 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7388752	        83.71 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       584.8 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  410966	      1379 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 169664639 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  32891375 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 190707556 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 159994500 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.910s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1862	    320061 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     63812 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     628	   1034363 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     59886 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4065907	       147.9 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7874	     83727 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4187578	       143.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  651967	       994.2 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  375736	      1660 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 179730431 ns/op	103845418 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  40140652 ns/op	11959587 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 201749208 ns/op	74249202 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 157902510 ns/op	79431624 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.704s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2234	    267984 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     80629 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     724	    843950 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14665	     41098 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9615114	        62.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7826	    100334 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7040108	        83.71 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       579.5 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  449154	      1390 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 177142875 ns/op	75631816 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33447410 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 195985278 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       3	 167140542 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.763s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1827	    328709 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     66157 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     591	   1046657 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9777	     59663 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4123153	       145.6 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7352	     84339 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4188618	       144.2 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  643942	       972.7 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  386264	      1636 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 193879653 ns/op	103845413 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39280929 ns/op	11959581 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 195010528 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 152588479 ns/op	79431652 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.618s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12842	     45691 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26605	     22555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2731	    223553 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   15066	     39788 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9580888	        62.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	   10000	     63446 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 8404783	        68.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1817232	       330.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  286165	      2364 ns/op	     648 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 166696812 ns/op	69096352 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24454106 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  60707171 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  53023883 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.312s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1730	    342775 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     68338 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     602	   1080982 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     60731 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4050049	       149.4 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7614	     87139 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4107818	       147.2 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  630991	       998.5 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  394233	      1641 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 184116347 ns/op	103845418 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39717045 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 210870639 ns/op	74249229 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 158914938 ns/op	79431636 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.834s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12693	     46112 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26444	     22656 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2631	    226989 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14722	     40906 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9583834	        63.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9546	     63707 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9391581	        63.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1876512	       320.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  281622	      2188 ns/op	     625 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 165565417 ns/op	69096352 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24358429 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59691273 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52008675 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.202s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2124	    281288 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     83729 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     703	    856142 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14263	     42024 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9582878	        62.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7566	    100761 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7091618	        85.46 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       621.2 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  427377	      1423 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 175943264 ns/op	75631666 B/op	 1009809 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33091711 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 193980917 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 163981219 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.937s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12651	     46325 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   25464	     23506 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2632	    226571 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14680	     41128 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9422763	        63.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9369	     63726 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9426865	        63.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1869417	       323.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  319320	      2239 ns/op	     645 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 164440740 ns/op	69150176 B/op	 1009054 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24125359 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  60032380 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52474725 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.309s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2148	    277779 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     81858 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     726	    852378 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14006	     42617 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9507090	        62.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7893	    103098 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7206268	        84.20 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       610.2 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  430236	      1425 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 175353931 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33477993 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 191673861 ns/op	46728509 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 164065479 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.968s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1741	    343427 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     70458 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     608	   1008074 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9901	     60300 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4121648	       146.4 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7603	     84111 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4109214	       161.1 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  646864	       991.6 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  357288	      1679 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 186340431 ns/op	103845482 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      13	  44587263 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 221294097 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 154378312 ns/op	79431636 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.951s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2205	    270666 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     80319 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     730	    842096 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14287	     42206 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9735129	        62.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7849	    100138 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7347504	        81.61 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       597.1 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  441948	      1398 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 171679583 ns/op	75631770 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  32931833 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 193320236 ns/op	46728514 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 161438927 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.884s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1762	    336550 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     67463 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     583	   1112617 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    8200	     72012 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 3966181	       148.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7200	     85610 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4219412	       143.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  669702	       981.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  383826	      1637 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 178801028 ns/op	103845378 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  40481723 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 198866875 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 152336573 ns/op	79431616 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.664s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12772	     45840 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26732	     22600 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2677	    224629 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14616	     41076 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9500992	        62.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9481	     63354 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9455643	        63.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1883024	       318.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  312561	      2125 ns/op	     643 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 160809104 ns/op	68786592 B/op	 1009050 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24111106 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59295597 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52855621 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.230s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1782	    333687 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     65392 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     622	    995781 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     60352 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4091292	       145.8 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7654	     84902 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4215445	       143.7 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  657038	       994.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  382936	      1633 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 180731417 ns/op	103845440 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  40442420 ns/op	11959587 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 202283653 ns/op	74249218 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 153852250 ns/op	79431632 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.679s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12762	     45792 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   25737	     22816 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2629	    224680 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14595	     41203 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9645552	        62.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9460	     63233 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9278080	        63.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1893030	       317.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  283680	      2166 ns/op	     640 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 162041271 ns/op	68994240 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24286575 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59328620 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52046567 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.140s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2217	    268159 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     81017 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     726	    838616 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14138	     42227 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9686943	        61.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7784	    100098 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7471312	        81.80 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       569.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  445627	      1394 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 170714042 ns/op	75631666 B/op	 1009809 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33134273 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 192625014 ns/op	46728520 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 161088021 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.846s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12800	     45755 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26730	     22453 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2571	    232326 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14656	     40933 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9292216	        62.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9416	     63277 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9506732	        63.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1882953	       318.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  296227	      2023 ns/op	     621 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 161151854 ns/op	69096352 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24021030 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59604880 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52457271 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.138s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2181	    274696 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     81244 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     728	    837973 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14187	     42064 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9793453	        61.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7836	     99669 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7162678	        82.91 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       579.5 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  436272	      1406 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 172482972 ns/op	75631920 B/op	 1009812 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33037759 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 193112431 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 161192333 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.847s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1567	    372879 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     65997 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     609	   1019494 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     60742 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4106996	       146.4 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7354	     84291 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4192570	       146.5 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  632605	       981.9 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  382076	      1641 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 182456139 ns/op	103845461 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      13	  41958317 ns/op	11959587 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 233255278 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       3	 181034625 ns/op	79431661 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.689s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2127	    279304 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     83271 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     699	    864129 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   13430	     44131 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9695833	        61.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7729	    100791 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7250364	        82.84 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       592.2 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  404782	      1459 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 173130653 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      15	  33493878 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 192621583 ns/op	46728504 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 161512990 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.831s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1699	    342647 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     66143 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     606	   1075986 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9664	     60672 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4149309	       146.2 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7456	     85174 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4231507	       143.3 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  662910	       983.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  382761	      1788 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 182341556 ns/op	103845501 B/op	 2533643 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39107684 ns/op	11959586 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 197660375 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 152118490 ns/op	79431628 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	11.113s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   11572	     47451 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26715	     22445 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2667	    226007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14635	     40951 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9398176	        62.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9552	     62869 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9438537	        63.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1889588	       318.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  282440	      2649 ns/op	     722 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 162174208 ns/op	68994240 B/op	 1009051 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24015335 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  58820856 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52095842 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.342s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1834	    324328 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     64190 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     614	   1050991 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9668	     61175 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4045232	       149.0 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7130	     85311 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4221222	       143.2 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  653511	       983.4 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  386199	      1635 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 179539820 ns/op	103845480 B/op	 2533643 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39568812 ns/op	11959581 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 203015639 ns/op	74249224 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 153635666 ns/op	79431636 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.630s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12032	     46912 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26582	     22562 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2689	    224033 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14559	     41099 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9552814	        62.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9486	     63677 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9200248	        63.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1889479	       317.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  301326	      2228 ns/op	     648 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 161814708 ns/op	68411936 B/op	 1009048 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24022375 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  58967852 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52681996 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.272s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2212	    271321 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     81482 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     720	    841976 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14349	     41754 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9722542	        61.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7940	    100153 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7081560	        81.78 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       590.2 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  451347	      1493 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 173760847 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33349623 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 194559375 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 160285760 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	10.243s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   11948	     47291 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26622	     22587 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2658	    224644 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14546	     41185 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9537736	        62.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9561	     63027 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9303954	        63.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1893272	       319.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  301933	      2312 ns/op	     653 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 164646000 ns/op	68966976 B/op	 1009052 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24223811 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  60036551 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  51853275 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.863s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2095	    277006 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     82167 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     722	    844199 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14349	     41793 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9703234	        61.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7946	    100773 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7335792	        83.16 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       578.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  441204	      1403 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 173336431 ns/op	75631920 B/op	 1009812 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  35652715 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 193935653 ns/op	46728504 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 163320333 ns/op	59195898 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	10.206s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1699	    346243 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     66066 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     606	   1041881 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     62176 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 3936436	       151.6 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7024	     94634 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4138332	       144.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  660386	       979.9 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  390158	      1645 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 180775722 ns/op	103845464 B/op	 2533643 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  39405816 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 202183819 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 153190104 ns/op	79431648 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	9.153s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2113	    280510 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     80974 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     716	    839766 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14394	     41773 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9546709	        62.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7885	     99891 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7303696	        83.78 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       599.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  439774	      1404 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 174181417 ns/op	75631770 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33533725 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 192500125 ns/op	46728504 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 160985438 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	10.113s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1634	    360747 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     67329 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     612	   1004652 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9859	     60685 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4075642	       147.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    6912	     99245 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4136582	       145.8 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  659376	       990.8 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  383316	      1681 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 180882917 ns/op	103845410 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  40294592 ns/op	11959586 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 197267083 ns/op	74249202 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 151720500 ns/op	79431636 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	10.075s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   11164	     48314 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   25831	     23183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2666	    235771 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14421	     41521 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9445304	        63.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9129	     64045 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9368808	        63.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1874875	       319.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  299704	      2171 ns/op	     653 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 161928458 ns/op	68804512 B/op	 1009049 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24216545 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59038773 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  51476025 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.545s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    1759	    334814 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     65393 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     619	   1009563 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10000	     60592 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4081707	       146.6 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7646	     84962 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4181132	       144.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  646844	       970.0 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  383144	      1641 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 179686722 ns/op	103845400 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      14	  40182301 ns/op	11959586 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 199872639 ns/op	74249218 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 153760271 ns/op	79431624 B/op	 9925272 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	9.759s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   12675	     45935 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   26508	     22641 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    2644	    225687 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   14616	     41002 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	 9440864	        62.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    9458	     63475 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 9392524	        63.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 1888340	       318.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  301966	      2279 ns/op	     653 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 163758198 ns/op	68786592 B/op	 1009050 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      24	  24218865 ns/op	    1226 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	       9	  59265347 ns/op	    2930 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      10	  52049242 ns/op	   28556 B/op	      35 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	8.807s
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2097	    281182 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     88946 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     721	    856016 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   14217	     42233 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	 9587880	        62.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7782	     99851 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 7297508	        82.06 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       603.3 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  437590	      1408 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 173080292 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  33068206 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 192506417 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 162684729 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+ok  	github.com/mmcdole/lunar/benchmarks	9.037s

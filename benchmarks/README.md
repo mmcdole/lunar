@@ -20,6 +20,9 @@ Published raw output and summaries are under
 [`results/2026-07-28-darwin-arm64-m3-pro/`](results/2026-07-28-darwin-arm64-m3-pro/)
 and, for the table-shape suite,
 [`results/2026-08-05-darwin-arm64-m3-pro/`](results/2026-08-05-darwin-arm64-m3-pro/).
+The latest timing matrix and the causal hot, cold, and lifecycle
+evidence for the long-string admission cache are in
+[`results/2026-08-07-darwin-arm64-m3-pro/`](results/2026-08-07-darwin-arm64-m3-pro/).
 
 ## Runtime versions
 

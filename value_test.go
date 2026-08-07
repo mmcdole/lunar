@@ -50,6 +50,9 @@ func TestValueRepresentation(t *testing.T) {
 		if size := unsafe.Sizeof(stringPool{}); size > 224 {
 			t.Fatalf("stringPool header size = %d, want at most 224", size)
 		}
+		if size := unsafe.Sizeof(attributedStringSet{}); size != 80 {
+			t.Fatalf("attributed string set size = %d, want 80", size)
+		}
 		if size := unsafe.Sizeof(runtimeState{}); size != 344 {
 			t.Fatalf("runtimeState size = %d, want 344", size)
 		}
@@ -2220,6 +2223,51 @@ func BenchmarkLongStringAdmissionCache(b *testing.B) {
 			},
 		)
 	}
+}
+
+func BenchmarkLongStringAdmissionLifecycle(b *testing.B) {
+	text := strings.Clone(strings.Repeat("lifecycle-cache-", 8))
+
+	b.Run("state_first_admission", func(b *testing.B) {
+		var compact slot
+		b.ReportAllocs()
+		for b.Loop() {
+			state, err := New(Options{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			compact = state.runtime.importAcceptedSlot(slotFromValue(
+				state.String(text),
+			))
+			if err := state.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+		runtime.KeepAlive(compact)
+	})
+
+	b.Run("empty_sweep_readmission", func(b *testing.B) {
+		state, err := New(Options{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Cleanup(func() {
+			if err := state.Close(); err != nil {
+				b.Error(err)
+			}
+		})
+		var compact slot
+		b.ReportAllocs()
+		for b.Loop() {
+			compact = state.runtime.importAcceptedSlot(slotFromValue(
+				state.String(text),
+			))
+			if _, failure := state.collectAndFinalize(); failure != nil {
+				b.Fatal(failure)
+			}
+		}
+		runtime.KeepAlive(compact)
+	})
 }
 
 func BenchmarkWarmUserDataPublication(b *testing.B) {

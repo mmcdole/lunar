@@ -89,9 +89,11 @@ type stringBacking struct {
 // string store.
 //
 // The recent slots front only this attribution set. Pool-built strings from
-// library and callback paths (for example Frame.ReturnString) charge debt per
-// creation and are never attributed, so routing them here would change the
-// accounting model, not merely their lookup cost.
+// library and callback paths (for example Frame.ReturnString) charge debt when
+// created and do not enter attribution merely because of that creation. They
+// can still be attributed if later exported and reimported through the owning
+// boundary. Routing their internal construction here would therefore change
+// the accounting model, not merely their lookup cost.
 type attributedStringSet struct {
 	entries   map[stringRef]struct{}
 	highWater int

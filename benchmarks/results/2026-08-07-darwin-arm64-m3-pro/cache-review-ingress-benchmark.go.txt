@@ -1,0 +1,111 @@
+package lua
+
+import (
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// These review-only benchmarks are copied into the parent and candidate
+// source archives so both revisions execute identical benchmark code. They
+// are removed from the working tree after the comparison.
+func BenchmarkReviewLongStringIngress(b *testing.B) {
+	b.Run("hot_reused_128", func(b *testing.B) {
+		text := strings.Clone(strings.Repeat("h", 128))
+		benchmarkReviewLongStringCycle(b, []string{text})
+	})
+	b.Run("cold_4096_unique_128", func(b *testing.B) {
+		texts := make([]string, 4096)
+		for index := range texts {
+			prefix := strconv.Itoa(index) + ":"
+			texts[index] = strings.Clone(
+				prefix + strings.Repeat("u", 128-len(prefix)),
+			)
+		}
+		benchmarkReviewLongStringCycle(b, texts)
+	})
+	b.Run("cold_4096_equal_128", func(b *testing.B) {
+		seed := strings.Repeat("e", 128)
+		texts := make([]string, 4096)
+		for index := range texts {
+			texts[index] = strings.Clone(seed)
+		}
+		benchmarkReviewLongStringCycle(b, texts)
+	})
+}
+
+func benchmarkReviewLongStringCycle(b *testing.B, texts []string) {
+	b.Helper()
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		if err := state.Close(); err != nil {
+			b.Error(err)
+		}
+	})
+	for _, text := range texts {
+		value := state.String(text)
+		state.runtime.importAcceptedSlot(slotFromValue(value))
+	}
+
+	index := 0
+	var compact slot
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		compact = state.runtime.importAcceptedSlot(slotFromValue(
+			state.String(texts[index]),
+		))
+		index++
+		if index == len(texts) {
+			index = 0
+		}
+	}
+	runtime.KeepAlive(compact)
+}
+
+func BenchmarkReviewFirstLongStringAdmission(b *testing.B) {
+	text := strings.Clone(strings.Repeat("a", 128))
+	var compact slot
+	b.ReportAllocs()
+	for b.Loop() {
+		state, err := New(Options{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		compact = state.runtime.importAcceptedSlot(slotFromValue(
+			state.String(text),
+		))
+		if err := state.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	runtime.KeepAlive(compact)
+}
+
+func BenchmarkReviewEmptySweepReadmission(b *testing.B) {
+	state, err := New(Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		if err := state.Close(); err != nil {
+			b.Error(err)
+		}
+	})
+	text := strings.Clone(strings.Repeat("s", 128))
+	var compact slot
+	b.ReportAllocs()
+	for b.Loop() {
+		compact = state.runtime.importAcceptedSlot(slotFromValue(
+			state.String(text),
+		))
+		if _, failure := state.collectAndFinalize(); failure != nil {
+			b.Fatal(failure)
+		}
+	}
+	runtime.KeepAlive(compact)
+}

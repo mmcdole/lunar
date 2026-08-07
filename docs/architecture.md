@@ -86,6 +86,15 @@ use bounded State-local reuse where it improves recurring runtime strings.
 Substrings and captures own their published backing so a small result does not
 retain an unrelated large input buffer.
 
+Long strings admitted through the owning Go boundary are also tracked for
+semantic heap accounting. A small fixed recent view of that swept attribution
+set recognizes an exact backing address and length, and can avoid repeated
+hashing and attribution lookup when the same host string recurs. It is not a
+content cache: equal text with distinct backing takes the ordinary path. Recent
+entries never outlive authoritative attribution membership and are cleared by
+the same sweep, so the optimization does not change Lua equality or string
+lifetime.
+
 ## Compiler and prototypes
 
 The compiler is a direct recursive-descent compiler. It emits instructions and

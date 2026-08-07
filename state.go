@@ -517,9 +517,11 @@ func (state *State) MainThread() *Thread {
 // String returns an owning Lua string Value.
 //
 // Strings are immutable and State-neutral. A returned Value may be shared
-// among States and remains safe after this State is closed. Calling String
-// after Close returns is permitted and constructs an uncached Value. As with
-// every State operation, String must not overlap Close on the same State.
+// among States and remains safe after this State is closed. While the State is
+// open, String may reuse a bounded State-local representation; callers that
+// already hold a Value should reuse it directly. Calling String after Close
+// returns is permitted and constructs an uncached Value. As with every State
+// operation, String must not overlap Close on the same State.
 func (state *State) String(text string) Value {
 	if state == nil || state.runtime == nil {
 		return Value{}

@@ -1,0 +1,44 @@
+package compare
+
+import (
+	"runtime"
+	"strings"
+	"testing"
+
+	lunar "github.com/mmcdole/lunar"
+)
+
+// This review-only benchmark is copied into parent and candidate source
+// archives so both revisions execute identical benchmark code. It is removed
+// from the working tree after the comparison.
+func BenchmarkReviewPrebuiltLongStringEcho(b *testing.B) {
+	state, function := loadLunarFunction(b, stringEchoSource)
+	text := strings.Clone(strings.Repeat("p", 128))
+	arguments := [...]lunar.Value{state.String(text)}
+	var results [1]lunar.Value
+	var count int
+	var err error
+	var result string
+	var resultOK bool
+	run := func() error {
+		count, err = state.CallInto(function, arguments[:], results[:])
+		if err != nil {
+			return err
+		}
+		result, resultOK = results[0].AsString()
+		return nil
+	}
+	if err := run(); err != nil {
+		b.Fatal(err)
+	}
+	runtime.GC()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if count != 1 || !resultOK || result != text {
+		b.Fatalf("result = (%d, %q/%v)", count, result, resultOK)
+	}
+}

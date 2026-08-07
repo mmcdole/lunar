@@ -1,0 +1,105 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5711509	       105.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5926024	       101.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5678667	       107.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5808475	       103.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5628105	       107.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5908881	       103.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5794912	       103.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5910747	       101.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5795150	       102.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5853765	       101.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5705324	       107.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5823256	       103.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5758347	       106.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5847256	       102.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5606648	       108.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5835606	       103.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5965398	       101.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5882311	       101.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5613843	       107.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5912734	       101.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5878021	       107.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5912778	       101.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5626747	       108.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5805610	       102.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5522390	       109.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5832632	       102.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5680994	       107.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5843251	       102.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: Apple M3 Pro
+BenchmarkReviewColdGoStringEcho/unique_4096         	 5484644	       109.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewColdGoStringEcho/equal_backing_distinct_4096         	 5845042	       103.1 ns/op	       0 B/op	       0 allocs/op
+PASS

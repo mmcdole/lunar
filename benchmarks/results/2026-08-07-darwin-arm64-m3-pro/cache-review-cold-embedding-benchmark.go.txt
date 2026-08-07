@@ -1,0 +1,79 @@
+package compare
+
+import (
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+
+	lunar "github.com/mmcdole/lunar"
+)
+
+// This review-only benchmark is copied into parent and candidate source
+// archives so both revisions execute identical benchmark code. It is removed
+// from the working tree after the comparison.
+func BenchmarkReviewColdGoStringEcho(b *testing.B) {
+	b.Run("unique_4096", func(b *testing.B) {
+		texts := make([]string, 4096)
+		for index := range texts {
+			prefix := strconv.Itoa(index) + ":"
+			texts[index] = strings.Clone(
+				prefix + strings.Repeat("u", 128-len(prefix)),
+			)
+		}
+		benchmarkReviewGoStringEchoSet(b, texts)
+	})
+	b.Run("equal_backing_distinct_4096", func(b *testing.B) {
+		seed := strings.Repeat("e", 128)
+		texts := make([]string, 4096)
+		for index := range texts {
+			texts[index] = strings.Clone(seed)
+		}
+		benchmarkReviewGoStringEchoSet(b, texts)
+	})
+}
+
+func benchmarkReviewGoStringEchoSet(b *testing.B, texts []string) {
+	b.Helper()
+	state, function := loadLunarFunction(b, stringEchoSource)
+	if err := state.StopGC(); err != nil {
+		b.Fatal(err)
+	}
+	var arguments [1]lunar.Value
+	var results [1]lunar.Value
+	var count int
+	var err error
+	var result string
+	var resultOK bool
+	run := func(text string) error {
+		arguments[0] = state.String(text)
+		count, err = state.CallInto(function, arguments[:], results[:])
+		if err != nil {
+			return err
+		}
+		result, resultOK = results[0].AsString()
+		return nil
+	}
+	for _, text := range texts {
+		if err := run(text); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	index := 0
+	runtime.GC()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := run(texts[index]); err != nil {
+			b.Fatal(err)
+		}
+		index++
+		if index == len(texts) {
+			index = 0
+		}
+	}
+	if count != 1 || !resultOK || result != texts[(index-1+len(texts))%len(texts)] {
+		b.Fatalf("last result = (%d, %q/%v)", count, result, resultOK)
+	}
+	runtime.KeepAlive(texts)
+}
