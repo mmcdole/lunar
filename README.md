@@ -14,8 +14,9 @@
 </p>
 
 Lunar is a complete implementation of Lua 5.1 (plus 5.2-style `goto` and
-labels) in pure Go. The compiler, VM, and standard libraries are all tested
-against the [reference implementation](https://www.lua.org/ftp/).
+labels) in pure Go. The compiler, VM, and standard libraries pass the
+[official Lua 5.1 test suite](conformance/) alongside an extensive native
+test suite.
 
 ## Quick start
 
