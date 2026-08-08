@@ -1,2 +1,5 @@
 # Preserve the byte-for-byte upstream benchmark corpus license.
 benchmarks/programs/LICENSE -text whitespace=-trailing-space
+
+# Preserve the upstream Lua suite's line endings and intentional whitespace.
+conformance/testdata/lua5.1-tests/** -text whitespace=-trailing-space

@@ -687,6 +687,64 @@ func TestCompileSourceEnforcesFunctionLimitsAndGrammar(t *testing.T) {
 	}
 }
 
+func TestCompileSourceLimitDiagnosticsIdentifyOwningFunction(t *testing.T) {
+	t.Run("upvalues", func(t *testing.T) {
+		var source strings.Builder
+		source.WriteString("function outer()\n  local ")
+		source.WriteString(strings.Join(
+			numberedNames("captured", maxLuaUpvalues+1),
+			",",
+		))
+		source.WriteByte('\n')
+		for index := 0; index <= maxLuaUpvalues; index++ {
+			source.WriteString("function nested")
+			source.WriteString(strconv.Itoa(index))
+			source.WriteString("()\n captured")
+			source.WriteString(strconv.Itoa(index))
+			source.WriteString(" = 1\n")
+		}
+		source.WriteString(strings.Repeat("end\n", maxLuaUpvalues+2))
+
+		_, syntaxError := compileSource(
+			"@limit-lines.lua",
+			source.String(),
+		)
+		want := "limit-lines.lua:" +
+			strconv.Itoa(4+2*maxLuaUpvalues) +
+			": function at line 3 has more than " +
+			strconv.Itoa(maxLuaUpvalues) + " upvalues"
+		if syntaxError == nil || syntaxError.Error() != want {
+			t.Fatalf("upvalue-limit error = %v; want %q", syntaxError, want)
+		}
+	})
+
+	t.Run("active locals", func(t *testing.T) {
+		source := "\nfunction overflow()\n  local " + strings.Join(
+			numberedNames("local", maxActiveLocals+1),
+			",",
+		)
+		_, syntaxError := compileSource("@limit-lines.lua", source)
+		want := "limit-lines.lua:3: function at line 2 has more than " +
+			strconv.Itoa(maxActiveLocals) + " active locals"
+		if syntaxError == nil || syntaxError.Error() != want {
+			t.Fatalf("local-limit error = %v; want %q", syntaxError, want)
+		}
+	})
+
+	t.Run("parameters", func(t *testing.T) {
+		source := "\nreturn function(" + strings.Join(
+			numberedNames("parameter", maxActiveLocals+1),
+			",",
+		) + ") end"
+		_, syntaxError := compileSource("@limit-lines.lua", source)
+		want := "limit-lines.lua:2: function at line 2 has more than " +
+			strconv.Itoa(maxActiveLocals) + " active locals"
+		if syntaxError == nil || syntaxError.Error() != want {
+			t.Fatalf("parameter-limit error = %v; want %q", syntaxError, want)
+		}
+	})
+}
+
 func opcodeIndex(code []instruction, operation opcode) int {
 	for pc, value := range code {
 		if value.opcode() == operation {

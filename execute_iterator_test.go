@@ -202,7 +202,9 @@ func TestExecutorGenericForRejectsNonCallableGenerators(t *testing.T) {
 			generator := test.configure(t, state)
 			caller := compileTestFunction(t, state, "@iterator.lua", `
 local generator = ...
-for value in generator, nil, nil do
+for value in
+	generator, nil, nil
+do
 	return value
 end
 return nil
@@ -217,14 +219,14 @@ return nil
 				result.err == nil ||
 				!strings.Contains(
 					result.err.Error(),
-					"attempt to call a table value",
+					"iterator.lua:4: attempt to call a table value",
 				) {
 				t.Fatalf("iterator call failure = %+v", result)
 			}
 			traceback := result.err.Traceback()
 			if len(traceback) != 1 ||
 				traceback[0].Source != "@iterator.lua" ||
-				traceback[0].Line == 0 {
+				traceback[0].Line != 4 {
 				t.Fatalf("iterator call traceback = %+v", traceback)
 			}
 			if len(thread.frames) != 0 ||

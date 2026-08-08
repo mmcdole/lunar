@@ -47,11 +47,10 @@ func (function *functionState) addUpvalue(
 		}
 	}
 	if len(function.upvalues) == maxLuaUpvalues {
-		return 0, newSourceSyntaxError(
-			function.unit.sourceName.text,
+		return 0, function.limitError(
 			line,
-			"function has more than %d upvalues",
 			maxLuaUpvalues,
+			"upvalues",
 		)
 	}
 	upvalueIndex := len(function.upvalues)
@@ -155,10 +154,10 @@ func (parser *sourceParser) parseLocalFunction(line uint32) *Error {
 		return syntaxError
 	}
 	if len(parser.function.locals) == maxActiveLocals {
-		return parser.syntaxError(
+		return parser.function.limitError(
 			line,
-			"function has more than %d active locals",
 			maxActiveLocals,
+			"active locals",
 		)
 	}
 
@@ -258,10 +257,12 @@ func (parser *sourceParser) parseFunctionBody(
 	}
 	activeNames := parser.names[nameBase:]
 	if len(activeNames) > maxActiveLocals {
-		return compiledExpression{}, parser.syntaxError(
+		return compiledExpression{}, newFunctionLimitError(
+			parser.unit.sourceName.text,
 			line,
-			"function has more than %d active locals",
+			int(line),
 			maxActiveLocals,
+			"active locals",
 		)
 	}
 

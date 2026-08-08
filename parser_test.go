@@ -1081,7 +1081,11 @@ func TestCompileSourceEnforcesActiveLocalLimit(t *testing.T) {
 		"@locals.lua",
 		source.String(),
 	); syntaxError == nil ||
-		!strings.Contains(syntaxError.Error(), "active locals") {
+		!strings.Contains(
+			syntaxError.Error(),
+			"main function has more than "+
+				strconv.Itoa(maxActiveLocals)+" active locals",
+		) {
 		t.Fatalf("local-limit error = %v", syntaxError)
 	}
 }
