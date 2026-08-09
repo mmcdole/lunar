@@ -16,7 +16,7 @@ implementation. The relevant reference sources include `lstrlib.c`,
 
 `conformance/testdata/lua5.1-tests/` vendors the official Lua 5.1 test suite
 from <https://www.lua.org/tests/>; its origin, archive hash, and staged
-accommodations are recorded in `conformance/PROVENANCE.md`.
+test adjustments are recorded in `conformance/README.md`.
 
 Lua 5.1 is distributed under the following license:
 

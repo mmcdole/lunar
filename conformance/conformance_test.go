@@ -1,10 +1,9 @@
 // Package conformance runs the official PUC-Rio Lua 5.1 test suite against
 // Lunar. The vendored files under testdata/lua5.1-tests remain byte-for-byte
-// upstream; see PROVENANCE.md. Each file runs in a fresh State inside a staged
-// copy of the suite directory, invoked the way the suite's own all.lua driver
-// invokes it. The default driver round-trips through string.dump and
-// loadstring; big.lua retains the suite's special source-loaded coroutine
-// invocation.
+// upstream. Each file runs in a fresh State inside a staged copy of the suite
+// directory, invoked the way the suite's own all.lua driver invokes it. The
+// default driver round-trips through string.dump and loadstring; big.lua
+// retains the suite's special source-loaded coroutine invocation.
 package conformance
 
 import (
