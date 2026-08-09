@@ -19,7 +19,9 @@ Every vendored file matches the upstream archive byte-for-byte.
 
 Local policy: the vendored files stay unmodified. Every accommodation — skips,
 environment adjustments, alternate drivers, postconditions, and temporary
-source changes — lives in `conformance_test.go` with a stated reason.
+source changes — is declared in the Go harness with a stated reason. Suite
+execution policy lives in `conformance_test.go`; staged source changes live in
+`accommodations_test.go`.
 
 ## Staged accommodations
 
