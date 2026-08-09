@@ -1,8 +1,8 @@
 # Lua 5.1 conformance suite
 
 This package runs the official PUC-Rio Lua 5.1 test suite against Lunar.
-The suite files are vendored under `testdata/lua5.1-tests/`; their origin,
-archive hash, and the one local patch are recorded in
+The suite files are vendored byte-for-byte under `testdata/lua5.1-tests/`;
+their origin, archive hash, and staged accommodations are recorded in
 [`PROVENANCE.md`](PROVENANCE.md).
 
 Run it from the repository root:
@@ -25,10 +25,11 @@ suite's special source-loaded coroutine driver. The return-value assertions
 
 ## Results
 
-19 of the suite's 22 executable files pass. `api.lua` and `code.lua` pass
-by design in reduced form: both self-skip their C-side sections when the
-suite's optional C test library is absent, exactly as they do under a stock
-`lua` binary built without `testC`.
+19 of the suite's 22 executable files run to completion in the harness.
+`api.lua` and `code.lua` self-skip entirely when the suite's optional `testC`
+library is absent; `closure.lua` and other files still run their pure-Lua
+coverage while omitting sections guarded by `testC`, as they do under a stock
+`lua` binary built without that library.
 
 Three files are skipped, each for a stated reason in `conformance_test.go`:
 
@@ -38,10 +39,12 @@ Three files are skipped, each for a stated reason in `conformance_test.go`:
 | `db.lua` | Requires `debug.sethook`/`debug.gethook`, an intentional Lunar limit (see Scope in the root README). |
 | `gc.lua` | Counts incremental collector steps; Lunar collects synchronously. Weak tables and finalizers are covered natively by `collection_weak_test.go` and `collection_finalizer_test.go`. |
 
-Two passing files use narrow staged accommodations recorded in
-[`PROVENANCE.md`](PROVENANCE.md): `big.lua` omits only its 32-bit 4 GiB string
-overflow probe, and `errors.lua` accepts Lunar's diagnostic wording while
-retaining its source-line and substantive behavioral checks.
+Three passing files use narrow staged accommodations recorded in
+[`PROVENANCE.md`](PROVENANCE.md): `calls.lua` accepts either valid lexer refill
+count while requiring the reader to run, `big.lua` omits only its 32-bit 4 GiB
+string overflow probe, and `errors.lua` accepts Lunar-specific diagnostic
+phrases while retaining syntax rejection, source-line, token-category, and
+compiler-limit checks.
 
 `checktable.lua` is a debugging utility for the suite's C test library and
 is not part of `all.lua`'s run list; it is vendored but not executed.

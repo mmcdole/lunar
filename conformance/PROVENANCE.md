@@ -1,8 +1,7 @@
 # Lua 5.1 test suite provenance
 
 `testdata/lua5.1-tests/` contains the official PUC-Rio Lua 5.1 test suite.
-Every vendored file matches the upstream archive except for the one documented
-patch to `calls.lua` below.
+Every vendored file matches the upstream archive byte-for-byte.
 
 - Source: <https://www.lua.org/tests/lua5.1-tests.tar.gz>
 - Archive SHA-256:
@@ -18,28 +17,9 @@ patch to `calls.lua` below.
 - Checkout policy: `.gitattributes` disables text normalization for the suite
   so its upstream line endings and intentional whitespace survive on every OS
 
-Local policy: the vendored files carry exactly one patch, listed below.
-Every other accommodation — skips and environment adjustments alike — lives
-in `conformance_test.go` with a stated reason, so a diff against the
-upstream archive shows only the entry in this list.
-
-## Local patches
-
-### calls.lua, one line
-
-```diff
--assert(not a and type(b) == "string" and i == 2)
-+assert(not a and type(b) == "string" and i >= 1 and i <= 2)
-```
-
-The upstream assertion counts how many times `load` calls its reader
-function before rejecting the invalid chunk `*a = 123`. The reference
-lexer always pre-reads one character of lookahead, so its reader is called
-exactly twice; Lunar's lexer rejects the statement after reading one
-character. The reader-call count is a property of the lexer's buffering,
-not of the language. The patch accepts either one or two calls without
-weakening the requirements that the reader is invoked, the load fails, and it
-returns a string message. The edit preserves the file's line numbering.
+Local policy: the vendored files stay unmodified. Every accommodation — skips,
+environment adjustments, alternate drivers, postconditions, and temporary
+source changes — lives in `conformance_test.go` with a stated reason.
 
 ## Staged accommodations
 
@@ -48,10 +28,15 @@ the vendored files remain unchanged. Every replacement must match its expected
 upstream text exactly once, so upstream drift fails the Go test instead of
 silently weakening coverage.
 
+- `calls.lua`: accept one or two reader calls before rejecting `*a = 123`.
+  The reference lexer pre-reads one character and calls the reader twice;
+  Lunar rejects the invalid statement after one call. The count is a buffering
+  detail, while the staged assertion still requires a reader call, a failed
+  load, and a string error.
 - `big.lua`: omit its opening 32-bit `size_t` overflow probe, whose 129-way
   concatenation would allocate 4 GiB on a 64-bit runtime. The remaining wide
   constants, jumps, constructors, tables, and coroutine checks run through the
   suite's original special driver.
-- `errors.lua`: retain the error, stack, source-line, and compiler-limit checks
-  while accepting Lunar's non-reference diagnostic wording, including the
-  synonymous phrase `syntax nesting` in place of `syntax levels`.
+- `errors.lua`: retain syntax rejection, source-line, token-category, error,
+  stack, and compiler-limit checks while accepting Lunar's non-reference
+  diagnostic phrases, including `syntax nesting` in place of `syntax levels`.
