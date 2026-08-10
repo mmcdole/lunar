@@ -50,6 +50,18 @@ var stagedSuitePatches = []stagedSuitePatch{
 		),
 	},
 	{
+		name:   "files.lua",
+		reason: "close the current input before renaming it because Windows cannot rename an open file",
+		before: "end\n\nassert(os.rename(file, otherfile))",
+		after:  "end\nio.input(io.stdin); collectgarbage()\nassert(os.rename(file, otherfile))",
+	},
+	{
+		name:   "files.lua",
+		reason: "release the exhausted line iterator before deleting its open file on Windows",
+		before: "for l in io.lines() do assert(l == f()) end\nassert(os.remove(otherfile))",
+		after:  "for l in io.lines() do assert(l == f()) end\nf = nil; collectgarbage(); assert(os.remove(otherfile))",
+	},
+	{
 		name:   "errors.lua",
 		reason: "accept Lunar's syntax diagnostics while retaining line and token-category checks",
 		before: `function checksyntax (prog, extra, token, line)

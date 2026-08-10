@@ -27,14 +27,15 @@ sections. `checktable.lua` is a `testC` helper and is not part of the run list.
 
 ## Small test adjustments
 
-Some upstream checks assume details of the reference C implementation rather
-than Lua 5.1 behavior. Lunar changes three checks in a temporary copy while the
-tests run; the vendored files stay untouched.
+Some upstream checks assume details of the reference C implementation or its
+host system rather than Lua 5.1 behavior. Lunar adjusts them in a temporary
+copy while the tests run; the vendored files stay untouched.
 
 | File | Why the original check does not fit | What Lunar checks instead |
 | --- | --- | --- |
 | `calls.lua` | The reference parser asks for the next piece of source exactly twice. Lunar spots the invalid statement after the first piece. | Allow one or two reads, but still require that the reader ran, parsing failed, and a text error was returned. |
 | `big.lua` | The test tries to prove a 32-bit memory limit by building a 4 GiB string. A 64-bit Go program does not have that limit, and the allocation is unsafe for a test run. | Skip only that allocation. All the remaining large-program and coroutine tests still run. |
+| `files.lua` | The test renames or deletes files while they are still selected as input or held by a line reader. Unix allows that; Windows does not. | Stop using those files and collect them before renaming or deleting them. |
 | `errors.lua` | The test expects the reference interpreter's exact English error messages. Lunar describes the same errors with different words. | Accept Lunar's known wording while still checking rejection, the source line, the kind of bad token, stack errors, and compiler limits. |
 
 Each adjustment must find its exact upstream text once and must preserve line
