@@ -14,6 +14,10 @@ binary chunk writer adapt algorithms from the Lua 5.1.5 reference
 implementation. The relevant reference sources include `lstrlib.c`,
 `ltablib.c`, `ldblib.c`, and `ldump.c`.
 
+`conformance/testdata/lua5.1-tests/` vendors the official Lua 5.1 test suite
+from <https://www.lua.org/tests/>; its origin, archive hash, and staged
+test adjustments are recorded in `conformance/README.md`.
+
 Lua 5.1 is distributed under the following license:
 
 Copyright (C) 1994-2012 Lua.org, PUC-Rio.

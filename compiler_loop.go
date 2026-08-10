@@ -261,10 +261,10 @@ func (parser *sourceParser) parseNumericFor(
 ) (token, *Error) {
 	emitter := parser.function
 	if len(emitter.locals)+4 > maxActiveLocals {
-		return token{}, parser.syntaxError(
+		return token{}, emitter.limitError(
 			line,
-			"function has more than %d active locals",
 			maxActiveLocals,
+			"active locals",
 		)
 	}
 	if _, syntaxError := parser.expect('='); syntaxError != nil {
@@ -403,13 +403,14 @@ func (parser *sourceParser) parseGenericFor(
 	if _, syntaxError := parser.expect(tokenIn); syntaxError != nil {
 		return token{}, syntaxError
 	}
+	iteratorLine := parser.current.line
 	names := parser.names[nameBase:]
 	emitter := parser.function
 	if len(emitter.locals)+3+len(names) > maxActiveLocals {
-		return token{}, parser.syntaxError(
+		return token{}, emitter.limitError(
 			line,
-			"function has more than %d active locals",
 			maxActiveLocals,
+			"active locals",
 		)
 	}
 
@@ -472,7 +473,7 @@ func (parser *sourceParser) parseGenericFor(
 	); syntaxError != nil {
 		return token{}, syntaxError
 	}
-	emitter.emitABC(opIteratorLoop, base, 0, len(names), line)
+	emitter.emitABC(opIteratorLoop, base, 0, len(names), iteratorLine)
 	backEdge := emitter.emitJump(line)
 	if syntaxError = emitter.patchJumps(
 		backEdge,

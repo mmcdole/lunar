@@ -99,6 +99,49 @@ type functionState struct {
 	gotoError       *Error
 }
 
+// limitError mirrors Lua 5.1's errorlimit diagnostics: the source prefix
+// identifies the token that crossed the limit, while the message identifies
+// the function whose definition owns that limit.
+func (function *functionState) limitError(
+	line uint32,
+	limit int,
+	what string,
+) *Error {
+	return newFunctionLimitError(
+		function.unit.sourceName.text,
+		line,
+		function.builder.lineDefined,
+		limit,
+		what,
+	)
+}
+
+func newFunctionLimitError(
+	sourceName string,
+	line uint32,
+	defined int,
+	limit int,
+	what string,
+) *Error {
+	if defined == 0 {
+		return newSourceSyntaxError(
+			sourceName,
+			line,
+			"main function has more than %d %s",
+			limit,
+			what,
+		)
+	}
+	return newSourceSyntaxError(
+		sourceName,
+		line,
+		"function at line %d has more than %d %s",
+		defined,
+		limit,
+		what,
+	)
+}
+
 func (unit *compileUnit) newFunction(
 	parent *functionState,
 	line uint32,

@@ -425,10 +425,10 @@ func (parser *sourceParser) parseLocal() *Error {
 	}
 	names := parser.names[nameBase:]
 	if len(parser.function.locals)+len(names) > maxActiveLocals {
-		return parser.syntaxError(
+		return parser.function.limitError(
 			line,
-			"function has more than %d active locals",
 			maxActiveLocals,
+			"active locals",
 		)
 	}
 
