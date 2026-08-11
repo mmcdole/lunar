@@ -131,6 +131,39 @@ func ExampleState_NewNativeFunction() {
 	// 42
 }
 
+func ExampleTable_Tree() {
+	state, err := lua.New(lua.Options{})
+	if err != nil {
+		panic(err)
+	}
+	defer state.Close()
+
+	config, err := state.NewTableFrom(map[string]any{
+		"name":    "lunar",
+		"retries": 3,
+	})
+	if err != nil {
+		panic(err)
+	}
+	tree, err := config.Tree()
+	if err != nil {
+		panic(err)
+	}
+	fields := tree.(map[string]any)
+	fields["retries"] = fields["retries"].(float64) + 1
+
+	updated, err := state.NewTableFrom(fields)
+	if err != nil {
+		panic(err)
+	}
+	name, _ := updated.RawGetString("name").AsString()
+	retries, _ := updated.RawGetString("retries").AsNumber()
+	fmt.Printf("%s %.0f\n", name, retries)
+
+	// Output:
+	// lunar 4
+}
+
 func ExampleFrame_IntegerInRange() {
 	state, err := lua.New(lua.Options{})
 	if err != nil {

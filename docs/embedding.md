@@ -301,6 +301,48 @@ sequences; nested maps become nested tables. Any other Go type reports
 becomes reachable. Conversion performs raw assignments only, so it never
 invokes `__newindex` and is usable from a callback through `Frame.State`.
 
+For supported table shapes, the reverse conversion produces a portable Go
+tree:
+
+```go
+tree, err := config.Tree()
+if err != nil {
+	return err
+}
+fields := tree.(map[string]any)
+fields["connected"] = true
+result, err := state.NewTableFrom(fields)
+```
+
+`Table.Tree` recognizes two table shapes. Keys exactly `1` through `n` become
+a `[]any`; string-only keys become a `map[string]any`. An empty table uses a
+non-nil empty map, because Lua tables do not retain whether they originated as
+an empty map or slice. Booleans, numbers, and strings become `bool`, `float64`,
+and byte-exact `string` values, and nested tables are converted recursively.
+Every successful result is in `NewTableFrom`'s input vocabulary; importing it
+into an open State reconstructs the supported contents and shape.
+
+Mixed or sparse keys, other key kinds, function/userdata/thread values,
+cycles, shared subtables, and excessive nesting report
+`ErrUnsupportedTreeValue`. Rejecting shared references prevents a small Lua
+object graph from expanding into an exponentially larger Go tree. Metatables,
+weak-table behavior, Lua table identity, and traversal order are not
+represented.
+
+`NewTableFrom` and `Tree` use raw table storage and never execute Lua. `Tree` is
+also a reader under the closed-State snapshot contract, so a retained table
+remains convertible after its State closes. `NewTableFrom` normalizes some
+inputs: integer Go types return from `Tree` as `float64`, `[]byte` returns as
+`string`, nil map fields disappear, and nil slice elements become absent keys.
+A leading or middle absence makes the resulting table sparse and therefore
+unsupported by `Tree`; trailing absences shorten the returned sequence. An
+empty slice returns as an empty map.
+
+Inside a native callback, `Tree` may be called directly on a table obtained
+from `Frame.Table`; use `Frame.State().NewTableFrom` to rebuild the result.
+Otherwise, on a live State, `Tree` must be serialized with every other
+operation on that State.
+
 ### Apply Lua operators
 
 `Index`, `SetIndex`, `Len`, `Equal`, and `ToString` apply Lua's own semantics,
