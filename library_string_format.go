@@ -288,7 +288,8 @@ func (item formatItem) has(flag byte) bool {
 }
 
 // pad applies the width and the '-' and '0' flags. Zero padding follows C: it
-// is ignored when the value is left-aligned, and it goes after any sign.
+// is ignored when the value is left-aligned, and it goes after any sign or
+// base prefix.
 func (item formatItem) pad(
 	built []byte,
 	text []byte,

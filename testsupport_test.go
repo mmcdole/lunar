@@ -42,10 +42,6 @@ func newInternedText(text string) *internedText {
 	return newHashedInternedText(text, hashString(text))
 }
 
-// Helpers for tests written against accessors that are no longer public.
-// Tests live in the package, so they read the compact representation
-// directly rather than keeping a shipped accessor alive for their sake.
-
 func rawInt(table *Table, key int) Value { return table.RawGetInt(key) }
 
 func rawStr(table *Table, key string) Value { return table.RawGetString(key) }
@@ -91,9 +87,6 @@ func upvalueCount(target any) int {
 		panic("lua: unsupported upvalueCount target")
 	}
 }
-
-// Lua 5.1 thread and userdata environments are no longer part of the public
-// surface. Tests still exercise the runtime behaviour through these.
 
 func threadEnvironment(thread *Thread) (*Table, error) {
 	object := thread.runtimeObject()
@@ -156,8 +149,6 @@ func setUserDataEnvironment(data *UserData, environment *Table) error {
 	return nil
 }
 
-// callCtx installs ctx for one call, matching what the removed CallContext
-// did. Tests that need the same shape for other operations follow this form.
 func callCtx(
 	t testing.TB,
 	state *State,

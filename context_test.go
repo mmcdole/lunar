@@ -2024,10 +2024,6 @@ func assertContextStateIdle(t *testing.T, state *State) {
 	}
 }
 
-// The per-operation Context methods were replaced by one ambient SetContext.
-// These helpers install a context for exactly one operation, which is the
-// shape the tests below were written against.
-
 func withContext(
 	t testing.TB,
 	state *State,

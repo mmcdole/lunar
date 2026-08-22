@@ -81,9 +81,8 @@ func TestTableRecordHintUsesSmallestSufficientStore(t *testing.T) {
 				)
 			}
 
-			// The chained store may use every node. Filling the rounded
-			// capacity must not force the preemptive growth that the former
-			// load-factor-limited store required.
+			// The chained store may use every node, so filling the rounded
+			// capacity must not force preemptive growth.
 			for index := 0; index < test.capacity; index++ {
 				key := "hint-" + strconv.Itoa(index)
 				if err := table.rawSetStringValue(

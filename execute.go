@@ -787,7 +787,7 @@ dispatch:
 	}
 }
 
-// Keep allocating closure construction out of the instruction loop's frame.
+// Avoids adding closure-construction locals to the dispatch frame.
 //
 //go:noinline
 func installClosure(
@@ -828,7 +828,7 @@ func installClosure(
 	return bindingPC + count
 }
 
-// Keep uncommon stack growth and resource errors off the open-vararg path.
+// Avoids adding stack-growth and resource-error locals to the open-vararg path.
 //
 //go:noinline
 func prepareOpenVararg(
@@ -905,7 +905,7 @@ func functionSlot(value slot) (*functionObject, bool) {
 	return functionObjectFromSlot(value), true
 }
 
-// Keep call-metamethod lookup and call-window insertion off direct calls.
+// Avoids adding metamethod lookup and call-window insertion to direct calls.
 //
 //go:noinline
 func enterCallMetamethod(

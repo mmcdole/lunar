@@ -149,8 +149,8 @@ func TestPreloadModuleValidatesBeforeCreatingPreloadTable(t *testing.T) {
 	}
 }
 
-// Captured state now lives in the Go closure. Each installed function must
-// still get its own, so two entries built from one factory do not share it.
+// Each installed function gets its own closure state, so two entries built
+// from one factory do not share it.
 func TestSetFunctionsInstallsIndependentClosureState(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
