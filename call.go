@@ -265,10 +265,18 @@ func (thread *threadObject) replaceFunctionMetamethodCall(
 
 	thread.reserveValues(layout.required)
 	oldExtent := thread.liveValueExtent()
-	thread.insertCallMetamethod(function, callBase, argumentCount)
+	// The source window may fill the stack even though the replacement fits.
+	// Close captured locals before moving the receiver and arguments directly
+	// into the reserved tail window, without growing the source window.
+	thread.closeUpvalues(int(current.base))
+	copy(
+		thread.values[layout.resultBase+1:layout.resultBase+argumentCount+2],
+		thread.values[callBase:callBase+argumentCount+1],
+	)
+	writeSlot(&thread.values[layout.resultBase], slotFromFunctionObject(function))
 	thread.commitTailCall(
 		function,
-		callBase,
+		layout.resultBase,
 		argumentCount+1,
 		layout,
 		oldExtent,

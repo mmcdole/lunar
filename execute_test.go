@@ -1498,6 +1498,92 @@ return result
 	)
 }
 
+func BenchmarkExecutorTailCallMatrix(b *testing.B) {
+	for _, test := range []struct {
+		name       string
+		source     string
+		metamethod bool
+	}{
+		{name: "fixed", source: `return function(value) return value end`},
+		{name: "vararg", source: `return function(...) return ... end`},
+		{name: "native"},
+		{name: "metamethod_fixed", source: `return function(self, value) return value end`, metamethod: true},
+		{name: "metamethod_vararg", source: `return function(self, ...) return ... end`, metamethod: true},
+		{name: "metamethod_native", metamethod: true},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			state, err := New(Options{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = state.Close() })
+			var target Value
+			if test.source != "" {
+				initializer, err := state.LoadString("@tail-handler.lua", test.source)
+				if err != nil {
+					b.Fatal(err)
+				}
+				target, err = state.CallOne(initializer.Value())
+				if err != nil {
+					b.Fatal(err)
+				}
+			} else {
+				argument := 0
+				if test.metamethod {
+					argument = 1
+				}
+				function, err := state.NewNativeFunction(func(frame Frame) Outcome {
+					value, _ := frame.Number(argument)
+					return frame.ReturnNumber(value)
+				})
+				if err != nil {
+					b.Fatal(err)
+				}
+				target = function.Value()
+			}
+			if test.metamethod {
+				metatable, err := state.NewTable()
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := metatable.RawSetString("__call", target); err != nil {
+					b.Fatal(err)
+				}
+				callable, err := state.NewTable()
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := state.SetMetatable(callable.Value(), metatable); err != nil {
+					b.Fatal(err)
+				}
+				target = callable.Value()
+			}
+			initializer := compileTestFunction(b, state, "@tail-calls.lua", `
+local target = ...
+local function forward(value) return target(value) end
+return function(iterations)
+	local value = 17
+	for _ = 1, iterations do value = forward(value) end
+	return value
+end
+`)
+			value, err := state.CallOne(initializer.owningValue(), target)
+			if err != nil {
+				b.Fatal(err)
+			}
+			caller, ok := value.AsFunction()
+			if !ok {
+				b.Fatal("tail-call benchmark did not return its kernel")
+			}
+			benchmarkExecutorFunction(b, state, caller.runtimeObject(), Number(1000))
+			b.StopTimer()
+			if !rawSlotEqual(state.main.values[0], numberSlot(17)) {
+				b.Fatalf("tail-call result = %v; want 17", state.main.values[0].owningValue())
+			}
+		})
+	}
+}
+
 func BenchmarkExecutorLuaCallMatrix(b *testing.B) {
 	const iterations = 1000
 	for _, test := range []struct {

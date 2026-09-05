@@ -412,6 +412,80 @@ func TestLuaTailCallReusesActivationAndClosesUpvalues(t *testing.T) {
 	assertTestSlot(t, thread.values[4], Nil())
 }
 
+func TestLuaTailCallMetamethodClosesUpvaluesBeforeMovingArguments(t *testing.T) {
+	for _, kind := range []string{"fixed", "vararg", "native"} {
+		for _, callBase := range []int{2, 13} {
+			name := kind + "/overlap"
+			if callBase == 13 {
+				name = kind + "/full stack"
+			}
+			t.Run(name, func(t *testing.T) {
+				state, err := New(Options{MaxValues: 16, MaxFrames: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer state.Close()
+				thread := state.main
+				caller := newTestLuaFunction(t, state, 0, 15, 0, 0)
+				var handler *functionObject
+				switch kind {
+				case "fixed":
+					handler = newTestLuaFunction(t, state, 3, 3, 0, 0)
+				case "vararg":
+					handler = newTestLuaFunction(t, state, 1, 3, varargIsVararg, 0)
+				case "native":
+					handler = newNativeFunctionOwned(state, thread.globals, func(frame Frame) Outcome {
+						return frame.ReturnArguments()
+					}, nil)
+				}
+				target, err := state.NewTable()
+				if err != nil {
+					t.Fatal(err)
+				}
+				setTestCall(thread, 0, caller)
+				if err := thread.pushFunctionCall(caller, 0, 0, 3); err != nil {
+					t.Fatal(err)
+				}
+				capturedValue := state.String("captured before tail replacement")
+				thread.values[1] = slotFromValue(capturedValue)
+				captured := thread.captureUpvalue(1)
+				// Exercise overlapping moves and a source window that fills the
+				// stack, where the receiver only fits after replacing the caller.
+				thread.values[callBase] = slotFromValue(target.Value())
+				thread.values[callBase+1] = numberSlot(17)
+				thread.values[callBase+2] = nilSlot
+				if err := thread.replaceFunctionMetamethodCall(handler, callBase, 2); err != nil {
+					t.Fatal(err)
+				}
+				if len(thread.frames) != 1 || thread.frames[0].tailCalls != 1 {
+					t.Fatalf("tail replacement frames = %+v", thread.frames)
+				}
+				if testUpvalueIsOpen(captured) {
+					t.Fatal("tail replacement retained an open caller upvalue")
+				}
+				assertTestSlot(t, captured.read(), capturedValue)
+				frame := thread.frames[0]
+				assertTestSlot(t, thread.values[0], handler.owningValue())
+				assertTestSlot(t, thread.values[frame.base], target.Value())
+				argumentBase := int(frame.base) + 1
+				if kind == "vararg" {
+					argumentBase = 2
+					if frame.varargCount() != 2 {
+						t.Fatalf("vararg count = %d; want 2", frame.varargCount())
+					}
+				}
+				assertTestSlot(t, thread.values[argumentBase], Number(17))
+				assertTestSlot(t, thread.values[argumentBase+1], Nil())
+				for index := thread.liveValueExtent(); index < len(thread.values); index++ {
+					if thread.values[index] != (slot{}) {
+						t.Fatalf("tail replacement retained dead slot %d", index)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestLuaCallStackGrowthKeepsOpenUpvalueIndexesValid(t *testing.T) {
 	state, err := New(Options{MaxValues: 128})
 	if err != nil {
@@ -1076,46 +1150,60 @@ func TestLuaCallLimitFailuresAreAtomic(t *testing.T) {
 		}
 	})
 
-	t.Run("tail values", func(t *testing.T) {
-		state, err := New(Options{MaxValues: 8, MaxFrames: 1})
-		if err != nil {
-			t.Fatal(err)
+	for _, metamethod := range []bool{false, true} {
+		name := "tail values"
+		if metamethod {
+			name = "tail metamethod values"
 		}
-		defer state.Close()
-		thread := state.main
-		current := newTestLuaFunction(t, state, 0, 4, 0, 0)
-		tooLarge := newTestLuaFunction(
-			t,
-			state,
-			0,
-			8,
-			varargIsVararg,
-			0,
-		)
-		setTestCall(thread, 0, current)
-		if callErr := thread.pushFunctionCall(current, 0, 0, 0); callErr != nil {
-			t.Fatal(callErr)
-		}
-		frame := thread.frames[0]
-		callBase := int(frame.base) + 1
-		thread.values[callBase] = slotFromFunctionObject(tooLarge)
-		captured := thread.captureUpvalue(int(frame.base))
-		beforeValues := slices.Clone(thread.values)
-		beforeFrames := slices.Clone(thread.frames)
-		beforeTop := thread.top
+		t.Run(name, func(t *testing.T) {
+			state, err := New(Options{MaxValues: 8, MaxFrames: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			thread := state.main
+			current := newTestLuaFunction(t, state, 0, 4, 0, 0)
+			tooLarge := newTestLuaFunction(
+				t,
+				state,
+				0,
+				8,
+				varargIsVararg,
+				0,
+			)
+			setTestCall(thread, 0, current)
+			if callErr := thread.pushFunctionCall(current, 0, 0, 0); callErr != nil {
+				t.Fatal(callErr)
+			}
+			frame := thread.frames[0]
+			callBase := int(frame.base) + 1
+			thread.values[callBase] = slotFromFunctionObject(tooLarge)
+			if metamethod {
+				thread.values[callBase] = numberSlot(7)
+			}
+			captured := thread.captureUpvalue(int(frame.base))
+			beforeValues := slices.Clone(thread.values)
+			beforeFrames := slices.Clone(thread.frames)
+			beforeTop := thread.top
 
-		callErr := thread.replaceFunctionCall(tooLarge, callBase, 0)
-		if callErr == nil || callErr.Category() != ResourceError {
-			t.Fatalf("tail value limit error = %v", callErr)
-		}
-		if !testUpvalueIsOpen(captured) ||
-			captured.cell != &thread.values[int(frame.base)] ||
-			thread.top != beforeTop ||
-			!slices.Equal(thread.values, beforeValues) ||
-			!slices.Equal(thread.frames, beforeFrames) {
-			t.Fatal("tail-call limit failure partially replaced the activation")
-		}
-	})
+			var callErr *Error
+			if metamethod {
+				callErr = thread.replaceFunctionMetamethodCall(tooLarge, callBase, 0)
+			} else {
+				callErr = thread.replaceFunctionCall(tooLarge, callBase, 0)
+			}
+			if callErr == nil || callErr.Category() != ResourceError {
+				t.Fatalf("tail value limit error = %v", callErr)
+			}
+			if !testUpvalueIsOpen(captured) ||
+				captured.cell != &thread.values[int(frame.base)] ||
+				thread.top != beforeTop ||
+				!slices.Equal(thread.values, beforeValues) ||
+				!slices.Equal(thread.frames, beforeFrames) {
+				t.Fatal("tail-call limit failure partially replaced the activation")
+			}
+		})
+	}
 
 	t.Run("call metamethod insertion", func(t *testing.T) {
 		state, err := New(Options{MaxValues: 3})

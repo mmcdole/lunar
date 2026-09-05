@@ -60,6 +60,37 @@ func TestCompileAndLoadPrototypeAcrossStates(t *testing.T) {
 	assertTestValues(t, secondResults, Number(2))
 }
 
+func TestStateCallTailMetamethodAtStackBoundary(t *testing.T) {
+	for _, limit := range []int{0, 16} {
+		name := "default limit"
+		if limit != 0 {
+			name = "full value stack"
+		}
+		t.Run(name, func(t *testing.T) {
+			state, err := New(Options{Libraries: CoreLibraries(), MaxValues: limit})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			results, err := state.DoString("@tail-call-boundary.lua", `
+local callable = setmetatable({}, {
+	__call = function(self) return 42 end
+})
+local function invoke()
+	local a,b,c,d,e,f,g,h,i,j,k,l,m,n =
+		1,2,3,4,5,6,7,8,9,10,11,12,13,14
+	return callable()
+end
+return invoke()
+`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertTestValues(t, results, Number(42))
+		})
+	}
+}
+
 func TestLoadStringDoesNotExecute(t *testing.T) {
 	state, err := New(Options{})
 	if err != nil {
