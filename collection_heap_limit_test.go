@@ -2,9 +2,61 @@ package lua
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestHeapLimitAppliesWhileCollectionStopped(t *testing.T) {
+	for _, stop := range []string{"lua", "host"} {
+		for _, protected := range []bool{false, true} {
+			name := stop + "/direct"
+			if protected {
+				name = stop + "/pcall"
+			}
+			t.Run(name, func(t *testing.T) {
+				state, err := New(Options{MaxHeapBytes: 1 << 20})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer state.Close()
+				if err := state.OpenBase(); err != nil {
+					t.Fatal(err)
+				}
+				if err := state.OpenString(); err != nil {
+					t.Fatal(err)
+				}
+
+				source := `
+					kept = {}
+					for index = 1, 64 do
+						kept[index] = string.rep("x", 64 * 1024)
+					end
+				`
+				if protected {
+					source = "return pcall(function() " + source + " end)"
+				}
+				if stop == "lua" {
+					source = `collectgarbage("stop"); ` + source
+				} else if err := state.StopGC(); err != nil {
+					t.Fatal(err)
+				}
+
+				_, err = state.DoString("@stopped-heap.lua", source)
+				var failure *Error
+				if !errors.As(err, &failure) || failure.Category() != LimitError {
+					t.Fatalf("stopped heap growth error = %v; want LimitError", err)
+				}
+				if !strings.Contains(failure.Error(), "heap limit exceeded") {
+					t.Fatalf("message = %q", failure.Error())
+				}
+				if !state.runtime.collection.stopped {
+					t.Fatal("heap enforcement restarted automatic collection")
+				}
+			})
+		}
+	}
+}
 
 func TestHeapLimitStopsSustainedGrowth(t *testing.T) {
 	state, err := New(Options{MaxHeapBytes: 8 << 20})
@@ -258,5 +310,198 @@ func TestHeapLimitAppliesOnlyToExecution(t *testing.T) {
 		t.Fatal("execution proceeded with the heap already over the limit")
 	} else if !strings.Contains(err.Error(), "heap limit exceeded") {
 		t.Fatalf("execution error = %v", err)
+	}
+}
+
+type heapLimitBenchmarkMode struct {
+	name    string
+	limit   int
+	stopped bool
+	near    bool
+}
+
+var heapLimitBenchmarkModes = [...]heapLimitBenchmarkMode{
+	{name: "running_unlimited"},
+	{name: "running_limited", limit: 8 << 20},
+	{name: "stopped_unlimited", stopped: true},
+	{name: "stopped_limited_under", limit: 8 << 20, stopped: true},
+	{name: "stopped_limited_near", limit: 8 << 20, stopped: true, near: true},
+}
+
+const heapLimitBenchmarkIterations = 4096
+
+func BenchmarkHeapLimitAllocation(b *testing.B) {
+	for _, mode := range heapLimitBenchmarkModes {
+		b.Run(mode.name, func(b *testing.B) {
+			state, allocate, safePoints := newHeapLimitBenchmarkState(b, mode)
+			runHeapLimitBenchmark(b, state, allocate, heapLimitBenchmarkIterations*1024)
+			// Clear setup-only host tokens before establishing the measured
+			// heap baseline; keep both kernel functions rooted for every batch.
+			runtime.GC()
+			collectHeapLimitBenchmark(b, state, mode)
+
+			b.ReportAllocs()
+			b.SetBytes(heapLimitBenchmarkIterations * 1024)
+			b.ResetTimer()
+			for range b.N {
+				runHeapLimitBenchmark(b, state, allocate, heapLimitBenchmarkIterations*1024)
+				// Each operation allocates one bounded batch. Explicit cleanup
+				// also bounds the stopped collector's attribution storage, and
+				// stays outside the allocation/enforcement measurement.
+				b.StopTimer()
+				collectHeapLimitBenchmark(b, state, mode)
+				b.StartTimer()
+			}
+			b.StopTimer()
+			runtime.KeepAlive(allocate)
+			runtime.KeepAlive(safePoints)
+		})
+	}
+}
+
+func BenchmarkHeapLimitSafePoints(b *testing.B) {
+	for _, mode := range heapLimitBenchmarkModes {
+		b.Run(mode.name, func(b *testing.B) {
+			state, allocate, safePoints := newHeapLimitBenchmarkState(b, mode)
+			// Stabilize the setup graph before priming heap enforcement, so
+			// cleanup cannot erase the measurement state this benchmark probes.
+			runtime.GC()
+			collectHeapLimitBenchmark(b, state, mode)
+			// Near the limit, transient allocation makes charged growth exceed
+			// the remaining headroom while the measured heap still fits. Once
+			// that measurement completes, allocation-free calls must not keep
+			// scanning the same retained graph at every execution safe point.
+			runHeapLimitBenchmark(b, state, allocate, heapLimitBenchmarkIterations*1024)
+			runHeapLimitBenchmark(b, state, safePoints, heapLimitBenchmarkIterations)
+			if mode.limit != 0 {
+				held, err := state.HeapBytes()
+				if err != nil {
+					b.Fatal(err)
+				}
+				if held >= uint64(mode.limit) {
+					b.Fatalf("primed heap = %d; want below %d", held, mode.limit)
+				}
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.ReportMetric(heapLimitBenchmarkIterations, "native-calls/op")
+			for range b.N {
+				runHeapLimitBenchmark(b, state, safePoints, heapLimitBenchmarkIterations)
+			}
+			b.StopTimer()
+			runtime.KeepAlive(allocate)
+			runtime.KeepAlive(safePoints)
+		})
+	}
+}
+
+func newHeapLimitBenchmarkState(
+	b *testing.B,
+	mode heapLimitBenchmarkMode,
+) (*State, Value, Value) {
+	b.Helper()
+	state, err := New(Options{MaxHeapBytes: mode.limit})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		if err := state.Close(); err != nil {
+			b.Error(err)
+		}
+	})
+	if err := state.OpenString(); err != nil {
+		b.Fatal(err)
+	}
+	functions, err := state.DoString("@heap-limit-benchmark.lua", `
+local repeat_string, string_length = string.rep, string.len
+local ballast = {}
+for index = 1, 4096 do
+	ballast[index] = { index, index + 1, index + 2, index + 3 }
+end
+heap_benchmark_ballast = ballast
+return function()
+	local total = 0
+	for index = 1, 4096 do
+		local scratch = repeat_string("p", 1024)
+		total = total + #scratch
+	end
+	return total
+end, function()
+	local total = 0
+	for index = 1, 4096 do
+		total = total + string_length("p")
+	end
+	return total
+end
+`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(functions) != 2 {
+		b.Fatalf("benchmark factory returned %d functions; want 2", len(functions))
+	}
+	runHeapLimitBenchmark(b, state, functions[0], heapLimitBenchmarkIterations*1024)
+	runHeapLimitBenchmark(b, state, functions[1], heapLimitBenchmarkIterations)
+	if err := state.Collect(); err != nil {
+		b.Fatal(err)
+	}
+	if mode.near {
+		held, err := state.HeapBytes()
+		if err != nil {
+			b.Fatal(err)
+		}
+		target := uint64(mode.limit - (2 << 20))
+		if held >= target {
+			b.Fatalf("benchmark graph = %d bytes; want room below %d", held, target)
+		}
+		if err := state.RawSetGlobal("heap_benchmark_padding", state.String(
+			strings.Repeat("b", int(target-held)),
+		)); err != nil {
+			b.Fatal(err)
+		}
+		if err := state.Collect(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if mode.stopped {
+		if err := state.StopGC(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	return state, functions[0], functions[1]
+}
+
+func runHeapLimitBenchmark(
+	b *testing.B,
+	state *State,
+	function Value,
+	want float64,
+) {
+	b.Helper()
+	value, err := state.CallOne(function)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if result, ok := value.AsNumber(); !ok || result != want {
+		b.Fatalf("benchmark result = %v; want %v", value, want)
+	}
+}
+
+func collectHeapLimitBenchmark(
+	b *testing.B,
+	state *State,
+	mode heapLimitBenchmarkMode,
+) {
+	b.Helper()
+	if err := state.Collect(); err != nil {
+		b.Fatal(err)
+	}
+	// Explicit collection resumes Lua's collector; restore the benchmark's
+	// selected policy before its next allocation batch.
+	if mode.stopped {
+		if err := state.StopGC(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

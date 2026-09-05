@@ -50,7 +50,7 @@ const (
 
 // collectionControl is scheduling policy, kept separate from the object
 // ledger and its transient mark/sweep state. A stopped collector still
-// accepts explicit collection.
+// accepts explicit collection and services scheduled heap-limit checks.
 type collectionControl struct {
 	pause          int
 	stepMultiplier int
@@ -65,8 +65,8 @@ type collectionControl struct {
 	// heapLimit is Options.MaxHeapBytes; zero leaves the heap unlimited.
 	// baseline plus debt is the running estimate charge compares against,
 	// which overstates the heap by whatever has died since the last
-	// collection. Crossing it only schedules a cycle, so the measured
-	// baseline after that cycle is what the safe point enforces.
+	// collection. Crossing it schedules a cycle or, while stopped, a heap
+	// measurement. The safe point enforces the measured baseline.
 	heapLimit uint64
 
 	// attributedStrings records long string backing admitted and charged to
@@ -137,8 +137,8 @@ func (control *collectionControl) charge(bytes uint64) {
 func (control *collectionControl) refreshRunnable() {
 	control.runnable =
 		control.requested &&
-			!control.stopped &&
-			!control.servicing
+			!control.servicing &&
+			(!control.stopped || control.heapLimit != 0)
 }
 
 func (control *collectionControl) requestCycle() {
@@ -622,8 +622,9 @@ func (state *State) resetCollectionDebt() {
 }
 
 // serviceAutomaticCollection runs only after the executor has published a
-// complete root entry, operation, or call result. Allocation paths merely
-// charge debt. Finalizers reuse the active Thread and executor; automatic
+// complete root entry, operation, or call result. A stopped collector only
+// measures the heap to enforce its limit. Allocation paths merely charge
+// debt. Finalizers reuse the active Thread and executor; automatic
 // re-entry is suppressed while they run, while an explicit nested collection
 // remains legal.
 func serviceAutomaticCollection(thread *threadObject) (failure *Error) {
@@ -656,14 +657,18 @@ func runAutomaticCollection(thread *threadObject) (failure *Error) {
 		control.setServicing(false)
 	}()
 
-	state.collectUnreachable()
+	if !control.stopped {
+		state.collectUnreachable()
+	}
 	state.resetCollectionDebt()
-	// resetCollectionDebt has just measured the live heap into baseline, so
-	// this compares the limit against surviving objects rather than the
-	// estimate that scheduled the cycle.
+	// Enforce the measured heap rather than the allocation estimate. While
+	// stopped, uncollected objects remain in that measurement.
 	if limit := thread.effectiveHeapLimit(); limit != 0 &&
 		control.baseline > limit {
 		return newHeapLimitError()
+	}
+	if control.stopped {
+		return nil
 	}
 	failure = state.runPendingFinalizers(nil, thread)
 	return failure

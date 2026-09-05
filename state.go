@@ -121,6 +121,11 @@ type Options struct {
 	// the limit, so a State held near saturation trades throughput for
 	// enforcement.
 	//
+	// While automatic collection is stopped, the runtime still measures
+	// and enforces the limit at scheduled safe points. Uncollected objects
+	// count toward the limit; enforcement does not resume collection or
+	// run finalizers.
+	//
 	// While an xpcall error handler runs, the limit widens by
 	// max(64 KiB, MaxHeapBytes/8) so the handler can allocate its report,
 	// mirroring the emergency capacity MaxValues and MaxFrames grant.
