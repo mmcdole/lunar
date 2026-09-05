@@ -599,8 +599,10 @@ same control block as Lua's `collectgarbage`, so a change made through either
 is visible to the other.
 
 Nothing is reclaimed while the collector is stopped. Explicit `Collect` still
-works, and `MaxHeapBytes` is still enforced, so a long stop can surface a
-limit that automatic collection would have avoided.
+works, and `MaxHeapBytes` is still enforced through scheduled heap measurements.
+These measurements do not collect objects or run finalizers. Uncollected
+objects count toward the limit, so a long stop can surface a limit that
+automatic collection would have avoided.
 
 Lunar's collector is synchronous: a cycle runs to completion at a safe
 point, so `Collect` is a complete step and there is no separate `StepGC`.

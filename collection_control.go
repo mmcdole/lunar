@@ -10,10 +10,11 @@ package lua
 // StopGC suspends automatic collection. Explicit Collect still runs, and
 // so does a collection requested by Lua's collectgarbage.
 //
-// Retention is unbounded while the collector is stopped. A State with
-// Options.MaxHeapBytes still measures its heap at execution safe points,
-// so stopping the collector can surface the limit that automatic
-// collection would otherwise have avoided.
+// Uncollected objects remain retained while the collector is stopped. A
+// State with Options.MaxHeapBytes still measures its heap at scheduled
+// execution safe points without collecting or running finalizers, so
+// stopping the collector can surface the limit that automatic collection
+// would otherwise have avoided.
 func (state *State) StopGC() error {
 	if err := state.checkIdle(); err != nil {
 		return err

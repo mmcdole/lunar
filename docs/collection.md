@@ -163,6 +163,12 @@ Automatic finalizers run synchronously on the thread that triggered the cycle.
 Automatic reentry is suppressed while a finalizer batch is running; an
 explicit nested collection remains allowed.
 
+When automatic collection is stopped and `MaxHeapBytes` is configured, due
+work measures the heap and checks the limit without collecting objects,
+clearing weak entries, or running finalizers. Uncollected objects count toward
+the limit. Each measurement resets allocation debt so another check waits for
+further allocation; restarting collection requests a full cycle.
+
 ## Collection controls
 
 The base library exposes the Lua 5.1 operations:

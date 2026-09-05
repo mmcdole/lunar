@@ -258,7 +258,9 @@ not catchable by Lua `pcall`. Polling cannot preempt an arbitrary caller
 `Options.MaxHeapBytes` bounds the logical heap `HeapBytes` measures. The
 collector supplies the enforcement point: a charge that crosses the limit
 schedules a cycle, and the safe point raises only if the freshly measured live
-heap is still over. The failure is a `LimitError`, which Lua `pcall` cannot
+heap is still over. While automatic collection is stopped, the safe point
+measures without collecting, and uncollected objects count toward the limit.
+The failure is a `LimitError`, which Lua `pcall` cannot
 catch — a script must not be able to absorb the ceiling that bounds it and keep
 allocating. `ResourceError` remains the category for the limits Lua itself
 defines, such as stack overflow, which a script may legitimately recover from.
