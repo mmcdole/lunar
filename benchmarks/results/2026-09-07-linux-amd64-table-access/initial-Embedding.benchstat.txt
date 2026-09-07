@@ -1,0 +1,34 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                 │  baseline   │               lunar                │
+                                 │   sec/op    │   sec/op     vs base               │
+go_to_lua_scalars                  54.74n ± 1%   54.66n ± 1%       ~ (p=0.943 n=15)
+lua_to_go_scalar_1000              69.80µ ± 1%   69.23µ ± 1%       ~ (p=0.126 n=15)
+go_string_echo_128B                78.89n ± 2%   77.15n ± 1%  -2.21% (p=0.000 n=15)
+prebuilt_go_table_16_4_to_lua      293.2n ± 0%   276.7n ± 1%  -5.63% (p=0.000 n=15)
+create_fill_go_table_16_4_to_lua   2.459µ ± 8%   2.410µ ± 2%       ~ (p=0.798 n=15)
+geomean                            736.9n        720.9n       -2.17%
+
+                                 │   baseline   │                lunar                │
+                                 │     B/op     │    B/op     vs base                 │
+go_to_lua_scalars                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+lua_to_go_scalar_1000              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+go_string_echo_128B                0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+prebuilt_go_table_16_4_to_lua      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+create_fill_go_table_16_4_to_lua   640.0 ± 2%     641.0 ± 3%       ~ (p=0.992 n=15)
+geomean                                       ²               +0.03%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                 │   baseline   │                lunar                │
+                                 │  allocs/op   │ allocs/op   vs base                 │
+go_to_lua_scalars                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+lua_to_go_scalar_1000              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+go_string_echo_128B                0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+prebuilt_go_table_16_4_to_lua      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+create_fill_go_table_16_4_to_lua   6.000 ± 0%     6.000 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                       ²               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

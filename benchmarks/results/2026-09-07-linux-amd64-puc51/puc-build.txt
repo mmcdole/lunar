@@ -1,0 +1,57 @@
+make: Entering directory '/tmp/lunar-puc-assessment/lua-5.1.5/src'
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lapi.o lapi.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lcode.o lcode.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ldebug.o ldebug.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ldo.o ldo.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ldump.o ldump.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lfunc.o lfunc.c
+ldump.c: In function ‘DumpString’:
+ldump.c:63:26: warning: the comparison will always evaluate as ‘false’ for the pointer operand in ‘s + 24’ must not be NULL [-Waddress]
+   63 |  if (s==NULL || getstr(s)==NULL)
+      |                          ^~
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lgc.o lgc.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o llex.o llex.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lmem.o lmem.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lobject.o lobject.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lopcodes.o lopcodes.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lparser.o lparser.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lstate.o lstate.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lstring.o lstring.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ltable.o ltable.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ltm.o ltm.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lundump.o lundump.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lvm.o lvm.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lzio.o lzio.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lauxlib.o lauxlib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lbaselib.o lbaselib.c
+lauxlib.c: In function ‘luaL_loadfile’:
+lauxlib.c:577:4: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+  577 |    while ((c = getc(lf.f)) != EOF && c != LUA_SIGNATURE[0]) ;
+      |    ^~~~~
+lauxlib.c:578:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+  578 |     lf.extraline = 0;
+      |     ^~
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ldblib.o ldblib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o liolib.o liolib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lmathlib.o lmathlib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o loslib.o loslib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o ltablib.o ltablib.c
+ltablib.c: In function ‘addfield’:
+ltablib.c:137:3: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  137 |   if (!lua_isstring(L, -1))
+      |   ^~
+ltablib.c:140:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  140 |     luaL_addvalue(b);
+      |     ^~~~~~~~~~~~~
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lstrlib.o lstrlib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o loadlib.o loadlib.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o linit.o linit.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o lua.o lua.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o luac.o luac.c
+gcc -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN   -c -o print.o print.c
+ar rcu liblua.a lapi.o lcode.o ldebug.o ldo.o ldump.o lfunc.o lgc.o llex.o lmem.o lobject.o lopcodes.o lparser.o lstate.o lstring.o ltable.o ltm.o lundump.o lvm.o lzio.o lauxlib.o lbaselib.o ldblib.o liolib.o lmathlib.o loslib.o ltablib.o lstrlib.o loadlib.o linit.o	# DLL needs all object files
+ar: `u' modifier ignored since `D' is the default (see `U')
+ranlib liblua.a
+gcc -o lua  lua.o liblua.a -lm -ldl
+gcc -o luac  luac.o print.o liblua.a -lm -ldl
+make: Leaving directory '/tmp/lunar-puc-assessment/lua-5.1.5/src'

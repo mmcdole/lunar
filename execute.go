@@ -392,7 +392,8 @@ func runInstructions(thread *threadObject, stopDepth int) instruction {
 reload:
 	function := thread.frames[len(thread.frames)-1].function
 	prototype := function.prototype
-	values := thread.values
+	// Table helpers only index values; avoid keeping unused capacity live.
+	values := thread.values[:len(thread.values):len(thread.values)]
 	base := int(thread.frames[len(thread.frames)-1].base)
 	pc := int(thread.frames[len(thread.frames)-1].pc)
 	code := prototype.code
@@ -462,7 +463,7 @@ dispatch:
 			)
 
 		case opGetTable, opSelf:
-			result := executeRawTableGet(thread, current)
+			result := executeRawTableGet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -470,7 +471,7 @@ dispatch:
 			return result
 
 		case opGetGlobal, opGetField, opSelfField:
-			result := executeRawStringTableGet(thread, current)
+			result := executeRawStringTableGet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -478,7 +479,7 @@ dispatch:
 			return result
 
 		case opSetTable:
-			result := executeRawTableSet(thread, current)
+			result := executeRawTableSet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -486,7 +487,7 @@ dispatch:
 			return result
 
 		case opSetGlobal, opSetField:
-			result := executeRawStringTableSet(thread, current)
+			result := executeRawStringTableSet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}

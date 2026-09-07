@@ -1,0 +1,31 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                          │  baseline   │             arithmetic              │               fields               │            native_entry            │
+                          │   sec/op    │   sec/op     vs base                │   sec/op     vs base               │   sec/op     vs base               │
+numeric_for_10000           38.03µ ± 1%   37.29µ ± 1%   -1.93% (p=0.000 n=15)   38.33µ ± 0%  +0.79% (p=0.001 n=15)   37.67µ ± 1%  -0.93% (p=0.010 n=15)
+fixed_lua_calls_1000        24.53µ ± 0%   28.66µ ± 1%  +16.82% (p=0.000 n=15)   25.02µ ± 1%  +1.99% (p=0.000 n=15)   26.24µ ± 4%  +6.95% (p=0.000 n=15)
+table_field_get_set_10000   204.9µ ± 0%   203.9µ ± 0%   -0.50% (p=0.009 n=15)   188.1µ ± 1%  -8.22% (p=0.000 n=15)   205.6µ ± 0%  +0.32% (p=0.001 n=15)
+string_append_256           34.85µ ± 1%   35.25µ ± 1%   +1.14% (p=0.037 n=15)   34.99µ ± 1%       ~ (p=0.870 n=15)   34.87µ ± 1%       ~ (p=0.436 n=15)
+geomean                     50.80µ        52.65µ        +3.62%                  50.12µ       -1.35%                  51.59µ       +1.55%
+
+                          │    baseline    │              arithmetic               │                fields                 │             native_entry              │
+                          │      B/op      │     B/op      vs base                 │     B/op      vs base                 │     B/op      vs base                 │
+numeric_for_10000             0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+fixed_lua_calls_1000          0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+table_field_get_set_10000     0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+string_append_256           271.7Ki ± 0%     271.7Ki ± 0%       ~ (p=1.000 n=15) ¹   271.7Ki ± 0%       ~ (p=1.000 n=15) ¹   271.7Ki ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                  ²                 +0.00%                ²                 +0.00%                ²                 +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │   baseline   │             arithmetic              │               fields                │            native_entry             │
+                          │  allocs/op   │ allocs/op   vs base                 │ allocs/op   vs base                 │ allocs/op   vs base                 │
+numeric_for_10000           0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹
+fixed_lua_calls_1000        0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹
+table_field_get_set_10000   0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹   0.000 ± 0%       ~ (p=1.000 n=15) ¹
+string_append_256           255.0 ± 0%     255.0 ± 0%       ~ (p=1.000 n=15) ¹   255.0 ± 0%       ~ (p=1.000 n=15) ¹   255.0 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                ²               +0.00%                ²               +0.00%                ²               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

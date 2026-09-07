@@ -133,3 +133,60 @@ go run "$BENCHSTAT" \
 allocation traffic during that operation; they do not measure live or retained
 heap. Report every program row separately. Do not combine the program,
 embedding, interpreter, and CBOR results into one score.
+
+## Optional PUC Lua 5.1 comparison
+
+The `puc51` build tag adds PUC Lua to `BenchmarkPrograms`,
+`BenchmarkInterpreter`, `BenchmarkDiagnostics`, and their correctness checks.
+It uses the canonical sources, inputs, output oracles, warmup, and protected
+calls. Build an unmodified
+PUC Lua 5.1.5 static library with position-independent code, then point cgo at its
+headers and archive. For example, from this module with the source unpacked at
+`/tmp/lunar-puc-assessment/lua-5.1.5`:
+
+```sh
+export CGO_ENABLED=1
+export CGO_CFLAGS='-I/tmp/lunar-puc-assessment/lua-5.1.5/src'
+export CGO_LDFLAGS='/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl'
+go test -tags puc51 ./...
+go vet -tags puc51 ./...
+
+GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1 go test -tags puc51 -run '^$' \
+  -bench '^(BenchmarkPrograms|BenchmarkInterpreter)$/.*$/^runtime=(lunar|puc51)$' \
+  -benchtime=500ms -count=15 -cpu=1
+```
+
+This last command is a quick collection example. For publication, use
+`run-puc-comparison.sh`: it checks a clean checkout, runs tests and vet, builds
+once, and alternates runtime order in separate processes. Keep the cgo exports
+above and supply the reference build metadata:
+
+```sh
+export LUNAR_PUC_SOURCE_SHA256='<SHA-256 of the Lua 5.1.5 source archive>'
+export LUNAR_PUC_LIBRARY='/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a'
+export LUNAR_PUC_BUILD_FLAGS='<exact compiler and make flags used>'
+LUNAR_BENCH_POWER_POLICY='AC power; otherwise idle' \
+  ./run-puc-comparison.sh /tmp/lunar-puc-benchmarks.txt
+```
+
+The script includes the diagnostic probes, whose results must stay separate
+from the canonical programs. It records the source release, archive and library
+checksums, C compiler, build flags, and benchmark binary checksum alongside
+the environment metadata. `LUNAR_BENCH_CPU` optionally pins execution to a
+Linux CPU with `taskset`. The existing `run-comparison.sh` selects only the
+three Go runtimes.
+
+Each timed PUC operation pays one Go-to-C transition, a cached registry lookup,
+and `lua_pcall(0, 0, 0)`; the complete Lua workload executes in C. Compilation,
+library setup, result conversion, and cleanup remain outside timing. PUC keeps
+its default garbage collector settings and native allocator. The forced Go GC
+before timing only clears Go garbage; it does not collect PUC's heap.
+
+Omit `-benchmem` for this comparison. The Go engines request their own allocation
+metrics, while PUC omits them because Go's allocation counters cannot observe
+C allocations. This adapter does not measure PUC live memory or allocation
+traffic. Without `-tags puc51`, the benchmark module has no C dependency.
+
+The [2026-09-07 PUC assessment](results/2026-09-07-linux-amd64-puc51/README.md)
+contains raw comparisons, whole-program candidate experiments, profiles, and
+the resulting optimization priorities.

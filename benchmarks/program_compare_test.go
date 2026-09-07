@@ -95,6 +95,8 @@ type preparedProgram struct {
 type programEngine struct {
 	name    string
 	prepare func(programSpec, string) (*preparedProgram, error)
+	// Native allocations are invisible to Go's benchmark allocation counters.
+	nativeHeap bool
 }
 
 var programEngines = []programEngine{
@@ -193,7 +195,9 @@ func benchmarkPreparedProgram(
 	validatePreparedResult(b, prepared, oracle, "warmup")
 
 	runtime.GC()
-	b.ReportAllocs()
+	if !engine.nativeHeap {
+		b.ReportAllocs()
+	}
 	b.ResetTimer()
 	for b.Loop() {
 		if err := prepared.run(); err != nil {

@@ -1,0 +1,27 @@
+{
+  "arithmetic": {
+    "revision": "948956efb8e7a163351fa6210d803c9526f742af",
+    "patches": {
+      "arithmetic-split.patch": "ddaea78199e0393a13975f5d764c8e91529458a474a1d4f3b35642f6d26e4f50"
+    },
+    "binary_sha256": "84ccd25aeae4d6e3c034430b96a93fc121073ac25a602c96a4289235d88a95da"
+  },
+  "fields": {
+    "revision": "2202e031b64421e9d98684338f2bd689f75df356",
+    "patches": {
+      "table_executor_locals.patch": "7d2f63e0f29a493bd70b47632ffa1001250867c173b46cd00c12e1078807d1b0"
+    },
+    "binary_sha256": "dbbd50bec048605d662f88d09c02acde15fdfbb77db97cbc62dbd0b1b6034010"
+  },
+  "native_entry": {
+    "revision": "6a818cfc9547605386fb7b899d8d45027b84ede8",
+    "patches": {
+      "native-entry.patch": "b42e08d0d80c821d79401775f48385b0dcfa9cde338add464d2e0709d9108c37"
+    },
+    "binary_sha256": "0127033f56f22a6a23cd54efe0df7bbf2af49535f25ac40dd04d6e1430fe8ac6"
+  },
+  "baseline": {
+    "revision": "ff0795d3cba05772b07633430d1d34bc0feb9850",
+    "binary_sha256": "8875e6ac4fd3dc3328f763eeef182f569e70f27645bf96c29147a3592fe86912"
+  }
+}

@@ -1,0 +1,20 @@
+File: compare.test
+Build ID: 9a87132066164bc271e725e18378fc986e23d86e
+Type: alloc_space
+Time: 2026-09-07 16:18:42 CDT
+Showing nodes accounting for 1746.10MB, 99.83% of 1749.14MB total
+Dropped 25 nodes (cum <= 8.75MB)
+Showing top 12 nodes out of 21
+      flat  flat%   sum%        cum   cum%
+ 1375.10MB 78.62% 78.62%  1722.45MB 98.47%  github.com/mmcdole/lunar.newTable
+  264.01MB 15.09% 93.71%   264.01MB 15.09%  github.com/mmcdole/lunar.makeTableVector[go.shape.struct { github.com/mmcdole/lunar.ref unsafe.Pointer; github.com/mmcdole/lunar.bits uint64 }] (inline)
+   83.34MB  4.76% 98.47%    83.34MB  4.76%  github.com/mmcdole/lunar.appendObjectVector[go.shape.074f0f12557b29e2710d270d34df08fec6112d65171b0cffa248b25bb55ed0dc] (inline)
+   23.65MB  1.35% 99.83%    23.65MB  1.35%  github.com/mmcdole/lunar.retainObjectVectorWithSlack[go.shape.074f0f12557b29e2710d270d34df08fec6112d65171b0cffa248b25bb55ed0dc] (inline)
+         0     0% 99.83%  1746.10MB 99.83%  github.com/mmcdole/lunar.(*State).CallInto
+         0     0% 99.83%  1746.10MB 99.83%  github.com/mmcdole/lunar.(*State).callMain
+         0     0% 99.83%    23.65MB  1.35%  github.com/mmcdole/lunar.(*State).collectUnreachable
+         0     0% 99.83%    83.34MB  4.76%  github.com/mmcdole/lunar.(*State).registerTable
+         0     0% 99.83%  1746.10MB 99.83%  github.com/mmcdole/lunar.(*State).runMainCall
+         0     0% 99.83%    23.65MB  1.35%  github.com/mmcdole/lunar.(*State).sweepTables
+         0     0% 99.83%  1746.10MB 99.83%  github.com/mmcdole/lunar.driveExecution
+         0     0% 99.83%  1746.10MB 99.83%  github.com/mmcdole/lunar.execute

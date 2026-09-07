@@ -1,0 +1,1292 @@
+# See manifest.json for clean source revisions, binary hashes and collection controls.
+# round: 1; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15607	     38438 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23746	     25253 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2876	    208294 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16922	     35355 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11080149	        54.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8670	     69581 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7703564	        78.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2053560	       292.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  297240	      2440 ns/op	     665 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 139264185 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20143363 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53159376 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45903718 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 1; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15402	     38932 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23742	     25336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3123	    191013 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16418	     36421 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11003011	        54.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8638	     69684 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7761612	        77.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2138601	       279.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  308977	      2271 ns/op	     630 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137272714 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18777686 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48692436 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45803926 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 1; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2612	    270694 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	    7405	     76365 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     789	    762465 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   16058	     37321 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11376836	        52.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7381	     98507 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8680645	        68.97 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       512.4 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  471006	      1287 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 157012568 ns/op	75631832 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  29884122 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 164868268 ns/op	46728482 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 145685376 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 1; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2382	    271822 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     55039 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     714	    887554 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9645	     55696 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4645801	       128.3 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8204	     70233 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4658260	       129.0 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  692215	       865.2 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  403173	      1482 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 163780090 ns/op	103845416 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33524915 ns/op	11959584 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 177271358 ns/op	74249224 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 129510101 ns/op	79431632 B/op	 9925272 allocs/op
+PASS
+# round: 1; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59645831 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  11968796 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  23966807 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24389360 ns/op
+PASS
+# round: 2; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15403	     39020 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23696	     25290 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3141	    189973 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16750	     35843 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10937294	        55.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8563	     69417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7738380	        77.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2150325	       278.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  299546	      2373 ns/op	     662 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137826357 ns/op	68951952 B/op	 1009044 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18896158 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48924336 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45141270 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 2; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2433	    271152 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73547 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     794	    753719 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15520	     38656 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11297158	        53.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7501	    100303 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8044618	        74.42 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       506.4 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  476623	      1277 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 158388896 ns/op	75631910 B/op	 1009812 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  29602116 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 163643890 ns/op	46728470 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 145661347 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 2; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2414	    279602 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     56591 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     702	    916748 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9741	     54723 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4733595	       127.5 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8160	     73364 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4598934	       131.0 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  675033	       889.0 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  393170	      1530 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 165702640 ns/op	103845470 B/op	 2533643 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33474222 ns/op	11959583 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 187983038 ns/op	74249229 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 132548424 ns/op	79431620 B/op	 9925272 allocs/op
+PASS
+# round: 2; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  58847561 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  11925947 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24133300 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24742964 ns/op
+PASS
+# round: 2; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15742	     38054 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   24172	     24937 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2893	    208542 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16730	     35787 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10914097	        54.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8611	     70019 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7650848	        78.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2034862	       293.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  297930	      2459 ns/op	     653 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 137267432 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20380021 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53068064 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      13	  45943999 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 3; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2497	    267385 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73609 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     770	    758906 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15678	     38305 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11353516	        52.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7498	     97868 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8798674	        68.76 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       507.1 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  435788	      1325 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 163548480 ns/op	75631754 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  29756955 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 162602918 ns/op	46728494 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 145824691 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 3; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2484	    277187 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     55571 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     709	    909641 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9403	     55549 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4758271	       126.0 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8248	     69545 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4696567	       128.6 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  694501	       869.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  393914	      1499 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 161791694 ns/op	103845390 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33989615 ns/op	11959588 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 176554798 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 132823928 ns/op	79431648 B/op	 9925272 allocs/op
+PASS
+# round: 3; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59945319 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  12002124 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24582868 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24469275 ns/op
+PASS
+# round: 3; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15859	     38013 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   24145	     24855 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2914	    209833 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16952	     35362 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11163878	        53.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8768	     69122 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7701334	        78.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2048474	       292.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  311205	      2229 ns/op	     630 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 145375362 ns/op	68935440 B/op	 1009048 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20260986 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53649505 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      13	  45566081 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 3; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15309	     39129 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23737	     25265 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3170	    191458 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16909	     35486 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10986210	        54.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8648	     69152 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7760862	        77.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2168726	       276.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  313522	      2429 ns/op	     628 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 140168180 ns/op	69057520 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18889416 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48610904 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45557342 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 4; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2456	    267903 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     55024 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     709	    911383 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9613	     55899 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4745912	       126.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8148	     71029 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4622049	       129.7 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  718616	       855.0 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  393240	      1487 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 163018190 ns/op	103845420 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      18	  33283593 ns/op	11959587 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 178213732 ns/op	74249224 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 139710386 ns/op	79431636 B/op	 9925272 allocs/op
+PASS
+# round: 4; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  58950246 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      50	  11884823 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24315841 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  25093829 ns/op
+PASS
+# round: 4; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15774	     37985 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   22975	     26302 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2856	    210602 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16712	     35831 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10987762	        54.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8724	     69414 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7691420	        78.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2058260	       293.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  313784	      2254 ns/op	     638 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 138042502 ns/op	68521072 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20282942 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53375041 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45540819 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 4; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15638	     38371 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   24025	     24951 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3208	    188009 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16813	     35754 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10920410	        54.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8577	     70450 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7640389	        78.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2183527	       276.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  264247	      2661 ns/op	     640 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137545766 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18676353 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48341287 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45146482 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 4; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2582	    267258 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73056 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     822	    764925 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15670	     38412 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11185976	        54.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7308	     99644 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8479206	        70.08 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       507.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  460477	      1290 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 156114648 ns/op	75631754 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  30000706 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 165173990 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 147008252 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 5; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  60434240 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      48	  11871336 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  23909136 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24672141 ns/op
+PASS
+# round: 5; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15697	     38309 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23850	     25026 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2912	    207520 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16267	     36625 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11070207	        54.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8625	     69723 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7563208	        79.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2051198	       292.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  328088	      2368 ns/op	     632 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 139029159 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20207506 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  52917114 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45920563 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 5; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15361	     39000 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23767	     25294 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3138	    190137 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16915	     35329 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11164722	        53.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8774	     68318 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7591734	        77.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2181777	       274.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  319963	      2453 ns/op	     670 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 136261498 ns/op	68994128 B/op	 1009044 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      32	  18756369 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48475329 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  46126854 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 5; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2630	    263327 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73315 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     764	    808050 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15574	     38432 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11286062	        52.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7378	    100527 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8664859	        69.82 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       513.8 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  471190	      1298 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 156874480 ns/op	75631766 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  30091560 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 164982053 ns/op	46728478 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 146414716 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 5; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2295	    284648 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     57961 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     684	    915865 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9290	     57121 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4677366	       131.3 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8162	     74322 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4594957	       130.3 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  695322	       877.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  395737	      1497 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 164060242 ns/op	103845424 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      18	  34221005 ns/op	11959584 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 179434536 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 137663431 ns/op	79431644 B/op	 9925272 allocs/op
+PASS
+# round: 6; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15796	     37940 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23749	     25239 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2904	    207697 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16810	     35662 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11033726	        54.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8773	     69207 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7709089	        77.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2046492	       293.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  300651	      2265 ns/op	     634 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 140909082 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20224135 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53485661 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  46174787 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 6; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15290	     39309 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23372	     25549 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3144	    190916 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16411	     36125 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11102127	        54.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8774	     68333 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7743147	        77.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2195389	       272.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  293328	      2570 ns/op	     693 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137030606 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  19020498 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  49271820 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45554776 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 6; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2540	    266924 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     72408 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     806	    753334 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15674	     38254 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11261940	        52.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7557	     95959 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8737194	        68.41 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       514.5 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  471426	      1289 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 166355198 ns/op	75631766 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  29936051 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 165095735 ns/op	46728474 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 147048546 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 6; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2480	    272954 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     56875 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     720	    899451 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9834	     54837 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4755098	       126.1 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8289	     70039 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4685494	       129.6 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  700964	       861.8 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  405150	      1478 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 164734376 ns/op	103845398 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  34642361 ns/op	11959581 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 193361286 ns/op	74249240 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 144286008 ns/op	79431648 B/op	 9925272 allocs/op
+PASS
+# round: 6; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  58880956 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      50	  11925946 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24149790 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24733731 ns/op
+PASS
+# round: 7; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15318	     39324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   22777	     25797 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3152	    190573 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16712	     36312 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10772452	        55.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8648	     70108 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7728987	        77.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2150336	       280.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  290149	      2331 ns/op	     630 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 140491903 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18884277 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48837176 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45092422 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 7; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2433	    269244 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73395 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     814	    749376 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   16136	     37108 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11242495	        53.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7359	     99255 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8839618	        67.60 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       515.1 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  454080	      1306 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 157740226 ns/op	75631788 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  30027102 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 165491723 ns/op	46728498 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 144960718 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 7; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2413	    280023 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     57703 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     678	    913616 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9472	     56649 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4649569	       127.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8167	     72832 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4560802	       136.2 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  674428	       890.8 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  407893	      1497 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 164262529 ns/op	103845348 B/op	 2533641 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      18	  33858375 ns/op	11959590 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 180842461 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 128686310 ns/op	79431640 B/op	 9925272 allocs/op
+PASS
+# round: 7; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59424845 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      50	  11871591 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      25	  23744161 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24301865 ns/op
+PASS
+# round: 7; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15505	     38680 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23019	     25487 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2887	    208619 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16597	     36167 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10874569	        56.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8558	     69910 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7642093	        78.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2040115	       294.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  294531	      2512 ns/op	     646 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 140599909 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20331584 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53809707 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  46220114 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 8; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2482	    268556 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73491 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     788	    765490 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15462	     38692 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	10898390	        54.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7365	     99852 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8758880	        70.43 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       527.6 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  400833	      1483 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 186064246 ns/op	75631965 B/op	 1009813 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      18	  32986367 ns/op	  393646 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 189798379 ns/op	46728514 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 157948132 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 8; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2407	    274675 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     60512 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     613	    958123 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9223	     56818 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4673341	       127.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8212	     70485 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4631782	       129.8 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  709120	       867.1 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  402496	      1487 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 167414742 ns/op	103845418 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  34808827 ns/op	11959584 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 189702770 ns/op	74249224 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 132777930 ns/op	79431652 B/op	 9925272 allocs/op
+PASS
+# round: 8; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  60438413 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      48	  12131608 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      22	  28774001 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  25328452 ns/op
+PASS
+# round: 8; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15620	     38646 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23899	     25136 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2876	    208993 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16849	     35565 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11136121	        54.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8600	     68974 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7781428	        77.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2026950	       298.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  277843	      2511 ns/op	     651 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 143455956 ns/op	68951952 B/op	 1009044 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      27	  20477433 ns/op	    1200 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53350673 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  46021892 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 8; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15310	     39232 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23690	     25159 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3183	    190210 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16651	     35800 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11014450	        54.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8715	     68895 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7812775	        77.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2152454	       280.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  298200	      2389 ns/op	     658 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 151918040 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  19103094 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48851404 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45825422 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 9; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2311	    300544 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     64119 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     627	    987231 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9130	     60155 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 3394597	       147.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7932	     75199 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4646640	       128.5 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  703880	       857.4 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  405955	      1476 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 163255365 ns/op	103845416 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33794357 ns/op	11959593 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 184038096 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 143088540 ns/op	79431652 B/op	 9925272 allocs/op
+PASS
+# round: 9; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59355686 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      50	  11924745 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24154238 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24353467 ns/op
+PASS
+# round: 9; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15658	     38380 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23810	     25140 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2809	    213767 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16850	     35956 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10947776	        54.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8535	     70259 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7673578	        78.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2035214	       295.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  310350	      2471 ns/op	     640 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 139989240 ns/op	68525712 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      30	  20050190 ns/op	    1179 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53116743 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45842948 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 9; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15319	     39086 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23758	     25321 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3147	    192860 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16159	     36959 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10929060	        54.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8511	     70744 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7886416	        76.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2199534	       272.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  293972	      2594 ns/op	     657 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 139624688 ns/op	69160752 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18822956 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48426765 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45514010 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 9; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2563	    269971 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73704 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     780	    778686 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15381	     38923 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11158536	        53.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7281	    106864 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8048031	        71.39 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       589.0 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  308234	      2424 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       3	 196908646 ns/op	75631874 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  34692130 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 170577443 ns/op	46728504 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 158901136 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 10; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59832919 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  13411068 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24788830 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24553543 ns/op
+PASS
+# round: 10; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15729	     38254 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23230	     25517 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2811	    214808 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16590	     36055 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10976337	        55.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8666	     69497 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7569181	        79.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2049015	       295.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  218680	      2493 ns/op	     664 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 144101671 ns/op	68525712 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20272459 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  55278972 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  48713625 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 10; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15099	     39617 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23464	     25517 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3129	    191138 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16232	     36824 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10993476	        54.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8716	     69138 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7862654	        76.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2167500	       275.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  313237	      2350 ns/op	     643 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137486914 ns/op	68769584 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18702748 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48695968 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45845711 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 10; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2605	    268329 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73250 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     813	    750086 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15987	     37365 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11425268	        52.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7527	     97532 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8870989	        68.47 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       522.0 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  455341	      1315 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 158348184 ns/op	75631754 B/op	 1009810 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  30614928 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       3	 172358202 ns/op	46728504 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 147164568 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 10; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2466	    279890 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     57154 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     693	    909473 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9496	     55017 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4777471	       125.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8262	     70389 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4672390	       130.0 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  719643	       860.8 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  408464	      1484 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 165217783 ns/op	103845428 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33244992 ns/op	11959586 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 176780357 ns/op	74249218 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 135484103 ns/op	79431656 B/op	 9925272 allocs/op
+PASS
+# round: 11; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15596	     38441 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23607	     25445 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2852	    208152 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16899	     35420 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10958714	        54.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8576	     70307 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7539753	        79.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2058957	       291.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  307032	      2641 ns/op	     650 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 139292559 ns/op	68920976 B/op	 1009046 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20315897 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  52988391 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45730838 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 11; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15314	     39150 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23680	     25427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3122	    191281 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16605	     36137 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10894959	        55.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8635	     69284 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7792286	        77.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2165041	       276.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  270267	      2410 ns/op	     635 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 139654916 ns/op	68592272 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18807101 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  47934359 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45198967 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 11; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2578	    262863 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     72791 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     810	    749954 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15880	     37817 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11299190	        52.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7576	     98287 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8739697	        70.78 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       515.3 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  458648	      1336 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 165107575 ns/op	75631832 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  29559868 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 164684539 ns/op	46728474 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 150777374 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 11; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2450	    277454 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     59844 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     693	    926626 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9324	     55629 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4718266	       127.0 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8222	     71403 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4389384	       131.7 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  689827	       899.9 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  384127	      1473 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 164035443 ns/op	103845374 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      18	  33251337 ns/op	11959584 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 186890806 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 139593031 ns/op	79431644 B/op	 9925272 allocs/op
+PASS
+# round: 11; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59521792 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  12006791 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24345136 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      22	  25613185 ns/op
+PASS
+# round: 12; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15414	     38987 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23661	     25405 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3141	    192956 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16197	     37113 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	10629594	        55.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8570	     70324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7654606	        77.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2128983	       278.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  273289	      2453 ns/op	     653 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 141951509 ns/op	68769584 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18753166 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  49527750 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45265501 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 12; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2522	    270763 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     74951 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     762	    791202 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15182	     39551 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11414241	        53.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7214	     99645 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8962168	        67.91 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1205874	       499.2 ns/op	      39 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  463960	      1352 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 164107089 ns/op	75631788 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  30019339 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 164173054 ns/op	46728474 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 146394189 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 12; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2378	    285463 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     58239 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     663	    973711 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    8962	     57492 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4749074	       127.9 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8068	     72643 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4526100	       131.7 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  676261	       894.0 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  379563	      1501 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 162865193 ns/op	103845432 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33983775 ns/op	11959588 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 180538290 ns/op	74249208 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 138494080 ns/op	79431648 B/op	 9925272 allocs/op
+PASS
+# round: 12; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59229585 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  12057069 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24562997 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  25074090 ns/op
+PASS
+# round: 12; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15703	     38116 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   24040	     24947 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2913	    210547 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16153	     37140 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10855004	        54.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8624	     69918 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7340661	        80.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2042953	       293.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  304483	      2648 ns/op	     655 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 143491502 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20566125 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53683856 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45921868 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 13; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2557	    268713 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     74554 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     759	    800917 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15800	     37959 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11355160	        52.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7311	     99838 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8252079	        74.16 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       506.5 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  454156	      1308 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 165833708 ns/op	75631832 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      19	  30534204 ns/op	  393648 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 165083998 ns/op	46728490 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 149356257 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 13; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2370	    283923 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     57929 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     667	    946834 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	   10680	     56075 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4637985	       128.7 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    7819	     74805 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4575789	       133.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  683013	       907.9 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  391630	      1537 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       3	 168611121 ns/op	103845434 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  34590682 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 191867922 ns/op	74249202 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 142242606 ns/op	79431640 B/op	 9925272 allocs/op
+PASS
+# round: 13; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  61472785 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      48	  12182490 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      22	  24901032 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24706488 ns/op
+PASS
+# round: 13; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15590	     38466 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23880	     25094 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2874	    208108 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16702	     35916 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10975030	        55.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8532	     70098 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7472545	        81.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2063671	       294.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  296754	      2393 ns/op	     636 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 142745326 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20499832 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  53289081 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  46042791 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 13; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15362	     39021 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23750	     25312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3105	    191772 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16650	     35846 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11129320	        54.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8642	     69234 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7789873	        77.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2172225	       276.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  303723	      2355 ns/op	     633 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 142104292 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  19042466 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  49125510 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      12	  45579606 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 14; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2445	    278929 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     57261 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     680	    932565 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9375	     54930 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4737187	       126.9 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8356	     70324 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4680909	       129.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  692787	       884.5 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  397892	      1525 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 166303545 ns/op	103845350 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33759466 ns/op	11959586 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 180981250 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 136137483 ns/op	79431648 B/op	 9925272 allocs/op
+PASS
+# round: 14; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59068322 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      49	  11937245 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      24	  24074111 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24449964 ns/op
+PASS
+# round: 14; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15459	     38723 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   23692	     25311 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2835	    209950 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16556	     36322 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	10842338	        55.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8533	     70468 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7456062	        80.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2065206	       290.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  312825	      2270 ns/op	     632 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 142021059 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20255454 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  52644504 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      13	  45549290 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 14; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15391	     39108 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23487	     25543 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3141	    190225 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16780	     36135 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11064870	        54.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8660	     68898 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7669486	        77.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2172145	       275.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  320346	      2399 ns/op	     629 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 137963801 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18766336 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48215401 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  45260683 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 14; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2467	    269759 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73463 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     802	    746179 ns/op	  236959 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   15751	     37761 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	11509197	        52.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7497	     97470 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 9024748	        68.88 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       506.2 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  465756	      1279 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 156880479 ns/op	75631832 B/op	 1009811 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  29624206 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 164267145 ns/op	46728486 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 146023040 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 15; runtime: puc51
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=puc51         	       9	  59172247 ns/op
+BenchmarkPrograms/program=fannkuchredux/runtime=puc51       	      50	  11879976 ns/op
+BenchmarkPrograms/program=nbody/runtime=puc51               	      22	  23923742 ns/op
+BenchmarkPrograms/program=spectralnorm/runtime=puc51        	      24	  24272773 ns/op
+PASS
+# round: 15; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=baseline         	   15730	     38068 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=baseline      	   24045	     25012 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=baseline 	    2880	    209099 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=baseline         	   16363	     35339 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=baseline           	11032452	        54.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=baseline       	    8625	     69799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=baseline         	 7473006	        80.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=baseline         	 2048060	       293.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=baseline      	  228069	      2531 ns/op	     634 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=baseline                         	       4	 140239190 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline                       	      28	  20281910 ns/op	    1193 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline                               	      10	  52907311 ns/op	    2888 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline                        	      12	  45799345 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 15; runtime: lunar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar         	   15392	     38988 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar      	   23671	     25397 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar 	    3069	    188264 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=lunar         	   16996	     35354 ns/op	  278248 B/op	     255 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar           	11181739	        53.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar       	    8730	     68708 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar         	 7807864	        76.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar         	 2187840	       274.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar      	  308744	      2445 ns/op	     641 B/op	       6 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=lunar                         	       4	 138356364 ns/op	68841232 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=lunar                       	      31	  18820796 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=lunar                               	      12	  48267376 ns/op	    2824 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=lunar                        	      13	  44843098 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 15; runtime: gopherlua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=gopherlua         	    2527	    267134 ns/op	  237855 B/op	     929 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=gopherlua      	   10000	     73642 ns/op	   20960 B/op	      81 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=gopherlua 	     800	    744962 ns/op	  236960 B/op	     925 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=gopherlua         	   16123	     37197 ns/op	  284432 B/op	     520 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua           	10742347	        55.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua       	    7606	     97633 ns/op	   29872 B/op	    1085 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua         	 8864937	        67.01 ns/op	      16 B/op	       1 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua         	 1000000	       513.7 ns/op	      40 B/op	       0 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua      	  454568	      1310 ns/op	    1384 B/op	      37 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=gopherlua                         	       4	 156142896 ns/op	75631598 B/op	 1009808 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua                       	      20	  29976558 ns/op	  393650 B/op	    1559 allocs/op
+BenchmarkPrograms/program=nbody/runtime=gopherlua                               	       4	 163791956 ns/op	46728478 B/op	  376439 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=gopherlua                        	       4	 145655955 ns/op	59195864 B/op	  231170 allocs/op
+PASS
+# round: 15; runtime: golua
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkInterpreter/case=numeric_for_10000/runtime=golua         	    2464	    278625 ns/op	  240176 B/op	   30006 allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=golua      	   10000	     55989 ns/op	   24176 B/op	    3006 allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000/runtime=golua 	     697	    898035 ns/op	  400192 B/op	   40007 allocs/op
+BenchmarkInterpreter/case=string_append_256/runtime=golua         	    9256	     54658 ns/op	  302944 B/op	    1795 allocs/op
+BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua           	 4773656	       125.6 ns/op	     160 B/op	       5 allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua       	    8211	     68798 ns/op	   32160 B/op	    4005 allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua         	 4683618	       130.3 ns/op	     176 B/op	       5 allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua         	  703028	       863.3 ns/op	     576 B/op	      57 allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua      	  400971	      1477 ns/op	    1536 B/op	      89 allocs/op
+BenchmarkPrograms/program=binarytrees/runtime=golua                         	       4	 161143083 ns/op	103845444 B/op	 2533642 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=golua                       	      16	  33362284 ns/op	11959585 B/op	 1494687 allocs/op
+BenchmarkPrograms/program=nbody/runtime=golua                               	       3	 173279407 ns/op	74249213 B/op	 8080629 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=golua                        	       4	 130215284 ns/op	79431632 B/op	 9925272 allocs/op
+PASS
+# completed: 15 samples for each of 56 rows (840 samples total)

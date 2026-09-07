@@ -1,0 +1,29 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                          │    lunar    │                puc51                │
+                          │   sec/op    │   sec/op     vs base                │
+numeric_for_10000           38.25µ ± 1%   24.10µ ± 1%  -37.00% (p=0.000 n=15)
+fixed_lua_calls_1000        24.95µ ± 4%   12.73µ ± 3%  -49.00% (p=0.000 n=15)
+table_field_get_set_10000   207.4µ ± 1%   110.1µ ± 1%  -46.90% (p=0.000 n=15)
+string_append_256           35.84µ ± 1%   34.89µ ± 1%   -2.66% (p=0.000 n=15)
+geomean                     51.61µ        32.95µ       -36.16%
+
+                          │     lunar      │
+                          │      B/op      │
+numeric_for_10000             0.000 ± 0%
+fixed_lua_calls_1000          0.000 ± 0%
+table_field_get_set_10000     0.000 ± 0%
+string_append_256           271.7Ki ± 0%
+geomean                                  ¹
+¹ summaries must be >0 to compute geomean
+
+                          │    lunar     │
+                          │  allocs/op   │
+numeric_for_10000           0.000 ± 0%
+fixed_lua_calls_1000        0.000 ± 0%
+table_field_get_set_10000   0.000 ± 0%
+string_append_256           255.0 ± 0%
+geomean                                ¹
+¹ summaries must be >0 to compute geomean

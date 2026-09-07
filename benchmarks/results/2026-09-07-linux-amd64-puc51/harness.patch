@@ -1,0 +1,685 @@
+diff --git a/benchmarks/README.md b/benchmarks/README.md
+index b9b0016..31bb977 100644
+--- a/benchmarks/README.md
++++ b/benchmarks/README.md
+@@ -133,3 +133,41 @@ go run "$BENCHSTAT" \
+ allocation traffic during that operation; they do not measure live or retained
+ heap. Report every program row separately. Do not combine the program,
+ embedding, interpreter, and CBOR results into one score.
++
++## Optional PUC Lua 5.1 comparison
++
++The `puc51` build tag adds PUC Lua to `BenchmarkPrograms`,
++`BenchmarkInterpreter`, and their correctness checks. It uses the canonical
++sources, inputs, output oracles, warmup, and protected calls. Build an unmodified
++PUC Lua 5.1.5 static library with position-independent code, then point cgo at its
++headers and archive. For example, from this module with the source unpacked at
++`/tmp/lunar-puc-assessment/lua-5.1.5`:
++
++```sh
++export CGO_ENABLED=1
++export CGO_CFLAGS='-I/tmp/lunar-puc-assessment/lua-5.1.5/src'
++export CGO_LDFLAGS='/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl'
++go test -tags puc51 ./...
++go vet -tags puc51 ./...
++
++GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1 go test -tags puc51 -run '^$' \
++  -bench '^(BenchmarkPrograms|BenchmarkInterpreter)$/.*$/^runtime=(lunar|puc51)$' \
++  -benchtime=500ms -count=15 -cpu=1
++```
++
++This last command is a quick collection example. Published comparisons must
++still run each runtime in a separate process, rotate their order, retain raw
++output, and record the source release, archive checksum, C compiler, build
++flags, and library checksum alongside the normal environment metadata. The
++existing `run-comparison.sh` selects only the three Go runtimes.
++
++Each timed PUC operation pays one Go-to-C transition, a cached registry lookup,
++and `lua_pcall(0, 0, 0)`; the complete Lua workload executes in C. Compilation,
++library setup, result conversion, and cleanup remain outside timing. PUC keeps
++its default garbage collector settings and native allocator. The forced Go GC
++before timing only clears Go garbage; it does not collect PUC's heap.
++
++Omit `-benchmem` for this comparison. The Go engines request their own allocation
++metrics, while PUC omits them because Go's allocation counters cannot observe
++C allocations. This adapter does not measure PUC live memory or allocation
++traffic. Without `-tags puc51`, the benchmark module has no C dependency.
+diff --git a/benchmarks/compare_test.go b/benchmarks/compare_test.go
+index 6f877bc..13b8822 100644
+--- a/benchmarks/compare_test.go
++++ b/benchmarks/compare_test.go
+@@ -75,18 +75,25 @@ end
+ 	},
+ }
+ 
++type interpreterEngine struct {
++	name      string
++	benchmark func(*testing.B, workload)
++}
++
++var interpreterEngines = []interpreterEngine{
++	{name: "lunar", benchmark: benchmarkLunar},
++	{name: "gopherlua", benchmark: benchmarkGopherLua},
++	{name: "golua", benchmark: benchmarkGoLua},
++}
++
+ func BenchmarkInterpreter(b *testing.B) {
+ 	for _, workload := range runtimeWorkloads {
+ 		b.Run("case="+workload.name, func(b *testing.B) {
+-			b.Run("runtime=lunar", func(b *testing.B) {
+-				benchmarkLunar(b, workload)
+-			})
+-			b.Run("runtime=gopherlua", func(b *testing.B) {
+-				benchmarkGopherLua(b, workload)
+-			})
+-			b.Run("runtime=golua", func(b *testing.B) {
+-				benchmarkGoLua(b, workload)
+-			})
++			for _, engine := range interpreterEngines {
++				b.Run("runtime="+engine.name, func(b *testing.B) {
++					engine.benchmark(b, workload)
++				})
++			}
+ 		})
+ 	}
+ }
+diff --git a/benchmarks/diagnostic_test.go b/benchmarks/diagnostic_test.go
+new file mode 100644
+index 0000000..155b9cd
+--- /dev/null
++++ b/benchmarks/diagnostic_test.go
+@@ -0,0 +1,138 @@
++package compare
++
++import "testing"
++
++// These probes isolate paths absent from the canonical interpreter rows.
++// Keep their results separate from the established program comparisons.
++var diagnosticWorkloads = []workload{
++	{name: "call_only", source: `function benchmark() benchmark_result = 1 end`, want: 1},
++	{name: "numeric_pow_10000", source: `
++function benchmark()
++  local total = 0
++  for i = 1, 10000 do total = total + i^2 end
++  benchmark_result = total
++end`, want: 333383335000},
++	{name: "native_sqrt_10000", source: `
++local sqrt = math.sqrt
++function benchmark()
++  local total = 0
++  for i = 1, 10000 do total = total + sqrt(i*i) end
++  benchmark_result = total
++end`, want: 50005000},
++	{name: "array_get_10000", source: `
++local values = {}
++for i = 1, 10000 do values[i] = i end
++function benchmark()
++  local total = 0
++  for i = 1, 10000 do total = total + values[i] end
++  benchmark_result = total
++end`, want: 50005000},
++	{name: "ipairs_10000", source: `
++local values = {}
++for i = 1, 10000 do values[i] = i end
++function benchmark()
++  local total = 0
++  for _, value in ipairs(values) do total = total + value end
++  benchmark_result = total
++end`, want: 50005000},
++	{name: "pairs_10000", source: `
++local values = {}
++for i = 1, 10000 do values[i] = i end
++function benchmark()
++  local total = 0
++  for _, value in pairs(values) do total = total + value end
++  benchmark_result = total
++end`, want: 50005000},
++	{name: "lua_iterator_10000", source: `
++local function nextvalue(limit, previous)
++  local value = previous + 1
++  if value <= limit then return value end
++end
++function benchmark()
++  local total = 0
++  for value in nextvalue, 10000, 0 do total = total + value end
++  benchmark_result = total
++end`, want: 50005000},
++	{name: "short_concat_10000", source: `
++local left, right = "abcdef", "ghijkl"
++function benchmark()
++  local total = 0
++  for i = 1, 10000 do local value = left .. right; total = total + #value end
++  benchmark_result = total
++end`, want: 120000},
++	{name: "table_churn_1000", source: `
++function benchmark()
++  local total = 0
++  for i = 1, 1000 do
++    local value = {i, i+1, value=i+2}
++    total = total + value[1] + value[2] + value.value
++  end
++  benchmark_result = total
++end`, want: 1504500},
++	{name: "string_sub_identity_1000", source: `
++local sub = string.sub
++local subject = string.rep("x", 65536)
++function benchmark()
++  local total = 0
++  for i = 1, 1000 do local value = sub(subject, 1); total = total + #value end
++  benchmark_result = total
++end`, want: 65536000},
++	{name: "collect_live_10000", source: `
++local values = {}
++for i = 1, 10000 do values[i] = {i, value="value" .. i} end
++function benchmark()
++  collectgarbage("collect")
++  benchmark_result = #values
++end`, want: 10000},
++}
++
++func diagnosticSource(w workload) string {
++	return w.source + `
++function benchmark_program()
++  benchmark()
++  benchmark_program_result = tostring(benchmark_result)
++end
++`
++}
++
++func diagnosticSpec(w workload) programSpec {
++	return programSpec{name: w.name, sourceFile: w.name + ".lua",
++		libraries: programLibraryBase | programLibraryString | programLibraryMath}
++}
++
++func BenchmarkDiagnostics(b *testing.B) {
++	for _, w := range diagnosticWorkloads {
++		b.Run("case="+w.name, func(b *testing.B) {
++			for _, engine := range programEngines {
++				b.Run("runtime="+engine.name, func(b *testing.B) {
++					benchmarkPreparedProgram(b, engine, diagnosticSpec(w), diagnosticSource(w),
++						programOracle{floatValues: []float64{w.want}})
++				})
++			}
++		})
++	}
++}
++
++func TestDiagnosticsExecute(t *testing.T) {
++	for _, w := range diagnosticWorkloads {
++		for _, engine := range programEngines {
++			t.Run(w.name+"/"+engine.name, func(t *testing.T) {
++				prepared, err := engine.prepare(diagnosticSpec(w), diagnosticSource(w))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer func() {
++					if err := prepared.close(); err != nil {
++						t.Error(err)
++					}
++				}()
++				for i := 0; i < 2; i++ {
++					if err := prepared.run(); err != nil {
++						t.Fatal(err)
++					}
++					validatePreparedResult(t, prepared, programOracle{floatValues: []float64{w.want}}, "diagnostic")
++				}
++			})
++		}
++	}
++}
+diff --git a/benchmarks/internal/puc51/puc51.go b/benchmarks/internal/puc51/puc51.go
+new file mode 100644
+index 0000000..ee47cac
+--- /dev/null
++++ b/benchmarks/internal/puc51/puc51.go
+@@ -0,0 +1,171 @@
++//go:build puc51 && cgo
++
++// Package puc51 provides the small protected-call adapter used by the optional
++// PUC Lua 5.1 comparison. Lua itself is supplied by CGO_CFLAGS and CGO_LDFLAGS.
++package puc51
++
++/*
++#include <stdlib.h>
++#include <lua.h>
++#include <lauxlib.h>
++#include <lualib.h>
++
++#if LUA_VERSION_NUM != 501
++#error "the puc51 comparison requires PUC Lua 5.1 headers and library"
++#endif
++
++static int lunar_puc_open(lua_State *L, lua_CFunction open, const char *name) {
++	lua_pushcfunction(L, open);
++	lua_pushstring(L, name);
++	return lua_pcall(L, 1, 0, 0);
++}
++
++static int lunar_puc_libraries(lua_State *L, unsigned int libraries) {
++	int status;
++	if ((libraries & 1) && (status = lunar_puc_open(L, luaopen_base, "")))
++		return status;
++	if ((libraries & 2) && (status = lunar_puc_open(L, luaopen_string, LUA_STRLIBNAME)))
++		return status;
++	if ((libraries & 4) && (status = lunar_puc_open(L, luaopen_math, LUA_MATHLIBNAME)))
++		return status;
++	return 0;
++}
++
++static int lunar_puc_load(lua_State *L, const char *source, size_t size, const char *name) {
++	int status = luaL_loadbuffer(L, source, size, name);
++	if (status) return status;
++	return lua_pcall(L, 0, 0, 0);
++}
++
++static int lunar_puc_reference(lua_State *L, const char *name) {
++	lua_getglobal(L, name);
++	if (!lua_isfunction(L, -1)) {
++		lua_pop(L, 1);
++		return LUA_NOREF;
++	}
++	return luaL_ref(L, LUA_REGISTRYINDEX);
++}
++
++// One Go-to-C transition includes both pushing the cached function and the
++// protected call. No global-name lookup, loading, or compilation is timed.
++static int lunar_puc_call(lua_State *L, int reference) {
++	lua_rawgeti(L, LUA_REGISTRYINDEX, reference);
++	return lua_pcall(L, 0, 0, 0);
++}
++
++static int lunar_puc_number(lua_State *L, const char *name, lua_Number *result) {
++	lua_getglobal(L, name);
++	int ok = lua_type(L, -1) == LUA_TNUMBER;
++	if (ok) *result = lua_tonumber(L, -1);
++	lua_pop(L, 1);
++	return ok;
++}
++
++static const char *lunar_puc_string(lua_State *L, const char *name, size_t *size) {
++	lua_getglobal(L, name);
++	if (lua_type(L, -1) != LUA_TSTRING) return NULL;
++	return lua_tolstring(L, -1, size);
++}
++
++static void lunar_puc_pop(lua_State *L) { lua_pop(L, 1); }
++*/
++import "C"
++
++import (
++	"fmt"
++	"unsafe"
++)
++
++type Libraries uint8
++
++const (
++	Base Libraries = 1 << iota
++	String
++	Math
++)
++
++type State struct {
++	ptr       *C.lua_State
++	reference C.int
++}
++
++func New(libraries Libraries) (*State, error) {
++	state := &State{ptr: C.luaL_newstate(), reference: C.LUA_NOREF}
++	if state.ptr == nil {
++		return nil, fmt.Errorf("PUC Lua: could not create state")
++	}
++	if status := C.lunar_puc_libraries(state.ptr, C.uint(libraries)); status != 0 {
++		err := state.error(status)
++		_ = state.Close()
++		return nil, err
++	}
++	return state, nil
++}
++
++// Prepare loads and executes the setup chunk, then caches the entry function in
++// Lua's registry. It is called before warmup and timing.
++func (state *State) Prepare(name, source, entry string) error {
++	cname, csource, centry := C.CString(name), C.CString(source), C.CString(entry)
++	defer C.free(unsafe.Pointer(cname))
++	defer C.free(unsafe.Pointer(csource))
++	defer C.free(unsafe.Pointer(centry))
++	if status := C.lunar_puc_load(state.ptr, csource, C.size_t(len(source)), cname); status != 0 {
++		return state.error(status)
++	}
++	reference := C.lunar_puc_reference(state.ptr, centry)
++	if reference == C.LUA_NOREF {
++		return fmt.Errorf("PUC Lua: %s is not a function", entry)
++	}
++	if state.reference != C.LUA_NOREF {
++		C.luaL_unref(state.ptr, C.LUA_REGISTRYINDEX, state.reference)
++	}
++	state.reference = reference
++	return nil
++}
++
++func (state *State) Run() error {
++	if status := C.lunar_puc_call(state.ptr, state.reference); status != 0 {
++		return state.error(status)
++	}
++	return nil
++}
++
++func (state *State) GlobalNumber(name string) (float64, error) {
++	cname := C.CString(name)
++	defer C.free(unsafe.Pointer(cname))
++	var result C.lua_Number
++	if C.lunar_puc_number(state.ptr, cname, &result) == 0 {
++		return 0, fmt.Errorf("PUC Lua: %s is not a number", name)
++	}
++	return float64(result), nil
++}
++
++func (state *State) GlobalString(name string) (string, error) {
++	cname := C.CString(name)
++	defer C.free(unsafe.Pointer(cname))
++	var size C.size_t
++	result := C.lunar_puc_string(state.ptr, cname, &size)
++	defer C.lunar_puc_pop(state.ptr)
++	if result == nil {
++		return "", fmt.Errorf("PUC Lua: %s is not a string", name)
++	}
++	return C.GoStringN(result, C.int(size)), nil
++}
++
++func (state *State) Close() error {
++	if state.ptr != nil {
++		C.lua_close(state.ptr)
++		state.ptr = nil
++	}
++	return nil
++}
++
++func (state *State) error(status C.int) error {
++	var size C.size_t
++	message := C.lua_tolstring(state.ptr, -1, &size)
++	defer C.lunar_puc_pop(state.ptr)
++	if message == nil {
++		return fmt.Errorf("PUC Lua: non-string error (status %d)", status)
++	}
++	return fmt.Errorf("PUC Lua: %s (status %d)", C.GoStringN(message, C.int(size)), status)
++}
+diff --git a/benchmarks/internal/puc51/puc51_test.go b/benchmarks/internal/puc51/puc51_test.go
+new file mode 100644
+index 0000000..9f63a71
+--- /dev/null
++++ b/benchmarks/internal/puc51/puc51_test.go
+@@ -0,0 +1,65 @@
++//go:build puc51 && cgo
++
++package puc51
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestPreparedFunctionStaysReferenced(t *testing.T) {
++	state, err := New(0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = state.Close() })
++	if err := state.Prepare("@cached.lua", `
++local count = 0
++function benchmark()
++  benchmark = nil
++  count = count + 1
++  result = count
++  text = "a\000b"
++end
++`, "benchmark"); err != nil {
++		t.Fatal(err)
++	}
++	for want := 1; want <= 3; want++ {
++		if err := state.Run(); err != nil {
++			t.Fatal(err)
++		}
++		if got, err := state.GlobalNumber("result"); err != nil || got != float64(want) {
++			t.Fatalf("result = %v, %v; want %d", got, err, want)
++		}
++		if got, err := state.GlobalString("text"); err != nil || got != "a\x00b" {
++			t.Fatalf("text = %q, %v; want embedded NUL", got, err)
++		}
++	}
++}
++
++func TestProtectedCallRecovers(t *testing.T) {
++	state, err := New(Base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = state.Close() })
++	if err := state.Prepare("@error.lua", `
++local count = 0
++function benchmark()
++  count = count + 1
++  if count == 1 then error("expected failure") end
++  result = count
++end
++`, "benchmark"); err != nil {
++		t.Fatal(err)
++	}
++	if err := state.Run(); err == nil || !strings.Contains(err.Error(), "expected failure") {
++		t.Fatalf("first call error = %v", err)
++	}
++	if err := state.Run(); err != nil {
++		t.Fatal(err)
++	}
++	if got, err := state.GlobalNumber("result"); err != nil || got != 2 {
++		t.Fatalf("result = %v, %v; want 2", got, err)
++	}
++}
+diff --git a/benchmarks/program_compare_test.go b/benchmarks/program_compare_test.go
+index 94bb287..522a385 100644
+--- a/benchmarks/program_compare_test.go
++++ b/benchmarks/program_compare_test.go
+@@ -95,6 +95,8 @@ type preparedProgram struct {
+ type programEngine struct {
+ 	name    string
+ 	prepare func(programSpec, string) (*preparedProgram, error)
++	// Native allocations are invisible to Go's benchmark allocation counters.
++	nativeHeap bool
+ }
+ 
+ var programEngines = []programEngine{
+@@ -193,7 +195,9 @@ func benchmarkPreparedProgram(
+ 	validatePreparedResult(b, prepared, oracle, "warmup")
+ 
+ 	runtime.GC()
+-	b.ReportAllocs()
++	if !engine.nativeHeap {
++		b.ReportAllocs()
++	}
+ 	b.ResetTimer()
+ 	for b.Loop() {
+ 		if err := prepared.run(); err != nil {
+diff --git a/benchmarks/puc51_test.go b/benchmarks/puc51_test.go
+new file mode 100644
+index 0000000..821c0ec
+--- /dev/null
++++ b/benchmarks/puc51_test.go
+@@ -0,0 +1,107 @@
++//go:build puc51 && cgo
++
++package compare
++
++import (
++	"runtime"
++	"testing"
++
++	"github.com/mmcdole/lunar/benchmarks/internal/puc51"
++)
++
++func init() {
++	programEngines = append(programEngines, programEngine{
++		name: "puc51", prepare: preparePUC51Program, nativeHeap: true,
++	})
++	interpreterEngines = append(interpreterEngines, interpreterEngine{
++		name: "puc51", benchmark: benchmarkPUC51,
++	})
++}
++
++func preparePUC51Program(spec programSpec, source string) (*preparedProgram, error) {
++	var libraries puc51.Libraries
++	if spec.libraries&programLibraryBase != 0 {
++		libraries |= puc51.Base
++	}
++	if spec.libraries&programLibraryString != 0 {
++		libraries |= puc51.String
++	}
++	if spec.libraries&programLibraryMath != 0 {
++		libraries |= puc51.Math
++	}
++	state, err := puc51.New(libraries)
++	if err != nil {
++		return nil, err
++	}
++	if err := state.Prepare("@programs/wrapped-"+spec.sourceFile, source, "benchmark_program"); err != nil {
++		_ = state.Close()
++		return nil, err
++	}
++	return &preparedProgram{
++		run: state.Run,
++		result: func() (string, error) {
++			return state.GlobalString("benchmark_program_result")
++		},
++		close: state.Close,
++	}, nil
++}
++
++func preparePUC51Interpreter(tb testing.TB, workload workload) *puc51.State {
++	tb.Helper()
++	state, err := puc51.New(0)
++	if err != nil {
++		tb.Fatal(err)
++	}
++	tb.Cleanup(func() {
++		if err := state.Close(); err != nil {
++			tb.Error(err)
++		}
++	})
++	if err := state.Prepare("@compare.lua", workload.source, "benchmark"); err != nil {
++		tb.Fatal(err)
++	}
++	return state
++}
++
++func validatePUC51Result(tb testing.TB, state *puc51.State, workload workload) {
++	tb.Helper()
++	result, err := state.GlobalNumber("benchmark_result")
++	if err != nil {
++		tb.Fatal(err)
++	}
++	if result != workload.want {
++		tb.Fatalf("result = %v, want %v", result, workload.want)
++	}
++}
++
++func benchmarkPUC51(b *testing.B, workload workload) {
++	state := preparePUC51Interpreter(b, workload)
++	if err := state.Run(); err != nil {
++		b.Fatal(err)
++	}
++	validatePUC51Result(b, state, workload)
++
++	runtime.GC()
++	// Go allocation counters cannot observe PUC Lua's native heap.
++	b.ResetTimer()
++	for b.Loop() {
++		if err := state.Run(); err != nil {
++			b.Fatal(err)
++		}
++	}
++	validatePUC51Result(b, state, workload)
++}
++
++func TestPUC51InterpreterExecute(t *testing.T) {
++	for _, workload := range runtimeWorkloads {
++		t.Run(workload.name, func(t *testing.T) {
++			state := preparePUC51Interpreter(t, workload)
++			for range 2 {
++				if err := state.Run(); err != nil {
++					t.Fatal(err)
++				}
++				validatePUC51Result(t, state, workload)
++			}
++		})
++	}
++}
+diff --git a/benchmarks/run-puc-comparison.sh b/benchmarks/run-puc-comparison.sh
+new file mode 100755
+index 0000000..e68425c
+--- /dev/null
++++ b/benchmarks/run-puc-comparison.sh
+@@ -0,0 +1,65 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [[ $# != 1 ]]; then
++  echo 'usage: ./run-puc-comparison.sh OUTPUT.txt' >&2
++  exit 2
++fi
++output=$1
++samples=${LUNAR_BENCH_SAMPLES:-15}
++benchtime=${LUNAR_BENCH_TIME:-500ms}
++: "${LUNAR_BENCH_POWER_POLICY:?describe power and background load controls}"
++: "${LUNAR_PUC_SOURCE_SHA256:?record the reference source archive SHA-256}"
++: "${LUNAR_PUC_LIBRARY:?path to the linked Lua 5.1.5 static library}"
++if [[ -e "$output" || ! "$samples" =~ ^[1-9][0-9]*$ ]]; then
++  echo 'output must be new and sample count must be positive' >&2
++  exit 2
++fi
++if [[ -n "$(git status --porcelain)" ]]; then
++  echo 'benchmark collection requires a clean checkout' >&2
++  exit 2
++fi
++
++staging=$(mktemp -d)
++trap 'rm -rf "$staging"' EXIT
++go test -tags puc51 ./...
++go vet -tags puc51 ./...
++go test -tags puc51 -c -o "$staging/compare.test"
++
++affinity=()
++if [[ -n "${LUNAR_BENCH_CPU:-}" ]]; then
++  affinity=(taskset -c "$LUNAR_BENCH_CPU")
++fi
++{
++  echo "# revision: $(git rev-parse HEAD)"
++  echo "# go: $(go version)"
++  echo "# system: $(uname -srmv)"
++  echo "# cpu_model: ${LUNAR_BENCH_CPU_MODEL:-$(awk -F ': ' '/model name/{print $2;exit}' /proc/cpuinfo)}"
++  echo "# power_policy: $LUNAR_BENCH_POWER_POLICY"
++  echo "# affinity: ${LUNAR_BENCH_CPU:-none}"
++  echo "# PUC Lua: 5.1.5, non-JIT, default double lua_Number"
++  echo "# puc_source_sha256: $LUNAR_PUC_SOURCE_SHA256"
++  echo "# puc_library_sha256: $(sha256sum "$LUNAR_PUC_LIBRARY")"
++  echo "# compiler: $(${CC:-cc} --version | head -1)"
++  echo "# puc_build_flags: ${LUNAR_PUC_BUILD_FLAGS:-unrecorded}"
++  echo "# CGO_CFLAGS: ${CGO_CFLAGS:-}"
++  echo "# CGO_LDFLAGS: ${CGO_LDFLAGS:-}"
++  echo "# test_binary_sha256: $(sha256sum "$staging/compare.test" | cut -d ' ' -f 1)"
++  echo '# GOGC: 100; GOMEMLIMIT: off; GOMAXPROCS: 1; cpu: 1'
++  echo "# samples: $samples; benchtime: $benchtime"
++  echo '# timing: Go B.Loop wall time; cached function; protected call; one warmup; setup excluded'
++  echo '# PUC includes one cgo transition per operation; no native allocation counters'
++} > "$output"
++
++for ((round=0; round<samples; round++)); do
++  if ((round % 2 == 0)); then order=(lunar puc51); else order=(puc51 lunar); fi
++  for engine in "${order[@]}"; do
++    echo "round $((round+1))/$samples: $engine" >&2
++    echo "# round: $((round+1)); runtime: $engine" >> "$output"
++    GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1 "${affinity[@]}" "$staging/compare.test" \
++      -test.run '^$' \
++      -test.bench "^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkDiagnostics)\$/.*\$/^runtime=${engine}\$" \
++      -test.benchtime "$benchtime" -test.count 1 -test.cpu 1 >> "$output"
++  done
++done
++echo "# completed: $samples samples per runtime per row" >> "$output"
