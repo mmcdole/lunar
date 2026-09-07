@@ -82,23 +82,23 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 ## Performance
 
 Medians from 15 runs on an AMD Ryzen 9 9950X3D under Linux/amd64 (WSL2),
-using Go 1.26.0. The [measurement report](benchmarks/results/2026-09-07-linux-amd64-table-access/)
+using Go 1.26.0. The [measurement report](benchmarks/results/2026-09-07-linux-amd64-native-calls/)
 records revisions, build settings, and confidence intervals. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | **137.51 ms** | 154.51 ms | 160.45 ms |
-| fannkuch-redux | **18.36 ms** | 29.52 ms | 33.20 ms |
-| n-body | **47.09 ms** | 160.20 ms | 172.18 ms |
-| spectral-norm | **45.34 ms** | 144.74 ms | 129.74 ms |
+| binary-trees | **138.98 ms** | 157.08 ms | 165.42 ms |
+| fannkuch-redux | **18.49 ms** | 29.65 ms | 33.29 ms |
+| n-body | **43.98 ms** | 161.43 ms | 176.44 ms |
+| spectral-norm | **45.47 ms** | 145.05 ms | 136.13 ms |
 
 | Embedding operation | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | 53.55 ns | **52.21 ns** | 124.80 ns |
-| Lua calls Go 1,000 times | 69.50 µs | 93.25 µs | **68.01 µs** |
-| Lua echoes a 128-byte Go string | **76.50 ns** | 81.17 ns | 127.40 ns |
-| Lua checksums a reused Go-built table | **269.5 ns** | 517.2 ns | 847.6 ns |
-| Build a table in Go, then checksum it in Lua | 2.254 µs | **1.269 µs** | 1.469 µs |
+| Go calls Lua with scalar arguments | 54.15 ns | **52.51 ns** | 127.60 ns |
+| Lua calls Go 1,000 times | **51.15 µs** | 92.47 µs | 70.92 µs |
+| Lua echoes a 128-byte Go string | 76.31 ns | **68.43 ns** | 129.30 ns |
+| Lua checksums a reused Go-built table | **272.7 ns** | 503.4 ns | 859.1 ns |
+| Build a table in Go, then checksum it in Lua | 2.219 µs | **1.302 µs** | 1.478 µs |
 
 The retained-memory figures below are earlier Apple M3 Pro / Go 1.25.1
 measurements: [CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
