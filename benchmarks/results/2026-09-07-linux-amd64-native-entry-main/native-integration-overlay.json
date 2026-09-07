@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/tmp/lunar-native-main/native/native_entry_test.go": "/tmp/lunar-native-main/native_no_clear/native_entry_test.go"
+  }
+}

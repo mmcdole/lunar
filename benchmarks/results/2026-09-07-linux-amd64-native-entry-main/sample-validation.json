@@ -1,0 +1,12 @@
+{
+  "full_comparison": {
+    "rows": 39,
+    "samples_per_row": 15,
+    "total_samples": 585
+  },
+  "cold_frame_pilot": {
+    "rows": 4,
+    "samples_per_row": 5,
+    "total_samples": 20
+  }
+}

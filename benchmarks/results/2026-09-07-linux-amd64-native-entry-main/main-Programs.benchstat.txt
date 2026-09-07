@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+              │  baseline   │               native               │          native_no_clear           │
+              │   sec/op    │   sec/op     vs base               │   sec/op     vs base               │
+binarytrees     136.2m ± 1%   135.3m ± 2%       ~ (p=0.233 n=15)   136.0m ± 1%       ~ (p=0.367 n=15)
+fannkuchredux   18.38m ± 0%   18.33m ± 1%       ~ (p=0.367 n=15)   18.39m ± 1%       ~ (p=0.870 n=15)
+nbody           47.01m ± 0%   44.06m ± 1%  -6.27% (p=0.000 n=15)   43.67m ± 1%  -7.10% (p=0.000 n=15)
+spectralnorm    45.36m ± 0%   45.41m ± 1%       ~ (p=0.595 n=15)   44.89m ± 0%  -1.04% (p=0.000 n=15)
+geomean         48.06m        47.20m       -1.80%                  47.06m       -2.10%
+
+              │   baseline   │               native                │           native_no_clear           │
+              │     B/op     │     B/op      vs base               │     B/op      vs base               │
+binarytrees     65.67Mi ± 0%   65.86Mi ± 0%       ~ (p=0.526 n=15)   66.05Mi ± 1%       ~ (p=0.128 n=15)
+fannkuchredux   1.141Ki ± 0%   1.141Ki ± 0%       ~ (p=0.598 n=15)   1.141Ki ± 0%       ~ (p=1.000 n=15)
+nbody           2.758Ki ± 0%   2.733Ki ± 0%  -0.89% (p=0.000 n=15)   2.733Ki ± 0%  -0.89% (p=0.000 n=15)
+spectralnorm    28.03Ki ± 0%   28.03Ki ± 0%       ~ (p=0.700 n=15)   28.03Ki ± 0%       ~ (p=0.330 n=15)
+geomean         49.34Ki        49.27Ki       -0.15%                  49.31Ki       -0.08%
+
+              │  baseline   │                native                │           native_no_clear            │
+              │  allocs/op  │  allocs/op   vs base                 │  allocs/op   vs base                 │
+binarytrees     1.009M ± 0%   1.009M ± 0%       ~ (p=0.855 n=15)     1.009M ± 0%       ~ (p=0.235 n=15)
+fannkuchredux    15.00 ± 0%    15.00 ± 0%       ~ (p=1.000 n=15) ¹    15.00 ± 0%       ~ (p=1.000 n=15) ¹
+nbody            25.00 ± 0%    25.00 ± 0%       ~ (p=1.000 n=15) ¹    25.00 ± 0%       ~ (p=1.000 n=15) ¹
+spectralnorm     35.00 ± 0%    35.00 ± 0%       ~ (p=1.000 n=15) ¹    35.00 ± 0%       ~ (p=1.000 n=15) ¹
+geomean          339.2         339.2       +0.00%                     339.2       +0.00%
+¹ all samples are equal

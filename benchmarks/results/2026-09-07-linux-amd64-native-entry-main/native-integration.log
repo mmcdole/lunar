@@ -1,0 +1,12 @@
+=== RUN   TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots
+=== RUN   TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/setlist/return
+=== RUN   TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/setlist/resume
+=== RUN   TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/open_arguments/return
+=== RUN   TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/open_arguments/resume
+--- PASS: TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots (0.00s)
+    --- PASS: TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/setlist/return (0.00s)
+    --- PASS: TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/setlist/resume (0.00s)
+    --- PASS: TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/open_arguments/return (0.00s)
+    --- PASS: TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots/open_arguments/resume (0.00s)
+PASS
+ok  	github.com/mmcdole/lunar	0.002s
