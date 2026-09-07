@@ -1,0 +1,116 @@
+{
+  "base_revision": "a2f32740110096c4eee57e7ec90ede31b78236c6",
+  "candidate_revision": "a9e2a2573ed23e1e0fda3aded8d29af175529f53",
+  "change": "Delay reading the fallback activation until fixed native entry misses",
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64",
+  "build_affinity": 8,
+  "build_settings": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1",
+    "CGO_ENABLED": "1",
+    "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+    "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+  },
+  "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+  "validation": [
+    {
+      "name": "root-test",
+      "command": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame",
+      "exit_code": 0,
+      "log": "cold-frame-root-test.log"
+    },
+    {
+      "name": "root-vet",
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame",
+      "exit_code": 0,
+      "log": "cold-frame-root-vet.log"
+    },
+    {
+      "name": "benchmark-test",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame/benchmarks",
+      "exit_code": 0,
+      "log": "cold-frame-benchmark-test.log"
+    },
+    {
+      "name": "benchmark-vet",
+      "command": [
+        "go",
+        "vet",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame/benchmarks",
+      "exit_code": 0,
+      "log": "cold-frame-benchmark-vet.log"
+    },
+    {
+      "name": "benchmark-build",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "-c",
+        "-o",
+        "/tmp/lunar-native-main/cold_frame.test"
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame/benchmarks",
+      "exit_code": 0,
+      "log": "cold-frame-benchmark-build.log"
+    },
+    {
+      "name": "root-race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_cold_frame",
+      "exit_code": 0,
+      "log": "cold-frame-root-race.log"
+    }
+  ],
+  "timing_run": false,
+  "race_check": "Passed before pilot timing",
+  "binary": "cold_frame.test",
+  "binary_sha256": "5f21f7f085fa02f44aa57157bbe0451c39eddba58526280f81b3ae0e1745bc2a",
+  "assembly": {
+    "disassembly": "cold-frame-driveExecution.asm",
+    "comparison": "no-clear-driveExecution.asm",
+    "driver_stack_frame_bytes": {
+      "no_clear": 376,
+      "cold_frame": 368
+    },
+    "native_call_entry_instructions_through_helper_call": {
+      "no_clear": 16,
+      "cold_frame": 9
+    },
+    "removed_from_hit": "32-byte activation copy, fallback frame index spill, and two address computations",
+    "driver_text_bytes": {
+      "no_clear": 4407,
+      "cold_frame": 4409
+    }
+  }
+}

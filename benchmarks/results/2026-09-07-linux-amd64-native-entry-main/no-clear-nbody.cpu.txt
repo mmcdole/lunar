@@ -1,0 +1,44 @@
+File: no_clear.test
+Build ID: 1001d75dafd0381e09a8daa35c1c8ab5a8849c04
+Type: cpu
+Time: 2026-09-07 18:07:54 CDT
+Duration: 3.56s, Total samples = 3.56s (99.89%)
+Showing nodes accounting for 3.09s, 86.80% of 3.56s total
+Dropped 12 nodes (cum <= 0.02s)
+Showing top 35 nodes out of 53
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      3.56s   100%  github.com/mmcdole/lunar.(*State).CallInto (inline)
+         0     0%     0%      3.56s   100%  github.com/mmcdole/lunar.(*State).callMain
+         0     0%     0%      3.56s   100%  github.com/mmcdole/lunar.(*State).runMainCall
+     0.12s  3.37%  3.37%      3.56s   100%  github.com/mmcdole/lunar.driveExecution
+         0     0%  3.37%      3.56s   100%  github.com/mmcdole/lunar.execute
+         0     0%  3.37%      3.56s   100%  github.com/mmcdole/lunar/benchmarks.BenchmarkPrograms.func1.1
+         0     0%  3.37%      3.56s   100%  github.com/mmcdole/lunar/benchmarks.benchmarkPreparedProgram
+         0     0%  3.37%      3.56s   100%  github.com/mmcdole/lunar/benchmarks.prepareLunarProgram.func2
+         0     0%  3.37%      3.56s   100%  testing.(*B).run1.func1
+         0     0%  3.37%      3.56s   100%  testing.(*B).runN
+     1.12s 31.46% 34.83%      2.80s 78.65%  github.com/mmcdole/lunar.runInstructions
+     0.22s  6.18% 41.01%      0.72s 20.22%  github.com/mmcdole/lunar.executeRawStringTableGet
+     0.10s  2.81% 43.82%      0.52s 14.61%  github.com/mmcdole/lunar.invokeNativeCall
+     0.12s  3.37% 47.19%      0.43s 12.08%  github.com/mmcdole/lunar.executeRawStringTableSet
+         0     0% 47.19%      0.37s 10.39%  github.com/mmcdole/lunar.(*tableObject).rawStringKeySlot (inline)
+     0.15s  4.21% 51.40%      0.37s 10.39%  github.com/mmcdole/lunar.(*tableStore).getStringSlot
+     0.13s  3.65% 55.06%      0.32s  8.99%  github.com/mmcdole/lunar.mathSqrt
+     0.04s  1.12% 56.18%      0.19s  5.34%  github.com/mmcdole/lunar.(*tableObject).resolveStringKeySlot
+     0.17s  4.78% 60.96%      0.18s  5.06%  github.com/mmcdole/lunar.operandSlot (inline)
+     0.08s  2.25% 63.20%      0.16s  4.49%  github.com/mmcdole/lunar.Frame.ReturnNumber
+     0.10s  2.81% 66.01%      0.15s  4.21%  github.com/mmcdole/lunar.(*tableStore).findStringSlot
+     0.14s  3.93% 69.94%      0.14s  3.93%  github.com/mmcdole/lunar.stringSlotsEqual
+     0.02s  0.56% 70.51%      0.12s  3.37%  github.com/mmcdole/lunar.executeRawTableGet
+     0.03s  0.84% 71.35%      0.10s  2.81%  github.com/mmcdole/lunar.(*threadObject).tryEnterFixedNativeCall
+     0.10s  2.81% 74.16%      0.10s  2.81%  github.com/mmcdole/lunar.writeSlot (inline)
+     0.05s  1.40% 75.56%      0.09s  2.53%  github.com/mmcdole/lunar.(*tableObject).replaceResolvedSlot
+     0.09s  2.53% 78.09%      0.09s  2.53%  math.Float64frombits (inline)
+         0     0% 78.09%      0.08s  2.25%  github.com/mmcdole/lunar.(*tableObject).rawSlot
+     0.05s  1.40% 79.49%      0.08s  2.25%  github.com/mmcdole/lunar.Frame.returnOne
+     0.08s  2.25% 81.74%      0.08s  2.25%  github.com/mmcdole/lunar.tableVector[go.shape.struct { github.com/mmcdole/lunar.key github.com/mmcdole/lunar.slot; github.com/mmcdole/lunar.value github.com/mmcdole/lunar.slot; github.com/mmcdole/lunar.hash uint32; github.com/mmcdole/lunar.next uint32 }].at (inline)
+     0.07s  1.97% 83.71%      0.07s  1.97%  github.com/mmcdole/lunar.(*threadObject).publishFunctionCall (inline)
+     0.01s  0.28% 83.99%      0.05s  1.40%  github.com/mmcdole/lunar.normalizeTableKey
+     0.04s  1.12% 85.11%      0.04s  1.12%  github.com/mmcdole/lunar.(*tableStore).mainIndex (inline)
+     0.04s  1.12% 86.24%      0.04s  1.12%  github.com/mmcdole/lunar.(*threadObject).finishNativeCall
+     0.02s  0.56% 86.80%      0.04s  1.12%  github.com/mmcdole/lunar.(*threadObject).tryEnterFixedLuaCall

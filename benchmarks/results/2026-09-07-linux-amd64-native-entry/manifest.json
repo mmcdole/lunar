@@ -1,0 +1,98 @@
+{
+  "base_revision": "f890f7450d729d848c0c3355587b71ed251bc156",
+  "candidate_revision": "5ca2ec4337f46fc2786d29a1bf5655c3bfe68eca",
+  "change": "Archived native-entry.patch applied unchanged to f890f74",
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64",
+  "build_affinity": 8,
+  "build_settings": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1",
+    "CGO_ENABLED": "1",
+    "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+    "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+  },
+  "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+  "validation": [
+    {
+      "name": "root-test",
+      "command": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-next/repo",
+      "exit_code": 0,
+      "log": "root-test.log"
+    },
+    {
+      "name": "root-vet",
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-next/repo",
+      "exit_code": 0,
+      "log": "root-vet.log"
+    },
+    {
+      "name": "root-race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-next/repo",
+      "exit_code": 0,
+      "log": "root-race.log"
+    },
+    {
+      "name": "benchmark-test",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-next/repo/benchmarks",
+      "exit_code": 0,
+      "log": "benchmark-test.log"
+    },
+    {
+      "name": "benchmark-vet",
+      "command": [
+        "go",
+        "vet",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-next/repo/benchmarks",
+      "exit_code": 0,
+      "log": "benchmark-vet.log"
+    },
+    {
+      "name": "benchmark-build",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "-c",
+        "-o",
+        "/tmp/lunar-native-next/candidate.test"
+      ],
+      "cwd": "/tmp/lunar-native-next/repo/benchmarks",
+      "exit_code": 0,
+      "log": "benchmark-build.log"
+    }
+  ],
+  "timing_run": false,
+  "binary": "candidate.test",
+  "binary_sha256": "f47ce28b374bbecc6ca0e01c9caa2096a5671ddce1f536009a38c48bff21462d"
+}

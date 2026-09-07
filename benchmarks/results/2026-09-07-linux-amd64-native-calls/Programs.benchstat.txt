@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+              │    lunar    │               gopherlua               │                 golua                 │
+              │   sec/op    │    sec/op     vs base                 │    sec/op     vs base                 │
+binarytrees     139.0m ± 1%    157.1m ± 1%   +13.03% (p=0.000 n=15)    165.4m ± 1%   +19.03% (p=0.000 n=15)
+fannkuchredux   18.49m ± 0%    29.65m ± 0%   +60.36% (p=0.000 n=15)    33.29m ± 1%   +80.02% (p=0.000 n=15)
+nbody           43.98m ± 0%   161.43m ± 1%  +267.09% (p=0.000 n=15)   176.44m ± 1%  +301.22% (p=0.000 n=15)
+spectralnorm    45.47m ± 0%   145.05m ± 1%  +218.99% (p=0.000 n=15)   136.13m ± 4%  +199.38% (p=0.000 n=15)
+geomean         47.61m         102.2m       +114.64%                   107.2m       +125.24%
+
+              │    lunar     │                   gopherlua                   │                     golua                     │
+              │     B/op     │       B/op        vs base                     │       B/op        vs base                     │
+binarytrees     65.76Mi ± 0%       72.13Mi ± 0%        +9.69% (p=0.000 n=15)       99.03Mi ± 0%       +50.61% (p=0.000 n=15)
+fannkuchredux   1.146Ki ± 0%     384.424Ki ± 0%    +33459.25% (p=0.000 n=15)   11679.283Ki ± 0%  +1019472.55% (p=0.000 n=15)
+nbody           2.733Ki ± 0%   45633.279Ki ± 0%  +1669370.45% (p=0.000 n=15)   72508.997Ki ± 0%  +2652605.00% (p=0.000 n=15)
+spectralnorm    28.03Ki ± 0%    57808.46Ki ± 0%   +206150.18% (p=0.000 n=15)    77569.96Ki ± 0%   +276655.64% (p=0.000 n=15)
+geomean         49.30Ki            16.16Mi         +33453.34%                      49.61Mi        +102941.24%
+
+              │    lunar    │                  gopherlua                  │                     golua                     │
+              │  allocs/op  │   allocs/op     vs base                     │    allocs/op     vs base                      │
+binarytrees     1.009M ± 0%      1.010M ± 0%        +0.08% (p=0.000 n=15)       2.534M ± 0%       +151.09% (p=0.000 n=15)
+fannkuchredux    15.00 ± 0%     1559.00 ± 0%    +10293.33% (p=0.000 n=15)   1494687.00 ± 0%   +9964480.00% (p=0.000 n=15)
+nbody            25.00 ± 0%   376439.00 ± 0%  +1505656.00% (p=0.000 n=15)   8080629.00 ± 0%  +32322416.00% (p=0.000 n=15)
+spectralnorm     35.00 ± 0%   231170.00 ± 0%   +660385.71% (p=0.000 n=15)   9925272.00 ± 0%  +28357820.00% (p=0.000 n=15)
+geomean          339.2           108.2k         +31791.54%                      4.175M        +1230503.97%

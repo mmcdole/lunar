@@ -1,0 +1,82 @@
+# Preliminary five-sample screen; 1s target, same controls, alternating fresh processes; not a full-suite qualification.
+# round: 1; runtime: no_clear
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=no_clear         	   23863	     50312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=no_clear                       	      26	  43652613 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 1; runtime: cold_frame
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=cold_frame         	   24966	     48371 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=cold_frame                       	      26	  44397340 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 2; runtime: cold_frame
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=cold_frame         	   24625	     48754 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=cold_frame                       	      26	  43638838 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 2; runtime: no_clear
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=no_clear         	   23750	     50748 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=no_clear                       	      26	  44267527 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 3; runtime: no_clear
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=no_clear         	   23509	     50979 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=no_clear                       	      26	  44260495 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 3; runtime: cold_frame
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=cold_frame         	   24990	     48311 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=cold_frame                       	      27	  43629202 ns/op	    2816 B/op	      25 allocs/op
+PASS
+# round: 4; runtime: cold_frame
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=cold_frame         	   24954	     48154 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=cold_frame                       	      26	  43617229 ns/op	    2828 B/op	      25 allocs/op
+PASS
+# round: 4; runtime: no_clear
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=no_clear         	   23204	     51567 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=no_clear                       	      27	  43473201 ns/op	    2816 B/op	      25 allocs/op
+PASS
+# round: 5; runtime: no_clear
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=no_clear         	   23714	     50455 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=no_clear                       	      27	  43516601 ns/op	    2816 B/op	      25 allocs/op
+PASS
+# round: 5; runtime: cold_frame
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=cold_frame         	   24990	     48029 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPrograms/program=nbody/runtime=cold_frame                       	      27	  43413370 ns/op	    2816 B/op	      25 allocs/op
+PASS
+# completed: 5 samples for each of 4 rows (20 samples total)

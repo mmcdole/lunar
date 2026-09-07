@@ -204,6 +204,9 @@ driver:
 			case opCall:
 				frameIndex := len(thread.frames) - 1
 				frame := thread.frames[frameIndex]
+				if thread.tryEnterFixedNativeCall(int(frame.base), current) {
+					break
+				}
 				callBase := int(frame.base) + current.a()
 				argumentCount := current.b() - 1
 				if current.b() == 0 {

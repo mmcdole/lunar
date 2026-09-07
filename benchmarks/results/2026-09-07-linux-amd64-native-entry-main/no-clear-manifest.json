@@ -1,0 +1,112 @@
+{
+  "base_revision": "a9d2f0ec4b4b70647072f40f4ed4ffb4196035d1",
+  "candidate_revision": "a2f32740110096c4eee57e7ec90ede31b78236c6",
+  "change": "Native entry with redundant dead-suffix clearing removed and open-result integration coverage",
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64",
+  "build_affinity": 8,
+  "build_settings": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1",
+    "CGO_ENABLED": "1",
+    "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+    "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+  },
+  "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+  "validation": [
+    {
+      "name": "root-test",
+      "command": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear",
+      "exit_code": 0,
+      "log": "no-clear-root-test.log"
+    },
+    {
+      "name": "root-vet",
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear",
+      "exit_code": 0,
+      "log": "no-clear-root-vet.log"
+    },
+    {
+      "name": "root-race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear",
+      "exit_code": 0,
+      "log": "no-clear-root-race.log"
+    },
+    {
+      "name": "benchmark-test",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear/benchmarks",
+      "exit_code": 0,
+      "log": "no-clear-benchmark-test.log"
+    },
+    {
+      "name": "benchmark-vet",
+      "command": [
+        "go",
+        "vet",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear/benchmarks",
+      "exit_code": 0,
+      "log": "no-clear-benchmark-vet.log"
+    },
+    {
+      "name": "benchmark-build",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "-c",
+        "-o",
+        "/tmp/lunar-native-main/no_clear.test"
+      ],
+      "cwd": "/tmp/lunar-native-main/native_no_clear/benchmarks",
+      "exit_code": 0,
+      "log": "no-clear-benchmark-build.log"
+    }
+  ],
+  "timing_run": false,
+  "binary": "no_clear.test",
+  "binary_sha256": "00c4a0e60e4407c3552b283d7c5251f25c22050303a178c89a8ae461c4fc4d16",
+  "integration_validation": {
+    "test": "TestFixedNativeEntryAfterOpenResultsPreservesCallerRoots",
+    "cases": [
+      "setlist/return",
+      "setlist/resume",
+      "open_arguments/return",
+      "open_arguments/resume"
+    ],
+    "candidate_log": "no-clear-integration.log",
+    "original_native_revision": "a9d2f0ec4b4b70647072f40f4ed4ffb4196035d1",
+    "original_native_log": "native-integration.log",
+    "original_native_test_overlay": "native-integration-overlay.json",
+    "both_exit_codes": 0
+  }
+}
