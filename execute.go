@@ -392,7 +392,8 @@ func runInstructions(thread *threadObject, stopDepth int) instruction {
 reload:
 	function := thread.frames[len(thread.frames)-1].function
 	prototype := function.prototype
-	values := thread.values
+	// Table helpers only index values; avoid keeping unused capacity live.
+	values := thread.values[:len(thread.values):len(thread.values)]
 	base := int(thread.frames[len(thread.frames)-1].base)
 	pc := int(thread.frames[len(thread.frames)-1].pc)
 	code := prototype.code
