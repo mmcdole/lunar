@@ -134,6 +134,8 @@ func (thread *threadObject) tryEnterFixedLuaCall(
 // Native execution, Frame validation, cancellation, and return handling remain
 // in invokeNativeCall; this helper only avoids rebuilding an already-proved
 // call layout.
+// Only verified Lua execution may enter here: fixed calls have no open values
+// beyond the caller extent, so publishing the call leaves no dead suffix.
 //
 //go:noinline
 func (thread *threadObject) tryEnterFixedNativeCall(
@@ -169,7 +171,6 @@ func (thread *threadObject) tryEnterFixedNativeCall(
 		return false
 	}
 
-	oldExtent := thread.liveValueExtent()
 	thread.publishFunctionCall(
 		functionObjectFromSlot(callable),
 		callBase+1,
@@ -177,7 +178,6 @@ func (thread *threadObject) tryEnterFixedNativeCall(
 		frameEnd,
 		wantedResults,
 	)
-	thread.clearDeadSuffix(oldExtent)
 	return true
 }
 
