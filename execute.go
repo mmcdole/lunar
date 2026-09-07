@@ -462,7 +462,7 @@ dispatch:
 			)
 
 		case opGetTable, opSelf:
-			result := executeRawTableGet(thread, current)
+			result := executeRawTableGet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -470,7 +470,7 @@ dispatch:
 			return result
 
 		case opGetGlobal, opGetField, opSelfField:
-			result := executeRawStringTableGet(thread, current)
+			result := executeRawStringTableGet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -478,7 +478,7 @@ dispatch:
 			return result
 
 		case opSetTable:
-			result := executeRawTableSet(thread, current)
+			result := executeRawTableSet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -486,7 +486,7 @@ dispatch:
 			return result
 
 		case opSetGlobal, opSetField:
-			result := executeRawStringTableSet(thread, current)
+			result := executeRawStringTableSet(values, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
