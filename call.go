@@ -128,6 +128,59 @@ func (thread *threadObject) tryEnterFixedLuaCall(
 	return true
 }
 
+// tryEnterFixedNativeCall enters a direct native CALL whose fixed argument and
+// result windows fit the verified caller frame. It leaves both stacks untouched
+// on a miss so the ordinary checked path can grow storage or report limits.
+// Native execution, Frame validation, cancellation, and return handling remain
+// in invokeNativeCall; this helper only avoids rebuilding an already-proved
+// call layout.
+//
+//go:noinline
+func (thread *threadObject) tryEnterFixedNativeCall(
+	callerBase int,
+	code instruction,
+) bool {
+	argumentField := code.b()
+	resultField := code.c()
+	if argumentField == 0 || resultField == 0 {
+		return false
+	}
+	callBase := callerBase + code.a()
+	callable := thread.values[callBase]
+	if callable.ref == nil ||
+		callable.bits != uint64(FunctionKind)|nativeFunctionSlotFlag {
+		return false
+	}
+	if len(thread.frames) >= cap(thread.frames) ||
+		len(thread.frames) >= thread.frameLimit() {
+		return false
+	}
+
+	frameEnd := callBase + argumentField
+	wantedResults := resultField - 1
+	required := frameEnd
+	if resultEnd := callBase + wantedResults; resultEnd > required {
+		required = resultEnd
+	}
+	if required < 0 ||
+		uint64(required) > uint64(^uint32(0)) ||
+		required > len(thread.values) ||
+		required > thread.valueLimit() {
+		return false
+	}
+
+	oldExtent := thread.liveValueExtent()
+	thread.publishFunctionCall(
+		functionObjectFromSlot(callable),
+		callBase+1,
+		callBase,
+		frameEnd,
+		wantedResults,
+	)
+	thread.clearDeadSuffix(oldExtent)
+	return true
+}
+
 func (thread *threadObject) pushFunctionMetamethodCall(
 	function *functionObject,
 	callBase int,
