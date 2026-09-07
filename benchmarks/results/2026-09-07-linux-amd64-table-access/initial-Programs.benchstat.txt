@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+              │  baseline   │               lunar                │
+              │   sec/op    │   sec/op     vs base               │
+binarytrees     140.6m ± 2%   138.4m ± 2%  -1.60% (p=0.045 n=15)
+fannkuchredux   20.28m ± 0%   18.82m ± 0%  -7.20% (p=0.000 n=15)
+nbody           53.29m ± 1%   48.69m ± 1%  -8.63% (p=0.000 n=15)
+spectralnorm    45.92m ± 0%   45.51m ± 1%  -0.89% (p=0.001 n=15)
+geomean         51.40m        49.01m       -4.64%
+
+              │   baseline   │                lunar                │
+              │     B/op     │     B/op      vs base               │
+binarytrees     65.73Mi ± 0%   65.65Mi ± 0%       ~ (p=0.493 n=15)
+fannkuchredux   1.165Ki ± 0%   1.146Ki ± 0%  -1.68% (p=0.000 n=15)
+nbody           2.820Ki ± 0%   2.758Ki ± 0%  -2.22% (p=0.000 n=15)
+spectralnorm    28.05Ki ± 0%   28.03Ki ± 0%       ~ (p=0.128 n=15)
+geomean         49.91Ki        49.39Ki       -1.03%
+
+              │  baseline   │                lunar                 │
+              │  allocs/op  │  allocs/op   vs base                 │
+binarytrees     1.009M ± 0%   1.009M ± 0%       ~ (p=0.138 n=15)
+fannkuchredux    15.00 ± 0%    15.00 ± 0%       ~ (p=1.000 n=15) ¹
+nbody            25.00 ± 0%    25.00 ± 0%       ~ (p=1.000 n=15) ¹
+spectralnorm     35.00 ± 0%    35.00 ± 0%       ~ (p=1.000 n=15) ¹
+geomean          339.2         339.2       +0.00%
+¹ all samples are equal

@@ -81,23 +81,28 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-Medians from 15 runs on an Apple M3 Pro with Go 1.25.1; each linked result
-set records its exact source revision. Lower is better.
+Medians from 15 runs on an AMD Ryzen 9 9950X3D under Linux/amd64 (WSL2),
+using Go 1.26.0. The [measurement report](benchmarks/results/2026-09-07-linux-amd64-table-access/)
+records revisions, build settings, and confidence intervals. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | **162.2 ms** | 172.4 ms | 179.8 ms |
-| fannkuch-redux | **23.63 ms** | 33.17 ms | 40.14 ms |
-| n-body | **59.03 ms** | 193.39 ms | 197.77 ms |
-| spectral-norm | **52.82 ms** | 160.14 ms | 153.66 ms |
+| binary-trees | **137.51 ms** | 154.51 ms | 160.45 ms |
+| fannkuch-redux | **18.36 ms** | 29.52 ms | 33.20 ms |
+| n-body | **47.09 ms** | 160.20 ms | 172.18 ms |
+| spectral-norm | **45.34 ms** | 144.74 ms | 129.74 ms |
 
 | Embedding operation | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | **61.21 ns** | 61.51 ns | 146.80 ns |
-| Lua calls Go 1,000 times | **62.49 µs** | 99.58 µs | 84.37 µs |
-| Lua echoes a 128-byte Go string | 86.20 ns | **81.41 ns** | 144.00 ns |
-| Lua checksums a reused Go-built table | **312.4 ns** | 578.3 ns | 972.9 ns |
-| Build a table in Go, then checksum it in Lua | 2.230 µs | **1.405 µs** | 1.645 µs |
+| Go calls Lua with scalar arguments | 53.55 ns | **52.21 ns** | 124.80 ns |
+| Lua calls Go 1,000 times | 69.50 µs | 93.25 µs | **68.01 µs** |
+| Lua echoes a 128-byte Go string | **76.50 ns** | 81.17 ns | 127.40 ns |
+| Lua checksums a reused Go-built table | **269.5 ns** | 517.2 ns | 847.6 ns |
+| Build a table in Go, then checksum it in Lua | 2.254 µs | **1.269 µs** | 1.469 µs |
+
+The retained-memory figures below are earlier Apple M3 Pro / Go 1.25.1
+measurements: [CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
+and [table shapes](benchmarks/results/2026-08-05-darwin-arm64-m3-pro/).
 
 | Live heap added after loading and GC | Lunar | GopherLua | Ratio |
 | --- | ---: | ---: | ---: |

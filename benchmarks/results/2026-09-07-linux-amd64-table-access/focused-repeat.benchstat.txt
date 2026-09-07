@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                     │  baseline   │               lunar                │
+                                     │   sec/op    │   sec/op     vs base               │
+Diagnostics/case=native_sqrt_10000     618.3µ ± 0%   625.3µ ± 0%  +1.14% (p=0.000 n=15)
+Embedding/case=lua_to_go_scalar_1000   68.64µ ± 0%   69.74µ ± 0%  +1.61% (p=0.000 n=15)
+Programs/program=spectralnorm          45.14m ± 0%   45.38m ± 0%  +0.55% (p=0.000 n=15)
+geomean                                1.242m        1.256m       +1.10%
+
+                                     │    baseline    │                 lunar                 │
+                                     │      B/op      │     B/op      vs base                 │
+Diagnostics/case=native_sqrt_10000       0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=lua_to_go_scalar_1000     0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Programs/program=spectralnorm          28.58Ki ± 0%     28.58Ki ± 0%       ~ (p=0.330 n=15)
+geomean                                             ²                 +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                     │   baseline   │                lunar                │
+                                     │  allocs/op   │ allocs/op   vs base                 │
+Diagnostics/case=native_sqrt_10000     0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=lua_to_go_scalar_1000   0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Programs/program=spectralnorm          36.00 ± 0%     36.00 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                           ²               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

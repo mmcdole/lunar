@@ -1,0 +1,38 @@
+{
+  "source_base": "86d27109cb8fffef8f439353716e139516a89ace",
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64",
+  "power_policy": "WSL2; host power and frequency controls unavailable; timing workloads serialized on logical CPU 2; no concurrent benchmarks",
+  "samples": 15,
+  "benchtime": "500ms",
+  "GOGC": 100,
+  "GOMEMLIMIT": "off",
+  "GOMAXPROCS": 1,
+  "cpu": 1,
+  "affinity": 2,
+  "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+  "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl",
+  "puc_version": "5.1.5",
+  "puc_source_sha256": "2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333",
+  "puc_build": "gcc 15.2.0 -O2 -Wall -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN; default double; non-JIT",
+  "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+  "timing": "B.Loop wall time; cached function protected calls; setup/compilation/warmup/final validation excluded; embedding API result consumption is timed; PUC has one cgo transition per operation",
+  "runtimes": {
+    "baseline": {
+      "revision": "c2ab522e77a16b44cb4fe41fab0685ad03b529c4",
+      "binary_sha256": "43a222621bd4ff0bb9bb9c7f98758f9f9a79be3b737b46c91337589ce1c94ef7"
+    },
+    "lunar": {
+      "revision": "81bb654556c36b5017e5764ad2ea9ce8d858d626",
+      "binary_sha256": "1b528ac89512e93cd018dc257bd8bef5d310f9cf6bd3fb090e5b3af9cad48e25"
+    },
+    "gopherlua": {
+      "version": "v1.1.2",
+      "binary": "lunar.test"
+    },
+    "golua": {
+      "version": "v0.0.0-20250718183320-1e37f32ad7d0",
+      "binary": "lunar.test"
+    }
+  }
+}
