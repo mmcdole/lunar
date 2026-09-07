@@ -1,0 +1,22 @@
+--- a/call.go
++++ b/call.go
+@@ -811,7 +811,7 @@
+ 
+ func (thread *threadObject) fillNil(from, to int) {
+ 	for index := from; index < to; index++ {
+-		thread.values[index] = nilSlot
++		writeSlot(&thread.values[index], nilSlot)
+ 	}
+ }
+ 
+@@ -822,8 +822,8 @@
+ 	if to > len(thread.values) {
+ 		to = len(thread.values)
+ 	}
+-	for index := from; index < to; index++ {
+-		thread.values[index] = slot{}
++	if from < to {
++		clear(thread.values[from:to])
+ 	}
+ }
+ 

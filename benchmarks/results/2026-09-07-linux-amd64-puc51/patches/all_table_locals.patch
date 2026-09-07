@@ -1,0 +1,215 @@
+--- a/execute.go
++++ b/execute.go
+@@ -462,7 +462,7 @@
+ 			)
+ 
+ 		case opGetTable, opSelf:
+-			result := executeRawTableGet(thread, current)
++			result := executeRawTableGet(values, function, base, current)
+ 			if result == tableInstructionHandled {
+ 				break
+ 			}
+@@ -470,7 +470,7 @@
+ 			return result
+ 
+ 		case opGetGlobal, opGetField, opSelfField:
+-			result := executeRawStringTableGet(thread, current)
++			result := executeRawStringTableGet(values, function, base, current)
+ 			if result == tableInstructionHandled {
+ 				break
+ 			}
+@@ -478,7 +478,7 @@
+ 			return result
+ 
+ 		case opSetTable:
+-			result := executeRawTableSet(thread, current)
++			result := executeRawTableSet(values, function, base, current)
+ 			if result == tableInstructionHandled {
+ 				break
+ 			}
+@@ -486,7 +486,7 @@
+ 			return result
+ 
+ 		case opSetGlobal, opSetField:
+-			result := executeRawStringTableSet(thread, current)
++			result := executeRawStringTableSet(values, function, base, current)
+ 			if result == tableInstructionHandled {
+ 				break
+ 			}
+--- a/execute_table.go
++++ b/execute_table.go
+@@ -56,30 +56,30 @@
+ //
+ //go:noinline
+ func executeRawTableGet(
+-	thread *threadObject,
++	values []slot,
++	function *functionObject,
++	base int,
+ 	code instruction,
+ ) instruction {
+-	frame := thread.frames[len(thread.frames)-1]
+-	base := int(frame.base)
+ 	var target, key slot
+ 
+ 	switch code.opcode() {
+ 	case opGetTable:
+-		target = thread.values[base+code.b()]
++		target = values[base+code.b()]
+ 		key = operandSlot(
+-			thread.values,
+-			frame.function.prototype.constants,
++			values,
++			function.prototype.constants,
+ 			base,
+ 			code.c(),
+ 		)
+ 	case opSelf:
+-		target = thread.values[base+code.b()]
++		target = values[base+code.b()]
+ 		// SELF publishes its receiver before reading RK(C), including when
+ 		// C aliases A+1.
+-		writeSlot(&thread.values[base+code.a()+1], target)
++		writeSlot(&values[base+code.a()+1], target)
+ 		key = operandSlot(
+-			thread.values,
+-			frame.function.prototype.constants,
++			values,
++			function.prototype.constants,
+ 			base,
+ 			code.c(),
+ 		)
+@@ -95,12 +95,12 @@
+ 	if !found {
+ 		if table.metatable == nil ||
+ 			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+-			writeSlot(&thread.values[base+code.a()], nilSlot)
++			writeSlot(&values[base+code.a()], nilSlot)
+ 			return tableInstructionHandled
+ 		}
+ 		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+ 	}
+-	writeSlot(&thread.values[base+code.a()], result)
++	writeSlot(&values[base+code.a()], result)
+ 	return tableInstructionHandled
+ }
+ 
+@@ -110,24 +110,24 @@
+ //
+ //go:noinline
+ func executeRawStringTableGet(
+-	thread *threadObject,
++	values []slot,
++	function *functionObject,
++	base int,
+ 	code instruction,
+ ) instruction {
+-	frame := thread.frames[len(thread.frames)-1]
+-	base := int(frame.base)
+ 	var target, key slot
+ 
+ 	switch code.opcode() {
+ 	case opGetGlobal:
+-		target = slotFromTableObject(frame.function.environment)
+-		key = frame.function.prototype.constants[code.bx()]
++		target = slotFromTableObject(function.environment)
++		key = function.prototype.constants[code.bx()]
+ 	case opGetField:
+-		target = thread.values[base+code.b()]
+-		key = frame.function.prototype.constants[constantIndex(code.c())]
++		target = values[base+code.b()]
++		key = function.prototype.constants[constantIndex(code.c())]
+ 	case opSelfField:
+-		target = thread.values[base+code.b()]
+-		writeSlot(&thread.values[base+code.a()+1], target)
+-		key = frame.function.prototype.constants[constantIndex(code.c())]
++		target = values[base+code.b()]
++		writeSlot(&values[base+code.a()+1], target)
++		key = function.prototype.constants[constantIndex(code.c())]
+ 	default:
+ 		panic("lua: invalid constant-string table read opcode")
+ 	}
+@@ -143,12 +143,12 @@
+ 	if !found {
+ 		if table.metatable == nil ||
+ 			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+-			writeSlot(&thread.values[base+code.a()], nilSlot)
++			writeSlot(&values[base+code.a()], nilSlot)
+ 			return tableInstructionHandled
+ 		}
+ 		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+ 	}
+-	writeSlot(&thread.values[base+code.a()], result)
++	writeSlot(&values[base+code.a()], result)
+ 	return tableInstructionHandled
+ }
+ 
+@@ -157,25 +157,25 @@
+ //
+ //go:noinline
+ func executeRawTableSet(
+-	thread *threadObject,
++	values []slot,
++	function *functionObject,
++	base int,
+ 	code instruction,
+ ) instruction {
+-	frame := thread.frames[len(thread.frames)-1]
+-	base := int(frame.base)
+ 	var target, key, value slot
+ 
+ 	switch code.opcode() {
+ 	case opSetTable:
+-		target = thread.values[base+code.a()]
++		target = values[base+code.a()]
+ 		key = operandSlot(
+-			thread.values,
+-			frame.function.prototype.constants,
++			values,
++			function.prototype.constants,
+ 			base,
+ 			code.b(),
+ 		)
+ 		value = operandSlot(
+-			thread.values,
+-			frame.function.prototype.constants,
++			values,
++			function.prototype.constants,
+ 			base,
+ 			code.c(),
+ 		)
+@@ -221,24 +221,24 @@
+ //
+ //go:noinline
+ func executeRawStringTableSet(
+-	thread *threadObject,
++	values []slot,
++	function *functionObject,
++	base int,
+ 	code instruction,
+ ) instruction {
+-	frame := thread.frames[len(thread.frames)-1]
+-	base := int(frame.base)
+ 	var target, key, value slot
+ 
+ 	switch code.opcode() {
+ 	case opSetGlobal:
+-		target = slotFromTableObject(frame.function.environment)
+-		key = frame.function.prototype.constants[code.bx()]
+-		value = thread.values[base+code.a()]
++		target = slotFromTableObject(function.environment)
++		key = function.prototype.constants[code.bx()]
++		value = values[base+code.a()]
+ 	case opSetField:
+-		target = thread.values[base+code.a()]
+-		key = frame.function.prototype.constants[constantIndex(code.b())]
++		target = values[base+code.a()]
++		key = function.prototype.constants[constantIndex(code.b())]
+ 		value = operandSlot(
+-			thread.values,
+-			frame.function.prototype.constants,
++			values,
++			function.prototype.constants,
+ 			base,
+ 			code.c(),
+ 		)

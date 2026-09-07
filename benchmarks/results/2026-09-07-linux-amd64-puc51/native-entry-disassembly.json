@@ -1,0 +1,137 @@
+[
+  {
+    "symbol": "github.com/mmcdole/lunar.runInstructions",
+    "baseline_instructions": 1548,
+    "candidate_instructions": 1548,
+    "normalized_equal": true,
+    "diff_lines": 0,
+    "prologue_baseline": [
+      "lea -0x30(%rsp),%r12",
+      "cmp 0x10(%r14),%r12",
+      "jbe <github.com/mmcdole/lunar.runInstructions+0x1a10>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0xa8,%rsp",
+      "mov %rax,0xb8(%rsp)",
+      "mov %rbx,0xc0(%rsp)"
+    ],
+    "prologue_candidate": [
+      "lea -0x30(%rsp),%r12",
+      "cmp 0x10(%r14),%r12",
+      "jbe <github.com/mmcdole/lunar.runInstructions+0x1a10>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0xa8,%rsp",
+      "mov %rax,0xb8(%rsp)",
+      "mov %rbx,0xc0(%rsp)"
+    ]
+  },
+  {
+    "symbol": "github.com/mmcdole/lunar.driveExecution",
+    "baseline_instructions": 946,
+    "candidate_instructions": 958,
+    "normalized_equal": false,
+    "diff_lines": 1362,
+    "prologue_baseline": [
+      "lea -0xf8(%rsp),%r12",
+      "cmp 0x10(%r14),%r12",
+      "jbe <github.com/mmcdole/lunar.driveExecution+0x10d9>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x170,%rsp",
+      "nopl (%rax)",
+      "test %rax,%rax"
+    ],
+    "prologue_candidate": [
+      "lea -0x100(%rsp),%r12",
+      "cmp 0x10(%r14),%r12",
+      "jbe <github.com/mmcdole/lunar.driveExecution+0x1119>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x178,%rsp",
+      "nopl (%rax)",
+      "test %rax,%rax"
+    ]
+  },
+  {
+    "symbol": "github.com/mmcdole/lunar.(*threadObject).tryEnterFixedLuaCall",
+    "baseline_instructions": 163,
+    "candidate_instructions": 163,
+    "normalized_equal": true,
+    "diff_lines": 0,
+    "prologue_baseline": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).tryEnterFixedLuaCall+0x22b>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x48,%rsp",
+      "mov %ecx,%edx",
+      "shr $0x17,%ecx",
+      "and $0x1ff,%ecx"
+    ],
+    "prologue_candidate": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).tryEnterFixedLuaCall+0x22b>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x48,%rsp",
+      "mov %ecx,%edx",
+      "shr $0x17,%ecx",
+      "and $0x1ff,%ecx"
+    ]
+  },
+  {
+    "symbol": "github.com/mmcdole/lunar.(*threadObject).tryCompleteFixedLuaReturn",
+    "baseline_instructions": 86,
+    "candidate_instructions": 86,
+    "normalized_equal": true,
+    "diff_lines": 0,
+    "prologue_baseline": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).tryCompleteFixedLuaReturn+0x118>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x68,%rsp",
+      "mov %ecx,%edx",
+      "shr $0x17,%edx",
+      "and $0x1ff,%edx"
+    ],
+    "prologue_candidate": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).tryCompleteFixedLuaReturn+0x118>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x68,%rsp",
+      "mov %ecx,%edx",
+      "shr $0x17,%edx",
+      "and $0x1ff,%edx"
+    ]
+  },
+  {
+    "symbol": "github.com/mmcdole/lunar.(*threadObject).completeLuaReturn",
+    "baseline_instructions": 332,
+    "candidate_instructions": 332,
+    "normalized_equal": true,
+    "diff_lines": 0,
+    "prologue_baseline": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).completeLuaReturn+0x53f>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x78,%rsp",
+      "mov 0x38(%rax),%rdx",
+      "lea -0x1(%rdx),%r8",
+      "nopw 0x0(%rax,%rax,1)"
+    ],
+    "prologue_candidate": [
+      "cmp 0x10(%r14),%rsp",
+      "jbe <github.com/mmcdole/lunar.(*threadObject).completeLuaReturn+0x53f>",
+      "push %rbp",
+      "mov %rsp,%rbp",
+      "sub $0x78,%rsp",
+      "mov 0x38(%rax),%rdx",
+      "lea -0x1(%rdx),%r8",
+      "nopw 0x0(%rax,%rax,1)"
+    ]
+  }
+]

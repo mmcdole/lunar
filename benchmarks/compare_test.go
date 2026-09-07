@@ -75,18 +75,25 @@ end
 	},
 }
 
+type interpreterEngine struct {
+	name      string
+	benchmark func(*testing.B, workload)
+}
+
+var interpreterEngines = []interpreterEngine{
+	{name: "lunar", benchmark: benchmarkLunar},
+	{name: "gopherlua", benchmark: benchmarkGopherLua},
+	{name: "golua", benchmark: benchmarkGoLua},
+}
+
 func BenchmarkInterpreter(b *testing.B) {
 	for _, workload := range runtimeWorkloads {
 		b.Run("case="+workload.name, func(b *testing.B) {
-			b.Run("runtime=lunar", func(b *testing.B) {
-				benchmarkLunar(b, workload)
-			})
-			b.Run("runtime=gopherlua", func(b *testing.B) {
-				benchmarkGopherLua(b, workload)
-			})
-			b.Run("runtime=golua", func(b *testing.B) {
-				benchmarkGoLua(b, workload)
-			})
+			for _, engine := range interpreterEngines {
+				b.Run("runtime="+engine.name, func(b *testing.B) {
+					engine.benchmark(b, workload)
+				})
+			}
 		})
 	}
 }

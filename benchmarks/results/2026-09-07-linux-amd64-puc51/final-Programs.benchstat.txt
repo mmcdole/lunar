@@ -1,0 +1,29 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+              │  baseline   │         combined_hot_paths          │            stack_clear             │              all_table              │
+              │   sec/op    │   sec/op     vs base                │   sec/op     vs base               │   sec/op     vs base                │
+binarytrees     139.5m ± 2%   139.8m ± 1%        ~ (p=0.967 n=15)   143.9m ± 1%  +3.10% (p=0.002 n=15)   137.4m ± 1%   -1.49% (p=0.003 n=15)
+fannkuchredux   20.28m ± 1%   18.98m ± 1%   -6.40% (p=0.000 n=15)   20.18m ± 1%       ~ (p=0.126 n=15)   18.64m ± 1%   -8.06% (p=0.000 n=15)
+nbody           53.67m ± 1%   44.85m ± 1%  -16.43% (p=0.000 n=15)   52.49m ± 1%  -2.19% (p=0.000 n=15)   48.13m ± 1%  -10.33% (p=0.000 n=15)
+spectralnorm    45.76m ± 1%   45.58m ± 1%        ~ (p=0.285 n=15)   47.17m ± 1%  +3.09% (p=0.000 n=15)   45.72m ± 1%        ~ (p=0.683 n=15)
+geomean         51.34m        48.26m        -6.01%                  51.78m       +0.85%                  48.73m        -5.09%
+
+              │   baseline   │         combined_hot_paths          │              stack_clear              │              all_table              │
+              │     B/op     │     B/op      vs base               │     B/op      vs base                 │     B/op      vs base               │
+binarytrees     65.90Mi ± 0%   65.70Mi ± 0%       ~ (p=0.210 n=15)   65.65Mi ± 0%       ~ (p=0.270 n=15)     65.76Mi ± 0%       ~ (p=0.894 n=15)
+fannkuchredux   1.165Ki ± 0%   1.146Ki ± 0%  -1.68% (p=0.000 n=15)   1.165Ki ± 0%       ~ (p=1.000 n=15)     1.146Ki ± 0%  -1.68% (p=0.000 n=15)
+nbody           2.820Ki ± 0%   2.733Ki ± 0%  -3.08% (p=0.000 n=15)   2.820Ki ± 0%       ~ (p=1.000 n=15) ¹   2.758Ki ± 0%  -2.22% (p=0.000 n=15)
+spectralnorm    28.05Ki ± 0%   28.05Ki ± 0%       ~ (p=1.000 n=15)   28.05Ki ± 0%       ~ (p=0.100 n=15)     28.05Ki ± 0%       ~ (p=0.700 n=15)
+geomean         49.94Ki        49.30Ki       -1.27%                  49.89Ki       -0.09%                    49.42Ki       -1.03%
+¹ all samples are equal
+
+              │  baseline   │          combined_hot_paths          │             stack_clear              │              all_table               │
+              │  allocs/op  │  allocs/op   vs base                 │  allocs/op   vs base                 │  allocs/op   vs base                 │
+binarytrees     1.009M ± 0%   1.009M ± 0%       ~ (p=0.768 n=15)     1.009M ± 0%       ~ (p=0.502 n=15)     1.009M ± 0%       ~ (p=0.884 n=15)
+fannkuchredux    15.00 ± 0%    15.00 ± 0%       ~ (p=1.000 n=15) ¹    15.00 ± 0%       ~ (p=1.000 n=15) ¹    15.00 ± 0%       ~ (p=1.000 n=15) ¹
+nbody            25.00 ± 0%    25.00 ± 0%       ~ (p=1.000 n=15) ¹    25.00 ± 0%       ~ (p=1.000 n=15) ¹    25.00 ± 0%       ~ (p=1.000 n=15) ¹
+spectralnorm     35.00 ± 0%    35.00 ± 0%       ~ (p=1.000 n=15) ¹    35.00 ± 0%       ~ (p=1.000 n=15) ¹    35.00 ± 0%       ~ (p=1.000 n=15) ¹
+geomean          339.2         339.2       +0.00%                     339.2       +0.00%                     339.2       +0.00%
+¹ all samples are equal
