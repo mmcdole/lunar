@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/mmcdole/lunar/benchmarks
-cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
-BenchmarkPrograms/program=spectralnorm/runtime=lunar         	      78	  45743522 ns/op	   28701 B/op	      35 allocs/op
-PASS
