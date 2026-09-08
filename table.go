@@ -978,9 +978,9 @@ func (table *tableObject) rawSetList(first int, values []slot) {
 			// Every new slot receives its final value, and no integer records
 			// need migration, so the appended range needs no nil initialization.
 			appended := array[oldLength:]
-			copy(appended, values[:last])
 			inserted := 0
-			for _, value := range appended {
+			for index, value := range values[:last] {
+				writeSlot(&appended[index], value)
 				if !value.isNil() {
 					inserted++
 				}
