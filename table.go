@@ -957,11 +957,30 @@ func (table *tableObject) rawSetList(first int, values []slot) {
 			}
 
 			oldLength := table.array.len()
-			table.growArray(oldLength + last)
+			length := oldLength + last
+			previousCapacity := table.array.cap()
+			if length <= previousCapacity {
+				table.array = table.array.withLength(length)
+			} else {
+				capacity := growTableArrayCapacity(previousCapacity, length)
+				grown := makeTableVector[slot](length, capacity)
+				copy(grown.values(), table.array.values())
+				table.array = grown
+				if table.owner != nil {
+					table.owner.collection.chargeCapacityGrowth(
+						previousCapacity,
+						capacity,
+						uint64(unsafe.Sizeof(slot{})),
+					)
+				}
+			}
 			array := table.array.values()
+			// Every new slot receives its final value, and no integer records
+			// need migration, so the appended range needs no nil initialization.
+			appended := array[oldLength:]
+			copy(appended, values[:last])
 			inserted := 0
-			for index, value := range values[:last] {
-				writeSlot(&array[oldLength+index], value)
+			for _, value := range appended {
 				if !value.isNil() {
 					inserted++
 				}
