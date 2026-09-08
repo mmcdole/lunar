@@ -1,0 +1,95 @@
+{
+  "revision": "0a6c7c43405e42182bca531ac226e846d67999b7",
+  "common_environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "2",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "affinity": [
+    8,
+    9
+  ],
+  "checks": [
+    {
+      "cwd": "candidate",
+      "command": "go test ./...",
+      "log": "list-fill-test.log",
+      "result": "pass"
+    },
+    {
+      "cwd": "candidate",
+      "command": "go vet ./...",
+      "log": "list-fill-vet.log",
+      "result": "pass"
+    },
+    {
+      "cwd": "candidate",
+      "command": "go test -race ./...",
+      "log": "list-fill-race.log",
+      "result": "fail: I/O cancellation fixture returned nil file handle"
+    },
+    {
+      "cwd": "candidate",
+      "command": "go test -race -count=1 ./...",
+      "log": "list-fill-race-repeat.log",
+      "result": "pass"
+    },
+    {
+      "cwd": "candidate/benchmarks",
+      "command": "go test -tags puc51 ./...",
+      "log": "list-fill-puc51-test.log",
+      "result": "pass"
+    },
+    {
+      "cwd": "candidate/benchmarks",
+      "command": "go vet -tags puc51 ./...",
+      "log": "list-fill-puc51-vet.log",
+      "result": "pass"
+    }
+  ],
+  "race_failure_investigation": {
+    "test": "TestIOPopenCancellationInterruptsBlockedReadAndReapsRoot",
+    "baseline": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+    "command": "go test -race -run ^TestIOPopenCancellationInterruptsBlockedReadAndReapsRoot$ -count=N .",
+    "baseline_20": {
+      "failures": 0,
+      "log": "baseline-race-io-repeat.log"
+    },
+    "candidate_20": {
+      "failures": 4,
+      "log": "list-fill-race-io-repeat.log"
+    },
+    "baseline_100": {
+      "failures": 1,
+      "log": "baseline-race-io-repeat-100.log"
+    },
+    "assessment": "Same failure reproduced on unchanged main. Test can cancel after shell PID publication before Lua stores global file handle; tested chunk has no SETLIST. No unrelated test change included."
+  },
+  "puc_environment": {
+    "CGO_ENABLED": "1",
+    "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+    "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+  },
+  "review": "Independent read-only review found no correctness blocker; covers nils, capacity, accounting, aliasing, weak references, integer fallback and overflow.",
+  "scalar_checks": {
+    "revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+    "root_test": {
+      "command": "go test ./...",
+      "result": "pass",
+      "log": "scalar-test.log"
+    },
+    "root_vet": {
+      "command": "go vet ./...",
+      "result": "pass",
+      "log": "scalar-vet.log"
+    },
+    "root_race": {
+      "command": "go test -race -count=1 ./...",
+      "result": "pass",
+      "log": "scalar-race.log"
+    },
+    "cbor": "nested tests/vet and small load/save smoke pass; see cbor/scalar-manifest.json",
+    "review": "Independent review found no blocker in single-pass loop, including old-prefix aliasing and typed pointer barriers."
+  }
+}

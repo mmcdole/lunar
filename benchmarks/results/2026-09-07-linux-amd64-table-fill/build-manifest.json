@@ -1,0 +1,56 @@
+{
+  "base_revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+  "go": "go version go1.26.0 linux/amd64",
+  "build_environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "1",
+    "CGO_ENABLED": "1",
+    "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+    "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+  },
+  "build_command": [
+    "taskset",
+    "-c",
+    "4",
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "puc51",
+    "-o",
+    "/tmp/lunar-table-fill/baseline.test"
+  ],
+  "build_cwd": "/tmp/lunar-table-fill/baseline/benchmarks",
+  "baseline_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+  "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+  "candidate_revision": "0a6c7c43405e42182bca531ac226e846d67999b7",
+  "candidate_sha256": "80c51f114668e00cacbce4ed72a9401d2869210801a8238a1b55c7c1e58c0932",
+  "candidate_build_command": [
+    "taskset",
+    "-c",
+    "4",
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "puc51",
+    "-o",
+    "/tmp/lunar-table-fill/candidate.test"
+  ],
+  "candidate_build_cwd": "/tmp/lunar-table-fill/candidate/benchmarks",
+  "scalar_revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+  "scalar_sha256": "f3827353f58a53759ea0c6571cf0fd4145ed1a766f3e03ae41bc0b20181f85c6",
+  "scalar_build_command": [
+    "taskset",
+    "-c",
+    "4",
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "puc51",
+    "-o",
+    "/tmp/lunar-table-fill/scalar.test"
+  ],
+  "scalar_build_cwd": "/tmp/lunar-table-fill/scalar/benchmarks"
+}

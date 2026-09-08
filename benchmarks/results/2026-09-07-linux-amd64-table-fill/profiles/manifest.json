@@ -1,0 +1,38 @@
+{
+  "main": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+  "binary_source": "a2f32740110096c4eee57e7ec90ede31b78236c6",
+  "binary": "/tmp/lunar-native-main/no_clear.test",
+  "sha256": "00c4a0e60e4407c3552b283d7c5251f25c22050303a178c89a8ae461c4fc4d16",
+  "verified_files": 178,
+  "purpose": "Profile merged main to prioritize a general table-construction improvement; no candidate implemented or qualified.",
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1",
+    "cpu_affinity": 2,
+    "Go": "1.26.0"
+  },
+  "profile_command": [
+    "/tmp/lunar-native-main/no_clear.test",
+    "-test.run",
+    "^$",
+    "-test.bench",
+    "^BenchmarkPrograms$/^program=binarytrees$/^runtime=lunar$",
+    "-test.benchtime",
+    "5s",
+    "-test.cpu",
+    "1",
+    "-test.count",
+    "1",
+    "-test.cpuprofile",
+    "/tmp/lunar-table-construction/binarytrees.cpu.pprof",
+    "-test.memprofile",
+    "/tmp/lunar-table-construction/binarytrees.mem.pprof"
+  ],
+  "working_directory": "/tmp/lunar-native-main/native_no_clear/benchmarks",
+  "notes": [
+    "Profiling run only; elapsed timing is not a replacement for README medians or a performance comparison.",
+    "An initial anchored benchmark filter omitted program= and matched no benchmark. Its empty profile files were overwritten by the successful command above.",
+    "The benchmark executable source is byte-identical to merged main across all 178 tracked Go/module files."
+  ]
+}

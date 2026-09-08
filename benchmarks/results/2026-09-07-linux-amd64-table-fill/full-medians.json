@@ -1,0 +1,248 @@
+{
+  "BenchmarkInterpreter/case=numeric_for_10000": {
+    "baseline": {
+      "ns": 37258.0,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 37281.0,
+      "bytes": 0,
+      "allocs": 0
+    }
+  },
+  "BenchmarkInterpreter/case=fixed_lua_calls_1000": {
+    "baseline": {
+      "ns": 24759.0,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 24906.0,
+      "bytes": 0,
+      "allocs": 0
+    }
+  },
+  "BenchmarkInterpreter/case=table_field_get_set_10000": {
+    "baseline": {
+      "ns": 185480.0,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 185106.0,
+      "bytes": 0,
+      "allocs": 0
+    }
+  },
+  "BenchmarkInterpreter/case=string_append_256": {
+    "baseline": {
+      "ns": 35210.0,
+      "bytes": 278248,
+      "allocs": 255
+    },
+    "scalar": {
+      "ns": 35116.0,
+      "bytes": 278248,
+      "allocs": 255
+    }
+  },
+  "BenchmarkEmbedding/case=go_to_lua_scalars": {
+    "baseline": {
+      "ns": 54.19,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 53.54,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "gopherlua": {
+      "ns": 52.1,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "golua": {
+      "ns": 125.6,
+      "bytes": 160,
+      "allocs": 5
+    }
+  },
+  "BenchmarkEmbedding/case=lua_to_go_scalar_1000": {
+    "baseline": {
+      "ns": 50968.0,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 50640.0,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "gopherlua": {
+      "ns": 91045.0,
+      "bytes": 29872,
+      "allocs": 1085
+    },
+    "golua": {
+      "ns": 68640.0,
+      "bytes": 32160,
+      "allocs": 4005
+    }
+  },
+  "BenchmarkEmbedding/case=go_string_echo_128B": {
+    "baseline": {
+      "ns": 78.1,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 75.7,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "gopherlua": {
+      "ns": 67.56,
+      "bytes": 16,
+      "allocs": 1
+    },
+    "golua": {
+      "ns": 127.2,
+      "bytes": 176,
+      "allocs": 5
+    }
+  },
+  "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua": {
+    "baseline": {
+      "ns": 269.3,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "scalar": {
+      "ns": 268.6,
+      "bytes": 0,
+      "allocs": 0
+    },
+    "gopherlua": {
+      "ns": 516.8,
+      "bytes": 40,
+      "allocs": 0
+    },
+    "golua": {
+      "ns": 855.7,
+      "bytes": 576,
+      "allocs": 57
+    }
+  },
+  "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua": {
+    "baseline": {
+      "ns": 2252.0,
+      "bytes": 658,
+      "allocs": 6
+    },
+    "scalar": {
+      "ns": 2292.0,
+      "bytes": 656,
+      "allocs": 6
+    },
+    "gopherlua": {
+      "ns": 1264.0,
+      "bytes": 1384,
+      "allocs": 37
+    },
+    "golua": {
+      "ns": 1466.0,
+      "bytes": 1536,
+      "allocs": 89
+    }
+  },
+  "BenchmarkPrograms/program=binarytrees": {
+    "baseline": {
+      "ns": 135773883.0,
+      "bytes": 68951952,
+      "allocs": 1009045
+    },
+    "scalar": {
+      "ns": 134776536.0,
+      "bytes": 68841232,
+      "allocs": 1009045
+    },
+    "gopherlua": {
+      "ns": 153890820.0,
+      "bytes": 75631788,
+      "allocs": 1009811
+    },
+    "golua": {
+      "ns": 163245476.0,
+      "bytes": 103845420,
+      "allocs": 2533642
+    }
+  },
+  "BenchmarkPrograms/program=fannkuchredux": {
+    "baseline": {
+      "ns": 18377675.0,
+      "bytes": 1168,
+      "allocs": 15
+    },
+    "scalar": {
+      "ns": 18379631.0,
+      "bytes": 1168,
+      "allocs": 15
+    },
+    "gopherlua": {
+      "ns": 29571368.0,
+      "bytes": 393650,
+      "allocs": 1559
+    },
+    "golua": {
+      "ns": 33093103.0,
+      "bytes": 11959585,
+      "allocs": 1494687
+    }
+  },
+  "BenchmarkPrograms/program=nbody": {
+    "baseline": {
+      "ns": 43478111.0,
+      "bytes": 2799,
+      "allocs": 25
+    },
+    "scalar": {
+      "ns": 43594980.0,
+      "bytes": 2799,
+      "allocs": 25
+    },
+    "gopherlua": {
+      "ns": 163555542.0,
+      "bytes": 46728486,
+      "allocs": 376439
+    },
+    "golua": {
+      "ns": 173305272.0,
+      "bytes": 74249213,
+      "allocs": 8080629
+    }
+  },
+  "BenchmarkPrograms/program=spectralnorm": {
+    "baseline": {
+      "ns": 44833587.0,
+      "bytes": 28701,
+      "allocs": 35
+    },
+    "scalar": {
+      "ns": 44963143.0,
+      "bytes": 28701,
+      "allocs": 35
+    },
+    "gopherlua": {
+      "ns": 144546668.0,
+      "bytes": 59195864,
+      "allocs": 231170
+    },
+    "golua": {
+      "ns": 133843579.0,
+      "bytes": 79431648,
+      "allocs": 9925272
+    }
+  }
+}

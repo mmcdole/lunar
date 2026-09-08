@@ -1,0 +1,102 @@
+# See scalar-programs-pilot-manifest.json for source, executable, environment and collection settings.
+# round: 1; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=baseline         	       4	 134601519 ns/op	68994128 B/op	 1009044 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline       	      32	  18461530 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline               	      13	  43826796 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline        	      12	  45350221 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 1; runtime: scalar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=scalar         	       4	 133743310 ns/op	68521072 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=scalar       	      31	  18462557 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=scalar               	      13	  44128364 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=scalar        	      13	  45074605 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 2; runtime: scalar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=scalar         	       4	 133046581 ns/op	69068144 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=scalar       	      32	  18480909 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=scalar               	      13	  44085897 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=scalar        	      13	  44975243 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 2; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=baseline         	       4	 135494130 ns/op	68521072 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline       	      31	  18386083 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline               	      13	  43412763 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline        	      13	  44959525 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 3; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=baseline         	       4	 137970349 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline       	      32	  18280578 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline               	      13	  43240198 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline        	      13	  45112521 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 3; runtime: scalar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=scalar         	       4	 133226150 ns/op	68387952 B/op	 1009042 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=scalar       	      32	  18405701 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=scalar               	      13	  44160285 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=scalar        	      13	  44969007 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 4; runtime: scalar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=scalar         	       4	 132782932 ns/op	68994128 B/op	 1009044 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=scalar       	      32	  18266826 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=scalar               	      13	  43695049 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=scalar        	      13	  45036047 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 4; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=baseline         	       4	 137903479 ns/op	68521072 B/op	 1009043 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline       	      31	  18561896 ns/op	    1173 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline               	      13	  43641551 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline        	      13	  45169220 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# round: 5; runtime: baseline
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=baseline         	       4	 137181074 ns/op	69255472 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=baseline       	      32	  18419377 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=baseline               	      13	  43976581 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=baseline        	      12	  45662052 ns/op	   28725 B/op	      35 allocs/op
+PASS
+# round: 5; runtime: scalar
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=scalar         	       4	 136947638 ns/op	69057520 B/op	 1009045 allocs/op
+BenchmarkPrograms/program=fannkuchredux/runtime=scalar       	      32	  18403809 ns/op	    1168 B/op	      15 allocs/op
+BenchmarkPrograms/program=nbody/runtime=scalar               	      13	  43759261 ns/op	    2799 B/op	      25 allocs/op
+BenchmarkPrograms/program=spectralnorm/runtime=scalar        	      13	  44986074 ns/op	   28701 B/op	      35 allocs/op
+PASS
+# completed: 40 benchmark samples

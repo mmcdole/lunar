@@ -1,0 +1,32 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                               │   baseline   │             candidate              │
+                               │    sec/op    │    sec/op     vs base              │
+Programs/program=binarytrees     137.2m ± ∞ ¹   137.6m ± ∞ ¹       ~ (p=1.000 n=5)
+Programs/program=fannkuchredux   18.44m ± ∞ ¹   18.48m ± ∞ ¹       ~ (p=0.841 n=5)
+Programs/program=nbody           43.85m ± ∞ ¹   43.95m ± ∞ ¹       ~ (p=0.548 n=5)
+Programs/program=spectralnorm    45.00m ± ∞ ¹   45.21m ± ∞ ¹       ~ (p=0.222 n=5)
+geomean                          47.27m         47.42m        +0.32%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                               │   baseline    │               candidate               │
+                               │     B/op      │     B/op       vs base                │
+Programs/program=binarytrees     65.63Mi ± ∞ ¹   65.35Mi ± ∞ ¹       ~ (p=1.000 n=5)
+Programs/program=fannkuchredux   1.141Ki ± ∞ ¹   1.141Ki ± ∞ ¹       ~ (p=0.444 n=5)
+Programs/program=nbody           2.733Ki ± ∞ ¹   2.733Ki ± ∞ ¹       ~ (p=1.000 n=5) ²
+Programs/program=spectralnorm    28.03Ki ± ∞ ¹   28.03Ki ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                          49.23Ki         49.18Ki        -0.11%
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+
+                               │   baseline   │              candidate               │
+                               │  allocs/op   │  allocs/op    vs base                │
+Programs/program=binarytrees     1.009M ± ∞ ¹   1.009M ± ∞ ¹       ~ (p=0.714 n=5)
+Programs/program=fannkuchredux    15.00 ± ∞ ¹    15.00 ± ∞ ¹       ~ (p=1.000 n=5) ²
+Programs/program=nbody            25.00 ± ∞ ¹    25.00 ± ∞ ¹       ~ (p=1.000 n=5) ²
+Programs/program=spectralnorm     35.00 ± ∞ ¹    35.00 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                           339.2          339.2        +0.00%
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal

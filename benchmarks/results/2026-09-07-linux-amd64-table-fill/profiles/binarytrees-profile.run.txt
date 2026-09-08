@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+BenchmarkPrograms/program=binarytrees/runtime=lunar         	      45	 132501591 ns/op	68867079 B/op	 1009044 allocs/op
+PASS

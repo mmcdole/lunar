@@ -1,0 +1,22 @@
+{
+  "candidate": "0a6c7c43405e42182bca531ac226e846d67999b7",
+  "status": "not qualified",
+  "program_pilot": "5 samples per runtime per program; no statistically significant time change in any of the four rows",
+  "cbor_save_pilot": "3 pairs; candidate median1594.243ms vs baseline1572.952ms, +1.35%; exploratory sample, not full qualification",
+  "next_experiment": "General single-pass stores and occupancy count to remove typed-copy runtime overhead; all constructor sizes.",
+  "scalar": {
+    "revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+    "program_pilot": "binarytrees -2.88%, p0.032 n5; three other programs not significant; nbody +1.03% p0.095 warrants full gate",
+    "status": "not qualified"
+  },
+  "final_decision": {
+    "status": "not qualified",
+    "reason": "Focused repeat confirmed n-body regression (+0.89%, significant;13/15pairs slower), violating no-regression condition.",
+    "full_go_samples": 660,
+    "focused_go_samples": 120,
+    "cbor_timing_samples": 60,
+    "cbor_retained_samples": 12,
+    "readme": "27fresh candidate timing cells calculated and audited but not promoted to root README because candidate failed.",
+    "pr": "No implementation PR; retain issue and experiment evidence."
+  }
+}

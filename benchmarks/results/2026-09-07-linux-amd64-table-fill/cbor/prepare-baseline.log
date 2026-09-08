@@ -1,0 +1,15 @@
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/compare	0.028s
+?   	github.com/mmcdole/lunar/benchmarks/cbor/cmd/generate	[no test files]
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/native	0.069s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/run	0.004s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/shapes	0.002s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/workload	0.055s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture	0.007s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge	0.001s
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+{"preset":"small","output":"/tmp/lunar-table-fill/cbor/small.cbor","areas":3,"rooms":32,"exits":96,"tables":172,"entries":871}
+{"preset":"large","output":"/tmp/lunar-table-fill/cbor/large.cbor","areas":341,"rooms":36705,"exits":109742,"tables":183513,"entries":938452}

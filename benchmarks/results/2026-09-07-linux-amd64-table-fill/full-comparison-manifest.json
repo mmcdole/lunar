@@ -1,0 +1,1881 @@
+{
+  "schema_version": 1,
+  "name": "full-comparison",
+  "status": "completed",
+  "samples_per_row": 15,
+  "benchtime": "500ms",
+  "expected_unique_rows": 44,
+  "expected_total_samples": 660,
+  "expected_processes": 60,
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux-6.6.114.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "cpu_model": "AMD Ryzen 9 9950X3D 16-Core Processor",
+  "machine_model": "unavailable",
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1"
+  },
+  "affinity": 2,
+  "test_cpu": 1,
+  "power_policy": "WSL2; host power, frequency and external host load uncontrolled; root serializes benchmark processes on guest CPU 2",
+  "order": "baseline, scalar, gopherlua, golua; rotate starting lane by one each round",
+  "timed_region": "Go B.Loop; setup, compilation, one warmup and final validation excluded; required embedding API result consumption included",
+  "allocation_metrics": "Go B/op and allocs/op; allocation traffic, not retained memory",
+  "sources": {
+    "baseline": {
+      "source": "/tmp/lunar-table-fill/baseline",
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "tree": "4433ce6fe18773198401812e0b73f92c1b64c9a6",
+      "clean": true,
+      "binary": "/tmp/lunar-table-fill/baseline.test",
+      "binary_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+      "source_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      },
+      "binary_build_info": "/tmp/lunar-table-fill/baseline.test: go1.26.0\n\tpath\tgithub.com/mmcdole/lunar/benchmarks.test\n\tmod\tgithub.com/mmcdole/lunar/benchmarks\t(devel)\t\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-tags=puc51\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,tlssecpmlkem=0,tlssha1=1,updatemaxprocs=0,urlstrictcolons=0,x509sha256skid=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=-I/tmp/lunar-puc-assessment/lua-5.1.5/src\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\"/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl\"\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n"
+    },
+    "scalar": {
+      "source": "/tmp/lunar-table-fill/scalar",
+      "revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+      "tree": "5db0669b459eed168f6a7df9cbf67ec42beff1fa",
+      "clean": true,
+      "binary": "/tmp/lunar-table-fill/scalar.test",
+      "binary_sha256": "f3827353f58a53759ea0c6571cf0fd4145ed1a766f3e03ae41bc0b20181f85c6",
+      "source_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      },
+      "binary_build_info": "/tmp/lunar-table-fill/scalar.test: go1.26.0\n\tpath\tgithub.com/mmcdole/lunar/benchmarks.test\n\tmod\tgithub.com/mmcdole/lunar/benchmarks\t(devel)\t\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-tags=puc51\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,tlssecpmlkem=0,tlssha1=1,updatemaxprocs=0,urlstrictcolons=0,x509sha256skid=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=-I/tmp/lunar-puc-assessment/lua-5.1.5/src\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\"/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl\"\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n"
+    }
+  },
+  "build_manifest_sha256": "0e0af267a8926910e0832ae10823a1b33965d1182d596942d150685baa4370c7",
+  "build_manifest": {
+    "base_revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+    "go": "go version go1.26.0 linux/amd64",
+    "build_environment": {
+      "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+      "GOMAXPROCS": "1",
+      "CGO_ENABLED": "1",
+      "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+      "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+    },
+    "build_command": [
+      "taskset",
+      "-c",
+      "4",
+      "go",
+      "test",
+      "-c",
+      "-tags",
+      "puc51",
+      "-o",
+      "/tmp/lunar-table-fill/baseline.test"
+    ],
+    "build_cwd": "/tmp/lunar-table-fill/baseline/benchmarks",
+    "baseline_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+    "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586",
+    "candidate_revision": "0a6c7c43405e42182bca531ac226e846d67999b7",
+    "candidate_sha256": "80c51f114668e00cacbce4ed72a9401d2869210801a8238a1b55c7c1e58c0932",
+    "candidate_build_command": [
+      "taskset",
+      "-c",
+      "4",
+      "go",
+      "test",
+      "-c",
+      "-tags",
+      "puc51",
+      "-o",
+      "/tmp/lunar-table-fill/candidate.test"
+    ],
+    "candidate_build_cwd": "/tmp/lunar-table-fill/candidate/benchmarks",
+    "scalar_revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+    "scalar_sha256": "f3827353f58a53759ea0c6571cf0fd4145ed1a766f3e03ae41bc0b20181f85c6",
+    "scalar_build_command": [
+      "taskset",
+      "-c",
+      "4",
+      "go",
+      "test",
+      "-c",
+      "-tags",
+      "puc51",
+      "-o",
+      "/tmp/lunar-table-fill/scalar.test"
+    ],
+    "scalar_build_cwd": "/tmp/lunar-table-fill/scalar/benchmarks"
+  },
+  "collector_sha256": "ca0219a4238fc72a8aac9235a36c4babd9c5c750831844880770414444d4d3ee",
+  "lanes": [
+    {
+      "label": "baseline",
+      "binary": "baseline",
+      "runtime": "lunar",
+      "interpreter": true,
+      "expected_rows": [
+        "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+        "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+        "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+        "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+        "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+        "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+        "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+        "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+        "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+        "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+        "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+        "BenchmarkPrograms/program=nbody/runtime=lunar",
+        "BenchmarkPrograms/program=spectralnorm/runtime=lunar"
+      ],
+      "bench_filter": "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$"
+    },
+    {
+      "label": "scalar",
+      "binary": "scalar",
+      "runtime": "lunar",
+      "interpreter": true,
+      "expected_rows": [
+        "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+        "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+        "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+        "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+        "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+        "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+        "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+        "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+        "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+        "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+        "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+        "BenchmarkPrograms/program=nbody/runtime=lunar",
+        "BenchmarkPrograms/program=spectralnorm/runtime=lunar"
+      ],
+      "bench_filter": "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$"
+    },
+    {
+      "label": "gopherlua",
+      "binary": "scalar",
+      "runtime": "gopherlua",
+      "interpreter": false,
+      "expected_rows": [
+        "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua",
+        "BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua",
+        "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua",
+        "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua",
+        "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua",
+        "BenchmarkPrograms/program=binarytrees/runtime=gopherlua",
+        "BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua",
+        "BenchmarkPrograms/program=nbody/runtime=gopherlua",
+        "BenchmarkPrograms/program=spectralnorm/runtime=gopherlua"
+      ],
+      "bench_filter": "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$"
+    },
+    {
+      "label": "golua",
+      "binary": "scalar",
+      "runtime": "golua",
+      "interpreter": false,
+      "expected_rows": [
+        "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua",
+        "BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua",
+        "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua",
+        "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua",
+        "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua",
+        "BenchmarkPrograms/program=binarytrees/runtime=golua",
+        "BenchmarkPrograms/program=fannkuchredux/runtime=golua",
+        "BenchmarkPrograms/program=nbody/runtime=golua",
+        "BenchmarkPrograms/program=spectralnorm/runtime=golua"
+      ],
+      "bench_filter": "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$"
+    }
+  ],
+  "versions": {
+    "gopherlua": "v1.1.2",
+    "golua": "v0.0.0-20250718183320-1e37f32ad7d0"
+  },
+  "publication_scope": "Programs and Embedding: scalar Lunar, GopherLua, go-lua; Interpreter: baseline/scalar gate only; no PUC samples",
+  "started": 1788827500.6589575,
+  "processes": [
+    {
+      "round": 1,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827500.6728528,
+      "finished": 1788827508.7197874,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "af5db824e65214b8f306d4eafbecb3d77b8c8fdcc9b039b8d5c55144ded95dcb"
+    },
+    {
+      "round": 1,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827508.7199726,
+      "finished": 1788827516.7079575,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "add8c5df354d43749d54e32aec456221acc11b4c2c9625770158461afd38a652"
+    },
+    {
+      "round": 1,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827516.7081413,
+      "finished": 1788827522.807772,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "c688c0912a25b8197250315b5d69dffa46bd347b0c30c00f2e591db974b099c8"
+    },
+    {
+      "round": 1,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827522.8079505,
+      "finished": 1788827528.6279476,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "e6c61319c04c89982879dea6d3279563e93d670cdb785bd03cf55467021ab77f"
+    },
+    {
+      "round": 2,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827528.6281784,
+      "finished": 1788827536.6197019,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "0206423b4be8b4cd11005b0cfb4e8f2e7fe9980a6460e5b027a9918f5cf22d97"
+    },
+    {
+      "round": 2,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827536.619887,
+      "finished": 1788827542.6880486,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "19ebdd31530b8a6271abd6a20f87275ba9a752eb68edc5ad0b370d53dfbfa2b2"
+    },
+    {
+      "round": 2,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827542.6882463,
+      "finished": 1788827548.4906025,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "a7ca7dbc574cf773b32e359bb32e475092bf12e72fc8682cfd7bf0ed12b6d296"
+    },
+    {
+      "round": 2,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827548.4908018,
+      "finished": 1788827556.5779967,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "afe28b32334c517c0aa879ecfa6a9239b83a4d63441bdd1c9cddff86ca1e4058"
+    },
+    {
+      "round": 3,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827556.5781968,
+      "finished": 1788827562.6314292,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "2a5311603b6e0339df7bf2fab0086903c3419febf8f1933cad79f8704d35aeb3"
+    },
+    {
+      "round": 3,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827562.6316297,
+      "finished": 1788827568.2836828,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "8737fb68bd983ae740a43180d3dd7345d2064071a00981c9b176b13ba11efb4b"
+    },
+    {
+      "round": 3,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827568.2839065,
+      "finished": 1788827576.2266583,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "3fe65a96ddcc4a1414758fd92ff3755f0138f718ee9c06a319d1e4a982f193c5"
+    },
+    {
+      "round": 3,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827576.2268672,
+      "finished": 1788827584.2276907,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "4ad64e9871837e6ed0729029c854894dac6a1ecb23a59a6136533638b0e31de2"
+    },
+    {
+      "round": 4,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827584.2278998,
+      "finished": 1788827590.0238495,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "b793ae314ab31f09f0e40ba0e4c46f5b273680457cd106f201ea45dea4061da5"
+    },
+    {
+      "round": 4,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827590.0240965,
+      "finished": 1788827598.0005589,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "6a918521236d8043ac985df9c630f0d8e5f06a2ce56815dc687213da03529cab"
+    },
+    {
+      "round": 4,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827598.0007665,
+      "finished": 1788827605.97161,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "c613885b016cc8b2ebe0d468788e0e64d85f9f811ce60ba71badd84ab545bc66"
+    },
+    {
+      "round": 4,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827605.9718282,
+      "finished": 1788827612.034683,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "a6d4b59231a7162beb67cf8fa10c0650b5700b2dd992bf667366125fa59041e4"
+    },
+    {
+      "round": 5,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827612.0349114,
+      "finished": 1788827619.9290307,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "779f396da974fd02cda22f4e5d276c7d23b135a1b9048028043eed2d4cb086ef"
+    },
+    {
+      "round": 5,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827619.9292498,
+      "finished": 1788827627.9181137,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "a462c6a2454eb845c80697614cb897767f32531e2b1df3c97ad07a9e7868e216"
+    },
+    {
+      "round": 5,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827627.9183288,
+      "finished": 1788827633.9679966,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "258368178fe0b27d0936fe152f07d875edf27db409595f580fb9eb28d1e11e33"
+    },
+    {
+      "round": 5,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827633.9682186,
+      "finished": 1788827639.8074276,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "633965110434fa63536bb2cbdbddddcbb402fc71775525d9ba19874e802a46fb"
+    },
+    {
+      "round": 6,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827639.8076537,
+      "finished": 1788827647.7774029,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "89675940f30a81c22ca8a20d8de232f7d9e9c6eaae16064b69d10be02f1e0977"
+    },
+    {
+      "round": 6,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827647.7776263,
+      "finished": 1788827653.8456614,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "a5ac32e8f8f25c8ff0f00b3122863fcf0e39b54800ce076b210e5e802f2b22fe"
+    },
+    {
+      "round": 6,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827653.845936,
+      "finished": 1788827659.640473,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "579841c0bf4731f56368025ccca8cf8f810fbb92b5414308f950a84e8a1d7442"
+    },
+    {
+      "round": 6,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827659.6407032,
+      "finished": 1788827667.7242606,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "3fb2aea79fead4c9ffb81e42ed9880099cfab4145c54e91764f8cd526a826dd4"
+    },
+    {
+      "round": 7,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827667.7245333,
+      "finished": 1788827673.7044344,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "47d432a7f40d40b71562e893a974fe869b27117803a895091efdcab67cd360c9"
+    },
+    {
+      "round": 7,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827673.7046692,
+      "finished": 1788827679.5414302,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "810135ba1b7186ef277fbfe53d7a22a01c07b5841faac05e6d20ae4ecca930f6"
+    },
+    {
+      "round": 7,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827679.5416703,
+      "finished": 1788827687.4131796,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "6045a98d675fc15db94c705de1739256352f5df0262ec9636e09503df76a0fde"
+    },
+    {
+      "round": 7,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827687.4134102,
+      "finished": 1788827695.4259083,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "96f9399845bec164098ade8ad9125893eb71fd23ebe49bfbf405db7706658f39"
+    },
+    {
+      "round": 8,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827695.426147,
+      "finished": 1788827701.256763,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "ce96008390daf829478c576a9f0b72febffe4b2eb5bab3842f1656d2c3729f01"
+    },
+    {
+      "round": 8,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827701.2570076,
+      "finished": 1788827709.1314137,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "f9600cd41ae1910e2f2f64766af4c0c556ba4bb80b4afc1ba6634775a7c352e8"
+    },
+    {
+      "round": 8,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827709.1316426,
+      "finished": 1788827717.03375,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "3cdb684285bfb96f1211fba3749423b53009332fe63f56d1da0e5f64aab9545a"
+    },
+    {
+      "round": 8,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827717.034015,
+      "finished": 1788827723.0478868,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "744186da825020a877f351b0b51c6541dc7e2ff92b4c27e6ac7da8a4295e9cd2"
+    },
+    {
+      "round": 9,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827723.048127,
+      "finished": 1788827731.0561287,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "b12d8686e980d09dfd546a66aeb7ea2c5e25e1b245fd850e66c81886b1df316c"
+    },
+    {
+      "round": 9,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827731.0563617,
+      "finished": 1788827738.9254813,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "2791eee72128d32782f06eec7920d09fcfa5452a831a010f5cc59ab01a7354c2"
+    },
+    {
+      "round": 9,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827738.9257288,
+      "finished": 1788827745.0255454,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "d50c6d93b35b0f8decd6e38ab7cb87ad78af0431f6d44e63aa87d868e5dc8b98"
+    },
+    {
+      "round": 9,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827745.0258589,
+      "finished": 1788827750.8189027,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "7187d3a0ca7ea74b3c7057993110b85c1706e294f5ed0ed7502d4a8eb0d05af0"
+    },
+    {
+      "round": 10,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827750.819174,
+      "finished": 1788827758.7960641,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "800385589f9cdeb385938833e6c4638aa3b482b3c4a64b99256b9d31f180a258"
+    },
+    {
+      "round": 10,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827758.7963183,
+      "finished": 1788827764.890511,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "1281a5e188c005b26591f3d99795e8bbb89040bd8f3bb3d2bdf8d95eab1244e3"
+    },
+    {
+      "round": 10,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827764.8907475,
+      "finished": 1788827770.704632,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "10eab9e57f180fc94e966fb5185b364bab8c43f88538b344dd0711772c13e7c2"
+    },
+    {
+      "round": 10,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827770.704893,
+      "finished": 1788827778.6340024,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "63ad110f0bdc61ada6d78cfceb4bde64f418009e9776e0481514666455b5906a"
+    },
+    {
+      "round": 11,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827778.6342585,
+      "finished": 1788827784.6445515,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "5c9bbbb4805fbc0119f107d223a37e53f27b86108eb262229363566c0f2aeb5d"
+    },
+    {
+      "round": 11,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827784.6448362,
+      "finished": 1788827790.4516692,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "968cb4aab2c490e0136425e87fb4956a0bf2322426158c203e27e676ee4bcc08"
+    },
+    {
+      "round": 11,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827790.4519408,
+      "finished": 1788827798.4947927,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "18195bf0ced5322588b1bbab5d49c82707bbf35127d183f3ed3838c430928abd"
+    },
+    {
+      "round": 11,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827798.4950562,
+      "finished": 1788827806.4360886,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "c9d110fc05bc9f1de9175f74de8589f7c4119cbaf66fada85d9e173161899135"
+    },
+    {
+      "round": 12,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827806.4363568,
+      "finished": 1788827812.2520967,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "31959208c80ed74232bcbc7e6278655544cf3e070eef7e4860da76295a148ae2"
+    },
+    {
+      "round": 12,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827812.2523682,
+      "finished": 1788827820.3075,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "71a09704a890b71bf493bbb531ca91e2bb2d2947268cd5c943de95dea4d24bbb"
+    },
+    {
+      "round": 12,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827820.3078032,
+      "finished": 1788827828.265895,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "d221aa3e16013a6b9d2b0a184cdf0504b2e6e703a8154cc66f6a08e67c58a277"
+    },
+    {
+      "round": 12,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827828.2661886,
+      "finished": 1788827834.277293,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "3f385192ffaedf48f743807faa42f70447acb823dbd734491e0daf1c3db6d0ca"
+    },
+    {
+      "round": 13,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827834.2775986,
+      "finished": 1788827842.2354598,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "eb64beea1ae84ea63433ddade8beb19693936e03eb5e6ad85b720902f2de584b"
+    },
+    {
+      "round": 13,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827842.235745,
+      "finished": 1788827850.111496,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "6e66d7c0e4c75df04760418f95d8ff959ec9c8b9a1aafc40e28b785de1498b9f"
+    },
+    {
+      "round": 13,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827850.1117694,
+      "finished": 1788827856.1816626,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "2f4510c01caeafb749b876c9d9f06e732e00bfc4556323a903d7c6c595f587e6"
+    },
+    {
+      "round": 13,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827856.182012,
+      "finished": 1788827861.9945056,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "601d99c665230d7760235011a0551c499ac5e49c2859cb18788af6836dd84768"
+    },
+    {
+      "round": 14,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827861.994792,
+      "finished": 1788827870.000685,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "26f290de8dc2bc7969188fe820ecaf61bfc2b59a3362b183144d933ee7459e3c"
+    },
+    {
+      "round": 14,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827870.0009906,
+      "finished": 1788827876.1017249,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "50123ab1951a88c4947d3cf0267ceab49e89f8ea6539e16abd3d8fb6cdb82717"
+    },
+    {
+      "round": 14,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827876.1020467,
+      "finished": 1788827881.9024916,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "0ff270e5c8fe8593d169730e2a42344c009cbefc9025a69d3c02b0bca295c368"
+    },
+    {
+      "round": 14,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827881.9027853,
+      "finished": 1788827889.8848875,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "e441d4ba529ea03157a59738cc470b0df13efa86a9e43c5babf4085947728b8b"
+    },
+    {
+      "round": 15,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827889.885181,
+      "finished": 1788827895.895634,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "4b191dcf85b7ea542cd1d59a3a1a1f3ae03129043c1148cd2b6dff6ba9442143"
+    },
+    {
+      "round": 15,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827895.8959348,
+      "finished": 1788827901.6975558,
+      "validated_rows": 9,
+      "raw_stdout_sha256": "ba71a3911460d4ada9e641911479d235f0805ed9ce93938bb9d24f214d0efd33"
+    },
+    {
+      "round": 15,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/baseline.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827901.697897,
+      "finished": 1788827909.6859584,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "72a3ba39b6bf8eb9aac7d704d0a716db6f05b3bfe19feeeb527e07c4878724b5"
+    },
+    {
+      "round": 15,
+      "lane": "scalar",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-full-workers-rdlf2qap/scalar.test",
+        "-test.run",
+        "^$",
+        "-test.bench",
+        "^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime",
+        "500ms",
+        "-test.cpu",
+        "1",
+        "-test.count",
+        "1"
+      ],
+      "started": 1788827909.6862504,
+      "finished": 1788827917.661981,
+      "validated_rows": 13,
+      "raw_stdout_sha256": "c4e8da2f41c718179bfbd3a094264fd7e64d665f12087b8ec3c75828cafa7fad"
+    }
+  ],
+  "finished": 1788827917.6846254,
+  "verified_samples": 660,
+  "verified_unique_rows": 44,
+  "raw_sha256": "47d9357b4acf7b62180ea1236e196d8217f146736e1c10bde2212d2fbcbc42b2",
+  "counts": [
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=nbody/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=nbody/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "scalar",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=lunar",
+      "samples": 15
+    }
+  ]
+}

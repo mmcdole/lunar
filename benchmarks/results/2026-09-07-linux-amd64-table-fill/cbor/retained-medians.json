@@ -1,0 +1,34 @@
+{
+  "load": {
+    "baseline": {
+      "heap_before": 169776,
+      "heap_retained": 75890752,
+      "heap_delta": 75721136,
+      "total_alloc_delta": 107474712,
+      "mallocs_delta": 664873
+    },
+    "candidate": {
+      "heap_before": 169776,
+      "heap_retained": 75890912,
+      "heap_delta": 75721136,
+      "total_alloc_delta": 107474696,
+      "mallocs_delta": 664873
+    }
+  },
+  "save": {
+    "baseline": {
+      "heap_before": 75890912,
+      "heap_retained": 83174216,
+      "heap_delta": 7283304,
+      "total_alloc_delta": 317329104,
+      "mallocs_delta": 3257757
+    },
+    "candidate": {
+      "heap_before": 75890752,
+      "heap_retained": 83174056,
+      "heap_delta": 7283304,
+      "total_alloc_delta": 317056160,
+      "mallocs_delta": 3257737
+    }
+  }
+}

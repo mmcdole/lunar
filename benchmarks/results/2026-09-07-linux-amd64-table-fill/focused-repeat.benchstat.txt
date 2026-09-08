@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                                │  baseline   │               scalar               │
+                                                │   sec/op    │   sec/op     vs base               │
+Embedding/case=create_fill_go_table_16_4_to_lua   2.321µ ± 2%   2.307µ ± 3%       ~ (p=0.935 n=15)
+Programs/program=binarytrees                      136.0m ± 1%   134.4m ± 1%  -1.15% (p=0.000 n=15)
+Programs/program=nbody                            43.32m ± 0%   43.70m ± 0%  +0.89% (p=0.000 n=15)
+Programs/program=spectralnorm                     44.74m ± 0%   44.69m ± 0%       ~ (p=0.775 n=15)
+geomean                                           4.973m        4.961m       -0.25%
+
+                                                │   baseline   │               scalar                │
+                                                │     B/op     │     B/op      vs base               │
+Embedding/case=create_fill_go_table_16_4_to_lua     630.0 ± 2%     629.0 ± 2%       ~ (p=0.492 n=15)
+Programs/program=binarytrees                      65.67Mi ± 0%   65.67Mi ± 0%       ~ (p=1.000 n=15)
+Programs/program=nbody                            2.750Ki ± 0%   2.762Ki ± 0%       ~ (p=0.143 n=15)
+Programs/program=spectralnorm                     28.58Ki ± 0%   28.58Ki ± 0%       ~ (p=0.473 n=15)
+geomean                                           42.47Ki        42.50Ki       +0.07%
+
+                                                │  baseline   │                scalar                │
+                                                │  allocs/op  │  allocs/op   vs base                 │
+Embedding/case=create_fill_go_table_16_4_to_lua    6.000 ± 0%    6.000 ± 0%       ~ (p=1.000 n=15) ¹
+Programs/program=binarytrees                      1.009M ± 0%   1.009M ± 0%       ~ (p=1.000 n=15)
+Programs/program=nbody                             25.00 ± 0%    25.00 ± 0%       ~ (p=1.000 n=15) ¹
+Programs/program=spectralnorm                      36.00 ± 0%    36.00 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                            271.7         271.7       +0.00%
+¹ all samples are equal

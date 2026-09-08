@@ -1,0 +1,108 @@
+{
+  "implementation": "scalar",
+  "source": "/tmp/lunar-table-fill/scalar",
+  "revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+  "tree": "5db0669b459eed168f6a7df9cbf67ec42beff1fa",
+  "source_clean": true,
+  "go_version": "go version go1.26.0 linux/amd64",
+  "build_flags": [
+    "-trimpath"
+  ],
+  "build_affinity": "6,7",
+  "build_environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "2",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "go_environment": {
+    "CGO_ENABLED": "1",
+    "GOAMD64": "v1",
+    "GOARCH": "amd64",
+    "GOFLAGS": "",
+    "GOMODCACHE": "/home/drake/go/pkg/mod",
+    "GOOS": "linux",
+    "GOVERSION": "go1.26.0"
+  },
+  "planned_collection_environment": {
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "affinity": "2"
+  },
+  "host_policy": "WSL2 virtual machine; host power, frequency, and external host load uncontrolled; root serializes timed workloads",
+  "binaries": {
+    "scalar-worker": {
+      "sha256": "d0b4635e51e13e77988607afb9fbccf2fc9be2ac7d24887cdb65ee770902a6a6",
+      "bytes": 6029179
+    },
+    "scalar-shapes": {
+      "sha256": "e47b6866da811426216a7b674f82517fcea32b3563f40634258844d6250a12a7",
+      "bytes": 5630352
+    }
+  },
+  "fixtures": {
+    "small.cbor": {
+      "sha256": "5a840e6955b60c49832742a9e279c0d92163abceb96a22d79e7ce22c98d4b633",
+      "bytes": 8011
+    },
+    "large.cbor": {
+      "sha256": "65c43f4abd104fb629f22aee7801d3b458a93e24e6a6ec6dffb4c4b02252ab7c",
+      "bytes": 9208046
+    },
+    "fixture/cbor.lua": {
+      "sha256": "ada339a0d2be2b58eae06e727b37de6b1a3c77a8a2e081f7b41b92fba98bc56e",
+      "bytes": 14494
+    },
+    "fixture/workload.lua": {
+      "sha256": "a4666b04a45cb89eeb3ca6b7701e3e4ad2e17af0e3b7eab7f9e01410a9baacbd",
+      "bytes": 2556
+    },
+    "fixture/LICENSE.lua-cbor": {
+      "sha256": "acb08709791026a8d07f7e4c6e7fe3fb8c9e1893743027747d42e02ae377a9ce",
+      "bytes": 1060
+    },
+    "fixture/PROVENANCE.md": {
+      "sha256": "5ff0139954c2eb50feaf181e562f77b538f5b9657f28d138e1aef9e5e0741c73",
+      "bytes": 1950
+    }
+  },
+  "source_files": {
+    "go.mod": {
+      "sha256": "d0eb721d2685393907938f6fa465755b077d2e4da303d333e6d9265eaf30d5cf",
+      "bytes": 41
+    },
+    "table.go": {
+      "sha256": "4e9f597e17146a245e3c13f40b7bfd99872d651a07082ea7466b0e27061a36df",
+      "bytes": 45771
+    },
+    "execute_table.go": {
+      "sha256": "c3a0836f588bd20d52c3ddb3d91311a8471979679df45d541e2c1a0da07a78bf",
+      "bytes": 14679
+    },
+    "benchmarks/cbor/go.mod": {
+      "sha256": "ffdedf3f33da401c4a30e6dbdc6dee95b42ce2a30ac5a9fbffeef49d0629feeb",
+      "bytes": 141
+    },
+    "benchmarks/cbor/cmd/workload/main.go": {
+      "sha256": "11994ee593801ea10d077b8459520578b1c2f5ff9740eaea17c1ef7a8e1cef0a",
+      "bytes": 22119
+    },
+    "benchmarks/cbor/cmd/run/main.go": {
+      "sha256": "465c77ac619df2f3d7a4243ac9ede8ee0ce8aae4589221baf7dbf4bec08edea6",
+      "bytes": 18829
+    },
+    "benchmarks/cbor/cmd/compare/main.go": {
+      "sha256": "723f768c82244dda4bd28209443f06006345e3c584eda05a80724bfe591c82be",
+      "bytes": 48609
+    },
+    "benchmarks/cbor/cmd/shapes/main.go": {
+      "sha256": "dd22401df3ea05cc76d0ef0ac850a9d370a2047adf65289378392f8589a4fa7e",
+      "bytes": 10012
+    },
+    "benchmarks/cbor/internal/fixture/fixture.go": {
+      "sha256": "6bfbd7053a11f61cf334427aa48ee92470d38318642dcae9cb5fbe7e60eaddcb",
+      "bytes": 8231
+    }
+  }
+}

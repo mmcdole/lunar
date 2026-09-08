@@ -1,0 +1,80 @@
+{
+  "total_samples": 660,
+  "rows": 44,
+  "samples_per_row": 15,
+  "gate_rows": 26,
+  "published_rows": 27,
+  "overlap_lunar_published_rows": 9,
+  "median_ns": {
+    "BenchmarkInterpreter/case=numeric_for_10000": {
+      "baseline": 37258.0,
+      "scalar": 37281.0
+    },
+    "BenchmarkInterpreter/case=fixed_lua_calls_1000": {
+      "baseline": 24759.0,
+      "scalar": 24906.0
+    },
+    "BenchmarkInterpreter/case=table_field_get_set_10000": {
+      "baseline": 185480.0,
+      "scalar": 185106.0
+    },
+    "BenchmarkInterpreter/case=string_append_256": {
+      "baseline": 35210.0,
+      "scalar": 35116.0
+    },
+    "BenchmarkEmbedding/case=go_to_lua_scalars": {
+      "baseline": 54.19,
+      "scalar": 53.54,
+      "gopherlua": 52.1,
+      "golua": 125.6
+    },
+    "BenchmarkEmbedding/case=lua_to_go_scalar_1000": {
+      "baseline": 50968.0,
+      "scalar": 50640.0,
+      "gopherlua": 91045.0,
+      "golua": 68640.0
+    },
+    "BenchmarkEmbedding/case=go_string_echo_128B": {
+      "baseline": 78.1,
+      "scalar": 75.7,
+      "gopherlua": 67.56,
+      "golua": 127.2
+    },
+    "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua": {
+      "baseline": 269.3,
+      "scalar": 268.6,
+      "gopherlua": 516.8,
+      "golua": 855.7
+    },
+    "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua": {
+      "baseline": 2252.0,
+      "scalar": 2292.0,
+      "gopherlua": 1264.0,
+      "golua": 1466.0
+    },
+    "BenchmarkPrograms/program=binarytrees": {
+      "baseline": 135773883.0,
+      "scalar": 134776536.0,
+      "gopherlua": 153890820.0,
+      "golua": 163245476.0
+    },
+    "BenchmarkPrograms/program=fannkuchredux": {
+      "baseline": 18377675.0,
+      "scalar": 18379631.0,
+      "gopherlua": 29571368.0,
+      "golua": 33093103.0
+    },
+    "BenchmarkPrograms/program=nbody": {
+      "baseline": 43478111.0,
+      "scalar": 43594980.0,
+      "gopherlua": 163555542.0,
+      "golua": 173305272.0
+    },
+    "BenchmarkPrograms/program=spectralnorm": {
+      "baseline": 44833587.0,
+      "scalar": 44963143.0,
+      "gopherlua": 144546668.0,
+      "golua": 133843579.0
+    }
+  }
+}

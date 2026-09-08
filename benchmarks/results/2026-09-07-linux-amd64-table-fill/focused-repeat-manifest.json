@@ -1,0 +1,36 @@
+{
+  "name": "focused-repeat",
+  "samples": 15,
+  "benchtime": "1s",
+  "bench_filter": "^(BenchmarkPrograms|BenchmarkEmbedding)$/^(program=(binarytrees|nbody|spectralnorm)|case=create_fill_go_table_16_4_to_lua)$/^runtime=lunar$",
+  "expected_rows_per_process": 4,
+  "go": "go version go1.26.0 linux/amd64",
+  "system": "Linux-6.6.114.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1"
+  },
+  "affinity": 2,
+  "cpu": 1,
+  "order": "rotated runtime processes each round",
+  "power_policy": "WSL2; host power and frequency controls unavailable; serialized CPU2; no concurrent benchmark workloads",
+  "timed_region": "B.Loop; setup/compilation/warmup/final validation excluded; required embedding API result consumption timed",
+  "runtimes": {
+    "baseline": {
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "binary": "/tmp/lunar-table-fill/baseline.test",
+      "sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a"
+    },
+    "scalar": {
+      "revision": "73d51be1cfc1af3a1597b459511fca6b0ee68398",
+      "binary": "/tmp/lunar-table-fill/scalar.test",
+      "sha256": "f3827353f58a53759ea0c6571cf0fd4145ed1a766f3e03ae41bc0b20181f85c6"
+    }
+  },
+  "started": 1788828244.5034642,
+  "status": "completed",
+  "raw_sha256": "1fc073f3b5de16375bb7bd7e8da19328b2eb578fd7b4ad48d85a0f3bf69f2ea0",
+  "finished": 1788828400.7063353,
+  "verified_samples": 120
+}

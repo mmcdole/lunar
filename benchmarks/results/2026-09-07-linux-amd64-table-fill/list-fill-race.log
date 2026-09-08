@@ -1,0 +1,6 @@
+--- FAIL: TestIOPopenCancellationInterruptsBlockedReadAndReapsRoot (0.00s)
+    io_process_unix_test.go:257: value = nil (nil), want closed file (string)
+FAIL
+FAIL	github.com/mmcdole/lunar	2.647s
+ok  	github.com/mmcdole/lunar/conformance	9.746s
+FAIL

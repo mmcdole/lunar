@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                               │    lunar    │               gopherlua               │                 golua                 │
+                               │   sec/op    │    sec/op     vs base                 │    sec/op     vs base                 │
+Programs/program=binarytrees     134.8m ± 0%    153.9m ± 1%   +14.18% (p=0.000 n=15)    163.2m ± 0%   +21.12% (p=0.000 n=15)
+Programs/program=fannkuchredux   18.38m ± 0%    29.57m ± 1%   +60.89% (p=0.000 n=15)    33.09m ± 1%   +80.05% (p=0.000 n=15)
+Programs/program=nbody           43.59m ± 0%   163.56m ± 1%  +275.17% (p=0.000 n=15)   173.31m ± 1%  +297.53% (p=0.000 n=15)
+Programs/program=spectralnorm    44.96m ± 1%   144.55m ± 1%  +221.48% (p=0.000 n=15)   133.84m ± 2%  +197.67% (p=0.000 n=15)
+geomean                          46.94m         101.8m       +116.96%                   105.8m       +125.39%
+
+                               │    lunar     │                   gopherlua                   │                     golua                     │
+                               │     B/op     │       B/op        vs base                     │       B/op        vs base                     │
+Programs/program=binarytrees     65.65Mi ± 0%       72.13Mi ± 0%        +9.86% (p=0.000 n=15)       99.03Mi ± 0%       +50.85% (p=0.000 n=15)
+Programs/program=fannkuchredux   1.141Ki ± 0%     384.424Ki ± 0%    +33602.91% (p=0.000 n=15)   11679.282Ki ± 0%  +1023837.07% (p=0.000 n=15)
+Programs/program=nbody           2.733Ki ± 0%   45633.287Ki ± 0%  +1669370.74% (p=0.000 n=15)   72508.997Ki ± 0%  +2652605.00% (p=0.000 n=15)
+Programs/program=spectralnorm    28.03Ki ± 0%    57808.46Ki ± 0%   +206150.18% (p=0.000 n=15)    77569.97Ki ± 0%   +276655.68% (p=0.000 n=15)
+geomean                          49.23Ki            16.16Mi         +33502.69%                      49.61Mi        +103092.79%
+
+                               │    lunar    │                  gopherlua                  │                     golua                     │
+                               │  allocs/op  │   allocs/op     vs base                     │    allocs/op     vs base                      │
+Programs/program=binarytrees     1.009M ± 0%      1.010M ± 0%        +0.08% (p=0.000 n=15)       2.534M ± 0%       +151.09% (p=0.000 n=15)
+Programs/program=fannkuchredux    15.00 ± 0%     1559.00 ± 0%    +10293.33% (p=0.000 n=15)   1494687.00 ± 0%   +9964480.00% (p=0.000 n=15)
+Programs/program=nbody            25.00 ± 0%   376439.00 ± 0%  +1505656.00% (p=0.000 n=15)   8080629.00 ± 0%  +32322416.00% (p=0.000 n=15)
+Programs/program=spectralnorm     35.00 ± 0%   231170.00 ± 0%   +660385.71% (p=0.000 n=15)   9925272.00 ± 0%  +28357820.00% (p=0.000 n=15)
+geomean                           339.2           108.2k         +31791.55%                      4.175M        +1230503.97%

@@ -1,0 +1,11 @@
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/compare	0.020s
+?   	github.com/mmcdole/lunar/benchmarks/cbor/cmd/generate	[no test files]
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/native	0.075s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/run	0.003s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/shapes	0.005s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/workload	0.055s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture	0.011s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge	0.001s
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system
+candidate 0a6c7c43405e42182bca531ac226e846d67999b7 f4a597d7ee19cb8ddae96b0f746bf4dde5e6a7731a662ac380c6b3bff4048e25

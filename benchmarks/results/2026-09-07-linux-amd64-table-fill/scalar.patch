@@ -1,0 +1,190 @@
+diff --git a/table.go b/table.go
+index 9895585..e09437f 100644
+--- a/table.go
++++ b/table.go
+@@ -957,11 +957,30 @@ func (table *tableObject) rawSetList(first int, values []slot) {
+ 			}
+ 
+ 			oldLength := table.array.len()
+-			table.growArray(oldLength + last)
++			length := oldLength + last
++			previousCapacity := table.array.cap()
++			if length <= previousCapacity {
++				table.array = table.array.withLength(length)
++			} else {
++				capacity := growTableArrayCapacity(previousCapacity, length)
++				grown := makeTableVector[slot](length, capacity)
++				copy(grown.values(), table.array.values())
++				table.array = grown
++				if table.owner != nil {
++					table.owner.collection.chargeCapacityGrowth(
++						previousCapacity,
++						capacity,
++						uint64(unsafe.Sizeof(slot{})),
++					)
++				}
++			}
+ 			array := table.array.values()
++			// Every new slot receives its final value, and no integer records
++			// need migration, so the appended range needs no nil initialization.
++			appended := array[oldLength:]
+ 			inserted := 0
+ 			for index, value := range values[:last] {
+-				writeSlot(&array[oldLength+index], value)
++				writeSlot(&appended[index], value)
+ 				if !value.isNil() {
+ 					inserted++
+ 				}
+diff --git a/table_list_test.go b/table_list_test.go
+new file mode 100644
+index 0000000..a0fffcf
+--- /dev/null
++++ b/table_list_test.go
+@@ -0,0 +1,147 @@
++package lua
++
++import (
++	"fmt"
++	"math"
++	"testing"
++)
++
++func TestTableListAppendPreservesValuesAndAccounting(t *testing.T) {
++	for _, hint := range []int{0, 1, 2, 4, 8, 128} {
++		t.Run(fmt.Sprintf("hint_%d", hint), func(t *testing.T) {
++			state := newCollectorTestState(t)
++			defer state.Close()
++			table := newTable(state, hint, 0)
++			child := newTable(state, 0, 0)
++			childSlot := slotFromTableObject(child)
++			if err := table.rawSetStringSlot("record", numberSlot(9)); err != nil {
++				t.Fatal(err)
++			}
++
++			large := make([]slot, 75)
++			for index := range large {
++				switch {
++				case index%7 == 0 || index >= len(large)-2:
++					large[index] = nilSlot
++				case index%11 == 0:
++					large[index] = childSlot
++				default:
++					large[index] = numberSlot(float64(index))
++				}
++			}
++			batches := [][]slot{
++				{nilSlot, nilSlot},
++				{childSlot, nilSlot, numberSlot(math.Copysign(0, -1)), numberSlot(3), nilSlot},
++				nil, // Append a view of the existing array after it is populated.
++				large,
++				{nilSlot, nilSlot},
++			}
++			var want []slot
++			for batchIndex, values := range batches {
++				if batchIndex == 2 {
++					values = table.array.values()
++				}
++				last := len(values)
++				for last > 0 && values[last-1].isNil() {
++					last--
++				}
++				want = append(want, values[:last]...)
++				beforeDebt := state.runtime.collection.debt
++				beforeBytes := tableRetainedBytes(table)
++				table.rawSetList(table.array.len()+1, values)
++				if got := state.runtime.collection.debt - beforeDebt; got != tableRetainedBytes(table)-beforeBytes {
++					t.Fatalf("batch %d: charged %d bytes for retained growth %d", batchIndex, got, tableRetainedBytes(table)-beforeBytes)
++				}
++				if table.array.len() != len(want) {
++					t.Fatalf("batch %d: array length = %d, want %d", batchIndex, table.array.len(), len(want))
++				}
++				for index, expected := range want {
++					got, found := table.rawIntSlot(index + 1)
++					if found != !expected.isNil() || !sameSlotRepresentation(got, expected) {
++						t.Fatalf("batch %d: field %d changed value or presence", batchIndex, index+1)
++					}
++				}
++				if got, found := table.rawStringSlot("record"); !found || !sameSlotRepresentation(got, numberSlot(9)) {
++					t.Fatal("list append changed a record field")
++				}
++				assertTableLaneInvariant(t, table)
++			}
++			mustRootCollectorObject(t, state, "list", slotFromTableObject(table))
++			state.collectUnreachable()
++			if child.owner != state.runtime {
++				t.Fatal("list append lost its strong reference")
++			}
++		})
++	}
++}
++
++func TestTableListAppendPreservesWeakValues(t *testing.T) {
++	for _, mode := range []string{"k", "v"} {
++		for _, hint := range []int{4, 128} {
++			t.Run(fmt.Sprintf("mode_%s_hint_%d", mode, hint), func(t *testing.T) {
++				state := newCollectorTestState(t)
++				defer state.Close()
++				table, _ := newWeakTableForTest(t, state, mode, hint, 0)
++				retained := newTable(state, 0, 0)
++				appended := newTable(state, 0, 0)
++				table.rawSetList(1, []slot{slotFromTableObject(retained)})
++				values := make([]slot, 73)
++				for index := range values {
++					values[index] = slotFromTableObject(appended)
++					if index%7 == 0 {
++						values[index] = nilSlot
++					}
++				}
++				table.rawSetList(2, values)
++				rootWeakTableForTest(t, state, table)
++				mustRootCollectorObject(t, state, "retained", slotFromTableObject(retained))
++				state.collectUnreachable()
++				if retained.owner != state.runtime {
++					t.Fatal("collection lost the rooted prefix value")
++				}
++				if got, found := table.rawIntSlot(1); !found || !rawSlotEqual(got, slotFromTableObject(retained)) {
++					t.Fatal("list append or collection changed the prefix")
++				}
++				if (appended.owner != nil) != (mode == "k") {
++					t.Fatal("appended values did not follow the table's weak mode")
++				}
++				for index, value := range values {
++					got, found := table.rawIntSlot(index + 2)
++					wantPresent := mode == "k" && !value.isNil()
++					if found != wantPresent || (found && !rawSlotEqual(got, value)) {
++						t.Fatalf("field %d has unexpected value or presence after collection", index+2)
++					}
++				}
++				assertTableLaneInvariant(t, table)
++			})
++		}
++	}
++}
++
++func TestTableListAppendOverwritesIntegerRecords(t *testing.T) {
++	state := newCollectorTestState(t)
++	defer state.Close()
++	table := newTable(state, 0, 0)
++	table.rawSetIntegerSlot(1, numberSlot(1))
++	table.rawSetIntegerSlot(80, numberSlot(-80))
++	table.rawSetIntegerSlot(1000, numberSlot(1000))
++	if table.array.len() != 1 || table.store.integerKeys != 2 {
++		t.Fatal("test did not establish integer records beyond the array")
++	}
++	values := make([]slot, 100)
++	for index := range values {
++		values[index] = numberSlot(float64(index + 2))
++	}
++	values[80-2] = nilSlot
++	table.rawSetList(2, values)
++	for index, expected := range values {
++		got, found := table.rawIntSlot(index + 2)
++		if found != !expected.isNil() || !sameSlotRepresentation(got, expected) {
++			t.Fatalf("field %d did not overwrite its previous value", index+2)
++		}
++	}
++	if got, found := table.rawIntSlot(1000); !found || !rawSlotEqual(got, numberSlot(1000)) {
++		t.Fatal("list append lost an integer record beyond the appended range")
++	}
++	assertTableLaneInvariant(t, table)
++}
