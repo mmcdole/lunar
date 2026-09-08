@@ -14,6 +14,8 @@ measurements; they do not imply that a result describes the current runtime.
 | [2026-09-07, native entry](2026-09-07-linux-amd64-native-entry/) | Initial native-call entry experiment |
 | [2026-09-07, native entry against updated main](2026-09-07-linux-amd64-native-entry-main/) | Native-call and frame-copy experiments |
 | [2026-09-07, native calls](2026-09-07-linux-amd64-native-calls/) | README comparison after the native-call change |
+| [2026-09-07, array access](2026-09-07-linux-amd64-array-access/) | Rejected array-access experiments |
+| [2026-09-08, integrated table lookup](2026-09-08-linux-amd64-integrated-table-lookup/) | General indexed-access improvement and callback tradeoff |
 
 The [benchmark protocol](../README.md) describes collection, analysis and the
 summary-only publication policy. Workloads, fixtures and reusable tools live in
