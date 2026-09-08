@@ -647,17 +647,30 @@ func normalizeTableKey(
 }
 
 func (table *tableObject) rawSlot(key slot) (slot, bool) {
-	normalized, index, arrayKey, hash, status :=
-		normalizeTableKey(key)
-	if status != tableKeyValid {
+	switch key.kind() {
+	case NilKind:
 		return nilSlot, false
+	case NumberKind:
+		number := math.Float64frombits(key.bits)
+		index := int(number)
+		// Only an exact index inside the allocated array can use this slot.
+		// Other numeric keys continue directly to the record store.
+		if uint(index-1) < uint(table.array.len()) && float64(index) == number {
+			value := *table.array.at(index - 1)
+			return value, !value.isNil()
+		}
+		if math.IsNaN(number) {
+			return nilSlot, false
+		}
+		if number == 0 {
+			key.bits = 0
+		}
+		return table.store.get(key, hashNumber(number))
+	case StringKind:
+		return table.store.get(key, uint32(stringSlotHash(key)))
+	default:
+		return table.store.get(key, hashReference(key))
 	}
-	return table.rawNormalizedSlot(
-		normalized,
-		index,
-		arrayKey,
-		hash,
-	)
 }
 
 func (table *tableObject) rawNormalizedSlot(

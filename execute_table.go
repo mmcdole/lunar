@@ -1,5 +1,7 @@
 package lua
 
+import "math"
+
 const maxTableMetamethodChain = 100
 
 const tableInstructionHandled = instruction(opTableHandled)
@@ -187,17 +189,50 @@ func executeRawTableSet(
 		return code
 	}
 	table := (*tableObject)(target.ref)
-	normalized, index, arrayKey, hash, status :=
-		normalizeTableKey(key)
-	if status != tableKeyValid {
+	normalized := key
+	var index int
+	var arrayKey bool
+	var hash uint32
+	var location tableLocation
+	var found bool
+	switch key.kind() {
+	case NilKind:
 		return code
+	case NumberKind:
+		number := math.Float64frombits(key.bits)
+		index = int(number)
+		exact := float64(index) == number
+		if exact && uint(index-1) < uint(table.array.len()) {
+			arrayKey = true
+			location = tableLocation{index: index - 1, lane: tableArrayLane}
+			found = !table.array.at(index - 1).isNil()
+			goto resolved
+		}
+		if math.IsNaN(number) {
+			return code
+		}
+		if number == 0 {
+			normalized.bits = 0
+		}
+		// Preserve positiveIntegerIndex's insertion classification without
+		// repeating the conversion after an allocated-array miss.
+		arrayKey = exact && index > 0 && number <= 1<<53
+		if !arrayKey {
+			hash = hashNumber(number)
+		}
+	case StringKind:
+		hash = uint32(stringSlotHash(key))
+	default:
+		hash = hashReference(key)
 	}
-	_, location, found := table.resolveNormalizedSlot(
+	_, location, found = table.resolveNormalizedSlot(
 		normalized,
 		index,
 		arrayKey,
 		hash,
 	)
+
+resolved:
 	if !found {
 		if table.metatable == nil ||
 			table.metatable.absentMetamethods&metaNewIndex.bit() != 0 {
