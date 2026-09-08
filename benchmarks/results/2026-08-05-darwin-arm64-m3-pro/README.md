@@ -1,8 +1,8 @@
 # Apple M3 Pro table-shape results — 2026-08-05
 
-This collection covers only the controlled table-shape suite. The program,
-interpreter, embedding, and CBOR graph results remain published under
-[`results/2026-07-28-darwin-arm64-m3-pro/`](../2026-07-28-darwin-arm64-m3-pro/).
+This collection covers only the controlled table-shape suite. The companion program,
+interpreter, embedding, and CBOR graph collection was published under
+[`results/2026-07-28-darwin-arm64-m3-pro/`](../2026-07-28-darwin-arm64-m3-pro/README.md).
 
 These results were collected from clean source revision
 `87cc98d4a023f7a29e601008b176d1936b3d1c87` with Go 1.25.1 on Darwin/arm64:
@@ -61,15 +61,7 @@ Observations the rows support directly:
 - With one large table the ratio falls from 2.26× at 16-byte keys to 1.08×
   at 1,024-byte keys as raw key bytes dominate both heaps.
 
-## Raw evidence
+The maintained collection command is `scripts/shapes.sh` in
+[the CBOR benchmark documentation](../../cbor/README.md).
 
-| File | SHA-256 |
-| --- | --- |
-| [`shapes-lunar-retained.jsonl`](shapes-lunar-retained.jsonl) | `4bcdc0d9332f2e736adb499e34b631b4c1c85d98eab7bee03f9feebc6867cb06` |
-| [`shapes-gopherlua-retained.jsonl`](shapes-gopherlua-retained.jsonl) | `466b50d7bbb12012a861b0ead4c22093eaa42bd12d39ab529a823192b1d5255e` |
-
-Each file holds 105 records: 15 per case, ordered by case then round. Every
-record reports the same clean source revision and its shape parameters.
-
-The collection command is `scripts/shapes.sh` in
-[`benchmarks/cbor/`](../../cbor/README.md).
+The [original collection records](https://github.com/mmcdole/lunar/tree/5fc51e449a6661340056544e995aae4fdf89dcb2/benchmarks/results/2026-08-05-darwin-arm64-m3-pro) remain available in Git history. This directory retains the result summary.

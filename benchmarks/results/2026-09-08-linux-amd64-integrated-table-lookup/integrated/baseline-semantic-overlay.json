@@ -1,5 +1,0 @@
-{
-  "Replace": {
-    "/tmp/lunar-table-fill/baseline/execute_table_test.go": "/tmp/lunar-array-followup/integrated/baseline-execute-table-with-array-tests.go"
-  }
-}

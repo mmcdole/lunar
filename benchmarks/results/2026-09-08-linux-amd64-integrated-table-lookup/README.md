@@ -1,67 +1,91 @@
 # Integrated table lookup assessment
 
-The integrated lookup change is worth code review: all four complete programs improve, CBOR save improves modestly, and the earlier CBOR load regression does not recur in the predefined timing cohort. A callback control is repeatedly slower by 2.0–2.4%, about 1.2 ns per callback in its tight loop. This is a measured tradeoff, and the patch has not passed the literal no-regression condition. The PR remains a draft while the callback tradeoff is reviewed.
+The measured change improves all four complete programs and CBOR save, with an unresolved CBOR load difference. A trivial-callback control is repeatedly 2.0–2.4% slower, about 1.2 ns per callback. The result supports review as a tradeoff; it fails the literal no-regression condition.
 
-The measured runtime candidate is `22ad3f1e7b751031360705eea9338b5f0428a1e5`, based on main `5fc51e449a6661340056544e995aae4fdf89dcb2`. [Issue #17](https://github.com/mmcdole/lunar/issues/17) describes the indexed-table performance problem.
+Baseline: `5fc51e449a6661340056544e995aae4fdf89dcb2`. Candidate: `22ad3f1e7b751031360705eea9338b5f0428a1e5`. Related: [issue #17](https://github.com/mmcdole/lunar/issues/17), [PR #18](https://github.com/mmcdole/lunar/pull/18), [rejected predecessor](../2026-09-07-linux-amd64-array-access/).
 
-## What changed
+## Scope
 
-PUC dispatches table lookup by key type, tries an integer array location, and continues a miss through the selected numeric lookup. Lunar's candidate applies that structure to shared raw reads and dynamic Lua writes. Reads no longer prepare insertion-specific normalization results; writes retain the array location and its presence status through the existing replacement/insertion decision. Main already avoids hashing array hits.
+Following PUC Lua 5.1.5's type-directed lookup, shared raw reads select the numeric array/hash path directly; dynamic Lua writes retain the resolved array location for replacement/insertion handling. Main already avoided hashing array hits. The change covers ordinary dynamic keys, all array sizes and value types, in two runtime functions (61 additions, 13 deletions), without caches, storage changes or public API changes.
 
-The change is confined to two runtime functions (61 added and 13 removed lines). It applies to ordinary dynamic keys, all supported array sizes and stored value types. It adds no cache, storage layout, public API or workload-specific threshold. Numeric edge cases, nil slots, metamethods, deletion and weak references retain their existing behavior. The [source rationale](source-rationale.md), [semantic review](integrated/review.md) and [patch](integrated/candidate.patch) give the details.
+Diagnostics on the predecessor found no existing-value array-write hits during CBOR load, versus 99.9972% in fannkuch; CBOR save's 2,387,931 dynamic reads all used string keys. Five paired load profiles sampled 8.86 s baseline and 8.96 s candidate. These observations motivated integrated dispatch but did not isolate the predecessor's slowdown. They do not measure this candidate's speed.
 
-## Complete programs
+## Complete Go comparison
 
-| Program | Main | Candidate | Time change |
-| --- | ---: | ---: | ---: |
-| binary-trees | 135.539 ms | 131.692 ms | −2.84% |
-| fannkuch-redux | 18.230 ms | 14.463 ms | −20.66% |
-| n-body | 43.098 ms | 42.798 ms | −0.70% |
-| spectral-norm | 44.637 ms | 42.096 ms | −5.69% |
+Medians of 15 samples per row; positive changes mean slower execution.
 
-Each row has 15 samples per runtime; all four differences have benchstat p<.001. Negative time changes mean less elapsed time. These are the existing complete Lua benchmark programs at the repository's documented inputs, not a claim about all Lua applications. The independent six-sample pilot is retained separately and is not pooled with this cohort.
-
-The [full Go assessment](integrated/program-gate.md) reports all 13 Lunar rows, including interpreter and embedding controls. Reusing a Go-built table takes 13.93% less time, and building then reading a table takes 6.64% less. The four interpreter controls have no statistically resolved difference. Scalar calls, the callback loop and string echo are slower in this full cohort.
-
-Allocation-count medians are unchanged. Fannkuch's measured allocation traffic rises from 1,168 to 1,190 bytes per operation, with 15 allocations in both binaries; this is not a retained-heap result. Other byte differences are either identical or statistically unresolved.
-
-## Host-call repeat
-
-The full comparison prompted one predefined repeat of its three slower embedding cases, using the exact same binaries and 15 fresh samples per row. Both cohorts remain visible:
-
-| Control | Full comparison time change | Repeat main | Repeat candidate | Repeat time change |
+| Workload | Baseline | Candidate | Time change | benchstat p |
 | --- | ---: | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | +1.26% | 53.45 ns | 53.23 ns | −0.41% |
-| Lua calls Go 1,000 times | +2.03% | 49.750 µs | 50.956 µs | +2.42% |
-| Lua echoes a 128-byte Go string | +1.71% | 78.10 ns | 74.47 ns | −4.65% |
+| binary-trees | 135.539 ms | 131.692 ms | −2.84% | <.001 |
+| fannkuch-redux | 18.230 ms | 14.463 ms | −20.66% | <.001 |
+| n-body | 43.098 ms | 42.798 ms | −0.70% | <.001 |
+| spectral-norm | 44.637 ms | 42.096 ms | −5.69% | <.001 |
+| Numeric loop, 10,000 iterations | 36.996 µs | 37.023 µs | +0.07% | .775 |
+| Fixed Lua calls, 1,000 calls | 24.511 µs | 24.559 µs | +0.20% | .631 |
+| Table field get/set, 10,000 iterations | 184.345 µs | 184.202 µs | −0.08% | .412 |
+| String append, 256 iterations | 34.881 µs | 34.664 µs | −0.62% | .389 |
+| Go calls Lua with scalar arguments | 53.25 ns | 53.92 ns | +1.26% | <.001 |
+| Lua calls Go 1,000 times | 50.572 µs | 51.600 µs | +2.03% | <.001 |
+| Lua echoes a 128-byte Go string | 76.48 ns | 77.79 ns | +1.71% | .001 |
+| Lua checksums a reused Go-built table | 267.0 ns | 229.8 ns | −13.93% | <.001 |
+| Build a table in Go, then checksum it in Lua | 2.318 µs | 2.164 µs | −6.64% | .013 |
 
-The callback regression repeats (p<.001), including both execution orders. The scalar repeat is unresolved (p=.072), and echo reverses (p<.001). Neither scalar nor echo supports a consistent regression claim across these cohorts. All three controls allocate zero in every sample. [Repeat review](integrated/focused-repeat-review.md).
+The interpreter differences are unresolved, not proven equivalent. All allocation-count medians are unchanged. Fannkuch increases from 1,168 to 1,190 allocated bytes per operation, with 15 allocations; other byte differences are identical or unresolved. Allocation traffic is not retained heap.
 
-The callback case runs a Lua loop that calls a very small Go addition function. Its repeat difference is 1.206 µs per 1,000-call operation, alongside loop and interpreter work. This may matter to programs dominated by similarly small callbacks. It does not establish a 2.42% slowdown in ordinary Lua applications, and its cause has not been isolated.
+One predefined repeat used the same binaries and 15 fresh samples per row:
+
+| Control | Full time change | Repeat baseline | Repeat candidate | Repeat time change |
+| --- | ---: | ---: | ---: | ---: |
+| Scalar arguments | +1.26% | 53.45 ns | 53.23 ns | −0.41% |
+| 1,000 callbacks | +2.03% | 49.750 µs | 50.956 µs | +2.42% |
+| String echo | +1.71% | 78.10 ns | 74.47 ns | −4.65% |
+
+Callbacks regress again (p<.001), in both execution orders. Scalar calls are unresolved (p=.072); echo reverses (p<.001). All three allocate zero. The callback cost may matter to programs dominated by tiny Go calls; its cause was not isolated. Scalar/echo bodies do not access tables, and callbacks use the unchanged constant-string lookup. No code-placement mechanism is established.
 
 ## CBOR application
 
-| Operation | Main median | Candidate median | Time change | 95% paired-bootstrap interval |
+Each timing cohort contains 15 adjacent pairs in alternating order, following two warmup pairs. Intervals use 10,000 paired-bootstrap resamples, seed 1.
+
+| Operation | Baseline | Candidate | Time change | 95% interval |
 | --- | ---: | ---: | ---: | ---: |
 | Load | 1755.430 ms | 1763.344 ms | +0.45% | −0.03% to +0.96% |
 | Save | 1597.531 ms | 1575.076 ms | −1.41% | −1.90% to −0.21% |
 
-Each timing cohort contains 15 adjacent baseline/candidate pairs in alternating order. Load is unresolved; that is not proof of equivalence. Save shows a modest improvement. All output oracles pass for the 9 MB graph containing 183,513 tables and 938,452 entries. These cohorts were explicitly exploratory because the earlier full Go control gate failed. Successful evidence validation is not a passed speed gate.
+Load is unresolved; this does not prove equivalence. The predecessor's 3.75% load regression did not recur in this timing cohort. Save improves modestly. These collections were exploratory because the Go control gate failed; successful validation does not qualify speed.
 
-The separate three-pair retained-memory cohorts have identical retained-heap delta medians: 75,721,136 bytes after load and 7,283,304 bytes after save. They add heap stabilization before the operation, so their elapsed values are kept separate: load is 2.46% slower and save 2.13% faster in those small cohorts. Those values are descriptive, not replacements for the predefined timing cohorts. Allocation traffic is not entirely identical: the timing save median increases by 54,592 bytes and four allocations. The [full CBOR review](integrated/cbor-final-review.md) preserves all timings, memory metrics, conditions and identity checks.
+Separate three-pair retained cohorts stabilize heap before execution and before reading retained heap:
 
-## Review decision
+| Operation | Baseline heap increase | Candidate heap increase | Baseline elapsed | Candidate elapsed | Descriptive change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Load | 75,721,136 B | 75,721,136 B | 1745.610 ms | 1788.586 ms | +2.46% |
+| Save | 7,283,304 B | 7,283,304 B | 1617.595 ms | 1583.095 ms | −2.13% |
 
-The complete-program gains justify reviewing this bounded change. The roughly 1.2 ns callback-control cost is small in absolute terms, but remains relevant to programs dominated by trivial callbacks. The original no-regression gate remains failed. Review should weigh that cost against the measured application gains before merging.
+These elapsed values remain separate from speed qualification; save heap increase is above its loaded graph. Timing-save allocation medians rise from 317,001,568 to 317,056,160 bytes (+54,592) and 3,257,733 to 3,257,737 allocations. Retained-save allocation medians rise from 316,947,008 to 317,383,696 bytes and 3,257,729 to 3,257,761 allocations. Timing-load bytes are 107,475,832 versus 107,475,816, with 664,877 allocations each; retained-load allocation medians are identical at 107,474,712 bytes and 664,873 allocations.
 
-The PR updates the existing Lunar/GopherLua/go-lua README tables from the complete 15-round comparison, including the slower host-call figures from that cohort. It does not substitute the more favorable repeat figures. PUC timing columns are not added, and the earlier M3 retained-memory tables retain their original provenance.
+The separate six-sample program pilot measured binary-trees −3.17%, fannkuch −20.78%, n-body −1.17% and spectral-norm −4.90%. Its six-pair CBOR pilot found load −0.002% (interval −0.95% to +0.48%) and save −1.44% (−2.96% to +1.91%), both unresolved. No cohorts are pooled.
 
-## Measurement and validation
+## Published README timing values
 
-Go 1.26.0, Linux/amd64 under WSL2, AMD Ryzen 9 9950X3D. All timed executions are serialized on CPU 2 with GOMAXPROCS=1, GOGC=100 and GOMEMLIMIT=off. The full Go comparison rotates four runtime lanes through 15 rounds, with a fixed 500 ms target per row. It contains 60 successful processes, 44 rows and 660 samples, including fresh GopherLua and go-lua results. No PUC timing is added to the root README.
+These are the complete cohort's candidate/GopherLua/go-lua medians, including its slower host-call results rather than favorable repeat values. GopherLua v1.1.2; go-lua `1e37f32ad7d0`. The historical M3 retained-memory tables were not recollected.
 
-The host's power, frequency and external load are uncontrolled. Results describe these binaries on this machine; small changes should not be treated as a general runtime ranking. The [compiler review](integrated/compiler-review.md) records larger helper frames and removal of the redundant direct-array bounds check. Those facts do not establish the timing mechanism. The scalar and echo Lua bodies do not use tables, and the callback uses the unchanged constant-string lookup. Code placement has not been established as the cause of their timing changes.
+| Workload | Lunar | GopherLua | go-lua |
+| --- | ---: | ---: | ---: |
+| binary-trees | 131.69 ms | 153.78 ms | 159.24 ms |
+| fannkuch-redux | 14.46 ms | 29.25 ms | 32.59 ms |
+| n-body | 42.80 ms | 161.24 ms | 170.93 ms |
+| spectral-norm | 42.10 ms | 144.71 ms | 133.44 ms |
+| Go calls Lua with scalar arguments | 53.92 ns | 51.01 ns | 123.50 ns |
+| Lua calls Go 1,000 times | 51.60 µs | 89.80 µs | 67.53 µs |
+| Lua echoes a 128-byte Go string | 77.79 ns | 66.06 ns | 126.30 ns |
+| Lua checksums a reused Go-built table | 229.8 ns | 519.7 ns | 846.7 ns |
+| Build a table in Go, then checksum it in Lua | 2.164 µs | 1.250 µs | 1.453 µs |
 
-Root tests, the Lua conformance suite, vet, race checks, benchmark-module tests/vet and both CBOR module configurations pass. New numeric boundary, metamethod and reference-release tests also pass when overlaid onto unchanged main. The conversion proof covers both Go int widths; execution checks for this candidate ran on amd64. [Validation manifest](integrated/validation-manifest.json).
+## Conditions and validation
 
-The paired profiles and operation counts under `attribution/` describe the previously rejected shared-array candidate. They motivated this integrated experiment and do not measure its speed or isolate the previous slowdown. No previous candidate samples are pooled here. See the [evidence index](EVIDENCE.md) and [archive manifest](archive-manifest.json) for provenance.
+Go 1.26.0, Linux/amd64 under WSL2, Ryzen 9 9950X3D; serialized CPU 2 execution, GOMAXPROCS=1, GOGC=100, GOMEMLIMIT=off, test CPU=1. The Go comparison rotates four runtime lanes through 15 rounds: 60 processes, 44 rows, 660 samples, targeting 500 ms per row. No PUC lane is timed. Host power, frequency and external load were uncontrolled.
+
+Setup, compilation and final checks are outside timing. CBOR times complete operations including file IO/traversal, excluding setup, save preload and verification. All 72 recorded CBOR processes passed the oracle for 9,208,046 bytes, 183,513 tables and 938,452 entries. Source/build/harness identities, sample inventories, order, hashes and statistics were independently validated.
+
+Root tests, Lua conformance, vet, race, benchmark-module checks and both CBOR configurations passed. Numeric boundary, metamethod and reference-release tests also passed on unchanged main. Candidate execution checks ran on amd64. Compiler review found larger helper frames and removal of redundant direct-array bounds checks, without new local heap escapes; this does not establish the timing mechanism.
+
+The [original supporting files](https://github.com/mmcdole/lunar/tree/56ed803906dd3d1e19119736e3c49780b798dbb1/benchmarks/results/2026-09-08-linux-amd64-integrated-table-lookup) preserve raw samples, exact hashes, patches, diagnostics and validation in Git history.

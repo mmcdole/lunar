@@ -1,3 +1,10 @@
 /.bench/
 /coverage.out
 /*.test
+
+# Publish benchmark summaries only; keep run output under .bench/.
+/benchmarks/results/*
+!/benchmarks/results/README.md
+!/benchmarks/results/*/
+/benchmarks/results/*/*
+!/benchmarks/results/*/README.md

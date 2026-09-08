@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/mmcdole/lunar/benchmarks
-cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
-BenchmarkPrograms/program=fannkuchredux/runtime=lunar         	     321	  18646023 ns/op	    1083 B/op	      15 allocs/op
-PASS

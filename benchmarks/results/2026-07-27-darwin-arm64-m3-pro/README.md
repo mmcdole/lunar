@@ -99,19 +99,8 @@ Shopify go-lua is not in this table because its pinned standard IO library
 does not implement `file:read("*a")`; the identical file workload cannot run
 without a host shim.
 
-## Raw evidence
+Collection protocols are documented in
+[the benchmark guide](../../README.md) and
+[the CBOR benchmark guide](../../cbor/README.md).
 
-| File | SHA-256 |
-| --- | --- |
-| [`go-benchmarks.txt`](go-benchmarks.txt) | `18a1140d35bb365ee6f71b3749c1ccd24585fd159ce1da6892bab6b9c6f671b1` |
-| [`cbor-lugo-retained.jsonl`](cbor-lugo-retained.jsonl) | `895d728c801ddd76e10faaa7904bb24a567ce5dfc5db0511c2a8b3b7954f04f3` |
-| [`cbor-gopherlua-retained.jsonl`](cbor-gopherlua-retained.jsonl) | `dc65d9b8557ddc270fa3e43d0f95af03117c421005dedd252e8b6e8ca1718ece` |
-
-The Go archive contains 15 observations for every program, interpreter, and
-embedding cell. Both CBOR files use collection ID
-`78817c9045b7ca80a9596915173d2119`; each contains 15 records with the same
-fixture, codec, workload, source revision, and structural oracle.
-
-The collection and analysis commands are in
-[`benchmarks/README.md`](../../README.md) and
-[`benchmarks/cbor/README.md`](../../cbor/README.md).
+The [original collection records](https://github.com/mmcdole/lunar/tree/5fc51e449a6661340056544e995aae4fdf89dcb2/benchmarks/results/2026-07-27-darwin-arm64-m3-pro) remain available in Git history. This directory retains the result summary.

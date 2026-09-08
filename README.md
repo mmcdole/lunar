@@ -119,8 +119,8 @@ both runtimes the same, so the gap narrows toward 1× as string payload
 dominates. Loading the CBOR graph also allocates 7.3× less transient
 memory (**107.5 MB** versus 784.6 MB).
 
-The [full results](benchmarks/results/) include confidence intervals,
-allocation counts, and raw output; the
+The [measurement summaries](benchmarks/results/) include confidence intervals,
+allocation counts, and measurement conditions; the
 [benchmark protocol](benchmarks/README.md) lists the commands, inputs, and
 runtime versions.
 

@@ -16,10 +16,10 @@ controlled table-shape suite, which decomposes the CBOR retained-memory
 result into single-variable cases and is recollected whenever table storage
 or string interning changes.
 
-Published raw output and summaries are under
-[`results/2026-07-28-darwin-arm64-m3-pro/`](results/2026-07-28-darwin-arm64-m3-pro/)
-and, for the table-shape suite,
-[`results/2026-08-05-darwin-arm64-m3-pro/`](results/2026-08-05-darwin-arm64-m3-pro/).
+Published measurement summaries are indexed under [`results/`](results/).
+Benchmark source, fixtures, licenses and reusable runners live outside that
+directory. Working output belongs in the repository's ignored `.bench/`
+directory or another local output directory.
 
 ## Runtime versions
 
@@ -52,7 +52,7 @@ comparisons use:
 - at least 15 samples;
 - a fixed benchmark duration;
 - a clean, recorded Git revision; and
-- raw Go benchmark output retained with the result.
+- raw output available locally while checking and reviewing the result.
 
 The embedding table cases separate passing an already-built table from
 creating, filling, and passing a new table. This keeps table access distinct
@@ -97,7 +97,7 @@ LUNAR_BENCH_SAMPLES=20 LUNAR_BENCH_TIME=1s \
   ./run-comparison.sh /tmp/lunar-benchmarks.txt
 ```
 
-The output begins with the Git revision, Go and comparator versions, platform,
+The local output begins with the Git revision, Go and comparator versions, platform,
 machine and CPU models, power policy, collection policy, sample count, and
 benchmark duration.
 
@@ -133,6 +133,27 @@ go run "$BENCHSTAT" \
 allocation traffic during that operation; they do not measure live or retained
 heap. Report every program row separately. Do not combine the program,
 embedding, interpreter, and CBOR results into one score.
+
+## Publishing a summary
+
+Commit one `README.md` per dated directory under `results/`. Include:
+
+- the measured baseline and candidate revisions, toolchain and comparator versions;
+- the machine, execution settings, sample counts and timed workload;
+- the results and uncertainty for every compared workload, including regressions,
+  inconclusive differences and any separate repeat;
+- allocation or retained-memory findings, correctness checks and limitations; and
+- the collection and analysis commands, using the maintained benchmark tools.
+
+Keep raw samples, profiles, disassembly, compiler logs, intermediate statistical
+files and experimental scripts in `.bench/` or another local working directory.
+Use them to validate the measurements before publishing the summary. Do not
+commit those files, copies of source, binaries, or generated corpora under
+`results/`. The ignore rules allow only the index and dated README summaries.
+Historical supporting files removed during cleanup remain in Git history.
+
+Update the root README tables from a complete reviewed measurement set. Preserve
+earlier measurements in their dated summaries; label corrections explicitly.
 
 ## Optional PUC Lua 5.1 comparison
 
@@ -188,5 +209,5 @@ C allocations. This adapter does not measure PUC live memory or allocation
 traffic. Without `-tags puc51`, the benchmark module has no C dependency.
 
 The [2026-09-07 PUC assessment](results/2026-09-07-linux-amd64-puc51/README.md)
-contains raw comparisons, whole-program candidate experiments, profiles, and
-the resulting optimization priorities.
+summarizes the whole-program comparisons, candidate experiments and resulting
+optimization priorities.
