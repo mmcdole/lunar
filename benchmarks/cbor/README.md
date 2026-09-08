@@ -13,9 +13,9 @@ worker is selected with the `gopherlua_reference` build tag and uses the pinned
 dependency in `stock.mod`; both builds otherwise compile the same generator,
 workload, validation, and reporting code.
 
-Published paired retained-memory records and summaries are in the
-[`2026-07-28 Apple M3 Pro archive`](../results/2026-07-28-darwin-arm64-m3-pro/).
-The controlled table-shape suite below has its own archive in
+The paired retained-memory results are summarized in
+[`2026-07-28 Apple M3 Pro`](../results/2026-07-28-darwin-arm64-m3-pro/).
+The controlled table-shape suite below has its own summary in
 [`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
 
 ## Deterministic synthetic fixtures
@@ -216,13 +216,14 @@ go run ./cmd/shapes -list
 go run ./cmd/shapes -case one-unique-16 -format jsonl
 ```
 
-Published shape results follow the same conventions as the CBOR archive:
-one JSONL evidence file per engine, medians in the dated results README,
-and SHA-256 hashes of the raw files. The current archive is
+Published shape results follow the same summary policy as CBOR: report the
+revisions, measurement conditions, sample counts, medians and uncertainty in
+one dated README. Keep JSONL records and other run output locally during
+validation and review. The historical summary is
 [`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
 Recollect the suite whenever table storage, string interning, or the
-allocator changes, and publish a new dated directory rather than editing an
-existing one.
+allocator changes, and publish a new dated summary without replacing previous
+measurements.
 
 ## Native timing references
 
