@@ -1,0 +1,46 @@
+{
+  "status": "complete",
+  "revision": "cd44f540ce289c1b85483290f0f36366d4c1cbf8",
+  "source_clean": true,
+  "started_at": "2026-09-08T03:22:05.844071+00:00",
+  "cwd": "/tmp/lunar-array-access/candidate/benchmarks/cbor",
+  "environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "checks": [
+    {
+      "name": "test",
+      "command": [
+        "taskset",
+        "-c",
+        "6",
+        "go",
+        "test",
+        "./..."
+      ],
+      "exit_code": 0,
+      "log_sha256": "18fb977617674be5cb7a78dc3507f9b33c03085e9df8da5dae62fc6ef4c1adfe"
+    },
+    {
+      "name": "vet",
+      "command": [
+        "taskset",
+        "-c",
+        "6",
+        "go",
+        "vet",
+        "./..."
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_after": {
+    "revision": "cd44f540ce289c1b85483290f0f36366d4c1cbf8",
+    "status": ""
+  },
+  "finished_at": "2026-09-08T03:22:07.761173+00:00"
+}

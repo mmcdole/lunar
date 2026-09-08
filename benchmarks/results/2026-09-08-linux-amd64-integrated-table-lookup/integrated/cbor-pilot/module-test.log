@@ -1,0 +1,8 @@
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/compare	0.009s
+?   	github.com/mmcdole/lunar/benchmarks/cbor/cmd/generate	[no test files]
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/native	0.032s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/run	0.001s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/shapes	0.002s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/cmd/workload	0.038s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture	0.007s
+ok  	github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge	0.001s

@@ -1,0 +1,80 @@
+Total: 6s
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).rawIntSlot in /tmp/lunar-table-fill/baseline/table.go
+     160ms      180ms (flat, cum)  3.00% of Total
+      60ms       60ms   1668:func (table *tableObject) rawIntSlot(key int) (slot, bool) {
+      30ms       30ms   1669:	if key <= 0 {
+         .          .   1670:		number := float64(key)
+         .          .   1671:		return table.store.get(
+         .          .   1672:			slot{bits: math.Float64bits(number)},
+         .          .   1673:			hashNumber(number),
+         .          .   1674:		)
+         .          .   1675:	}
+         .          .   1676:	if key <= table.array.len() {
+      20ms       40ms   1677:		value := *table.array.at(key - 1)
+      50ms       50ms   1678:		return value, !value.isNil()
+         .          .   1679:	}
+         .          .   1680:	number := float64(key)
+         .          .   1681:	return table.store.get(
+         .          .   1682:		slot{bits: math.Float64bits(number)},
+         .          .   1683:		hashNumber(number),
+ROUTINE ======================== github.com/mmcdole/lunar.normalizeTableKey in /tmp/lunar-table-fill/baseline/table.go
+     760ms      1.67s (flat, cum) 27.83% of Total
+     110ms      110ms    611:func normalizeTableKey(
+         .          .    612:	key slot,
+         .          .    613:) (
+         .          .    614:	normalized slot,
+         .          .    615:	index int,
+         .          .    616:	arrayKey bool,
+         .          .    617:	hash uint32,
+         .          .    618:	status tableKeyStatus,
+         .          .    619:) {
+         .          .    620:	normalized = key
+         .       80ms    621:	switch normalized.kind() {
+      10ms       10ms    622:	case NilKind:
+         .          .    623:		status = tableKeyNil
+         .          .    624:		return
+         .          .    625:	case NumberKind:
+      80ms       80ms    626:		number := math.Float64frombits(normalized.bits)
+      60ms       90ms    627:		if math.IsNaN(number) {
+         .          .    628:			status = tableKeyNaN
+         .          .    629:			return
+         .          .    630:		}
+      60ms       60ms    631:		if number == 0 {
+         .          .    632:			normalized.bits = 0
+         .          .    633:		}
+     330ms      1.13s    634:		if candidate, ok := positiveIntegerIndex(number); ok {
+         .          .    635:			index = candidate
+         .          .    636:			arrayKey = true
+         .          .    637:		}
+      30ms       30ms    638:		if !arrayKey {
+         .          .    639:			hash = hashNumber(number)
+         .          .    640:		}
+         .          .    641:	case StringKind:
+         .          .    642:		hash = uint32(stringSlotHash(normalized))
+         .          .    643:	default:
+         .          .    644:		hash = hashReference(normalized)
+         .          .    645:	}
+      80ms       80ms    646:	return
+         .          .    647:}
+         .          .    648:
+         .          .    649:func (table *tableObject) rawSlot(key slot) (slot, bool) {
+         .          .    650:	normalized, index, arrayKey, hash, status :=
+         .          .    651:		normalizeTableKey(key)
+ROUTINE ======================== github.com/mmcdole/lunar.positiveIntegerIndex in /tmp/lunar-table-fill/baseline/table.go
+     790ms      790ms (flat, cum) 13.17% of Total
+         .          .   1702:func positiveIntegerIndex(number float64) (int, bool) {
+         .          .   1703:	limit := float64(int(^uint(0) >> 1))
+         .          .   1704:	const largestExactFloatInteger float64 = 1 << 53
+         .          .   1705:	if limit > largestExactFloatInteger {
+         .          .   1706:		limit = largestExactFloatInteger
+         .          .   1707:	}
+     140ms      140ms   1708:	if number < 1 || number > limit {
+         .          .   1709:		return 0, false
+         .          .   1710:	}
+      10ms       10ms   1711:	index := int(number)
+     640ms      640ms   1712:	return index, index > 0 && float64(index) == number
+         .          .   1713:}
+         .          .   1714:
+         .          .   1715:func exactIntegerTableKey(key slot) (int, bool) {
+         .          .   1716:	if !key.isNumber() {
+         .          .   1717:		return 0, false

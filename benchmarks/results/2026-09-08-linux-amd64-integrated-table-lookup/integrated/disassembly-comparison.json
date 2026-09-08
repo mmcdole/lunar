@@ -1,0 +1,579 @@
+{
+  "github.com/mmcdole/lunar.(*tableObject).rawSlot": {
+    "baseline_address": "0x62ab40",
+    "baseline_code_sha256": "55bf7940908fcf0b288dc10ad386ee333847355380bdefc3345940fd3201b009",
+    "baseline_decoded_bytes": 135,
+    "baseline_instructions": 38,
+    "baseline_stack_subtraction": 40,
+    "baseline_unnamed_rip_references": [],
+    "candidate_address": "0x62ad20",
+    "candidate_code_sha256": "f5f0b964f30e427e3ca659cf2f61b205736c81df15f555cd661c7408eab59b41",
+    "candidate_decoded_bytes": 539,
+    "candidate_instructions": 144,
+    "candidate_stack_subtraction": 48,
+    "candidate_unnamed_rip_references": [],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [
+      {
+        "baseline": "JBE function+0x5f",
+        "candidate": "JBE function+0x1f3",
+        "instruction": 1
+      },
+      {
+        "baseline": "SUBQ $0x28, SP",
+        "candidate": "SUBQ $0x30, SP",
+        "instruction": 4
+      },
+      {
+        "baseline": "MOVQ BX, 0x40(SP)",
+        "candidate": "MOVQ BX, 0x48(SP)",
+        "instruction": 5
+      },
+      {
+        "baseline": "MOVQ AX, 0x38(SP)",
+        "candidate": "TESTQ BX, BX",
+        "instruction": 6
+      },
+      {
+        "baseline": "MOVQ BX, AX",
+        "candidate": "JE function+0x62",
+        "instruction": 7
+      },
+      {
+        "baseline": "MOVQ CX, BX",
+        "candidate": "NOPL 0(AX)",
+        "instruction": 8
+      },
+      {
+        "baseline": "NOPW",
+        "candidate": "CMPQ github.com/mmcdole/lunar.nilMarkerPointer(SB), BX",
+        "instruction": 9
+      },
+      {
+        "baseline": "CALL github.com/mmcdole/lunar.normalizeTableKey(SB)",
+        "candidate": "JNE function+0x30",
+        "instruction": 10
+      },
+      {
+        "baseline": "TESTL R8, R8",
+        "candidate": "MOVL $0x1, DX",
+        "instruction": 11
+      },
+      {
+        "baseline": "JE function+0x41",
+        "candidate": "JMP function+0x67",
+        "instruction": 12
+      },
+      {
+        "baseline": "MOVQ github.com/mmcdole/lunar.nilSlot(SB), AX",
+        "candidate": "CMPQ github.com/mmcdole/lunar.falseMarkerPointer(SB), BX",
+        "instruction": 13
+      },
+      {
+        "baseline": "MOVQ github.com/mmcdole/lunar.nilSlot+8(SB), BX",
+        "candidate": "JE function+0x49",
+        "instruction": 14
+      }
+    ],
+    "normalized_instruction_shape_identical": false
+  },
+  "github.com/mmcdole/lunar.(*threadObject).finishNativeCall": {
+    "baseline_address": "0x598fc0",
+    "baseline_code_sha256": "b5e47bc4de0a06b13720aaef286c7b629cf6edd3ec8c7f10b7fc5bafad25509c",
+    "baseline_decoded_bytes": 701,
+    "baseline_instructions": 166,
+    "baseline_stack_subtraction": 96,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 257,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x728760"
+      },
+      {
+        "instruction_offset": 591,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 613,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 632,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 651,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x598fc0",
+    "candidate_code_sha256": "efe1a253c6d2d69658cd3f39ee209e2829cd5ec5a7932352bd64f521ee5f6e3d",
+    "candidate_decoded_bytes": 701,
+    "candidate_instructions": 166,
+    "candidate_stack_subtraction": 96,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 257,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x729760"
+      },
+      {
+        "instruction_offset": 591,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 613,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 632,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 651,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.(*threadObject).tryEnterFixedNativeCall": {
+    "baseline_address": "0x597de0",
+    "baseline_code_sha256": "9960b035f417e5ec22c54d2e98ebba8358186c1437bbe44882b0fb7634fc3922",
+    "baseline_decoded_bytes": 453,
+    "baseline_instructions": 125,
+    "baseline_stack_subtraction": 72,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 319,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x728760"
+      }
+    ],
+    "candidate_address": "0x597de0",
+    "candidate_code_sha256": "c96f60c80f5ad7e82b1c82a745e7d4f62db3eb62e6b8ca98d3dea97dc9e6bca6",
+    "candidate_decoded_bytes": 453,
+    "candidate_instructions": 125,
+    "candidate_stack_subtraction": 72,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 319,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x729760"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.executeRawStringTableGet": {
+    "baseline_address": "0x5c0320",
+    "baseline_code_sha256": "272462a71dc743b955293579dd90c5ce158e8a2a13dfe59225242e25aea26a44",
+    "baseline_decoded_bytes": 1077,
+    "baseline_instructions": 280,
+    "baseline_stack_subtraction": 48,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 911,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 953,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 987,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x5c0320",
+    "candidate_code_sha256": "18ac4d1cf57ddffbc44e39f6156c650f1cb6a25c67016e02a1b71323e1cc9613",
+    "candidate_decoded_bytes": 1077,
+    "candidate_instructions": 280,
+    "candidate_stack_subtraction": 48,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 911,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 953,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 987,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.executeRawStringTableSet": {
+    "baseline_address": "0x5c0a00",
+    "baseline_code_sha256": "4802e442d7960b30ed3d4d4f982c9395d069ec4aa96fd920aa28e4b93c8af44e",
+    "baseline_decoded_bytes": 880,
+    "baseline_instructions": 227,
+    "baseline_stack_subtraction": 112,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 718,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 761,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 790,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x5c0be0",
+    "candidate_code_sha256": "3d648a56e369093028f9a2f99e0d61757fbdd149ee016d6d5f2bd7f05cca9c79",
+    "candidate_decoded_bytes": 880,
+    "candidate_instructions": 227,
+    "candidate_stack_subtraction": 112,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 718,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 761,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 790,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.executeRawTableGet": {
+    "baseline_address": "0x5bfee0",
+    "baseline_code_sha256": "351c9501dfae74a89aa0adfa23e8d1b3ceccef6a30e676b253a4201c10bae021",
+    "baseline_decoded_bytes": 1068,
+    "baseline_instructions": 274,
+    "baseline_stack_subtraction": 40,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 911,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 958,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x5bfee0",
+    "candidate_code_sha256": "5c07274af99be5b0c961d4c5a5212424e73654b2dd7c9ac0c82dbb530c187684",
+    "candidate_decoded_bytes": 1068,
+    "candidate_instructions": 274,
+    "candidate_stack_subtraction": 40,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 911,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 958,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.executeRawTableSet": {
+    "baseline_address": "0x5c0760",
+    "baseline_code_sha256": "ffa4a2d62e815da505f86e36ff57b6b3380138d3c3d16682077d6ea7fa2a40e1",
+    "baseline_decoded_bytes": 652,
+    "baseline_instructions": 165,
+    "baseline_stack_subtraction": 120,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 559,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x5c0760",
+    "candidate_code_sha256": "e408a1c15f4b836f49adaf38f024823b28803f8910d2d2ec4749187280116cb8",
+    "candidate_decoded_bytes": 1132,
+    "candidate_instructions": 300,
+    "candidate_stack_subtraction": 128,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 1039,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [
+      {
+        "baseline": "CMPQ SP, 0x10(R14)",
+        "candidate": "LEAQ -0x8(SP), R12",
+        "instruction": 0
+      },
+      {
+        "baseline": "JBE function+0x246",
+        "candidate": "CMPQ R12, 0x10(R14)",
+        "instruction": 1
+      },
+      {
+        "baseline": "PUSHQ BP",
+        "candidate": "JBE function+0x426",
+        "instruction": 2
+      },
+      {
+        "baseline": "MOVQ SP, BP",
+        "candidate": "PUSHQ BP",
+        "instruction": 3
+      },
+      {
+        "baseline": "SUBQ $0x78, SP",
+        "candidate": "MOVQ SP, BP",
+        "instruction": 4
+      },
+      {
+        "baseline": "MOVQ AX, 0x88(SP)",
+        "candidate": "ADDQ $-0x80, SP",
+        "instruction": 5
+      },
+      {
+        "baseline": "MOVL R8, CX",
+        "candidate": "MOVQ AX, 0x90(SP)",
+        "instruction": 6
+      },
+      {
+        "baseline": "ANDL $0x3f, R8",
+        "candidate": "MOVL R8, DX",
+        "instruction": 7
+      },
+      {
+        "baseline": "NOPL",
+        "candidate": "ANDL $0x3f, R8",
+        "instruction": 8
+      },
+      {
+        "baseline": "CMPL R8, $0x9",
+        "candidate": "NOPL",
+        "instruction": 9
+      },
+      {
+        "baseline": "JNE function+0x22f",
+        "candidate": "CMPL R8, $0x9",
+        "instruction": 10
+      },
+      {
+        "baseline": "MOVL CX, DX",
+        "candidate": "JNE function+0x40f",
+        "instruction": 11
+      }
+    ],
+    "normalized_instruction_shape_identical": false
+  },
+  "github.com/mmcdole/lunar.invokeNativeCall": {
+    "baseline_address": "0x612ac0",
+    "baseline_code_sha256": "bb5e1c81cba2783994ac846262e6e65e62436865253fa20a6306ebc6ae888790",
+    "baseline_decoded_bytes": 1209,
+    "baseline_instructions": 244,
+    "baseline_stack_subtraction": 216,
+    "baseline_unnamed_rip_references": [
+      {
+        "instruction_offset": 976,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x743c86"
+      },
+      {
+        "instruction_offset": 1014,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1033,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1052,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1071,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1093,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1112,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1131,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      },
+      {
+        "instruction_offset": 1150,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6e9900"
+      }
+    ],
+    "candidate_address": "0x612ca0",
+    "candidate_code_sha256": "d806f387efcca37ea9e976f33baf9a9c3fe4c1c4d4f863926492e14f5a6e5e57",
+    "candidate_decoded_bytes": 1209,
+    "candidate_instructions": 244,
+    "candidate_stack_subtraction": 216,
+    "candidate_unnamed_rip_references": [
+      {
+        "instruction_offset": 976,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x744c86"
+      },
+      {
+        "instruction_offset": 1014,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1033,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1052,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1071,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1093,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1112,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1131,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      },
+      {
+        "instruction_offset": 1150,
+        "symbol": null,
+        "symbol_offset": null,
+        "target": "0x6ea900"
+      }
+    ],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  },
+  "github.com/mmcdole/lunar.runInstructions": {
+    "baseline_address": "0x5b9520",
+    "baseline_code_sha256": "4bd1d7bb2c3ace69980de68af3611b98396f3a428c8f2955d1dbfccfa06935a5",
+    "baseline_decoded_bytes": 6885,
+    "baseline_instructions": 1561,
+    "baseline_stack_subtraction": 192,
+    "baseline_unnamed_rip_references": [],
+    "candidate_address": "0x5b9520",
+    "candidate_code_sha256": "1f0f2519b58157e512546a90728437bf7fd64a24284645ab8e88594c4443813c",
+    "candidate_decoded_bytes": 6885,
+    "candidate_instructions": 1561,
+    "candidate_stack_subtraction": 192,
+    "candidate_unnamed_rip_references": [],
+    "literal_code_bytes_identical": false,
+    "normalized_instruction_differences": [],
+    "normalized_instruction_shape_identical": true
+  }
+}

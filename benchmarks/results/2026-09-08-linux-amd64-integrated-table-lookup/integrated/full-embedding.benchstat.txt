@@ -1,0 +1,34 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                                │  baseline   │              candidate              │
+                                                │   sec/op    │   sec/op     vs base                │
+Embedding/case=go_to_lua_scalars                  53.25n ± 0%   53.92n ± 0%   +1.26% (p=0.000 n=15)
+Embedding/case=lua_to_go_scalar_1000              50.57µ ± 0%   51.60µ ± 0%   +2.03% (p=0.000 n=15)
+Embedding/case=go_string_echo_128B                76.48n ± 0%   77.79n ± 1%   +1.71% (p=0.001 n=15)
+Embedding/case=prebuilt_go_table_16_4_to_lua      267.0n ± 0%   229.8n ± 0%  -13.93% (p=0.000 n=15)
+Embedding/case=create_fill_go_table_16_4_to_lua   2.318µ ± 5%   2.164µ ± 6%   -6.64% (p=0.013 n=15)
+geomean                                           662.3n        640.3n        -3.33%
+
+                                                │   baseline   │              candidate              │
+                                                │     B/op     │    B/op     vs base                 │
+Embedding/case=go_to_lua_scalars                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=lua_to_go_scalar_1000              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=go_string_echo_128B                0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=prebuilt_go_table_16_4_to_lua      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=create_fill_go_table_16_4_to_lua   661.0 ± 2%     657.0 ± 2%       ~ (p=0.505 n=15)
+geomean                                                      ²               -0.12%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                                │   baseline   │              candidate              │
+                                                │  allocs/op   │ allocs/op   vs base                 │
+Embedding/case=go_to_lua_scalars                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=lua_to_go_scalar_1000              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=go_string_echo_128B                0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=prebuilt_go_table_16_4_to_lua      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Embedding/case=create_fill_go_table_16_4_to_lua   6.000 ± 0%     6.000 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                                      ²               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

@@ -1,0 +1,19 @@
+Total: 8860ms
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).rawNormalizedSlot in github.com/mmcdole/lunar@v0.0.0/table.go
+      10ms       10ms (flat, cum)  0.11% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/table.go on path /tmp/lunar-table-fill/baseline
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).rawSlot in github.com/mmcdole/lunar@v0.0.0/table.go
+      20ms       50ms (flat, cum)  0.56% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/table.go on path /tmp/lunar-table-fill/baseline
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).resolveNormalizedSlot in github.com/mmcdole/lunar@v0.0.0/table.go
+      10ms       50ms (flat, cum)  0.56% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/table.go on path /tmp/lunar-table-fill/baseline
+ROUTINE ======================== github.com/mmcdole/lunar.executeRawTableSet in github.com/mmcdole/lunar@v0.0.0/execute_table.go
+         0      230ms (flat, cum)  2.60% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/execute_table.go on path /tmp/lunar-table-fill/baseline
+ROUTINE ======================== github.com/mmcdole/lunar.normalizeTableKey in github.com/mmcdole/lunar@v0.0.0/table.go
+      20ms       30ms (flat, cum)  0.34% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/table.go on path /tmp/lunar-table-fill/baseline
+ROUTINE ======================== github.com/mmcdole/lunar.positiveIntegerIndex in github.com/mmcdole/lunar@v0.0.0/table.go
+      10ms       10ms (flat, cum)  0.11% of Total
+ Error: could not find file github.com/mmcdole/lunar@v0.0.0/table.go on path /tmp/lunar-table-fill/baseline

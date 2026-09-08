@@ -1,0 +1,134 @@
+{
+  "status": "complete",
+  "started_at": "2026-09-08T07:42:45.749490+00:00",
+  "source": {
+    "path": "/tmp/lunar-array-followup/integrated/candidate",
+    "revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+    "clean": true,
+    "tree": "325c067e2cbc31db7833010037770ed4839a79e8"
+  },
+  "command": [
+    "taskset",
+    "-c",
+    "6",
+    "go",
+    "build",
+    "-trimpath",
+    "-o",
+    "/tmp/lunar-array-followup/integrated/cbor-pilot/candidate-worker",
+    "./cmd/workload"
+  ],
+  "cwd": "/tmp/lunar-array-followup/integrated/candidate/benchmarks/cbor",
+  "environment": {
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache"
+  },
+  "cpu_affinity": "6",
+  "inputs": {
+    "sha256": "d62424b7c8a0b561800d8fadcfc3dad170b502d1aac8570b342c790a6a637881",
+    "bytes": 6639
+  },
+  "host": {
+    "system": "Linux",
+    "node": "hosaka",
+    "release": "6.6.114.1-microsoft-standard-WSL2",
+    "version": "#1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "exit_code": 0,
+  "source_after_build": {
+    "path": "/tmp/lunar-array-followup/integrated/candidate",
+    "revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+    "clean": true,
+    "tree": "325c067e2cbc31db7833010037770ed4839a79e8"
+  },
+  "binary": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-pilot/candidate-worker",
+    "sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+    "bytes": 6033361
+  },
+  "go_build_info": {
+    "GoVersion": "go1.26.0",
+    "Path": "github.com/mmcdole/lunar/benchmarks/cbor/cmd/workload",
+    "Main": {
+      "Path": "github.com/mmcdole/lunar/benchmarks/cbor",
+      "Version": "v0.0.0-20260908074205-22ad3f1e7b75"
+    },
+    "Deps": [
+      {
+        "Path": "github.com/mmcdole/lunar",
+        "Version": "v0.0.0",
+        "Replace": {
+          "Path": "../..",
+          "Version": "(devel)"
+        }
+      }
+    ],
+    "Settings": [
+      {
+        "Key": "-buildmode",
+        "Value": "exe"
+      },
+      {
+        "Key": "-compiler",
+        "Value": "gc"
+      },
+      {
+        "Key": "-trimpath",
+        "Value": "true"
+      },
+      {
+        "Key": "DefaultGODEBUG",
+        "Value": "containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,tlssecpmlkem=0,tlssha1=1,updatemaxprocs=0,urlstrictcolons=0,x509sha256skid=0"
+      },
+      {
+        "Key": "CGO_ENABLED",
+        "Value": "1"
+      },
+      {
+        "Key": "GOARCH",
+        "Value": "amd64"
+      },
+      {
+        "Key": "GOOS",
+        "Value": "linux"
+      },
+      {
+        "Key": "GOAMD64",
+        "Value": "v1"
+      },
+      {
+        "Key": "vcs",
+        "Value": "git"
+      },
+      {
+        "Key": "vcs.revision",
+        "Value": "22ad3f1e7b751031360705eea9338b5f0428a1e5"
+      },
+      {
+        "Key": "vcs.time",
+        "Value": "2026-09-08T07:42:05Z"
+      },
+      {
+        "Key": "vcs.modified",
+        "Value": "false"
+      }
+    ]
+  },
+  "patch": {
+    "sha256": "7d6288687277fc290a0127c71effef242a90b2e195e56abd2f821ca7bef57923",
+    "bytes": 8211
+  },
+  "finished_at": "2026-09-08T07:42:47.887416+00:00",
+  "candidate-worker": {
+    "sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+    "bytes": 6033361
+  },
+  "candidate-build.log": {
+    "sha256": "ed524ef5d41f0c683b942f491a1ffb5d7fecca4b764b617cab68b3bffd7e5116",
+    "bytes": 127
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "status": "validated",
+  "qualification": false,
+  "cpu_affinity": 8,
+  "candidate_revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+  "baseline_revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+  "candidate_worker_sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+  "baseline_worker_sha256": "3c29592b0328af4a52689884d46f90e49fcb05001a8a23f340a6de028d5fc5b0",
+  "oracle": {
+    "digest": "dfced0fa169e1abb659ef54220f2395c7c3b5757c1b8ae129b3487c7a489eead",
+    "areas": 341,
+    "rooms": 36705,
+    "exits": 109742,
+    "tables": 183513,
+    "entries": 938452,
+    "encoded_bytes": 9208046
+  },
+  "cohorts": {
+    "load-timing": {
+      "status": "validated",
+      "qualification": false,
+      "records": 30,
+      "collection_id": "05f827a6cc65dcf13e2d0a4c510f015d",
+      "medians": {
+        "baseline": {
+          "elapsed_ns": 1755430344,
+          "total_alloc_bytes": 107475832,
+          "mallocs": 664877,
+          "heap_delta_bytes": 0
+        },
+        "candidate": {
+          "elapsed_ns": 1763344213,
+          "total_alloc_bytes": 107475816,
+          "mallocs": 664877,
+          "heap_delta_bytes": 0
+        }
+      },
+      "time_change_percent": 0.45082216033518474,
+      "time_change_ci_percent": [
+        -0.025050090500122746,
+        0.9634481158177
+      ],
+      "manifest": {
+        "sha256": "7f33978dad85dafac84057956eb62ac65cdc35104c4ec2243d19927a8b8f66c7",
+        "bytes": 6479
+      },
+      "report": {
+        "sha256": "9795439f855221e0629092818d25a63393d28690e32a49591a94b607fb08b7f1",
+        "bytes": 4733
+      },
+      "paired_bootstrap_reproduced_exactly": true
+    }
+  },
+  "checks": "Pinned inputs, worker reuse and build/source identities, unchanged harness, all artifact hashes, complete paired order, every structural oracle, independent medians, exact paired-bootstrap report reproduction; no workloads or builds."
+}

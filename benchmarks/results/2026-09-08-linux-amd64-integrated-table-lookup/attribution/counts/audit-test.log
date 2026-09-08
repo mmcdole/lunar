@@ -1,0 +1,4 @@
+=== RUN   TestArrayAccessAuditCategoriesAndScope
+--- PASS: TestArrayAccessAuditCategoriesAndScope (0.00s)
+PASS
+ok  	github.com/mmcdole/lunar	0.001s

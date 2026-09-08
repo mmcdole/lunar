@@ -1,0 +1,43 @@
+File: baseline.test
+Build ID: 493897884adefd4665aaf26fa4c2ab3dc91d032a
+Type: cpu
+Time: 2026-09-07 21:58:12 CDT
+Duration: 6.01s, Total samples = 6s (99.90%)
+Showing nodes accounting for 5.97s, 99.50% of 6s total
+Dropped 2 nodes (cum <= 0.03s)
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%         6s   100%  github.com/mmcdole/lunar.(*State).CallInto (inline)
+         0     0%     0%         6s   100%  github.com/mmcdole/lunar.(*State).callMain
+         0     0%     0%         6s   100%  github.com/mmcdole/lunar.(*State).runMainCall
+         0     0%     0%         6s   100%  github.com/mmcdole/lunar.driveExecution
+         0     0%     0%         6s   100%  github.com/mmcdole/lunar.execute
+     1.60s 26.67% 26.67%         6s   100%  github.com/mmcdole/lunar.runInstructions
+         0     0% 26.67%         6s   100%  github.com/mmcdole/lunar/benchmarks.BenchmarkPrograms.func1.1
+         0     0% 26.67%         6s   100%  github.com/mmcdole/lunar/benchmarks.benchmarkPreparedProgram
+         0     0% 26.67%         6s   100%  github.com/mmcdole/lunar/benchmarks.prepareLunarProgram.func2
+         0     0% 26.67%         6s   100%  testing.(*B).run1.func1
+         0     0% 26.67%         6s   100%  testing.(*B).runN
+     0.51s  8.50% 35.17%      1.89s 31.50%  github.com/mmcdole/lunar.executeRawTableSet
+     0.28s  4.67% 39.83%      1.84s 30.67%  github.com/mmcdole/lunar.executeRawTableGet
+     0.76s 12.67% 52.50%      1.67s 27.83%  github.com/mmcdole/lunar.normalizeTableKey
+     0.10s  1.67% 54.17%      1.41s 23.50%  github.com/mmcdole/lunar.(*tableObject).rawSlot
+     0.79s 13.17% 67.33%      0.79s 13.17%  github.com/mmcdole/lunar.positiveIntegerIndex (inline)
+     0.15s  2.50% 69.83%      0.33s  5.50%  github.com/mmcdole/lunar.(*tableObject).rawNormalizedSlot
+     0.22s  3.67% 73.50%      0.32s  5.33%  github.com/mmcdole/lunar.(*tableObject).replaceResolvedSlot
+     0.24s  4.00% 77.50%      0.31s  5.17%  github.com/mmcdole/lunar.operandSlot (inline)
+     0.22s  3.67% 81.17%      0.23s  3.83%  github.com/mmcdole/lunar.(*tableObject).resolveNormalizedSlot
+     0.16s  2.67% 83.83%      0.18s  3.00%  github.com/mmcdole/lunar.(*tableObject).rawIntSlot
+     0.17s  2.83% 86.67%      0.17s  2.83%  github.com/mmcdole/lunar.instruction.b (inline)
+     0.15s  2.50% 89.17%      0.15s  2.50%  math.Float64frombits (inline)
+     0.13s  2.17% 91.33%      0.13s  2.17%  github.com/mmcdole/lunar.writeSlot (inline)
+     0.09s  1.50% 92.83%      0.09s  1.50%  github.com/mmcdole/lunar.instruction.a (inline)
+         0     0% 92.83%      0.08s  1.33%  github.com/mmcdole/lunar.replaceTableValue (inline)
+     0.08s  1.33% 94.17%      0.08s  1.33%  github.com/mmcdole/lunar.slot.kind (inline)
+     0.06s  1.00% 95.17%      0.06s  1.00%  github.com/mmcdole/lunar.instruction.c (inline)
+     0.06s  1.00% 96.17%      0.06s  1.00%  github.com/mmcdole/lunar.isConstantOperand (inline)
+     0.05s  0.83% 97.00%      0.05s  0.83%  github.com/mmcdole/lunar.instruction.bx (inline)
+     0.05s  0.83% 97.83%      0.05s  0.83%  github.com/mmcdole/lunar.tableVector[go.shape.struct { github.com/mmcdole/lunar.ref unsafe.Pointer; github.com/mmcdole/lunar.bits uint64 }].at (inline)
+     0.04s  0.67% 98.50%      0.04s  0.67%  github.com/mmcdole/lunar.instruction.opcode (inline)
+         0     0% 98.50%      0.03s   0.5%  github.com/mmcdole/lunar.instruction.sbx (inline)
+     0.03s   0.5% 99.00%      0.03s   0.5%  math.IsNaN (inline)
+     0.03s   0.5% 99.50%      0.03s   0.5%  runtime.asyncPreempt

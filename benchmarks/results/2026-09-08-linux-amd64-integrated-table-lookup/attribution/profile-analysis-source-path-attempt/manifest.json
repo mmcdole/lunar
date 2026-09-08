@@ -1,0 +1,150 @@
+{
+  "analyzer_sha256": "060705865eb99a089dd1caa46ad5c481c7692c524c2c4908a4eb6c0f269b2b48",
+  "artifacts": {
+    "REPORT.md": {
+      "bytes": 5103,
+      "sha256": "cb08b5545f910d919db34707513358769639a00c5d4037b8161dfb4462c96286"
+    },
+    "baseline-annotated.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "baseline-annotated.txt": {
+      "bytes": 1741,
+      "sha256": "21015b479e61e68368de3008a84807e4a730dd66f3a4f3014f486985e6dba5cb"
+    },
+    "baseline-top.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "baseline-top.txt": {
+      "bytes": 20239,
+      "sha256": "21c35b489fa3f6fbf81de18d7481adbec72fe152d4ab8feb738d0bccdcb553c8"
+    },
+    "candidate-annotated.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate-annotated.txt": {
+      "bytes": 1511,
+      "sha256": "a8c9c8a9800c548174a4ab681560492b0bea085afd9b35a2c8e8246e9a0a9d78"
+    },
+    "candidate-top.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate-top.txt": {
+      "bytes": 22506,
+      "sha256": "7ae738f5ea1a305f728cbf5ddb7a84e400f8abfffb20c473f0ad5b40b8084e33"
+    },
+    "summary.json": {
+      "bytes": 188976,
+      "sha256": "9c2f92b0501192bdf411440e05b2e423ffa54accea1a3bc8be6ec5ef49427299"
+    }
+  },
+  "commands": [
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "8",
+        "go",
+        "run",
+        "cmd/pprof",
+        "-symbolize=none",
+        "-top",
+        "-unit=ns",
+        "-nodecount=0",
+        "-nodefraction=0",
+        "-edgefraction=0",
+        "/tmp/lunar-table-fill/cbor/bin/baseline-worker",
+        "/tmp/lunar-array-followup/profiles/baseline-1.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-2.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-3.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-4.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-5.cpu.pprof"
+      ],
+      "exit_code": 0,
+      "lane": "baseline",
+      "report": "top"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "8",
+        "go",
+        "run",
+        "cmd/pprof",
+        "-symbolize=none",
+        "-list=(rawSlot|executeRawTableSet|normalizeTableKey|positiveIntegerIndex|existingArrayIndex|rawIntSlot|rawNormalizedSlot|resolveNormalizedSlot)$",
+        "-unit=ms",
+        "-source_path=/tmp/lunar-table-fill/baseline",
+        "-trim_path=github.com/mmcdole/lunar",
+        "/tmp/lunar-table-fill/cbor/bin/baseline-worker",
+        "/tmp/lunar-array-followup/profiles/baseline-1.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-2.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-3.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-4.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/baseline-5.cpu.pprof"
+      ],
+      "exit_code": 0,
+      "lane": "baseline",
+      "report": "annotated"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "8",
+        "go",
+        "run",
+        "cmd/pprof",
+        "-symbolize=none",
+        "-top",
+        "-unit=ns",
+        "-nodecount=0",
+        "-nodefraction=0",
+        "-edgefraction=0",
+        "/tmp/lunar-array-access/shared/cbor/candidate-worker",
+        "/tmp/lunar-array-followup/profiles/candidate-1.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-2.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-3.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-4.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-5.cpu.pprof"
+      ],
+      "exit_code": 0,
+      "lane": "candidate",
+      "report": "top"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "8",
+        "go",
+        "run",
+        "cmd/pprof",
+        "-symbolize=none",
+        "-list=(rawSlot|executeRawTableSet|normalizeTableKey|positiveIntegerIndex|existingArrayIndex|rawIntSlot|rawNormalizedSlot|resolveNormalizedSlot)$",
+        "-unit=ms",
+        "-source_path=/tmp/lunar-array-access/shared/candidate",
+        "-trim_path=github.com/mmcdole/lunar",
+        "/tmp/lunar-array-access/shared/cbor/candidate-worker",
+        "/tmp/lunar-array-followup/profiles/candidate-1.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-2.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-3.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-4.cpu.pprof",
+        "/tmp/lunar-array-followup/profiles/candidate-5.cpu.pprof"
+      ],
+      "exit_code": 0,
+      "lane": "candidate",
+      "report": "annotated"
+    }
+  ],
+  "cpu_affinity": 8,
+  "finished_at": "2026-09-08T07:35:15.457950+00:00",
+  "input_manifest_sha256": "39d94b0d030c868398fcfb45ed6aea4f4649cc1b734527e77e190eec64a7e363",
+  "pprof_main_source_sha256": "c67bf06e0ae8bac244a88cfa111a7f2cc70b9dc90909cc859b30104ecadbfc61",
+  "status": "complete"
+}

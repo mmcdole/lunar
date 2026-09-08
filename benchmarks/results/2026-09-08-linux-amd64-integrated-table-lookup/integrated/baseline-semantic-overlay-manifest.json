@@ -1,0 +1,57 @@
+{
+  "baseline": {
+    "path": "/tmp/lunar-table-fill/baseline",
+    "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+    "original_test_sha256": "889fc4dc37c2394b5c73a909587d56cdb0664eb48cf6fb8cb4236aa3524aa362"
+  },
+  "candidate_revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+  "source_test": "/tmp/lunar-array-followup/integrated/candidate/execute_array_access_test.go",
+  "source_test_sha256": "47c803550d6fd0d4e0a3878670100095ceb1da12d91a70e6a50e0431c2c7d702",
+  "combined_test": "/tmp/lunar-array-followup/integrated/baseline-execute-table-with-array-tests.go",
+  "combined_test_sha256": "a5eafbc75ba5d47e59277cb4f6700264f376d5b031d017d4e948f149ecf52245",
+  "overlay": "/tmp/lunar-array-followup/integrated/baseline-semantic-overlay.json",
+  "overlay_sha256": "8de7a4f5fdccd6b26352263ff3f4c5878a952d4b6468fb7cfbbb7e2aaef09e83",
+  "command": [
+    "taskset",
+    "-c",
+    "12",
+    "go",
+    "test",
+    "-overlay",
+    "/tmp/lunar-array-followup/integrated/baseline-semantic-overlay.json",
+    "-run",
+    "^(TestExecutorNumericArrayAccessKeepsDistinctKeys|TestExecutorNumericArrayAccessPreservesMetamethods|TestExecutorNumericArrayAccessReleasesReplacedReferences|TestExecutorNumericTableBoundaryKeysRemainDistinct)$",
+    "-count=1",
+    "-v",
+    "."
+  ],
+  "cwd": "/tmp/lunar-table-fill/baseline",
+  "environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "1"
+  },
+  "expected_tests": [
+    "TestExecutorNumericArrayAccessKeepsDistinctKeys",
+    "TestExecutorNumericArrayAccessPreservesMetamethods",
+    "TestExecutorNumericArrayAccessReleasesReplacedReferences",
+    "TestExecutorNumericTableBoundaryKeysRemainDistinct"
+  ],
+  "status": "complete",
+  "exit_code": 0,
+  "ran_tests": [
+    "TestExecutorNumericArrayAccessKeepsDistinctKeys",
+    "TestExecutorNumericArrayAccessPreservesMetamethods",
+    "TestExecutorNumericArrayAccessReleasesReplacedReferences",
+    "TestExecutorNumericTableBoundaryKeysRemainDistinct"
+  ],
+  "passed_tests": [
+    "TestExecutorNumericArrayAccessKeepsDistinctKeys",
+    "TestExecutorNumericArrayAccessPreservesMetamethods",
+    "TestExecutorNumericArrayAccessReleasesReplacedReferences",
+    "TestExecutorNumericTableBoundaryKeysRemainDistinct"
+  ],
+  "log": "/tmp/lunar-array-followup/integrated/baseline-semantic-overlay.log",
+  "log_sha256": "05a28dfbabe0380d5514938cfbb68fda22a9f29eba0de8ae331aca6fcd32823d",
+  "baseline_clean_after": true,
+  "candidate_clean_after": true
+}

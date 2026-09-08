@@ -1,0 +1,491 @@
+{
+  "schema_version": 1,
+  "validation": {
+    "status": "complete",
+    "processes": 60,
+    "samples_per_row": 15,
+    "unique_rows": 44,
+    "samples": 660
+  },
+  "provenance": {
+    "raw_file": "full-comparison.txt",
+    "raw_sha256": "ab8b8a76e325caf006f6fa287a38a4b9a66448b191fa49701868b9f0df142990",
+    "manifest_file": "full-comparison-manifest.json",
+    "manifest_sha256": "181a4b160046a5bfa03b018040caf3c02ee5dc260c5aee6091d1042bde8177aa",
+    "collector_sha256": "4bf0f52d2c62af37b90e2fb9ca50c153a5e71ce8e7809685e118ea7f02052793",
+    "summarizer_sha256": "d249e766d1fca7a4a598a60ae974f5925f5ea3a2e68499dfd678b68e107b9f3d",
+    "sources": {
+      "baseline": {
+        "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+        "binary_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a"
+      },
+      "candidate": {
+        "revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+        "binary_sha256": "948fd90c9326f54056196dd908d531db2871278dac46a31f82e7cf5c2e86505e"
+      }
+    },
+    "environment": {
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GOMAXPROCS": "1"
+    },
+    "cpu_affinity": 2,
+    "benchtime": "500ms",
+    "platform": "Linux-6.6.114.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "go": "go version go1.26.0 linux/amd64",
+    "benchstat": {
+      "path": "/tmp/lunar-puc-assessment/bin/benchstat",
+      "sha256": "f31a1e15da9b1c831c8082cb3cee774abf63fbfcb01fb7a4405aaf785ba3d054",
+      "commands": [
+        {
+          "output": "full-programs.benchstat.txt",
+          "command": [
+            "taskset",
+            "-c",
+            "8",
+            "/tmp/lunar-puc-assessment/bin/benchstat",
+            "baseline=/tmp/lunar-array-followup/integrated/stats-inputs/programs-baseline.txt",
+            "candidate=/tmp/lunar-array-followup/integrated/stats-inputs/programs-candidate.txt"
+          ]
+        },
+        {
+          "output": "readme-programs.benchstat.txt",
+          "command": [
+            "taskset",
+            "-c",
+            "8",
+            "/tmp/lunar-puc-assessment/bin/benchstat",
+            "candidate=/tmp/lunar-array-followup/integrated/stats-inputs/programs-candidate.txt",
+            "gopherlua=/tmp/lunar-array-followup/integrated/stats-inputs/programs-gopherlua.txt",
+            "golua=/tmp/lunar-array-followup/integrated/stats-inputs/programs-golua.txt"
+          ]
+        },
+        {
+          "output": "full-interpreter.benchstat.txt",
+          "command": [
+            "taskset",
+            "-c",
+            "8",
+            "/tmp/lunar-puc-assessment/bin/benchstat",
+            "baseline=/tmp/lunar-array-followup/integrated/stats-inputs/interpreter-baseline.txt",
+            "candidate=/tmp/lunar-array-followup/integrated/stats-inputs/interpreter-candidate.txt"
+          ]
+        },
+        {
+          "output": "full-embedding.benchstat.txt",
+          "command": [
+            "taskset",
+            "-c",
+            "8",
+            "/tmp/lunar-puc-assessment/bin/benchstat",
+            "baseline=/tmp/lunar-array-followup/integrated/stats-inputs/embedding-baseline.txt",
+            "candidate=/tmp/lunar-array-followup/integrated/stats-inputs/embedding-candidate.txt"
+          ]
+        },
+        {
+          "output": "readme-embedding.benchstat.txt",
+          "command": [
+            "taskset",
+            "-c",
+            "8",
+            "/tmp/lunar-puc-assessment/bin/benchstat",
+            "candidate=/tmp/lunar-array-followup/integrated/stats-inputs/embedding-candidate.txt",
+            "gopherlua=/tmp/lunar-array-followup/integrated/stats-inputs/embedding-gopherlua.txt",
+            "golua=/tmp/lunar-array-followup/integrated/stats-inputs/embedding-golua.txt"
+          ]
+        }
+      ]
+    }
+  },
+  "medians": {
+    "programs": {
+      "binarytrees": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 135539486.0,
+          "bytes_per_op": 68994128.0,
+          "allocs_per_op": 1009045.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 131692442.0,
+          "bytes_per_op": 68935440.0,
+          "allocs_per_op": 1009045.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 153784609.0,
+          "bytes_per_op": 75631800.0,
+          "allocs_per_op": 1009811.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 159240002.0,
+          "bytes_per_op": 103845412.0,
+          "allocs_per_op": 2533642.0
+        }
+      },
+      "fannkuchredux": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 18229793.0,
+          "bytes_per_op": 1168.0,
+          "allocs_per_op": 15.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 14463300.0,
+          "bytes_per_op": 1190.0,
+          "allocs_per_op": 15.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 29248501.0,
+          "bytes_per_op": 393650.0,
+          "allocs_per_op": 1559.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 32590619.0,
+          "bytes_per_op": 11959585.0,
+          "allocs_per_op": 1494687.0
+        }
+      },
+      "nbody": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 43097777.0,
+          "bytes_per_op": 2799.0,
+          "allocs_per_op": 25.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 42798158.0,
+          "bytes_per_op": 2799.0,
+          "allocs_per_op": 25.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 161240566.0,
+          "bytes_per_op": 46728474.0,
+          "allocs_per_op": 376439.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 170932133.0,
+          "bytes_per_op": 74249208.0,
+          "allocs_per_op": 8080629.0
+        }
+      },
+      "spectralnorm": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 44636921.0,
+          "bytes_per_op": 28701.0,
+          "allocs_per_op": 35.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 42096190.0,
+          "bytes_per_op": 28701.0,
+          "allocs_per_op": 35.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 144706344.0,
+          "bytes_per_op": 59195864.0,
+          "allocs_per_op": 231170.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 133438266.0,
+          "bytes_per_op": 79431636.0,
+          "allocs_per_op": 9925272.0
+        }
+      }
+    },
+    "interpreter": {
+      "numeric_for_10000": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 36996.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 37023.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      },
+      "fixed_lua_calls_1000": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 24511.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 24559.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      },
+      "table_field_get_set_10000": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 184345.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 184202.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      },
+      "string_append_256": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 34881.0,
+          "bytes_per_op": 278248.0,
+          "allocs_per_op": 255.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 34664.0,
+          "bytes_per_op": 278248.0,
+          "allocs_per_op": 255.0
+        }
+      }
+    },
+    "embedding": {
+      "go_to_lua_scalars": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 53.25,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 53.92,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 51.01,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 123.5,
+          "bytes_per_op": 160.0,
+          "allocs_per_op": 5.0
+        }
+      },
+      "lua_to_go_scalar_1000": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 50572.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 51600.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 89797.0,
+          "bytes_per_op": 29872.0,
+          "allocs_per_op": 1085.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 67529.0,
+          "bytes_per_op": 32160.0,
+          "allocs_per_op": 4005.0
+        }
+      },
+      "go_string_echo_128B": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 76.48,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 77.79,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 66.06,
+          "bytes_per_op": 16.0,
+          "allocs_per_op": 1.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 126.3,
+          "bytes_per_op": 176.0,
+          "allocs_per_op": 5.0
+        }
+      },
+      "prebuilt_go_table_16_4_to_lua": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 267.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 229.8,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 519.7,
+          "bytes_per_op": 40.0,
+          "allocs_per_op": 0.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 846.7,
+          "bytes_per_op": 576.0,
+          "allocs_per_op": 57.0
+        }
+      },
+      "create_fill_go_table_16_4_to_lua": {
+        "baseline": {
+          "samples": 15,
+          "ns_per_op": 2318.0,
+          "bytes_per_op": 661.0,
+          "allocs_per_op": 6.0
+        },
+        "candidate": {
+          "samples": 15,
+          "ns_per_op": 2164.0,
+          "bytes_per_op": 657.0,
+          "allocs_per_op": 6.0
+        },
+        "gopherlua": {
+          "samples": 15,
+          "ns_per_op": 1250.0,
+          "bytes_per_op": 1384.0,
+          "allocs_per_op": 37.0
+        },
+        "golua": {
+          "samples": 15,
+          "ns_per_op": 1453.0,
+          "bytes_per_op": 1536.0,
+          "allocs_per_op": 89.0
+        }
+      }
+    }
+  },
+  "baseline_candidate_comparisons": [
+    {
+      "group": "programs",
+      "case": "binarytrees",
+      "baseline_ns": 135539486.0,
+      "candidate_ns": 131692442.0,
+      "change_percent": -2.838319749862417
+    },
+    {
+      "group": "programs",
+      "case": "fannkuchredux",
+      "baseline_ns": 18229793.0,
+      "candidate_ns": 14463300.0,
+      "change_percent": -20.661194562110495
+    },
+    {
+      "group": "programs",
+      "case": "nbody",
+      "baseline_ns": 43097777.0,
+      "candidate_ns": 42798158.0,
+      "change_percent": -0.6952075509602307
+    },
+    {
+      "group": "programs",
+      "case": "spectralnorm",
+      "baseline_ns": 44636921.0,
+      "candidate_ns": 42096190.0,
+      "change_percent": -5.691994302205572
+    },
+    {
+      "group": "interpreter",
+      "case": "numeric_for_10000",
+      "baseline_ns": 36996.0,
+      "candidate_ns": 37023.0,
+      "change_percent": 0.07298086279596827
+    },
+    {
+      "group": "interpreter",
+      "case": "fixed_lua_calls_1000",
+      "baseline_ns": 24511.0,
+      "candidate_ns": 24559.0,
+      "change_percent": 0.19583044347435408
+    },
+    {
+      "group": "interpreter",
+      "case": "table_field_get_set_10000",
+      "baseline_ns": 184345.0,
+      "candidate_ns": 184202.0,
+      "change_percent": -0.07757194390951572
+    },
+    {
+      "group": "interpreter",
+      "case": "string_append_256",
+      "baseline_ns": 34881.0,
+      "candidate_ns": 34664.0,
+      "change_percent": -0.6221151916516177
+    },
+    {
+      "group": "embedding",
+      "case": "go_to_lua_scalars",
+      "baseline_ns": 53.25,
+      "candidate_ns": 53.92,
+      "change_percent": 1.2582159624413114
+    },
+    {
+      "group": "embedding",
+      "case": "lua_to_go_scalar_1000",
+      "baseline_ns": 50572.0,
+      "candidate_ns": 51600.0,
+      "change_percent": 2.0327453927074357
+    },
+    {
+      "group": "embedding",
+      "case": "go_string_echo_128B",
+      "baseline_ns": 76.48,
+      "candidate_ns": 77.79,
+      "change_percent": 1.7128661087866037
+    },
+    {
+      "group": "embedding",
+      "case": "prebuilt_go_table_16_4_to_lua",
+      "baseline_ns": 267.0,
+      "candidate_ns": 229.8,
+      "change_percent": -13.932584269662918
+    },
+    {
+      "group": "embedding",
+      "case": "create_fill_go_table_16_4_to_lua",
+      "baseline_ns": 2318.0,
+      "candidate_ns": 2164.0,
+      "change_percent": -6.643658326143232
+    }
+  ]
+}

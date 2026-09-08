@@ -1,0 +1,152 @@
+{
+  "status": "complete",
+  "started_at": "2026-09-08T08:10:45.368007+00:00",
+  "command": [
+    "taskset",
+    "-c",
+    "2",
+    "/tmp/lunar-table-fill/cbor/bin/run",
+    "-baseline",
+    "/tmp/lunar-table-fill/cbor/bin/baseline-worker",
+    "-candidate",
+    "/tmp/lunar-array-followup/integrated/cbor-full/candidate-worker",
+    "-expect-baseline-sha256",
+    "3c29592b0328af4a52689884d46f90e49fcb05001a8a23f340a6de028d5fc5b0",
+    "-expect-baseline-revision",
+    "5fc51e449a6661340056544e995aae4fdf89dcb2",
+    "-require-clean",
+    "-comparison-mode",
+    "implementations",
+    "-preset",
+    "large",
+    "-mode",
+    "load",
+    "-measurement",
+    "retained",
+    "-fixture",
+    "/tmp/lunar-table-fill/cbor/fixture",
+    "-data",
+    "/tmp/lunar-table-fill/cbor/large.cbor",
+    "-runs",
+    "3",
+    "-warmups",
+    "2",
+    "-seed",
+    "1",
+    "-baseline-output",
+    "/tmp/lunar-array-followup/integrated/cbor-full/load-retained-baseline.jsonl",
+    "-candidate-output",
+    "/tmp/lunar-array-followup/integrated/cbor-full/load-retained-candidate.jsonl"
+  ],
+  "environment": {
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "cpu_affinity": "2",
+  "host": {
+    "system": "Linux",
+    "node": "hosaka",
+    "release": "6.6.114.1-microsoft-standard-WSL2",
+    "version": "#1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "mode": "load",
+  "measurement": "retained",
+  "recorded_pairs": 3,
+  "discarded_warmup_pairs": 2,
+  "randomization_seed": 1,
+  "collection_purpose": "exploratory_tradeoff",
+  "program_gate_state": "failed",
+  "program_gate_reviewed_passed": false,
+  "program_gate_evidence": {
+    "path": "/tmp/lunar-array-followup/integrated/program-gate.md",
+    "sha256": "508214818817cfee351470336cea1b91f3a0b34d0f0d7cf0c7042b2a997a9834",
+    "bytes": 4035
+  },
+  "candidate_build_manifest": {
+    "sha256": "695fa63be6a63a5fe31dcdbf44dca81aa730ca4184aef260dcb8722cd5645618",
+    "bytes": 3880
+  },
+  "inputs_manifest": {
+    "sha256": "d62424b7c8a0b561800d8fadcfc3dad170b502d1aac8570b342c790a6a637881",
+    "bytes": 6639
+  },
+  "orchestrator": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-full/cbor.py",
+    "sha256": "45e97c8b66fdc3967c310ff697a9205ee4b95733d4656e4758917a1952984507",
+    "bytes": 17036
+  },
+  "policy": "Preserve all attempted runs and partial evidence; no automatic retries or exclusions.",
+  "collection_exit_code": 0,
+  "sample_order": [
+    {
+      "sequence": 1,
+      "run": 1,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 2,
+      "run": 1,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 3,
+      "run": 2,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 4,
+      "run": 2,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 5,
+      "run": 3,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 6,
+      "run": 3,
+      "implementation": "baseline"
+    }
+  ],
+  "comparison_policy": "Descriptive retained-memory comparison; three pairs do not qualify timing.",
+  "report_exit_codes": {
+    "json": 0,
+    "markdown": 0
+  },
+  "median_timing_gate_passed": null,
+  "finished_at": "2026-09-08T08:12:12.225141+00:00",
+  "artifacts": {
+    "load-retained-report.md": {
+      "sha256": "8d3abcb0d97790524fc8f001dc62b853326d2f0cf6b78cad19b26d462da56eb3",
+      "bytes": 1644
+    },
+    "load-retained-compare-md.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "load-retained-report.json": {
+      "sha256": "ab66cff981526319ad84cbe64e6d8ca85cae1776258b1d1c0e4ccb3214013e9e",
+      "bytes": 4667
+    },
+    "load-retained-compare-json.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "load-retained-candidate.jsonl": {
+      "sha256": "61b278c35711b02d346d1fcf14a4ba26ad1298d813c32621a880c1b1f1980f19",
+      "bytes": 3135
+    },
+    "load-retained-baseline.jsonl": {
+      "sha256": "960a8277c81f8ba1ccee305a0c50eb36d2dbca564e47333537be959297d0adde",
+      "bytes": 3132
+    },
+    "load-retained-collection.log": {
+      "sha256": "cdf8a031cd284778b62087ca2c6c706e3eafbc306fc7836c3dca47aa296686b9",
+      "bytes": 255
+    }
+  }
+}

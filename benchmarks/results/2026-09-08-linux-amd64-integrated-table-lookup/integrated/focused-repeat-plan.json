@@ -1,0 +1,61 @@
+{
+  "status": "prepared",
+  "purpose": "One same-binary repeat of the three embedding regressions after full CBOR; no timing executed by preparation.",
+  "prepared_at": "2026-09-08T08:01:16.906066+00:00",
+  "collector": {
+    "path": "/tmp/lunar-array-followup/integrated/collect-focused.py",
+    "sha256": "3d92de914e77deb454645fd41ae95b72ff9ac2fb4c4965756aab4e5bd3d1f8c0"
+  },
+  "adapted_from": {
+    "path": "/tmp/lunar-array-access/collect-focused.py",
+    "sha256": "e93b3f33f3b787ee39cb820b53b75f06217257f0fa9782d05e14d97c53761144"
+  },
+  "build_manifest_sha256": "95db0949c9d12b82a5b2f4272a061a4092ee084492df2ff6c3ce09d6730c00af",
+  "sources": {
+    "baseline": {
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "binary_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+      "clean": true
+    },
+    "candidate": {
+      "revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+      "binary_sha256": "948fd90c9326f54056196dd908d531db2871278dac46a31f82e7cf5c2e86505e",
+      "clean": true
+    }
+  },
+  "cases": [
+    "go_to_lua_scalars",
+    "lua_to_go_scalar_1000",
+    "go_string_echo_128B"
+  ],
+  "filter": "^BenchmarkEmbedding$/^case=(go_to_lua_scalars|lua_to_go_scalar_1000|go_string_echo_128B)$/^runtime=lunar$",
+  "samples_per_row": 15,
+  "unique_rows": 6,
+  "expected_samples": 90,
+  "expected_processes": 30,
+  "benchtime": "500ms",
+  "cpu_affinity": 2,
+  "test_cpu": 1,
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1"
+  },
+  "order": "Odd rounds baseline then candidate; even rounds candidate then baseline; each lane runs in a fresh process.",
+  "planned_command": [
+    "python3",
+    "/tmp/lunar-array-followup/integrated/collect-focused.py",
+    "--name",
+    "focused-repeat",
+    "--samples",
+    "15",
+    "--benchtime",
+    "500ms"
+  ],
+  "checks": [
+    "Both revisions and binary hashes match the completed full Go comparison build.",
+    "Both source checkouts clean.",
+    "Filter accepts exactly the three named embedding cases; excludes program, other embedding and other runtime rows.",
+    "No collector main, worker, benchmark or timing process invoked."
+  ]
+}

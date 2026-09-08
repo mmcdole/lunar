@@ -1,0 +1,66 @@
+[
+  {
+    "program": "binarytrees",
+    "command": [
+      "taskset",
+      "-c",
+      "2",
+      "/tmp/lunar-table-fill/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkPrograms$/^program=binarytrees$/^runtime=lunar$",
+      "-test.benchtime=5s",
+      "-test.count=1",
+      "-test.cpu=1",
+      "-test.cpuprofile=/tmp/lunar-side-by-side/profiles/binarytrees.cpu.pprof"
+    ],
+    "scope": "Includes preparation and warmup; not exclusively benchmark interval. Binary hash and source recorded in current-main-puc51-manifest.json."
+  },
+  {
+    "program": "fannkuchredux",
+    "command": [
+      "taskset",
+      "-c",
+      "2",
+      "/tmp/lunar-table-fill/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkPrograms$/^program=fannkuchredux$/^runtime=lunar$",
+      "-test.benchtime=5s",
+      "-test.count=1",
+      "-test.cpu=1",
+      "-test.cpuprofile=/tmp/lunar-side-by-side/profiles/fannkuchredux.cpu.pprof"
+    ],
+    "scope": "Includes preparation and warmup; not exclusively benchmark interval. Binary hash and source recorded in current-main-puc51-manifest.json."
+  },
+  {
+    "program": "nbody",
+    "command": [
+      "taskset",
+      "-c",
+      "2",
+      "/tmp/lunar-table-fill/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkPrograms$/^program=nbody$/^runtime=lunar$",
+      "-test.benchtime=5s",
+      "-test.count=1",
+      "-test.cpu=1",
+      "-test.cpuprofile=/tmp/lunar-side-by-side/profiles/nbody.cpu.pprof"
+    ],
+    "scope": "Includes preparation and warmup; not exclusively benchmark interval. Binary hash and source recorded in current-main-puc51-manifest.json."
+  },
+  {
+    "program": "spectralnorm",
+    "command": [
+      "taskset",
+      "-c",
+      "2",
+      "/tmp/lunar-table-fill/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkPrograms$/^program=spectralnorm$/^runtime=lunar$",
+      "-test.benchtime=5s",
+      "-test.count=1",
+      "-test.cpu=1",
+      "-test.cpuprofile=/tmp/lunar-side-by-side/profiles/spectralnorm.cpu.pprof"
+    ],
+    "scope": "Includes preparation and warmup; not exclusively benchmark interval. Binary hash and source recorded in current-main-puc51-manifest.json."
+  }
+]

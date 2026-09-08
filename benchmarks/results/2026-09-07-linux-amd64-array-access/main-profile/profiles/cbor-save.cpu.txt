@@ -1,0 +1,199 @@
+File: baseline-worker
+Build ID: a31bd33b2b214bb32dd71b4fabe6527c911d5c67
+Type: cpu
+Time: 2026-09-07 21:48:30 CDT
+Duration: 1.74s, Total samples = 1.71s (98.36%)
+Showing nodes accounting for 1.71s, 100% of 1.71s total
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      1.62s 94.74%  github.com/mmcdole/lunar.(*State).CallInto (inline)
+         0     0%     0%      1.62s 94.74%  github.com/mmcdole/lunar.(*State).callMain
+         0     0%     0%      1.62s 94.74%  github.com/mmcdole/lunar.(*State).runMainCall
+     0.12s  7.02%  7.02%      1.62s 94.74%  github.com/mmcdole/lunar.driveExecution
+         0     0%  7.02%      1.62s 94.74%  github.com/mmcdole/lunar.execute
+         0     0%  7.02%      1.62s 94.74%  github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge.(*State).CallGlobalBool
+         0     0%  7.02%      1.62s 94.74%  main.callTrue (inline)
+         0     0%  7.02%      1.62s 94.74%  main.execute
+         0     0%  7.02%      1.62s 94.74%  main.main
+         0     0%  7.02%      1.62s 94.74%  runtime.main
+         0     0%  7.02%      1.61s 94.15%  github.com/mmcdole/lunar.basePCall
+     0.02s  1.17%  8.19%      1.61s 94.15%  github.com/mmcdole/lunar.invokeNativeCall
+         0     0%  8.19%      1.61s 94.15%  github.com/mmcdole/lunar.runProtectedCall
+     0.11s  6.43% 14.62%      0.51s 29.82%  github.com/mmcdole/lunar.runInstructions
+         0     0% 14.62%      0.28s 16.37%  github.com/mmcdole/lunar.runAutomaticCollection
+         0     0% 14.62%      0.28s 16.37%  github.com/mmcdole/lunar.serviceAutomaticCollection (inline)
+         0     0% 14.62%      0.20s 11.70%  runtime.systemstack
+     0.02s  1.17% 15.79%      0.19s 11.11%  github.com/mmcdole/lunar.(*State).measureSemanticHeap
+         0     0% 15.79%      0.19s 11.11%  github.com/mmcdole/lunar.(*State).resetCollectionDebt
+         0     0% 15.79%      0.19s 11.11%  github.com/mmcdole/lunar.(*State).semanticHeapForCollection (inline)
+     0.03s  1.75% 17.54%      0.18s 10.53%  github.com/mmcdole/lunar.(*threadObject).replaceFunctionCall
+     0.02s  1.17% 18.71%      0.16s  9.36%  github.com/mmcdole/lunar.(*semanticHeapSummary).addSlot
+     0.01s  0.58% 19.30%      0.16s  9.36%  runtime.mallocgc
+     0.02s  1.17% 20.47%      0.14s  8.19%  github.com/mmcdole/lunar.(*semanticHeapSummary).addStringBacking (inline)
+         0     0% 20.47%      0.14s  8.19%  github.com/mmcdole/lunar.(*semanticHeapSummary).addStringRef
+     0.10s  5.85% 26.32%      0.14s  8.19%  runtime.tryDeferToSpanScan
+     0.04s  2.34% 28.65%      0.13s  7.60%  github.com/mmcdole/lunar.(*threadObject).commitTailCall
+         0     0% 28.65%      0.13s  7.60%  github.com/mmcdole/lunar.executeRawTableSet
+     0.03s  1.75% 30.41%      0.12s  7.02%  github.com/mmcdole/lunar.(*threadObject).pushFunctionCall
+         0     0% 30.41%      0.11s  6.43%  github.com/mmcdole/lunar.makeTableVector[go.shape.struct { github.com/mmcdole/lunar.ref unsafe.Pointer; github.com/mmcdole/lunar.bits uint64 }] (inline)
+         0     0% 30.41%      0.11s  6.43%  runtime.makeslice
+         0     0% 30.41%      0.10s  5.85%  runtime.wbBufFlush
+         0     0% 30.41%      0.10s  5.85%  runtime.wbBufFlush.func1
+     0.02s  1.17% 31.58%      0.10s  5.85%  runtime.wbBufFlush1
+         0     0% 31.58%      0.09s  5.26%  github.com/mmcdole/lunar.(*State).collectUnreachable
+         0     0% 31.58%      0.09s  5.26%  github.com/mmcdole/lunar.(*tableObject).rawSetNormalizedSlot (inline)
+         0     0% 31.58%      0.09s  5.26%  github.com/mmcdole/lunar.(*tableObject).set
+         0     0% 31.58%      0.09s  5.26%  github.com/mmcdole/lunar.(*tableObject).setInteger
+         0     0% 31.58%      0.09s  5.26%  github.com/mmcdole/lunar.(*tableObject).setIntegerUnresolved
+         0     0% 31.58%      0.09s  5.26%  runtime.gcBgMarkWorker
+         0     0% 31.58%      0.09s  5.26%  runtime.gcBgMarkWorker.func2
+         0     0% 31.58%      0.09s  5.26%  runtime.gcDrain
+         0     0% 31.58%      0.09s  5.26%  runtime.gcDrainMarkWorkerFractional (inline)
+         0     0% 31.58%      0.08s  4.68%  github.com/mmcdole/lunar.(*State).drainCollectionWork
+     0.06s  3.51% 35.09%      0.08s  4.68%  github.com/mmcdole/lunar.(*State).traceTable
+         0     0% 35.09%      0.08s  4.68%  runtime.mallocgcSmallScanNoHeader
+         0     0% 35.09%      0.07s  4.09%  github.com/mmcdole/lunar.(*tableObject).growArray
+         0     0% 35.09%      0.07s  4.09%  github.com/mmcdole/lunar.stringChar
+     0.01s  0.58% 35.67%      0.07s  4.09%  runtime.bulkBarrierPreWrite
+     0.02s  1.17% 36.84%      0.07s  4.09%  runtime.mapaccess2
+         0     0% 36.84%      0.06s  3.51%  gcWriteBarrier
+         0     0% 36.84%      0.06s  3.51%  github.com/mmcdole/lunar.(*tableObject).growArrayExact
+     0.04s  2.34% 39.18%      0.06s  3.51%  github.com/mmcdole/lunar.(*threadObject).planFunctionCall
+     0.05s  2.92% 42.11%      0.06s  3.51%  github.com/mmcdole/lunar.(*threadObject).publishFunctionCall (inline)
+     0.04s  2.34% 44.44%      0.06s  3.51%  github.com/mmcdole/lunar.(*threadObject).tryCompleteFixedLuaReturn
+     0.03s  1.75% 46.20%      0.06s  3.51%  github.com/mmcdole/lunar.(*threadObject).tryEnterFixedLuaCall
+     0.06s  3.51% 49.71%      0.06s  3.51%  runtime.memmove
+         0     0% 49.71%      0.06s  3.51%  runtime.scanSpan
+     0.02s  1.17% 50.88%      0.05s  2.92%  github.com/mmcdole/lunar.(*threadObject).setupFunctionCall
+     0.03s  1.75% 52.63%      0.05s  2.92%  github.com/mmcdole/lunar.startIteratorCall
+         0     0% 52.63%      0.05s  2.92%  github.com/mmcdole/lunar.tableConcat
+         0     0% 52.63%      0.05s  2.92%  internal/bytealg.MakeNoZero
+     0.02s  1.17% 53.80%      0.05s  2.92%  runtime.mapassign
+         0     0% 53.80%      0.05s  2.92%  strings.(*Builder).Grow
+         0     0% 53.80%      0.05s  2.92%  strings.(*Builder).grow
+         0     0% 53.80%      0.04s  2.34%  github.com/mmcdole/lunar.(*tableObject).rawSetList
+         0     0% 53.80%      0.04s  2.34%  github.com/mmcdole/lunar.(*threadObject).commitFunctionCall
+     0.01s  0.58% 54.39%      0.04s  2.34%  github.com/mmcdole/lunar.Frame.ReturnString
+         0     0% 54.39%      0.04s  2.34%  github.com/mmcdole/lunar.concatDirectValues
+         0     0% 54.39%      0.04s  2.34%  github.com/mmcdole/lunar.executeSetList
+         0     0% 54.39%      0.04s  2.34%  github.com/mmcdole/lunar.slowConcat
+         0     0% 54.39%      0.04s  2.34%  github.com/mmcdole/lunar.writeSlot (inline)
+     0.04s  2.34% 56.73%      0.04s  2.34%  runtime.memclrNoHeapPointers
+     0.01s  0.58% 57.31%      0.04s  2.34%  runtime.scanObject
+     0.04s  2.34% 59.65%      0.04s  2.34%  runtime.spanClass.sizeclass (inline)
+         0     0% 59.65%      0.04s  2.34%  runtime.typedslicecopy
+         0     0% 59.65%      0.04s  2.34%  strings.(*Builder).WriteString (inline)
+         0     0% 59.65%      0.03s  1.75%  github.com/mmcdole/lunar.(*stringPool).make
+         0     0% 59.65%      0.03s  1.75%  github.com/mmcdole/lunar.(*stringPool).makeHashed
+         0     0% 59.65%      0.03s  1.75%  github.com/mmcdole/lunar.(*tableObject).growArrayWith
+         0     0% 59.65%      0.03s  1.75%  github.com/mmcdole/lunar.(*tableObject).rawSlot
+     0.01s  0.58% 60.23%      0.03s  1.75%  github.com/mmcdole/lunar.(*tableObject).resolveNormalizedSlot
+         0     0% 60.23%      0.03s  1.75%  github.com/mmcdole/lunar.(*tableObject).setArray
+     0.02s  1.17% 61.40%      0.03s  1.75%  github.com/mmcdole/lunar.(*tableStore).get
+     0.01s  0.58% 61.99%      0.03s  1.75%  github.com/mmcdole/lunar.(*threadObject).clearDeadSuffix (inline)
+     0.01s  0.58% 62.57%      0.03s  1.75%  github.com/mmcdole/lunar.(*threadObject).fillNil (inline)
+         0     0% 62.57%      0.03s  1.75%  github.com/mmcdole/lunar.(*threadObject).setupFixedLuaCall (inline)
+         0     0% 62.57%      0.03s  1.75%  github.com/mmcdole/lunar.baseGetMetatable
+     0.01s  0.58% 63.16%      0.03s  1.75%  github.com/mmcdole/lunar.baseNext
+         0     0% 63.16%      0.03s  1.75%  github.com/mmcdole/lunar.executeRawTableGet
+     0.03s  1.75% 64.91%      0.03s  1.75%  github.com/mmcdole/lunar.instruction.b (inline)
+         0     0% 64.91%      0.03s  1.75%  internal/runtime/maps.(*table).rehash
+         0     0% 64.91%      0.03s  1.75%  internal/runtime/maps.(*table).split
+     0.03s  1.75% 66.67%      0.03s  1.75%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+         0     0% 66.67%      0.03s  1.75%  runtime.(*mcache).nextFree
+         0     0% 66.67%      0.03s  1.75%  runtime.(*mcache).refill
+         0     0% 66.67%      0.03s  1.75%  runtime.(*mcentral).cacheSpan
+         0     0% 66.67%      0.03s  1.75%  runtime.(*wbBuf).get2 (inline)
+     0.01s  0.58% 67.25%      0.03s  1.75%  runtime.findObject
+     0.03s  1.75% 69.01%      0.03s  1.75%  runtime.spanOf (inline)
+         0     0% 69.01%      0.02s  1.17%  github.com/mmcdole/lunar.(*State).markSlot
+     0.01s  0.58% 69.59%      0.02s  1.17%  github.com/mmcdole/lunar.(*State).markTable
+         0     0% 69.59%      0.02s  1.17%  github.com/mmcdole/lunar.(*stringPool).makeTextMiss
+         0     0% 69.59%      0.02s  1.17%  github.com/mmcdole/lunar.(*tableObject).rawIntSlot
+         0     0% 69.59%      0.02s  1.17%  github.com/mmcdole/lunar.(*tableObject).rawLen
+     0.01s  0.58% 70.18%      0.02s  1.17%  github.com/mmcdole/lunar.(*tableObject).rawNormalizedSlot
+     0.02s  1.17% 71.35%      0.02s  1.17%  github.com/mmcdole/lunar.(*threadObject).clearInactive (inline)
+         0     0% 71.35%      0.02s  1.17%  github.com/mmcdole/lunar.(*threadObject).completeLuaReturn
+     0.01s  0.58% 71.93%      0.02s  1.17%  github.com/mmcdole/lunar.(*threadObject).finishNativeCall
+     0.01s  0.58% 72.51%      0.02s  1.17%  github.com/mmcdole/lunar.Frame.ReturnNil
+         0     0% 72.51%      0.02s  1.17%  github.com/mmcdole/lunar.Frame.integerArgument
+         0     0% 72.51%      0.02s  1.17%  github.com/mmcdole/lunar.Frame.numberArgument
+     0.01s  0.58% 73.10%      0.02s  1.17%  github.com/mmcdole/lunar.Frame.returnOne
+     0.02s  1.17% 74.27%      0.02s  1.17%  github.com/mmcdole/lunar.instruction.a (inline)
+     0.02s  1.17% 75.44%      0.02s  1.17%  github.com/mmcdole/lunar.metatableForSlot
+     0.01s  0.58% 76.02%      0.02s  1.17%  github.com/mmcdole/lunar.normalizeTableKey
+     0.01s  0.58% 76.61%      0.02s  1.17%  github.com/mmcdole/lunar.operandSlot (inline)
+     0.01s  0.58% 77.19%      0.02s  1.17%  github.com/mmcdole/lunar.resumeExecutionContinuation
+     0.02s  1.17% 78.36%      0.02s  1.17%  github.com/mmcdole/lunar.tableVector[go.shape.struct { github.com/mmcdole/lunar.ref unsafe.Pointer; github.com/mmcdole/lunar.bits uint64 }].values (inline)
+         0     0% 78.36%      0.02s  1.17%  github.com/mmcdole/lunar.writeTableLength
+     0.02s  1.17% 79.53%      0.02s  1.17%  internal/runtime/maps.(*ctrlGroup).setEmpty (inline)
+         0     0% 79.53%      0.02s  1.17%  internal/runtime/maps.(*table).reset
+         0     0% 79.53%      0.02s  1.17%  internal/runtime/maps.newTable
+         0     0% 79.53%      0.02s  1.17%  runtime.(*mcentral).grow
+         0     0% 79.53%      0.02s  1.17%  runtime.(*mspan).initHeapBits
+     0.01s  0.58% 80.12%      0.02s  1.17%  runtime.deductAssistCredit
+     0.02s  1.17% 81.29%      0.02s  1.17%  runtime.mallocgcSmallNoscan
+     0.01s  0.58% 81.87%      0.02s  1.17%  runtime.mallocgcTiny
+     0.01s  0.58% 82.46%      0.02s  1.17%  runtime.memhash128
+     0.02s  1.17% 83.63%      0.02s  1.17%  runtime.nextFreeFast (inline)
+         0     0% 83.63%      0.02s  1.17%  runtime.wbMove
+         0     0% 83.63%      0.02s  1.17%  runtime.wbZero
+     0.01s  0.58% 84.21%      0.01s  0.58%  aeshashbody
+     0.01s  0.58% 84.80%      0.01s  0.58%  github.com/mmcdole/lunar.(*State).sweepTables
+     0.01s  0.58% 85.38%      0.01s  0.58%  github.com/mmcdole/lunar.(*collectionControl).charge
+         0     0% 85.38%      0.01s  0.58%  github.com/mmcdole/lunar.(*stringPool).chargeCreatedString
+     0.01s  0.58% 85.96%      0.01s  0.58%  github.com/mmcdole/lunar.(*stringPool).lookupProbation
+         0     0% 85.96%      0.01s  0.58%  github.com/mmcdole/lunar.(*stringPool).storeProbation
+         0     0% 85.96%      0.01s  0.58%  github.com/mmcdole/lunar.(*tableObject).next
+     0.01s  0.58% 86.55%      0.01s  0.58%  github.com/mmcdole/lunar.(*tableStore).find
+         0     0% 86.55%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).checkFunctionCall
+     0.01s  0.58% 87.13%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).checkFunctionCallWindow
+     0.01s  0.58% 87.72%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).finishLuaCall
+     0.01s  0.58% 88.30%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).planFunctionCallLayout
+     0.01s  0.58% 88.89%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).reserveFrames
+     0.01s  0.58% 89.47%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).reserveValues
+         0     0% 89.47%      0.01s  0.58%  github.com/mmcdole/lunar.(*threadObject).tryEnterFixedNativeCall
+     0.01s  0.58% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.Frame.activation (inline)
+         0     0% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.Frame.argument
+         0     0% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.Frame.prepareResults
+         0     0% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.appendObjectVector[go.shape.074f0f12557b29e2710d270d34df08fec6112d65171b0cffa248b25bb55ed0dc] (inline)
+         0     0% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.executeNewTable
+         0     0% 90.06%      0.01s  0.58%  github.com/mmcdole/lunar.hashNumber (inline)
+     0.01s  0.58% 90.64%      0.01s  0.58%  github.com/mmcdole/lunar.hashTableKey
+     0.01s  0.58% 91.23%      0.01s  0.58%  github.com/mmcdole/lunar.instruction.bx (inline)
+     0.01s  0.58% 91.81%      0.01s  0.58%  github.com/mmcdole/lunar.instruction.c (inline)
+         0     0% 91.81%      0.01s  0.58%  github.com/mmcdole/lunar.instruction.sbx (inline)
+     0.01s  0.58% 92.40%      0.01s  0.58%  github.com/mmcdole/lunar.isConstantOperand (inline)
+     0.01s  0.58% 92.98%      0.01s  0.58%  github.com/mmcdole/lunar.mixHash (inline)
+         0     0% 92.98%      0.01s  0.58%  github.com/mmcdole/lunar.newTable
+     0.01s  0.58% 93.57%      0.01s  0.58%  github.com/mmcdole/lunar.positiveIntegerIndex (inline)
+         0     0% 93.57%      0.01s  0.58%  github.com/mmcdole/lunar.rawSlotEqual
+     0.01s  0.58% 94.15%      0.01s  0.58%  github.com/mmcdole/lunar.resumeIteratorContinuation
+     0.01s  0.58% 94.74%      0.01s  0.58%  github.com/mmcdole/lunar.slot.kind (inline)
+     0.01s  0.58% 95.32%      0.01s  0.58%  github.com/mmcdole/lunar.slotToNumber
+         0     0% 95.32%      0.01s  0.58%  github.com/mmcdole/lunar.slowArithmetic
+     0.01s  0.58% 95.91%      0.01s  0.58%  github.com/mmcdole/lunar.stringSetLocation (inline)
+         0     0% 95.91%      0.01s  0.58%  github.com/mmcdole/lunar.stringSlotsEqual
+     0.01s  0.58% 96.49%      0.01s  0.58%  github.com/mmcdole/lunar.stringText (inline)
+         0     0% 96.49%      0.01s  0.58%  github.com/mmcdole/lunar.tableRetainedBytes (inline)
+     0.01s  0.58% 97.08%      0.01s  0.58%  github.com/mmcdole/lunar.tableStorageRetainedBytes (inline)
+         0     0% 97.08%      0.01s  0.58%  internal/runtime/maps.(*table).uncheckedPutSlot
+         0     0% 97.08%      0.01s  0.58%  internal/runtime/maps.typedmemmove
+     0.01s  0.58% 97.66%      0.01s  0.58%  runtime.(*gcControllerState).startCycle
+     0.01s  0.58% 98.25%      0.01s  0.58%  runtime.(*mspan).moveInlineMarks
+     0.01s  0.58% 98.83%      0.01s  0.58%  runtime.(*mspan).writeHeapBitsSmall
+         0     0% 98.83%      0.01s  0.58%  runtime.(*sweepLocked).sweep
+         0     0% 98.83%      0.01s  0.58%  runtime.(*wbBuf).get1 (inline)
+         0     0% 98.83%      0.01s  0.58%  runtime.deductSweepCredit
+         0     0% 98.83%      0.01s  0.58%  runtime.gcAssistAlloc
+         0     0% 98.83%      0.01s  0.58%  runtime.gcAssistAlloc.func2
+         0     0% 98.83%      0.01s  0.58%  runtime.gcAssistAlloc1
+         0     0% 98.83%      0.01s  0.58%  runtime.gcDrainN
+         0     0% 98.83%      0.01s  0.58%  runtime.gcStart
+     0.01s  0.58% 99.42%      0.01s  0.58%  runtime.getMCache (inline)
+         0     0% 99.42%      0.01s  0.58%  runtime.heapSetTypeNoHeader (inline)
+         0     0% 99.42%      0.01s  0.58%  runtime.mallocgcLarge
+         0     0% 99.42%      0.01s  0.58%  runtime.memclrNoHeapPointersChunked
+         0     0% 99.42%      0.01s  0.58%  runtime.sweepone
+         0     0% 99.42%      0.01s  0.58%  runtime.typePointers.next
+     0.01s  0.58%   100%      0.01s  0.58%  runtime.typePointers.nextFast (inline)
+         0     0%   100%      0.01s  0.58%  runtime.typedmemmove

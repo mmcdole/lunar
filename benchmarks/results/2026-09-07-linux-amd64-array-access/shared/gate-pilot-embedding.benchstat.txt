@@ -1,0 +1,37 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                 │   baseline   │              candidate              │
+                                 │    sec/op    │    sec/op     vs base               │
+go_to_lua_scalars                  54.38n ± ∞ ¹   54.24n ± ∞ ¹        ~ (p=0.548 n=5)
+lua_to_go_scalar_1000              51.51µ ± ∞ ¹   51.99µ ± ∞ ¹        ~ (p=0.056 n=5)
+go_string_echo_128B                78.44n ± ∞ ¹   77.11n ± ∞ ¹        ~ (p=0.151 n=5)
+prebuilt_go_table_16_4_to_lua      270.7n ± ∞ ¹   233.1n ± ∞ ¹  -13.89% (p=0.008 n=5)
+create_fill_go_table_16_4_to_lua   2.365µ ± ∞ ¹   2.217µ ± ∞ ¹        ~ (p=0.103 n=5)
+geomean                            675.5n         645.8n         -4.39%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                                 │  baseline   │              candidate              │
+                                 │    B/op     │    B/op      vs base                │
+go_to_lua_scalars                  0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+lua_to_go_scalar_1000              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+go_string_echo_128B                0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+prebuilt_go_table_16_4_to_lua      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+create_fill_go_table_16_4_to_lua   644.0 ± ∞ ¹   636.0 ± ∞ ¹       ~ (p=0.103 n=5)
+geomean                                      ³                -0.25%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+
+                                 │  baseline   │              candidate              │
+                                 │  allocs/op  │  allocs/op   vs base                │
+go_to_lua_scalars                  0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+lua_to_go_scalar_1000              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+go_string_echo_128B                0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+prebuilt_go_table_16_4_to_lua      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+create_fill_go_table_16_4_to_lua   6.000 ± ∞ ¹   6.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                      ³                +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean

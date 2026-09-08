@@ -1,0 +1,53 @@
+{
+  "status": "complete",
+  "revision": "a98a15738f29dbf4684e7ee51213ab8f811673df",
+  "source_clean": true,
+  "started_at": "2026-09-08T03:53:20.233266+00:00",
+  "cwd": "/tmp/lunar-array-access/shared/candidate/benchmarks/cbor",
+  "environment": {
+    "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "scope": "CI stock GopherLua CBOR module checks",
+  "checks": [
+    {
+      "name": "vet",
+      "command": [
+        "taskset",
+        "-c",
+        "6",
+        "go",
+        "vet",
+        "-tags",
+        "gopherlua_reference",
+        "-modfile=stock.mod",
+        "./..."
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "test",
+      "command": [
+        "taskset",
+        "-c",
+        "6",
+        "go",
+        "test",
+        "-tags",
+        "gopherlua_reference",
+        "-modfile=stock.mod",
+        "./..."
+      ],
+      "exit_code": 0,
+      "log_sha256": "3b3538f6fbad176259a785d3780e1fe1485541d3647f2e290623499b889d5965"
+    }
+  ],
+  "source_after": {
+    "revision": "a98a15738f29dbf4684e7ee51213ab8f811673df",
+    "status": ""
+  },
+  "finished_at": "2026-09-08T03:53:21.724805+00:00"
+}

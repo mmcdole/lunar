@@ -1,0 +1,77 @@
+{
+  "prepared_at": "2026-09-08T07:45:03.388495+00:00",
+  "purpose": "Prepared for a separate full cohort; no measurements collected. Reuse the exact pilot worker after coordinator authorizes collection.",
+  "source_build_manifest": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-pilot/candidate-build.json",
+    "sha256": "b82dd4f3d8677dd6039d971438b4ce8e7569593dccc365208d04b97a15f4a496"
+  },
+  "source_worker": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-pilot/candidate-worker",
+    "sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+    "bytes": 6033361
+  },
+  "copied_worker": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-full/candidate-worker",
+    "sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+    "bytes": 6033361
+  },
+  "source_revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+  "timing_pairs": 15,
+  "retained_pairs": 3,
+  "planned_environment": {
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "cpu_affinity": 2
+  },
+  "copied_artifacts": {
+    "candidate-worker": {
+      "sha256": "9725e9f832bf67cc82349fa10f0ec592edbe56136b56aa81f8364652dc8df272",
+      "bytes": 6033361
+    },
+    "worker-original-build.json": {
+      "sha256": "b82dd4f3d8677dd6039d971438b4ce8e7569593dccc365208d04b97a15f4a496",
+      "bytes": 3441
+    },
+    "module-stock-test.log": {
+      "sha256": "d238334f17910b56ef8718c954ca52dc1507f6a550376c1ad74c8b6d0dca2c20",
+      "bytes": 537
+    },
+    "module-stock-vet.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "module-test.log": {
+      "sha256": "99ea69517ff2c45e37233c418762e6f44bf0d081cb0ff4c3e723196e9ac2bc61",
+      "bytes": 537
+    },
+    "module-vet.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "module-stock-validation.json": {
+      "sha256": "53b454399f4069b768c0b9c38805d824ceac9ef8d4befb9ac746b9ea2bf7706f",
+      "bytes": 1291
+    },
+    "module-validation.json": {
+      "sha256": "57a4dd664a186a0d81799c0ccf7e98bdb884b2400b84c9412c1b589205e900ed",
+      "bytes": 1114
+    },
+    "candidate-build.log": {
+      "sha256": "ed524ef5d41f0c683b942f491a1ffb5d7fecca4b764b617cab68b3bffd7e5116",
+      "bytes": 127
+    },
+    "candidate.patch": {
+      "sha256": "7d6288687277fc290a0127c71effef242a90b2e195e56abd2f821ca7bef57923",
+      "bytes": 8211
+    },
+    "inputs.json": {
+      "sha256": "d62424b7c8a0b561800d8fadcfc3dad170b502d1aac8570b342c790a6a637881",
+      "bytes": 6639
+    },
+    "cbor.py": {
+      "sha256": "45e97c8b66fdc3967c310ff697a9205ee4b95733d4656e4758917a1952984507",
+      "bytes": 17036
+    }
+  }
+}

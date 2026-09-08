@@ -1,0 +1,1573 @@
+{
+  "name": "full-comparison",
+  "status": "complete",
+  "sources": {
+    "baseline": {
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+      "original_build": {
+        "go": "go version go1.26.0 linux/amd64",
+        "build_environment": {
+          "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+          "GOMAXPROCS": "1",
+          "CGO_ENABLED": "1",
+          "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+          "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+        },
+        "build_command": [
+          "taskset",
+          "-c",
+          "4",
+          "go",
+          "test",
+          "-c",
+          "-tags",
+          "puc51",
+          "-o",
+          "/tmp/lunar-table-fill/baseline.test"
+        ],
+        "build_cwd": "/tmp/lunar-table-fill/baseline/benchmarks",
+        "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586"
+      },
+      "runtime_sha256": {
+        "execute_table.go": "c3a0836f588bd20d52c3ddb3d91311a8471979679df45d541e2c1a0da07a78bf",
+        "table.go": "b53366f588f9bfc96df55775c04a39f52c96a6065030e993c6eea11096c93e5f"
+      },
+      "harness_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      },
+      "repo": "/tmp/lunar-table-fill/baseline"
+    },
+    "candidate": {
+      "revision": "cd44f540ce289c1b85483290f0f36366d4c1cbf8",
+      "sha256": "b5141489f764e207a1a1cd3486356c1728f468c148602f0108950a8e624e64ce",
+      "build_command": [
+        "taskset",
+        "-c",
+        "4",
+        "go",
+        "test",
+        "-c",
+        "-tags",
+        "puc51",
+        "-o",
+        "/tmp/lunar-array-access/candidate.test"
+      ],
+      "build_cwd": "/tmp/lunar-array-access/candidate/benchmarks",
+      "environment": {
+        "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+        "GOMAXPROCS": "1",
+        "CGO_ENABLED": "1",
+        "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+        "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+      },
+      "runtime_sha256": {
+        "execute_table.go": "406775650d99de471e7bc1e31377674c81cfb3b4d5853ee5d8a3aa7d9b52ef1c",
+        "table.go": "bdf6721860948c71465cfb3f250b0afe5b5f89e710bddf9fc50d759ce5e55f85"
+      },
+      "harness_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      },
+      "repo": "/tmp/lunar-array-access/candidate"
+    }
+  },
+  "build_manifest": {
+    "baseline": {
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+      "original_build": {
+        "go": "go version go1.26.0 linux/amd64",
+        "build_environment": {
+          "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+          "GOMAXPROCS": "1",
+          "CGO_ENABLED": "1",
+          "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+          "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+        },
+        "build_command": [
+          "taskset",
+          "-c",
+          "4",
+          "go",
+          "test",
+          "-c",
+          "-tags",
+          "puc51",
+          "-o",
+          "/tmp/lunar-table-fill/baseline.test"
+        ],
+        "build_cwd": "/tmp/lunar-table-fill/baseline/benchmarks",
+        "puc_library_sha256": "abc8dc1d68116df1920793d1e31fad52c104efc6deec18a1789f2a7c9cdcf586"
+      },
+      "runtime_sha256": {
+        "execute_table.go": "c3a0836f588bd20d52c3ddb3d91311a8471979679df45d541e2c1a0da07a78bf",
+        "table.go": "b53366f588f9bfc96df55775c04a39f52c96a6065030e993c6eea11096c93e5f"
+      },
+      "harness_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      }
+    },
+    "candidate": {
+      "revision": "cd44f540ce289c1b85483290f0f36366d4c1cbf8",
+      "sha256": "b5141489f764e207a1a1cd3486356c1728f468c148602f0108950a8e624e64ce",
+      "build_command": [
+        "taskset",
+        "-c",
+        "4",
+        "go",
+        "test",
+        "-c",
+        "-tags",
+        "puc51",
+        "-o",
+        "/tmp/lunar-array-access/candidate.test"
+      ],
+      "build_cwd": "/tmp/lunar-array-access/candidate/benchmarks",
+      "environment": {
+        "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+        "GOMAXPROCS": "1",
+        "CGO_ENABLED": "1",
+        "CGO_CFLAGS": "-I/tmp/lunar-puc-assessment/lua-5.1.5/src",
+        "CGO_LDFLAGS": "/tmp/lunar-puc-assessment/lua-5.1.5/src/liblua.a -lm -ldl"
+      },
+      "runtime_sha256": {
+        "execute_table.go": "406775650d99de471e7bc1e31377674c81cfb3b4d5853ee5d8a3aa7d9b52ef1c",
+        "table.go": "bdf6721860948c71465cfb3f250b0afe5b5f89e710bddf9fc50d759ce5e55f85"
+      },
+      "harness_sha256": {
+        "benchmarks/go.mod": "f86b7b7c3fdc947b0a157a69e63496c75c23f95cb8fec0b267e06c926ccb14b1",
+        "benchmarks/go.sum": "28ef5f6a9784e68a664eee30f2dc515156e7d22eb9910a7e9ace3ee53c2b1a1a",
+        "benchmarks/program_compare_test.go": "7583eaf9f583824e4d7898937aa68a5e0e4b227d858eade04c571ece73792806",
+        "benchmarks/compare_test.go": "0bfd15febf0644d1612bdcf1f468a573fe8cb97df1eb23234559bdafc37bf58b",
+        "benchmarks/embedding_test.go": "bbaa7808bd59dae18309ab011e9bd1a63188d7b2cc7dc119dc7ded1cfd9a0648",
+        "benchmarks/programs/binarytrees.lua": "58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed",
+        "benchmarks/programs/fannkuchredux.lua": "e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a",
+        "benchmarks/programs/nbody.lua": "841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a",
+        "benchmarks/programs/spectralnorm.lua": "1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed"
+      }
+    }
+  },
+  "collector_sha256": "43c83233a9eeff1e15f136851f9b2a795105167431a15a89f69903b93a1045a5",
+  "samples_per_row": 15,
+  "benchtime": "500ms",
+  "lanes": [
+    [
+      "baseline",
+      "baseline",
+      "lunar"
+    ],
+    [
+      "candidate",
+      "candidate",
+      "lunar"
+    ],
+    [
+      "gopherlua",
+      "candidate",
+      "gopherlua"
+    ],
+    [
+      "golua",
+      "candidate",
+      "golua"
+    ]
+  ],
+  "expected_rows": {
+    "baseline": [
+      "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "BenchmarkPrograms/program=spectralnorm/runtime=lunar"
+    ],
+    "candidate": [
+      "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "BenchmarkPrograms/program=spectralnorm/runtime=lunar"
+    ],
+    "gopherlua": [
+      "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua",
+      "BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua",
+      "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua",
+      "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua",
+      "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua",
+      "BenchmarkPrograms/program=binarytrees/runtime=gopherlua",
+      "BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua",
+      "BenchmarkPrograms/program=nbody/runtime=gopherlua",
+      "BenchmarkPrograms/program=spectralnorm/runtime=gopherlua"
+    ],
+    "golua": [
+      "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua",
+      "BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua",
+      "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua",
+      "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua",
+      "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua",
+      "BenchmarkPrograms/program=binarytrees/runtime=golua",
+      "BenchmarkPrograms/program=fannkuchredux/runtime=golua",
+      "BenchmarkPrograms/program=nbody/runtime=golua",
+      "BenchmarkPrograms/program=spectralnorm/runtime=golua"
+    ]
+  },
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1"
+  },
+  "cpu_affinity": 2,
+  "test_cpu": 1,
+  "order": "Rotate initial lane each round",
+  "platform": "Linux-6.6.114.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "go": "go version go1.26.0 linux/amd64",
+  "power_policy": "WSL2 host power/frequency/external load uncontrolled; serialized timings CPU2; preparation may run on other guest CPUs",
+  "timed_region": "B.Loop; excludes loading, compilation, setup, warmup and oracle checks; includes required public API result consumption",
+  "allocations": "Go allocation traffic, not retained memory",
+  "processes": [
+    {
+      "round": 1,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.065721988677979,
+      "stdout_sha256": "14c4d52f3624f88dfeb0e7d1aea565c7fd171eea2454dad698ab6803892d1f89"
+    },
+    {
+      "round": 1,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.00291395187378,
+      "stdout_sha256": "ed92b75d6bb9b14b9c0e11c3d6de0c78da750b1917ddac80b55c1f18bfc80aac"
+    },
+    {
+      "round": 1,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.135246753692627,
+      "stdout_sha256": "85441539e445b046918f94c9e9f219b84093bec3a9aa2525b8ac2527bce5381b"
+    },
+    {
+      "round": 1,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.83256459236145,
+      "stdout_sha256": "6273236207163da85de448e9192f9b9e0e6f01476bc871557e470cea937f3e06"
+    },
+    {
+      "round": 2,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.010021686553955,
+      "stdout_sha256": "186024c1083b3d5e82829eb363fa5ef3e0b81f2445c85b7d7381f5ed6c29f0ba"
+    },
+    {
+      "round": 2,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.145174503326416,
+      "stdout_sha256": "9973ba1fdb82871cb5c33ef093872fa627970d276e182282659b65d60f57fbe1"
+    },
+    {
+      "round": 2,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.753384113311768,
+      "stdout_sha256": "498f5ffe81888f1e716d2867b86bae488e624a64761e34cf935a8f1f410c766f"
+    },
+    {
+      "round": 2,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.038458585739136,
+      "stdout_sha256": "e1b650d2c6d264cab7b1c44faf1a69ecdb5f65309fb828d5c763231b1659e339"
+    },
+    {
+      "round": 3,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.0951457023620605,
+      "stdout_sha256": "186a28f5d30d6303c3c0650386524ce650dbc7950b4bcf9fdc23e83a62abafdb"
+    },
+    {
+      "round": 3,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.7524755001068115,
+      "stdout_sha256": "c5eeb13e6dce25dd8a048c7f2fa01a90e0f441c30f7e1a6effec9282cb488448"
+    },
+    {
+      "round": 3,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.105108499526978,
+      "stdout_sha256": "e02de58bf5d2e4fb64be4b1cfcf891d098f062e589d4075aa6c11a5b92e924a0"
+    },
+    {
+      "round": 3,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.9697887897491455,
+      "stdout_sha256": "43b4a400ef9313b33a0c3edbd17e546cf665c0712fa4594fe23850accf490665"
+    },
+    {
+      "round": 4,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.81749963760376,
+      "stdout_sha256": "1a61acab398dd985ca94ce3d0f80dae9ea43944e8616e54436f2583f702a88e9"
+    },
+    {
+      "round": 4,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.942118406295776,
+      "stdout_sha256": "065dc83d677deda0ae051e4398637335aca54601bdd9af7a9d05903e3e0ac260"
+    },
+    {
+      "round": 4,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.01415467262268,
+      "stdout_sha256": "608f5be5426fc3cedca738ada209bd680ec8a7c291e03ac5df6701f6a064ebfb"
+    },
+    {
+      "round": 4,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.131903648376465,
+      "stdout_sha256": "055188890a6b8b4c87ee43d66d166f1aef92213e76ed03fa9268c1ebe2cb9fa9"
+    },
+    {
+      "round": 5,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.986977577209473,
+      "stdout_sha256": "7880e7ac1e2f3510ef5dd3caf5ebc27a85546fdcd566ee61456e40ed4815ae6d"
+    },
+    {
+      "round": 5,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.883176565170288,
+      "stdout_sha256": "925eb8407394b987d8d33ef02f108c0f252feee60d994744c7aaf38bda0dfa4c"
+    },
+    {
+      "round": 5,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.12874960899353,
+      "stdout_sha256": "7f5c58ed020ad6cefc4ff4ebddbbf26a2a6b476a83795e9b7f5a0cfccd895468"
+    },
+    {
+      "round": 5,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.854915380477905,
+      "stdout_sha256": "01bed99a39b4d13ed0dccbe099c5c3ea248c8ca4706a2306a31ab1a0e32617b6"
+    },
+    {
+      "round": 6,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.069005250930786,
+      "stdout_sha256": "26af7507a27bb7afd57ea1657f332d0262334ec3fbc0f4bdb76f0c35b08bd3ee"
+    },
+    {
+      "round": 6,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.130085468292236,
+      "stdout_sha256": "9749b119e8af8547d6aee16c4cc17ccf7649401dac9b1d20a5f44cda55028b6f"
+    },
+    {
+      "round": 6,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.821202993392944,
+      "stdout_sha256": "4e8d63357d634d5ebc27b79a728dbfc051d3ecadb045c131237d570a429d6551"
+    },
+    {
+      "round": 6,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.894068956375122,
+      "stdout_sha256": "ac4b19cbfab953c6c7c4d17e6a5d81142d05eaf42988b1f9801a1dd3cf929d53"
+    },
+    {
+      "round": 7,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.184906244277954,
+      "stdout_sha256": "29f809d02f9819f7b6e0d88062c7dcd316500491e494986762a78ccc468232c2"
+    },
+    {
+      "round": 7,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.821095943450928,
+      "stdout_sha256": "b8ffb079cecb8e28a6c57604114907828b2d0272ddad61a4b07fb228670208e7"
+    },
+    {
+      "round": 7,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.944002866744995,
+      "stdout_sha256": "3a2ae1a0569f70745f4da81d13159a1033e57c5f58218ef155c556ebe03af897"
+    },
+    {
+      "round": 7,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.906385183334351,
+      "stdout_sha256": "718f2a4fe8b53a866dd73b0ce2080bfb9896699307a7757cc78807763213b806"
+    },
+    {
+      "round": 8,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.786539554595947,
+      "stdout_sha256": "aa05041e100a996683f90c7bfd162e5d6e90cd81b2a0f86054a73685a9685f41"
+    },
+    {
+      "round": 8,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.922353267669678,
+      "stdout_sha256": "b9642141955693cb4ddedc3ab2fb7e71e60b0841750c55fe758d8f3a25c4fc96"
+    },
+    {
+      "round": 8,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.949734210968018,
+      "stdout_sha256": "5238d96772398ca3473e402f10d70214b724c17069f7f4721f3a0327f787776c"
+    },
+    {
+      "round": 8,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.094671249389648,
+      "stdout_sha256": "4a333b6c02e53cd7299019131dcb080f5c83dc8439e0e6ffe24bbac938d354b2"
+    },
+    {
+      "round": 9,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.975266695022583,
+      "stdout_sha256": "bbc4ee060b273aa6620c502d236a4d94bb0b41738c998c061740b44132fcdc20"
+    },
+    {
+      "round": 9,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.010816097259521,
+      "stdout_sha256": "ef13d68b2851f38de8c4c5026c14b8133342b9a9e97d6828bce26a2e6cd9a481"
+    },
+    {
+      "round": 9,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.101403713226318,
+      "stdout_sha256": "1b729f1ca979b766d9e0443e9708274f4b838c2209e79a656db0930821c5f497"
+    },
+    {
+      "round": 9,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.789461374282837,
+      "stdout_sha256": "566f3f83510cd67060182d7c68777c81c018c8aa59815caa2da157585458a1b6"
+    },
+    {
+      "round": 10,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.899319410324097,
+      "stdout_sha256": "a1171dc844629ac6280f1593f6ea9a3a0fb81ebd00512d517ec8648da3796933"
+    },
+    {
+      "round": 10,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.1622819900512695,
+      "stdout_sha256": "59fe60d4ab187c01588e43f91fe5afcd13e726d672df4820089145412ff30b8e"
+    },
+    {
+      "round": 10,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.789149522781372,
+      "stdout_sha256": "453cf735ca09e4b639c37e5a78c565f50024a434ae2a8bb03bb063cd80fe6640"
+    },
+    {
+      "round": 10,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.03371262550354,
+      "stdout_sha256": "b9a34dbe251831190495075b5f5212a57d84d91717ddb4674536f1213df33998"
+    },
+    {
+      "round": 11,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.090181112289429,
+      "stdout_sha256": "a56d130bf7200fd4130a276d00b561344cc361176dc309342b82a6ea9fcb5c2d"
+    },
+    {
+      "round": 11,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.722931861877441,
+      "stdout_sha256": "b0186c26545c841c90c97be20e61a14a9b62b3bba747b7d4653c2ce6efd34cce"
+    },
+    {
+      "round": 11,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.931861400604248,
+      "stdout_sha256": "522b3d6fd4ecdc5975d9b473cac35582d21f802c1a01d045e44e60fe4be845d5"
+    },
+    {
+      "round": 11,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.9580230712890625,
+      "stdout_sha256": "4f707678c0c64496cffca06c0d5318637cdd3055f98c88264fc6197c8abe7cb2"
+    },
+    {
+      "round": 12,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.7787864208221436,
+      "stdout_sha256": "9d0831cd8d1f39170e57d5dbe0d8e6ef1de0ca98dcd9898f9fad39ae86ffbbab"
+    },
+    {
+      "round": 12,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.993796110153198,
+      "stdout_sha256": "d06dd5df92510e14f14db7491fae6d662d78120050f590d389a11918e86b1b8f"
+    },
+    {
+      "round": 12,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.882595539093018,
+      "stdout_sha256": "ecb5f77ede5c0075f69358c3eb6249c272c74ccff7f9ee459451738bcbea8bd9"
+    },
+    {
+      "round": 12,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.976395845413208,
+      "stdout_sha256": "572691e58bb03ee4ee31e6db42129756723d5fa9b00fd014764148599bb8f424"
+    },
+    {
+      "round": 13,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.939528942108154,
+      "stdout_sha256": "ca360c440c021806aaf2176d0dfb9d6bc015bc63d6089c3711f1bca2d4b9da92"
+    },
+    {
+      "round": 13,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.082035541534424,
+      "stdout_sha256": "a38602025d2642901e5c1bb129a09ac2cb10673da5ec0a6ea808863446152108"
+    },
+    {
+      "round": 13,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.097729206085205,
+      "stdout_sha256": "66588f23de888b49f9bc53c65b13e84d7a8b0c8ee0ccaf3e2e7d7d00410b51eb"
+    },
+    {
+      "round": 13,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.803591251373291,
+      "stdout_sha256": "04ba1eeaf57a0ee3811054a8347f5e13641c054fe9ac2ce1db61c87634f0910d"
+    },
+    {
+      "round": 14,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 7.981569290161133,
+      "stdout_sha256": "05cddcae8415002037d4efcdce8d525c245abeb934ae3672c851770d1afdc732"
+    },
+    {
+      "round": 14,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.16328239440918,
+      "stdout_sha256": "ed26253963db31edb8fcbc22db5a45eeb3798103f665244019c5f2917a8b0524"
+    },
+    {
+      "round": 14,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.732990741729736,
+      "stdout_sha256": "d0361861eb76d41809aa8598214755e27e6d1eea66924a5907198048515c7784"
+    },
+    {
+      "round": 14,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.158469438552856,
+      "stdout_sha256": "7b18d86eb0f8a317ea0d2a17c54b53300cf92d47a9b61f974b454ba02a0bd349"
+    },
+    {
+      "round": 15,
+      "lane": "gopherlua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=gopherlua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 6.155302286148071,
+      "stdout_sha256": "e23daea3d3357b4cff5ddb31c9b21ff6a5c139b58c347c4265659730edfada88"
+    },
+    {
+      "round": 15,
+      "lane": "golua",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding)$/.*$/^runtime=golua$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 5.777640342712402,
+      "stdout_sha256": "9a2eb9b12d53cee0e7a5d100a8e86cce2c88b69842f5574a072c12005bd9a305"
+    },
+    {
+      "round": 15,
+      "lane": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.014071464538574,
+      "stdout_sha256": "b910d788840e13eb51e9268a4d864f0180ab6a7056efa53286858daf497a0417"
+    },
+    {
+      "round": 15,
+      "lane": "candidate",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/tmp/lunar-array-workers-owynawtx/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^(BenchmarkPrograms|BenchmarkEmbedding|BenchmarkInterpreter)$/.*$/^runtime=lunar$",
+        "-test.benchtime=500ms",
+        "-test.count=1",
+        "-test.cpu=1",
+        "-test.benchmem"
+      ],
+      "wall_seconds": 8.05497670173645,
+      "stdout_sha256": "60be3c76409a3e3b312621f1b83e93b1f410d3165678ad7b3101d7d13114ce30"
+    }
+  ],
+  "samples": 660,
+  "unique_rows": 44,
+  "raw_sha256": "68ffabe9850e068797d7fddd1d0b07f627385a3fdf0896ec5d0c92ccbf83d98c",
+  "counts": [
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "baseline",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkInterpreter/case=fixed_lua_calls_1000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkInterpreter/case=numeric_for_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkInterpreter/case=string_append_256/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkInterpreter/case=table_field_get_set_10000/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkPrograms/program=nbody/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "candidate",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=lunar",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=nbody/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "golua",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=golua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=go_string_echo_128B/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=go_to_lua_scalars/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=lua_to_go_scalar_1000/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=binarytrees/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=fannkuchredux/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=nbody/runtime=gopherlua",
+      "samples": 15
+    },
+    {
+      "lane": "gopherlua",
+      "row": "BenchmarkPrograms/program=spectralnorm/runtime=gopherlua",
+      "samples": 15
+    }
+  ]
+}

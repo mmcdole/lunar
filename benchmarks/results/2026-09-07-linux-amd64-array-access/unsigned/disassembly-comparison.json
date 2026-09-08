@@ -1,0 +1,186 @@
+{
+  "github.com/mmcdole/lunar.(*threadObject).finishNativeCall": {
+    "initial": {
+      "bytes": 701,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 166,
+      "int_to_float": 0,
+      "sha256": "ef60a6abacbe5e9755e73fa837564850c9c24bd677634fda464bd0b23cfdfbfd",
+      "stack_subtraction": 96,
+      "start": "0x598fc0"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 701,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 166,
+      "int_to_float": 0,
+      "sha256": "ef60a6abacbe5e9755e73fa837564850c9c24bd677634fda464bd0b23cfdfbfd",
+      "stack_subtraction": 96,
+      "start": "0x598fc0"
+    }
+  },
+  "github.com/mmcdole/lunar.(*threadObject).tryEnterFixedNativeCall": {
+    "initial": {
+      "bytes": 453,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 125,
+      "int_to_float": 0,
+      "sha256": "0b05cec6025fa6723c6906e686ae9776bb48ef60c195547cc11b3530f9950b56",
+      "stack_subtraction": 72,
+      "start": "0x597de0"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 453,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 125,
+      "int_to_float": 0,
+      "sha256": "0b05cec6025fa6723c6906e686ae9776bb48ef60c195547cc11b3530f9950b56",
+      "stack_subtraction": 72,
+      "start": "0x597de0"
+    }
+  },
+  "github.com/mmcdole/lunar.executeRawStringTableGet": {
+    "initial": {
+      "bytes": 1077,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 280,
+      "int_to_float": 0,
+      "sha256": "592a021e719770429cdee3de9af0bfdceefafc55697f255c54340464263716d6",
+      "stack_subtraction": 48,
+      "start": "0x5c03a0"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 1077,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 280,
+      "int_to_float": 0,
+      "sha256": "592a021e719770429cdee3de9af0bfdceefafc55697f255c54340464263716d6",
+      "stack_subtraction": 48,
+      "start": "0x5c03a0"
+    }
+  },
+  "github.com/mmcdole/lunar.executeRawStringTableSet": {
+    "initial": {
+      "bytes": 880,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 227,
+      "int_to_float": 0,
+      "sha256": "05cb783a35341d67bc74dab95b26cc01538d6cde3822d7bccb3ed2a32d55ee07",
+      "stack_subtraction": 112,
+      "start": "0x5c0b20"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 880,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 227,
+      "int_to_float": 0,
+      "sha256": "05cb783a35341d67bc74dab95b26cc01538d6cde3822d7bccb3ed2a32d55ee07",
+      "stack_subtraction": 112,
+      "start": "0x5c0b20"
+    }
+  },
+  "github.com/mmcdole/lunar.executeRawTableGet": {
+    "initial": {
+      "bytes": 1213,
+      "float_to_int": 1,
+      "fp_comparisons": 3,
+      "instructions": 308,
+      "int_to_float": 2,
+      "sha256": "510a593a2f8f31d08a7e2a931e34dbf9c1dfb2cc44727b6ac1aa6719d8b94468",
+      "stack_subtraction": 40,
+      "start": "0x5bfee0"
+    },
+    "literal_bytes_identical": false,
+    "unsigned": {
+      "bytes": 1213,
+      "float_to_int": 1,
+      "fp_comparisons": 1,
+      "instructions": 310,
+      "int_to_float": 1,
+      "sha256": "6fb18bf42ea887c6fc6dfbaea00f6c6b65bd56dcf892cc6a1568f03d712558c1",
+      "stack_subtraction": 40,
+      "start": "0x5bfee0"
+    }
+  },
+  "github.com/mmcdole/lunar.executeRawTableSet": {
+    "initial": {
+      "bytes": 831,
+      "float_to_int": 1,
+      "fp_comparisons": 3,
+      "instructions": 216,
+      "int_to_float": 2,
+      "sha256": "cdd5cac1ce0463bd00619f56e35096d68bf364385a13ddb6613e4bddc96becb6",
+      "stack_subtraction": 120,
+      "start": "0x5c07e0"
+    },
+    "literal_bytes_identical": false,
+    "unsigned": {
+      "bytes": 824,
+      "float_to_int": 1,
+      "fp_comparisons": 1,
+      "instructions": 211,
+      "int_to_float": 1,
+      "sha256": "2e9189a63dd3592881718fd7429c903d5424758e835aef30952da10e40f8a55c",
+      "stack_subtraction": 120,
+      "start": "0x5c07e0"
+    }
+  },
+  "github.com/mmcdole/lunar.invokeNativeCall": {
+    "initial": {
+      "bytes": 1209,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 244,
+      "int_to_float": 0,
+      "sha256": "f7e5c9e846bbf065b65a77ecf7b46f21018b2ff2dab534385d845b6a235ca3da",
+      "stack_subtraction": 216,
+      "start": "0x612be0"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 1209,
+      "float_to_int": 0,
+      "fp_comparisons": 0,
+      "instructions": 244,
+      "int_to_float": 0,
+      "sha256": "f7e5c9e846bbf065b65a77ecf7b46f21018b2ff2dab534385d845b6a235ca3da",
+      "stack_subtraction": 216,
+      "start": "0x612be0"
+    }
+  },
+  "github.com/mmcdole/lunar.runInstructions": {
+    "initial": {
+      "bytes": 6885,
+      "float_to_int": 0,
+      "fp_comparisons": 7,
+      "instructions": 1561,
+      "int_to_float": 1,
+      "sha256": "d1b73e59261d7ddf67756f5ec41031b9cd78da10a10844d8ad8fbf3264f8f2b0",
+      "stack_subtraction": 192,
+      "start": "0x5b9520"
+    },
+    "literal_bytes_identical": true,
+    "unsigned": {
+      "bytes": 6885,
+      "float_to_int": 0,
+      "fp_comparisons": 7,
+      "instructions": 1561,
+      "int_to_float": 1,
+      "sha256": "d1b73e59261d7ddf67756f5ec41031b9cd78da10a10844d8ad8fbf3264f8f2b0",
+      "stack_subtraction": 192,
+      "start": "0x5b9520"
+    }
+  }
+}

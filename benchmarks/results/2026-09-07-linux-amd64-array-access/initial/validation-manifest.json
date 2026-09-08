@@ -1,0 +1,87 @@
+{
+  "candidate_revision": "cd44f540ce289c1b85483290f0f36366d4c1cbf8",
+  "go": "go1.26.0",
+  "platform": "linux/amd64",
+  "GOCACHE": "/tmp/lunar-puc-assessment/go-cache",
+  "checks": [
+    {
+      "log": "root-test.log",
+      "command": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-array-access/candidate",
+      "exit_code": 0,
+      "sha256": "2a75d1a26f196d606b2c3e4632cd9e29ea18eb803be9ef4bbf3c6b640cf62a01"
+    },
+    {
+      "log": "root-vet.log",
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-array-access/candidate",
+      "exit_code": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "log": "root-race.log",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-array-access/candidate",
+      "exit_code": 0,
+      "sha256": "05637f71765634d19046312c62436f1be61bda7b2fd89e4ea23e3fb2e96292aa"
+    },
+    {
+      "log": "benchmark-test.log",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-array-access/candidate/benchmarks",
+      "exit_code": 0,
+      "sha256": "2db45430310322263c79701002c8fb858a3d10183221b7a096b4bd962402635e"
+    },
+    {
+      "log": "benchmark-vet.log",
+      "command": [
+        "go",
+        "vet",
+        "-tags",
+        "puc51",
+        "./..."
+      ],
+      "cwd": "/tmp/lunar-array-access/candidate/benchmarks",
+      "exit_code": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "log": "array-access-targeted.log",
+      "context": "new behavior cases plus existing invalid-key and signed-zero checks",
+      "exit_code": 0,
+      "sha256": "3364aac167b953a9fb860bcd92237d1d6857194dd0979ceee7a0ac5f1ee1d851"
+    },
+    {
+      "log": "array-access-baseline-tests.log",
+      "context": "new behavior cases applied as overlay to unchanged baseline",
+      "exit_code": 0,
+      "sha256": "06767e578659b6cf5002282ab86e247731289b111027e58cef1f5fb09661962f"
+    }
+  ],
+  "additional_portability_check": {
+    "architecture": "386",
+    "compiled": true,
+    "executed_tests": false,
+    "result": "Host stopped execution with signal: bad system call",
+    "log": "array-access-386-tests.log"
+  }
+}

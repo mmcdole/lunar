@@ -1,0 +1,1 @@
+go: writing stat cache: mkdir /home/drake/go/pkg/mod/cache/download/github.com/mmcdole/lunar/benchmarks: read-only file system

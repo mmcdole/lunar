@@ -1,0 +1,1 @@
+The initial pprof source path omitted the module version suffix. Exact CPU aggregation and pprof top totals passed, but source listings reported missing files. This attempt is preserved; the corrected analysis is in ../profile-analysis/. No profiles or workloads were rerun.

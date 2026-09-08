@@ -1,0 +1,182 @@
+{
+  "status": "complete",
+  "started_at": "2026-09-08T07:47:21.184769+00:00",
+  "command": [
+    "taskset",
+    "-c",
+    "2",
+    "/tmp/lunar-table-fill/cbor/bin/run",
+    "-baseline",
+    "/tmp/lunar-table-fill/cbor/bin/baseline-worker",
+    "-candidate",
+    "/tmp/lunar-array-followup/integrated/cbor-pilot/candidate-worker",
+    "-expect-baseline-sha256",
+    "3c29592b0328af4a52689884d46f90e49fcb05001a8a23f340a6de028d5fc5b0",
+    "-expect-baseline-revision",
+    "5fc51e449a6661340056544e995aae4fdf89dcb2",
+    "-require-clean",
+    "-comparison-mode",
+    "implementations",
+    "-preset",
+    "large",
+    "-mode",
+    "save",
+    "-measurement",
+    "timing",
+    "-fixture",
+    "/tmp/lunar-table-fill/cbor/fixture",
+    "-data",
+    "/tmp/lunar-table-fill/cbor/large.cbor",
+    "-runs",
+    "6",
+    "-warmups",
+    "2",
+    "-seed",
+    "1",
+    "-baseline-output",
+    "/tmp/lunar-array-followup/integrated/cbor-pilot/save-timing-baseline.jsonl",
+    "-candidate-output",
+    "/tmp/lunar-array-followup/integrated/cbor-pilot/save-timing-candidate.jsonl"
+  ],
+  "environment": {
+    "GOMAXPROCS": "1",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off"
+  },
+  "cpu_affinity": "2",
+  "host": {
+    "system": "Linux",
+    "node": "hosaka",
+    "release": "6.6.114.1-microsoft-standard-WSL2",
+    "version": "#1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "mode": "save",
+  "measurement": "timing",
+  "recorded_pairs": 6,
+  "discarded_warmup_pairs": 2,
+  "randomization_seed": 1,
+  "collection_purpose": "exploratory_tradeoff",
+  "program_gate_state": "unresolved",
+  "program_gate_reviewed_passed": false,
+  "program_gate_evidence": {
+    "path": "/tmp/lunar-array-followup/integrated/programs-pilot.benchstat.txt",
+    "sha256": "bd95a293b886a9b02af8e27fec5a1bc883962919152f83272050cc0c165ec574",
+    "bytes": 1590
+  },
+  "candidate_build_manifest": {
+    "sha256": "b82dd4f3d8677dd6039d971438b4ce8e7569593dccc365208d04b97a15f4a496",
+    "bytes": 3441
+  },
+  "inputs_manifest": {
+    "sha256": "d62424b7c8a0b561800d8fadcfc3dad170b502d1aac8570b342c790a6a637881",
+    "bytes": 6639
+  },
+  "orchestrator": {
+    "path": "/tmp/lunar-array-followup/integrated/cbor-pilot/cbor.py",
+    "sha256": "45e97c8b66fdc3967c310ff697a9205ee4b95733d4656e4758917a1952984507",
+    "bytes": 17036
+  },
+  "policy": "Preserve all attempted runs and partial evidence; no automatic retries or exclusions.",
+  "collection_exit_code": 0,
+  "sample_order": [
+    {
+      "sequence": 1,
+      "run": 1,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 2,
+      "run": 1,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 3,
+      "run": 2,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 4,
+      "run": 2,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 5,
+      "run": 3,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 6,
+      "run": 3,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 7,
+      "run": 4,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 8,
+      "run": 4,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 9,
+      "run": 5,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 10,
+      "run": 5,
+      "implementation": "baseline"
+    },
+    {
+      "sequence": 11,
+      "run": 6,
+      "implementation": "candidate"
+    },
+    {
+      "sequence": 12,
+      "run": 6,
+      "implementation": "baseline"
+    }
+  ],
+  "comparison_policy": "Descriptive exploratory timing; qualification disabled because the program gate is unresolved. This wrapper still validates all identities, oracles, fixtures and complete paired order.",
+  "report_exit_codes": {
+    "json": 0,
+    "markdown": 0
+  },
+  "median_timing_gate_passed": null,
+  "finished_at": "2026-09-08T07:49:43.085342+00:00",
+  "artifacts": {
+    "save-timing-report.md": {
+      "sha256": "ba0faa0f2537a16408be23d5d1d1b4aa39703dbf0e75e1f1b91c48cfbbb6c4dc",
+      "bytes": 1630
+    },
+    "save-timing-compare-md.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "save-timing-report.json": {
+      "sha256": "be20993c1219c1b9ea8469b9846e55acdeb2bcbebe262ada5bf11c7e90dc5c9a",
+      "bytes": 4802
+    },
+    "save-timing-compare-json.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "save-timing-candidate.jsonl": {
+      "sha256": "36116fc91962f63fddd9365ebfddf061dcd3cfe2bd0e54c0332f04b4054a25bc",
+      "bytes": 5857
+    },
+    "save-timing-baseline.jsonl": {
+      "sha256": "a7e79dfeeaf99c371f74124b53788f199217fa179a974fda4e5231deebebd67d",
+      "bytes": 5852
+    },
+    "save-timing-collection.log": {
+      "sha256": "ce81022cbc4a6e7c69fee93011c7158a57bed9fe5adcc5bca363904ba4364436",
+      "bytes": 253
+    }
+  }
+}

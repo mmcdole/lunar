@@ -1,0 +1,135 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15906	37694	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24073	24923	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3219	187148	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16900	35408	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15729	38045	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	23917	25097	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3211	189465	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16660	36089	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15879	37803	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	23828	25108	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3186	188457	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16668	35967	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	16002	37474	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24109	25072	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3201	186966	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16946	35270	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	16032	37410	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24134	25034	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3187	186892	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	17011	35221	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15932	37658	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	23850	25451	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3171	187818	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16662	35941	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15846	37998	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	23823	25154	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3200	189367	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16794	35979	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15828	37902	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	23923	25108	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3194	189675	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16604	36190	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	14751	40666	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	22474	26623	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	2968	203630	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	14918	39708	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	14966	40169	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	22968	25610	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3204	186681	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16870	35628	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	16004	37469	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24068	25052	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3211	186843	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16740	35643	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	16042	37368	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24154	25113	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3058	197186	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	16659	35788	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15979	37643	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24490	24620	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3208	184238	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	17216	34766	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	16201	37075	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24368	24555	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3261	184249	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	17284	34620	ns/op	278248	B/op	255	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkInterpreter/case=numeric_for_10000	15998	37423	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=fixed_lua_calls_1000	24253	24689	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=table_field_get_set_10000	3271	185003	ns/op	0	B/op	0	allocs/op
+BenchmarkInterpreter/case=string_append_256	17083	34906	ns/op	278248	B/op	255	allocs/op

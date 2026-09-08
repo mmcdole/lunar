@@ -1,0 +1,664 @@
+{
+  "status": "complete",
+  "scope": "Independent validation of 30 processes, 6 lane/case rows, 90 samples.",
+  "raw_sha256": "71ebf211404a4b811cbb6a1e735cf774c09fba6e1f3b22a5ce6100d453dde55a",
+  "manifest_sha256": "ad00964f713aed043fb7cd5618ae4ef627f9c5adf5aaebb6962fa7f310545dd1",
+  "plan_sha256": "91100467ac4b6ef486cd62142cc0092c737b87bcd6d6f610a0a2b88ecaf4a131",
+  "collector_sha256": "3d92de914e77deb454645fd41ae95b72ff9ac2fb4c4965756aab4e5bd3d1f8c0",
+  "summarizer_sha256": "016f2fe52ce77f6364b6ddafbc45877021f85007b64506b7a40fdc3fee8da69d",
+  "processes": 30,
+  "unique_rows": 6,
+  "samples": 90,
+  "samples_per_row": 15,
+  "sources": {
+    "baseline": {
+      "revision": "5fc51e449a6661340056544e995aae4fdf89dcb2",
+      "binary_sha256": "9753e1de4e8e3971adf7fd66de55d6254328958859af4569bd3585e71905b74a",
+      "clean": true
+    },
+    "candidate": {
+      "revision": "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+      "binary_sha256": "948fd90c9326f54056196dd908d531db2871278dac46a31f82e7cf5c2e86505e",
+      "clean": true
+    }
+  },
+  "environment": {
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOMAXPROCS": "1"
+  },
+  "cpu_affinity": 2,
+  "benchtime": "500ms",
+  "medians": {
+    "go_to_lua_scalars": {
+      "baseline": {
+        "ns_per_op": 53.45,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      },
+      "candidate": {
+        "ns_per_op": 53.23,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      }
+    },
+    "lua_to_go_scalar_1000": {
+      "baseline": {
+        "ns_per_op": 49750.0,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      },
+      "candidate": {
+        "ns_per_op": 50956.0,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      }
+    },
+    "go_string_echo_128B": {
+      "baseline": {
+        "ns_per_op": 78.1,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      },
+      "candidate": {
+        "ns_per_op": 74.47,
+        "bytes_per_op": 0.0,
+        "allocs_per_op": 0.0
+      }
+    }
+  },
+  "samples_by_case": {
+    "go_to_lua_scalars": {
+      "baseline": [
+        {
+          "round": 1,
+          "ns_per_op": 53.24,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 53.46,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 53.48,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 53.84,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 53.86,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 53.33,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 53.99,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 53.52,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 53.25,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 53.19,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 53.45,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 53.3,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 53.69,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 53.27,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 53.24,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ],
+      "candidate": [
+        {
+          "round": 1,
+          "ns_per_op": 54.71,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 53.1,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 53.26,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 53.15,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 53.05,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 53.75,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 53.73,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 53.23,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 53.28,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 53.2,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 53.2,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 53.31,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 53.63,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 53.05,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 53.2,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ]
+    },
+    "lua_to_go_scalar_1000": {
+      "baseline": [
+        {
+          "round": 1,
+          "ns_per_op": 49632.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 49758.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 50075.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 49778.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 49663.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 50339.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 49723.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 50266.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 49680.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 49978.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 49698.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 49750.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 49437.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 49301.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 49946.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ],
+      "candidate": [
+        {
+          "round": 1,
+          "ns_per_op": 51091.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 50955.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 50885.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 50974.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 50928.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 51138.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 51042.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 50956.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 51177.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 50907.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 50970.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 50415.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 50875.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 51352.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 50430.0,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ]
+    },
+    "go_string_echo_128B": {
+      "baseline": [
+        {
+          "round": 1,
+          "ns_per_op": 77.87,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 78.19,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 77.99,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 77.87,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 78.11,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 78.2,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 78.26,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 77.86,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 77.75,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 78.38,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 77.86,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 78.33,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 77.7,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 78.26,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 78.1,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ],
+      "candidate": [
+        {
+          "round": 1,
+          "ns_per_op": 74.47,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 2,
+          "ns_per_op": 74.41,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 3,
+          "ns_per_op": 75.09,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 4,
+          "ns_per_op": 74.48,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 5,
+          "ns_per_op": 74.8,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 6,
+          "ns_per_op": 74.43,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 7,
+          "ns_per_op": 74.66,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 8,
+          "ns_per_op": 74.42,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 9,
+          "ns_per_op": 74.39,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 10,
+          "ns_per_op": 74.41,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 11,
+          "ns_per_op": 74.93,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 12,
+          "ns_per_op": 74.32,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 13,
+          "ns_per_op": 74.57,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 14,
+          "ns_per_op": 74.42,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        },
+        {
+          "round": 15,
+          "ns_per_op": 74.52,
+          "bytes_per_op": 0.0,
+          "allocs_per_op": 0.0
+        }
+      ]
+    }
+  },
+  "benchstat": {
+    "path": "/tmp/lunar-puc-assessment/bin/benchstat",
+    "sha256": "f31a1e15da9b1c831c8082cb3cee774abf63fbfcb01fb7a4405aaf785ba3d054",
+    "command": [
+      "taskset",
+      "-c",
+      "8",
+      "/tmp/lunar-puc-assessment/bin/benchstat",
+      "baseline=/tmp/lunar-array-followup/integrated/focused-repeat-baseline.benchstat-input.txt",
+      "candidate=/tmp/lunar-array-followup/integrated/focused-repeat-candidate.benchstat-input.txt"
+    ],
+    "exit_code": 0
+  },
+  "artifacts": {
+    "focused-repeat-baseline.benchstat-input.txt": {
+      "sha256": "dcdba8fcc044ce6bb73073b0b498cc433142cd10e4446f4e7eb4d9f10177e450",
+      "bytes": 5535
+    },
+    "focused-repeat-candidate.benchstat-input.txt": {
+      "sha256": "be0a079fc705fa5db437b44d87ec56e3b4c052bbb1cfa184d053b83a397c9201",
+      "bytes": 5535
+    },
+    "focused-repeat.benchstat.txt": {
+      "sha256": "8768dbc9ad7eed9f13ecbc5e5866b6cd8e20de2f7d9e712f88528b9e852dfe4a",
+      "bytes": 1929
+    },
+    "focused-repeat-benchstat.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "raw_file": "focused-repeat.txt",
+  "manifest_file": "focused-repeat-manifest.json",
+  "plan_file": "focused-repeat-plan.json"
+}

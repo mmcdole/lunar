@@ -1,0 +1,150 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11151487	53.84	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51355	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7437657	80.41	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2578846	232.9	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	289902	2250	ns/op	636	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10532145	55.50	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51948	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7387873	80.61	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2581299	232.3	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	294585	2160	ns/op	647	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11013304	55.00	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52194	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7654370	78.03	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2575076	234.3	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	273837	2292	ns/op	639	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10964488	54.66	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52803	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7528796	79.67	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2551438	235.1	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	288620	2410	ns/op	657	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11125658	54.07	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52670	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7632134	79.01	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2532958	235.1	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	303315	2355	ns/op	646	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10710189	66.08	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	9052	66183	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	5932218	101.2	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2239756	278.4	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	242096	2952	ns/op	635	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10999424	54.55	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52412	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7457935	79.91	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2553350	251.6	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	242360	2912	ns/op	632	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10655053	57.73	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	54340	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7216633	82.98	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2366365	243.5	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	276286	2248	ns/op	632	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	10100613	57.10	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51361	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7404336	80.99	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2552900	234.4	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	316995	2333	ns/op	654	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11049475	54.00	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51103	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7746590	77.93	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2442727	237.9	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	306342	2291	ns/op	659	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11158867	54.05	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52060	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7741870	79.82	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2587554	231.9	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	280688	2384	ns/op	652	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11136938	53.82	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	52013	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7502392	80.34	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2581240	232.8	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	300826	2633	ns/op	679	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11230862	53.36	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51352	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7285420	79.69	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2612923	231.6	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	302125	2211	ns/op	630	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11011642	55.06	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	53342	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7290045	82.00	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2461863	240.9	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	268183	2541	ns/op	647	B/op	6	allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+
+BenchmarkEmbedding/case=go_to_lua_scalars	11287677	53.19	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=lua_to_go_scalar_1000	10000	51080	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=go_string_echo_128B	7555232	78.54	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=prebuilt_go_table_16_4_to_lua	2611816	229.3	ns/op	0	B/op	0	allocs/op
+BenchmarkEmbedding/case=create_fill_go_table_16_4_to_lua	299174	2163	ns/op	654	B/op	6	allocs/op

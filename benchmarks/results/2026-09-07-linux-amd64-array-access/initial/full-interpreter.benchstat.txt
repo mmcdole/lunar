@@ -1,0 +1,31 @@
+goos: linux
+goarch: amd64
+pkg: github.com/mmcdole/lunar/benchmarks
+cpu: AMD Ryzen 9 9950X3D 16-Core Processor          
+                                           │  baseline   │             candidate              │
+                                           │   sec/op    │   sec/op     vs base               │
+Interpreter/case=numeric_for_10000           37.17µ ± 1%   37.40µ ± 0%       ~ (p=0.187 n=15)
+Interpreter/case=fixed_lua_calls_1000        24.72µ ± 1%   24.82µ ± 2%       ~ (p=0.148 n=15)
+Interpreter/case=table_field_get_set_10000   186.0µ ± 1%   185.7µ ± 0%       ~ (p=0.345 n=15)
+Interpreter/case=string_append_256           35.42µ ± 1%   35.57µ ± 1%       ~ (p=0.838 n=15)
+geomean                                      49.60µ        49.76µ       +0.31%
+
+                                           │    baseline    │               candidate               │
+                                           │      B/op      │     B/op      vs base                 │
+Interpreter/case=numeric_for_10000             0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=fixed_lua_calls_1000          0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=table_field_get_set_10000     0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=string_append_256           271.7Ki ± 0%     271.7Ki ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                                   ²                 +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                           │   baseline   │              candidate              │
+                                           │  allocs/op   │ allocs/op   vs base                 │
+Interpreter/case=numeric_for_10000           0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=fixed_lua_calls_1000        0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=table_field_get_set_10000   0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=15) ¹
+Interpreter/case=string_append_256           255.0 ± 0%     255.0 ± 0%       ~ (p=1.000 n=15) ¹
+geomean                                                 ²               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

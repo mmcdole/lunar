@@ -1,0 +1,55 @@
+{
+  "scope": "Argument rejection only. No runner or worker invocation. Positive exploratory count flow reviewed in source.",
+  "script_sha256": "45e97c8b66fdc3967c310ff697a9205ee4b95733d4656e4758917a1952984507",
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "/tmp/lunar-array-followup/integrated/cbor-pilot/cbor.py",
+        "collect",
+        "--revision",
+        "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+        "--program-gate-passed",
+        "--program-gate-evidence",
+        "/tmp/lunar-array-followup/integrated/review.md",
+        "--timing-pairs",
+        "5"
+      ],
+      "exit_code": 2,
+      "stderr": "usage: cbor.py [-h] {build,collect} ...\ncbor.py: error: positive timing count required; qualification needs at least 15 pairs\n"
+    },
+    {
+      "command": [
+        "python3",
+        "/tmp/lunar-array-followup/integrated/cbor-pilot/cbor.py",
+        "collect",
+        "--revision",
+        "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+        "--program-gate-passed",
+        "--program-gate-evidence",
+        "/tmp/lunar-array-followup/integrated/review.md",
+        "--timing-pairs",
+        "0"
+      ],
+      "exit_code": 2,
+      "stderr": "usage: cbor.py [-h] {build,collect} ...\ncbor.py: error: positive timing count required; qualification needs at least 15 pairs\n"
+    },
+    {
+      "command": [
+        "python3",
+        "/tmp/lunar-array-followup/integrated/cbor-pilot/cbor.py",
+        "collect",
+        "--revision",
+        "22ad3f1e7b751031360705eea9338b5f0428a1e5",
+        "--exploratory-program-gate",
+        "unresolved",
+        "--program-gate-evidence",
+        "/tmp/lunar-array-followup/integrated/review.md",
+        "--timing-pairs",
+        "0"
+      ],
+      "exit_code": 2,
+      "stderr": "usage: cbor.py [-h] {build,collect} ...\ncbor.py: error: positive timing count required; qualification needs at least 15 pairs\n"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+Total: 8960ms
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).existingArrayIndex in table.go
+      40ms       40ms (flat, cum)  0.45% of Total
+         .          .   1676:func (table *tableObject) existingArrayIndex(key slot) (int, bool) {
+         .          .   1677:	if !key.isNumber() {
+         .          .   1678:		return 0, false
+         .          .   1679:	}
+         .          .   1680:	number := math.Float64frombits(key.bits)
+         .          .   1681:	index := int(number)
+      40ms       40ms   1682:	if uint(index-1) < uint(table.array.len()) && float64(index) == number {
+         .          .   1683:		return index, true
+         .          .   1684:	}
+         .          .   1685:	return 0, false
+         .          .   1686:}
+         .          .   1687:
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).rawSlot in table.go
+      10ms       80ms (flat, cum)  0.89% of Total
+         .          .    649:func (table *tableObject) rawSlot(key slot) (slot, bool) {
+         .       40ms    650:	if index, arrayKey := table.existingArrayIndex(key); arrayKey {
+         .          .    651:		value := *table.array.at(index - 1)
+      10ms       10ms    652:		return value, !value.isNil()
+         .          .    653:	}
+         .          .    654:	normalized, index, arrayKey, hash, status :=
+         .       30ms    655:		normalizeTableKey(key)
+         .          .    656:	if status != tableKeyValid {
+         .          .    657:		return nilSlot, false
+         .          .    658:	}
+         .          .    659:	return table.rawNormalizedSlot(
+         .          .    660:		normalized,
+ROUTINE ======================== github.com/mmcdole/lunar.(*tableObject).resolveNormalizedSlot in table.go
+      30ms       40ms (flat, cum)  0.45% of Total
+         .          .    686:func (table *tableObject) resolveNormalizedSlot(
+         .          .    687:	key slot,
+         .          .    688:	index int,
+         .          .    689:	arrayKey bool,
+         .          .    690:	hash uint32,
+         .          .    691:) (slot, tableLocation, bool) {
+         .          .    692:	if arrayKey {
+         .          .    693:		if index <= table.array.len() {
+         .          .    694:			value := *table.array.at(index - 1)
+         .          .    695:			return value,
+         .          .    696:				tableLocation{
+         .          .    697:					index: index - 1,
+         .          .    698:					lane:  tableArrayLane,
+         .          .    699:				},
+         .          .    700:				!value.isNil()
+         .          .    701:		}
+         .          .    702:		number := float64(index)
+         .          .    703:		key = slot{bits: math.Float64bits(number)}
+         .          .    704:		hash = hashNumber(number)
+         .          .    705:	}
+      10ms       20ms    706:	storeIndex, found := table.store.find(key, hash)
+         .          .    707:	if !found {
+      20ms       20ms    708:		return nilSlot, tableLocation{}, false
+         .          .    709:	}
+         .          .    710:	return table.store.entries.at(storeIndex).value,
+         .          .    711:		tableLocation{
+         .          .    712:			index: storeIndex,
+         .          .    713:			lane:  tableHashLane,
+ROUTINE ======================== github.com/mmcdole/lunar.executeRawTableSet in execute_table.go
+         0      340ms (flat, cum)  3.79% of Total
+         .          .    159:func executeRawTableSet(
+         .          .    160:	values []slot,
+         .          .    161:	function *functionObject,
+         .          .    162:	base int,
+         .          .    163:	code instruction,
+         .          .    164:) instruction {
+         .          .    165:	var target, key, value slot
+         .          .    166:
+         .          .    167:	switch code.opcode() {
+         .          .    168:	case opSetTable:
+         .          .    169:		target = values[base+code.a()]
+         .          .    170:		key = operandSlot(
+         .          .    171:			values,
+         .          .    172:			function.prototype.constants,
+         .          .    173:			base,
+         .          .    174:			code.b(),
+         .          .    175:		)
+         .          .    176:		value = operandSlot(
+         .          .    177:			values,
+         .          .    178:			function.prototype.constants,
+         .          .    179:			base,
+         .          .    180:			code.c(),
+         .          .    181:		)
+         .          .    182:	default:
+         .          .    183:		panic("lua: invalid raw table write opcode")
+         .          .    184:	}
+         .          .    185:
+         .          .    186:	if !target.isTable() {
+         .          .    187:		return code
+         .          .    188:	}
+         .          .    189:	table := (*tableObject)(target.ref)
+         .          .    190:	if index, arrayKey := table.existingArrayIndex(key); arrayKey &&
+         .          .    191:		!table.array.at(index-1).isNil() {
+         .          .    192:		table.replaceResolvedSlot(
+         .          .    193:			tableLocation{index: index - 1, lane: tableArrayLane},
+         .          .    194:			value,
+         .          .    195:		)
+         .          .    196:		return tableInstructionHandled
+         .          .    197:	}
+         .          .    198:	normalized, index, arrayKey, hash, status :=
+         .       20ms    199:		normalizeTableKey(key)
+         .          .    200:	if status != tableKeyValid {
+         .          .    201:		return code
+         .          .    202:	}
+         .       40ms    203:	_, location, found := table.resolveNormalizedSlot(
+         .          .    204:		normalized,
+         .          .    205:		index,
+         .          .    206:		arrayKey,
+         .          .    207:		hash,
+         .          .    208:	)
+         .          .    209:	if !found {
+         .          .    210:		if table.metatable == nil ||
+         .          .    211:			table.metatable.absentMetamethods&metaNewIndex.bit() != 0 {
+         .      280ms    212:			table.rawSetNormalizedSlot(
+         .          .    213:				normalized,
+         .          .    214:				index,
+         .          .    215:				arrayKey,
+         .          .    216:				hash,
+         .          .    217:				value,
+ROUTINE ======================== github.com/mmcdole/lunar.normalizeTableKey in table.go
+      40ms       50ms (flat, cum)  0.56% of Total
+      20ms       20ms    611:func normalizeTableKey(
+         .          .    612:	key slot,
+         .          .    613:) (
+         .          .    614:	normalized slot,
+         .          .    615:	index int,
+         .          .    616:	arrayKey bool,
+         .          .    617:	hash uint32,
+         .          .    618:	status tableKeyStatus,
+         .          .    619:) {
+         .          .    620:	normalized = key
+         .          .    621:	switch normalized.kind() {
+         .          .    622:	case NilKind:
+         .          .    623:		status = tableKeyNil
+         .          .    624:		return
+         .          .    625:	case NumberKind:
+         .          .    626:		number := math.Float64frombits(normalized.bits)
+         .          .    627:		if math.IsNaN(number) {
+         .          .    628:			status = tableKeyNaN
+         .          .    629:			return
+         .          .    630:		}
+         .          .    631:		if number == 0 {
+         .          .    632:			normalized.bits = 0
+         .          .    633:		}
+         .          .    634:		if candidate, ok := positiveIntegerIndex(number); ok {
+         .          .    635:			index = candidate
+         .          .    636:			arrayKey = true
+         .          .    637:		}
+         .          .    638:		if !arrayKey {
+         .       10ms    639:			hash = hashNumber(number)
+         .          .    640:		}
+      10ms       10ms    641:	case StringKind:
+         .          .    642:		hash = uint32(stringSlotHash(normalized))
+         .          .    643:	default:
+         .          .    644:		hash = hashReference(normalized)
+         .          .    645:	}
+      10ms       10ms    646:	return
+         .          .    647:}
+         .          .    648:
+         .          .    649:func (table *tableObject) rawSlot(key slot) (slot, bool) {
+         .          .    650:	if index, arrayKey := table.existingArrayIndex(key); arrayKey {
+         .          .    651:		value := *table.array.at(index - 1)

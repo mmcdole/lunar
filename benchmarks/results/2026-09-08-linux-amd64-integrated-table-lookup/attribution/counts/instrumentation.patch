@@ -1,0 +1,431 @@
+diff --git a/array_access_audit.go b/array_access_audit.go
+new file mode 100644
+index 0000000..7337d50
+--- /dev/null
++++ b/array_access_audit.go
+@@ -0,0 +1,110 @@
++package lua
++
++import "math"
++
++// Private diagnostic instrumentation. Never use this build for timing.
++// Drivers audit one State at a time and exclude setup and result validation.
++type ArrayAccessCounts struct {
++	Total                  uint64 `json:"total"`
++	ExistingValue          uint64 `json:"existing_nonnil_array_value"`
++	AllocatedNil           uint64 `json:"allocated_nil_slot"`
++	StringMiss             uint64 `json:"nonnumeric_string"`
++	OtherKindMiss          uint64 `json:"nonnumeric_other"`
++	Zero                   uint64 `json:"numeric_zero"`
++	NegativeInteger        uint64 `json:"negative_integer"`
++	PositiveAboveLength    uint64 `json:"positive_integer_above_length"`
++	Fractional             uint64 `json:"fractional"`
++	Exceptional            uint64 `json:"nan_or_infinity"`
++	NextAfterLength        uint64 `json:"above_length_at_next_index_subset"`
++	WithinReservedCapacity uint64 `json:"above_length_within_capacity_subset"`
++	AboveArrayLimit        uint64 `json:"above_length_exceeds_array_limit_subset"`
++	WriteNil               uint64 `json:"write_nil_subset"`
++	ExistingValueWriteNil  uint64 `json:"existing_value_write_nil_subset"`
++}
++
++type ArrayAccessAuditSnapshot struct {
++	Reads  map[string]ArrayAccessCounts `json:"reads_by_caller"`
++	Writes ArrayAccessCounts            `json:"vm_writes"`
++}
++
++type arrayAuditCaller uint8
++
++const (
++	arrayAuditSharedOther arrayAuditCaller = iota
++	arrayAuditVMFast
++	arrayAuditVMSlow
++	arrayAuditNativeIndex
++	arrayAuditLuaRawGet
++	arrayAuditHostRawGet
++	arrayAuditCallerCount
++)
++
++var arrayAccessAudit struct {
++	enabled bool
++	reads   [arrayAuditCallerCount]ArrayAccessCounts
++	writes  ArrayAccessCounts
++}
++
++func StartArrayAccessAudit() {
++	arrayAccessAudit.enabled = false
++	clear(arrayAccessAudit.reads[:])
++	arrayAccessAudit.writes = ArrayAccessCounts{}
++	arrayAccessAudit.enabled = true
++}
++
++func StopArrayAccessAudit() ArrayAccessAuditSnapshot {
++	arrayAccessAudit.enabled = false
++	result := ArrayAccessAuditSnapshot{
++		Reads: make(map[string]ArrayAccessCounts), Writes: arrayAccessAudit.writes,
++	}
++	for index, name := range [...]string{
++		"shared_other", "vm_fast", "vm_slow", "native_frame_index", "lua_rawget", "host_rawget",
++	} {
++		result.Reads[name] = arrayAccessAudit.reads[index]
++	}
++	return result
++}
++
++func auditArrayAccess(counts *ArrayAccessCounts, table *tableObject, key slot, index int, accepted bool) {
++	counts.Total++
++	if accepted {
++		if table.array.at(index - 1).isNil() {
++			counts.AllocatedNil++
++		} else {
++			counts.ExistingValue++
++		}
++		return
++	}
++	if !key.isNumber() {
++		if key.isString() {
++			counts.StringMiss++
++		} else {
++			counts.OtherKindMiss++
++		}
++		return
++	}
++	number := math.Float64frombits(key.bits)
++	switch {
++	case math.IsNaN(number) || math.IsInf(number, 0):
++		counts.Exceptional++
++	case number == 0:
++		counts.Zero++
++	case math.Trunc(number) != number:
++		counts.Fractional++
++	case number < 0:
++		counts.NegativeInteger++
++	case number > float64(table.array.len()):
++		counts.PositiveAboveLength++
++		if number == float64(table.array.len()+1) {
++			counts.NextAfterLength++
++		}
++		if number <= float64(table.array.cap()) {
++			counts.WithinReservedCapacity++
++		}
++		if number > maximumTableArrayCapacity {
++			counts.AboveArrayLimit++
++		}
++	default:
++		panic("array audit: rejected exact positive index within logical length")
++	}
++}
+diff --git a/array_access_audit_test.go b/array_access_audit_test.go
+new file mode 100644
+index 0000000..63bf454
+--- /dev/null
++++ b/array_access_audit_test.go
+@@ -0,0 +1,60 @@
++package lua
++
++import (
++	"math"
++	"testing"
++)
++
++func TestArrayAccessAuditCategoriesAndScope(t *testing.T) {
++	state, err := New(Options{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer state.Close()
++	table := newTable(state, 8, 0)
++	table.rawSetIntegerSlot(1, numberSlot(1))
++	table.rawSetIntegerSlot(3, numberSlot(3))
++	keys := []slot{
++		numberSlot(1), numberSlot(2), slotFromValue(state.String("name")), nilSlot,
++		numberSlot(0), numberSlot(-1), numberSlot(1.5), numberSlot(math.NaN()),
++		numberSlot(math.Inf(1)), numberSlot(4), numberSlot(7), numberSlot(1 << 40),
++	}
++	table.rawSlot(keys[0]) // Outside scope.
++	StartArrayAccessAudit()
++	for _, key := range keys {
++		table.rawSlotAudited(key, arrayAuditVMFast)
++	}
++	reads := StopArrayAccessAudit().Reads["vm_fast"]
++	want := ArrayAccessCounts{
++		Total: 12, ExistingValue: 1, AllocatedNil: 1, StringMiss: 1, OtherKindMiss: 1,
++		Zero: 1, NegativeInteger: 1, PositiveAboveLength: 3, Fractional: 1, Exceptional: 2,
++		NextAfterLength: 1, WithinReservedCapacity: 2, AboveArrayLimit: 1,
++	}
++	if reads != want {
++		t.Fatalf("read categories = %+v, want %+v", reads, want)
++	}
++	table.rawSlotAudited(keys[0], arrayAuditVMFast)
++	if after := StopArrayAccessAudit().Reads["vm_fast"]; after != reads {
++		t.Fatal("out-of-scope read changed counters")
++	}
++	function := &functionObject{prototype: &Prototype{}}
++	values := []slot{slotFromTableObject(table), numberSlot(1), numberSlot(9)}
++	StartArrayAccessAudit()
++	for _, write := range []struct {
++		key   int
++		value slot
++	}{
++		{1, numberSlot(9)}, {1, nilSlot}, {1, numberSlot(7)}, {4, numberSlot(4)}, {2, nilSlot},
++	} {
++		values[1], values[2] = numberSlot(float64(write.key)), write.value
++		if result := executeRawTableSet(values, function, 0, makeABC(opSetTable, 0, 1, 2)); result != tableInstructionHandled {
++			t.Fatalf("write returned %v", result)
++		}
++	}
++	writes := StopArrayAccessAudit().Writes
++	want = ArrayAccessCounts{Total: 5, ExistingValue: 2, AllocatedNil: 2, PositiveAboveLength: 1,
++		NextAfterLength: 1, WithinReservedCapacity: 1, WriteNil: 2, ExistingValueWriteNil: 1}
++	if writes != want {
++		t.Fatalf("write categories = %+v, want %+v", writes, want)
++	}
++}
+diff --git a/benchmarks/array_access_audit_test.go b/benchmarks/array_access_audit_test.go
+new file mode 100644
+index 0000000..732c57f
+--- /dev/null
++++ b/benchmarks/array_access_audit_test.go
+@@ -0,0 +1,47 @@
++package compare
++
++import (
++	"encoding/json"
++	"os"
++	"testing"
++
++	lunar "github.com/mmcdole/lunar"
++)
++
++func TestArrayAccessAuditFannkuch(t *testing.T) {
++	output := os.Getenv("LUNAR_ARRAY_AUDIT_OUT")
++	if output == "" {
++		t.Skip("LUNAR_ARRAY_AUDIT_OUT not set")
++	}
++	spec, _ := findProgramSpec("fannkuchredux")
++	source, err := loadProgramSource(spec)
++	if err != nil {
++		t.Fatal(err)
++	}
++	prepared, err := prepareLunarProgram(spec, wrapProgramSource(source, 8))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer prepared.close()
++	lunar.StartArrayAccessAudit()
++	err = prepared.run()
++	counts := lunar.StopArrayAccessAudit()
++	if err != nil {
++		t.Fatal(err)
++	}
++	validatePreparedResult(t, prepared, programOracle{exact: "1616\nPfannkuchen(8) = 22\n"}, "audit")
++	result, err := prepared.result()
++	if err != nil {
++		t.Fatal(err)
++	}
++	encoded, err := json.MarshalIndent(map[string]any{
++		"diagnostic_only": true, "workload": "fannkuchredux", "input": 8, "runs": 1,
++		"output": result, "audit": counts,
++	}, "", "  ")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(output, append(encoded, '\n'), 0644); err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git a/benchmarks/cbor/cmd/workload/main.go b/benchmarks/cbor/cmd/workload/main.go
+index c1dd263..f447af6 100644
+--- a/benchmarks/cbor/cmd/workload/main.go
++++ b/benchmarks/cbor/cmd/workload/main.go
+@@ -19,6 +19,7 @@ import (
+ 	"sort"
+ 	"time"
+ 
++	engine "github.com/mmcdole/lunar"
+ 	"github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture"
+ 	lua "github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge"
+ )
+@@ -56,29 +57,30 @@ type oracle struct {
+ }
+ 
+ type result struct {
+-	SchemaVersion        int    `json:"schema_version"`
+-	Mode                 string `json:"mode"`
+-	Measurement          string `json:"measurement"`
+-	Preset               string `json:"preset"`
+-	Execution            string `json:"execution"`
+-	ContextCheckInterval int    `json:"context_check_interval"`
+-	ElapsedNS            int64  `json:"elapsed_ns"`
+-	HeapBefore           uint64 `json:"heap_before,omitempty"`
+-	HeapRetained         uint64 `json:"heap_retained,omitempty"`
+-	HeapDelta            int64  `json:"heap_delta,omitempty"`
+-	TotalAllocDelta      uint64 `json:"total_alloc_delta"`
+-	MallocsDelta         uint64 `json:"mallocs_delta"`
+-	GoVersion            string `json:"go_version"`
+-	GOOS                 string `json:"goos"`
+-	GOARCH               string `json:"goarch"`
+-	Revision             string `json:"revision,omitempty"`
+-	RevisionModified     bool   `json:"revision_modified,omitempty"`
+-	InputSHA256          string `json:"input_sha256"`
+-	CodecSHA256          string `json:"codec_sha256"`
+-	WorkloadSHA256       string `json:"workload_sha256"`
+-	RuntimeVersion       string `json:"runtime_version"`
+-	Workdir              string `json:"workdir,omitempty"`
+-	Oracle               oracle `json:"oracle"`
++	Audit                engine.ArrayAccessAuditSnapshot `json:"audit"`
++	SchemaVersion        int                             `json:"schema_version"`
++	Mode                 string                          `json:"mode"`
++	Measurement          string                          `json:"measurement"`
++	Preset               string                          `json:"preset"`
++	Execution            string                          `json:"execution"`
++	ContextCheckInterval int                             `json:"context_check_interval"`
++	ElapsedNS            int64                           `json:"elapsed_ns"`
++	HeapBefore           uint64                          `json:"heap_before,omitempty"`
++	HeapRetained         uint64                          `json:"heap_retained,omitempty"`
++	HeapDelta            int64                           `json:"heap_delta,omitempty"`
++	TotalAllocDelta      uint64                          `json:"total_alloc_delta"`
++	MallocsDelta         uint64                          `json:"mallocs_delta"`
++	GoVersion            string                          `json:"go_version"`
++	GOOS                 string                          `json:"goos"`
++	GOARCH               string                          `json:"goarch"`
++	Revision             string                          `json:"revision,omitempty"`
++	RevisionModified     bool                            `json:"revision_modified,omitempty"`
++	InputSHA256          string                          `json:"input_sha256"`
++	CodecSHA256          string                          `json:"codec_sha256"`
++	WorkloadSHA256       string                          `json:"workload_sha256"`
++	RuntimeVersion       string                          `json:"runtime_version"`
++	Workdir              string                          `json:"workdir,omitempty"`
++	Oracle               oracle                          `json:"oracle"`
+ }
+ 
+ func main() {
+@@ -102,7 +104,12 @@ func main() {
+ 		fmt.Fprintln(os.Stderr, "cbor-workload:", err)
+ 		os.Exit(1)
+ 	}
+-	if err := emit(os.Stdout, opts.format, measured); err != nil {
++	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
++		"diagnostic_only": true, "workload": "cbor_" + measured.Mode, "preset": measured.Preset, "runs": 1,
++		"audit": measured.Audit, "oracle": measured.Oracle,
++		"input_sha256": measured.InputSHA256, "codec_sha256": measured.CodecSHA256,
++		"workload_sha256": measured.WorkloadSHA256, "revision": measured.Revision,
++	}); err != nil {
+ 		fmt.Fprintln(os.Stderr, "cbor-workload:", err)
+ 		os.Exit(1)
+ 	}
+@@ -178,7 +185,9 @@ func execute(opts options) (result, error) {
+ 		return result{}, err
+ 	}
+ 	started := time.Now()
++	engine.StartArrayAccessAudit()
+ 	err = callTrue(L, map[string]string{"load": "loadBenchmarkGraph", "save": "saveBenchmarkGraph"}[opts.mode])
++	audit := engine.StopArrayAccessAudit()
+ 	elapsed := time.Since(started)
+ 	stopCPU()
+ 	if err != nil {
+@@ -255,6 +264,7 @@ func execute(opts options) (result, error) {
+ 		execution = "guarded"
+ 	}
+ 	measured := result{
++		Audit:         audit,
+ 		SchemaVersion: 2,
+ 		Mode:          opts.mode, Measurement: opts.measurement, Preset: opts.preset,
+ 		Execution: execution, ContextCheckInterval: opts.contextCheckInterval,
+diff --git a/execute_table.go b/execute_table.go
+index b879cd7..7fb98be 100644
+--- a/execute_table.go
++++ b/execute_table.go
+@@ -91,7 +91,7 @@ func executeRawTableGet(
+ 		return code
+ 	}
+ 	table := (*tableObject)(target.ref)
+-	result, found := table.rawSlot(key)
++	result, found := table.rawSlotAudited(key, arrayAuditVMFast)
+ 	if !found {
+ 		if table.metatable == nil ||
+ 			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+@@ -187,8 +187,17 @@ func executeRawTableSet(
+ 		return code
+ 	}
+ 	table := (*tableObject)(target.ref)
+-	if index, arrayKey := table.existingArrayIndex(key); arrayKey &&
+-		!table.array.at(index-1).isNil() {
++	index, arrayKey := table.existingArrayIndex(key)
++	if arrayAccessAudit.enabled {
++		auditArrayAccess(&arrayAccessAudit.writes, table, key, index, arrayKey)
++		if value.isNil() {
++			arrayAccessAudit.writes.WriteNil++
++			if arrayKey && !table.array.at(index-1).isNil() {
++				arrayAccessAudit.writes.ExistingValueWriteNil++
++			}
++		}
++	}
++	if arrayKey && !table.array.at(index-1).isNil() {
+ 		table.replaceResolvedSlot(
+ 			tableLocation{index: index - 1, lane: tableArrayLane},
+ 			value,
+@@ -350,7 +359,7 @@ func slowTableGet(
+ 						keyHash,
+ 					)
+ 				} else {
+-					result, found = table.rawSlot(key)
++					result, found = table.rawSlotAudited(key, arrayAuditVMSlow)
+ 				}
+ 				if found {
+ 					writeSlot(&thread.values[base+code.a()], result)
+diff --git a/library_base.go b/library_base.go
+index 96172c9..d0415ba 100644
+--- a/library_base.go
++++ b/library_base.go
+@@ -489,7 +489,7 @@ func baseRawGet(frame Frame) Outcome {
+ 	if !present {
+ 		return baseArgumentError(frame, 1, "value expected")
+ 	}
+-	value, _ := table.rawSlot(key)
++	value, _ := table.rawSlotAudited(key, arrayAuditLuaRawGet)
+ 	return frame.returnOne(frame.activation(), value)
+ }
+ 
+diff --git a/native_call.go b/native_call.go
+index eb08021..48a4056 100644
+--- a/native_call.go
++++ b/native_call.go
+@@ -254,7 +254,7 @@ func (frame Frame) indexSlots(
+ 		var found bool
+ 		if target.isTable() {
+ 			table := (*tableObject)(target.ref)
+-			if result, hit := table.rawSlot(key); hit &&
++			if result, hit := table.rawSlotAudited(key, arrayAuditNativeIndex); hit &&
+ 				!result.isNil() {
+ 				return result, nil
+ 			}
+diff --git a/table.go b/table.go
+index 2ae8e1f..d025c9f 100644
+--- a/table.go
++++ b/table.go
+@@ -235,7 +235,7 @@ func (table *tableObject) rawGetValue(key Value) (Value, error) {
+ 	if err := table.owner.accept(key); err != nil {
+ 		return Value{}, err
+ 	}
+-	if value, found := table.rawSlot(slotFromValue(key)); found {
++	if value, found := table.rawSlotAudited(slotFromValue(key), arrayAuditHostRawGet); found {
+ 		return value.owningValue(), nil
+ 	}
+ 	return nilValue, nil
+@@ -647,7 +647,15 @@ func normalizeTableKey(
+ }
+ 
+ func (table *tableObject) rawSlot(key slot) (slot, bool) {
+-	if index, arrayKey := table.existingArrayIndex(key); arrayKey {
++	return table.rawSlotAudited(key, arrayAuditSharedOther)
++}
++
++func (table *tableObject) rawSlotAudited(key slot, caller arrayAuditCaller) (slot, bool) {
++	index, arrayKey := table.existingArrayIndex(key)
++	if arrayAccessAudit.enabled {
++		auditArrayAccess(&arrayAccessAudit.reads[caller], table, key, index, arrayKey)
++	}
++	if arrayKey {
+ 		value := *table.array.at(index - 1)
+ 		return value, !value.isNil()
+ 	}
