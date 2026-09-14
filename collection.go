@@ -1681,7 +1681,6 @@ func (state *State) measureSemanticHeap(
 		return semanticHeapSummary{}
 	}
 	ledger := &state.objects
-	ledger.resetSemanticHeapScratch()
 	var summary semanticHeapSummary
 	defer ledger.releaseSemanticHeapScratch()
 
@@ -1745,16 +1744,9 @@ func (state *State) measureSemanticHeap(
 	return summary
 }
 
-func (ledger *objectLedger) resetSemanticHeapScratch() {
-	clear(ledger.upvalues)
-	clear(ledger.prototypes)
-	clear(ledger.names)
-	clear(ledger.longStrings)
-	clear(ledger.stringBacking)
-	clear(ledger.prototypeWork)
-	ledger.prototypeWork = ledger.prototypeWork[:0]
-}
-
+// releaseSemanticHeapScratch leaves scratch empty for the next scan, including
+// when a scan panics. Heap measurement invokes no Lua or host callbacks, so
+// these State-local workspaces cannot be reentered while populated.
 func (ledger *objectLedger) releaseSemanticHeapScratch() {
 	visited := len(ledger.upvalues) +
 		len(ledger.prototypes) +
