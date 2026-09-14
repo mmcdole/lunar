@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// Constructors used only by white-box tests live here so the shipped runtime
-// contains only construction paths used by production code.
+// Helpers used only by white-box tests live here so the shipped runtime
+// contains only paths used by production code.
 
 func newLuaFunction(
 	state *State,
@@ -237,4 +237,23 @@ func loadFileCtx(
 	}
 	defer func() { _ = state.RemoveContext() }()
 	return state.LoadFile(path)
+}
+
+func (function *functionObject) nativeBody() *nativeFunctionData {
+	if function == nil ||
+		function.owner == nil ||
+		function.prototype != nil ||
+		function.body == nil {
+		return nil
+	}
+	return function.nativeBodyUnchecked()
+}
+
+// importValue composes the same validation and import steps used by public
+// entry points for tests that inspect the compact result directly.
+func (rt *runtimeState) importValue(value Value) (slot, error) {
+	if err := rt.accept(value); err != nil {
+		return nilSlot, err
+	}
+	return rt.importAcceptedSlot(slotFromValue(value)), nil
 }

@@ -31,7 +31,7 @@ type nativeFunctionData struct {
 
 // nativeFunctionAllocation keeps the compact function and its native-only
 // data in one allocation. functionObject.body points at data directly;
-// nativeBody never derives the larger allocation from a function pointer.
+// body access never derives the larger allocation from a function pointer.
 type nativeFunctionAllocation struct {
 	functionObject
 	data nativeFunctionData
@@ -193,16 +193,6 @@ func (function *Function) Prototype() *Prototype {
 	prototype := object.prototype
 	runtime.KeepAlive(function)
 	return prototype
-}
-
-func (function *functionObject) nativeBody() *nativeFunctionData {
-	if function == nil ||
-		function.owner == nil ||
-		function.prototype != nil ||
-		function.body == nil {
-		return nil
-	}
-	return function.nativeBodyUnchecked()
 }
 
 // nativeBodyUnchecked returns the body of a canonical native Function.
