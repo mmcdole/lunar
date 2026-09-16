@@ -69,21 +69,6 @@ type Value struct {
 	bits uint64
 }
 
-// hostToken is the owning boundary representation for collected objects.
-// Its object pointer leads to the compact runtime object; runtimeState's host
-// directory weakly indexes the object to this token. Named public handle types
-// use this exact layout, so publication does not need a second wrapper
-// allocation.
-//
-// owner and object also keep the allocation pointer-rich and larger than the
-// runtime's tiny pointer-free allocation batching exception for weak pointers.
-type hostToken struct {
-	noCopy noCopy
-	owner  *runtimeState
-	object unsafe.Pointer
-	kind   Kind
-}
-
 // slot is the private representation used by registers, tables, and upvalues.
 // A nil pointer denotes a number, making the zero slot numeric zero. Public
 // Value uses a real marker pointer so Value{} remains detectably invalid.

@@ -1,8 +1,6 @@
 package lua
 
-import (
-	"strings"
-)
+import "strings"
 
 // compileUnit owns data shared by every function in one source compilation.
 // Its string table is temporary: sealed prototypes retain only the strings

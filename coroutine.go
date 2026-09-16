@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"unsafe"
 )
 
 // ErrMainThread reports an attempt to resume a State's main Thread through
@@ -584,4 +585,154 @@ func newCoroutineFailure(state *State, message string) *Error {
 		description: message,
 		category:    RuntimeError,
 	}
+}
+
+// ThreadStatus describes a Thread's execution state.
+type ThreadStatus uint8
+
+const (
+	// ThreadReady identifies a Thread that has not started or is idle.
+	ThreadReady ThreadStatus = iota
+	// ThreadRunning identifies the currently executing Thread.
+	ThreadRunning
+	// ThreadNormal identifies a coroutine waiting for a coroutine it resumed.
+	ThreadNormal
+	// ThreadSuspended identifies a coroutine stopped at yield.
+	ThreadSuspended
+	// ThreadDead identifies a coroutine that returned or failed.
+	ThreadDead
+	// ThreadClosed identifies a Thread whose State has closed.
+	ThreadClosed
+)
+
+// Thread is an opaque owning handle for a Lua thread.
+//
+// Repeated publication of the same live Lua thread returns the same handle
+// pointer. Execution slots retain the compact thread directly and do not pass
+// through this handle. Resume operations must be serialized with every other
+// operation on the owning State.
+//
+// A Thread must not be copied after first use. Retain and pass its pointer.
+type Thread hostToken
+
+type threadObject struct {
+	objectHeader
+	state             *State
+	globals           *tableObject
+	values            []slot
+	frames            []activation
+	continuations     []executionContinuation
+	openUpvalues      *upvalue
+	top               int
+	frameExtent       int
+	activeNativeToken uint64
+	nativeCallDepth   uint16
+	errorHandlerDepth uint16
+	contextBudget     uint16
+	status            ThreadStatus
+	flags             threadFlags
+}
+
+// Value returns the owning Lua value for thread.
+func (thread *Thread) Value() Value {
+	token := thread.token()
+	if token == nil ||
+		token.owner == nil ||
+		token.object == nil ||
+		token.kind != ThreadKind {
+		return Value{}
+	}
+	value := Value{ref: unsafe.Pointer(token), bits: uint64(ThreadKind)}
+	runtime.KeepAlive(thread)
+	return value
+}
+
+func (thread *Thread) token() *hostToken {
+	return (*hostToken)(thread)
+}
+
+func (thread *Thread) runtimeObject() *threadObject {
+	token := thread.token()
+	if token == nil ||
+		token.kind != ThreadKind ||
+		token.object == nil {
+		return nil
+	}
+	return (*threadObject)(token.object)
+}
+
+func (thread *threadObject) owningHandle() *Thread {
+	if thread == nil {
+		return nil
+	}
+	token := thread.objectHeader.owningToken(
+		ThreadKind,
+		unsafe.Pointer(thread),
+	)
+	return (*Thread)(token)
+}
+
+func (thread *threadObject) owningValue() Value {
+	handle := thread.owningHandle()
+	return handle.Value()
+}
+
+func slotFromThreadObject(thread *threadObject) slot {
+	if thread == nil || thread.owner == nil {
+		panic("lua: invalid canonical thread")
+	}
+	return objectSlot(ThreadKind, unsafe.Pointer(thread))
+}
+
+func threadObjectFromSlot(value slot) *threadObject {
+	if !value.isThread() {
+		panic("lua: slot is not a thread")
+	}
+	return (*threadObject)(value.ref)
+}
+
+func threadHandleFromSlot(value slot) *Thread {
+	return threadObjectFromSlot(value).owningHandle()
+}
+
+// State returns the State that owns thread.
+func (thread *Thread) State() *State {
+	object := thread.runtimeObject()
+	if object == nil {
+		return nil
+	}
+	state := object.state
+	runtime.KeepAlive(thread)
+	return state
+}
+
+// Status returns thread's current status.
+func (thread *Thread) Status() ThreadStatus {
+	object := thread.runtimeObject()
+	if object == nil {
+		return ThreadClosed
+	}
+	status := object.currentStatus()
+	runtime.KeepAlive(thread)
+	return status
+}
+
+func (thread *threadObject) currentStatus() ThreadStatus {
+	if thread == nil ||
+		thread.owner == nil ||
+		thread.owner.closed.Load() {
+		return ThreadClosed
+	}
+	return thread.status
+}
+
+// IsMain reports whether thread is its State's main thread.
+func (thread *Thread) IsMain() bool {
+	object := thread.runtimeObject()
+	if object == nil {
+		return false
+	}
+	main := object.isMain()
+	runtime.KeepAlive(thread)
+	return main
 }

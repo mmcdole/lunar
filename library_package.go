@@ -691,3 +691,35 @@ func packageSeeAll(frame Frame) Outcome {
 	}
 	return frame.Return()
 }
+
+// PreloadModule registers a native loader in the State-owned package.preload
+// table.
+//
+// Registration works before or after OpenPackage. Every OpenPackage call
+// publishes the same preload table, so registrations survive reopening.
+// Require still caches successful loads in package.loaded.
+//
+// The loader follows NewNativeFunction's validation and environment rules.
+// The module name is interpreted like Lua 5.1 require and therefore
+// ends at its first NUL byte.
+func (state *State) PreloadModule(
+	name string,
+	loader NativeFunc,
+) error {
+	if err := state.checkOpen(); err != nil {
+		return err
+	}
+	if loader == nil {
+		return ErrInvalidNativeFunction
+	}
+	function := newNativeFunctionOwned(
+		state,
+		state.constructionEnvironment(),
+		loader,
+		nil,
+	)
+	return state.ensureModulePreloads().rawSetStringSlot(
+		luaCString(name),
+		slotFromFunctionObject(function),
+	)
+}

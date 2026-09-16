@@ -1,0 +1,846 @@
+package lua
+
+import (
+	"fmt"
+	"math"
+)
+
+// ArgumentCount returns the number of supplied arguments.
+func (frame Frame) ArgumentCount() int {
+	call := frame.activation()
+	return frame.thread.top - int(call.base)
+}
+
+// Argument returns argument index as an owning Value and whether it was
+// supplied. A missing argument returns Lua nil and false. A negative index is
+// a programming error.
+func (frame Frame) Argument(index int) (Value, bool) {
+	value, present := frame.argument(index)
+	return value.owningValue(), present
+}
+
+// Kind returns the exact Lua kind of argument index. A missing argument has
+// InvalidKind, which distinguishes it from an explicit Lua nil.
+func (frame Frame) Kind(index int) Kind {
+	value, present := frame.argument(index)
+	if !present {
+		return InvalidKind
+	}
+	return value.kind()
+}
+
+// IsMissingOrNil reports whether argument index was omitted or is Lua nil.
+//
+// It is the common primitive for optional arguments: initialize a Go default,
+// then read and validate the argument only when IsMissingOrNil returns false.
+func (frame Frame) IsMissingOrNil(index int) bool {
+	value, present := frame.argument(index)
+	return !present || value.isNil()
+}
+
+// Bool returns argument index and whether it is exactly a Lua boolean.
+func (frame Frame) Bool(index int) (bool, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return false, false
+	}
+	switch value.ref {
+	case falseMarkerPointer:
+		return false, true
+	case trueMarkerPointer:
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+// Number returns argument index and whether it is exactly a Lua number.
+func (frame Frame) Number(index int) (float64, bool) {
+	value, present := frame.argument(index)
+	if !present || value.ref != nil {
+		return 0, false
+	}
+	return math.Float64frombits(value.bits), true
+}
+
+// CoerceNumber returns argument index as a Lua number.
+//
+// Exact numbers pass through. Strings are accepted only when their complete
+// contents match Lunar's deterministic Lua numeric grammar. No metamethod is
+// invoked.
+func (frame Frame) CoerceNumber(index int) (float64, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return 0, false
+	}
+	return slotToNumber(value)
+}
+
+// Integer returns argument index as an int64 when it is exactly a finite,
+// integral Lua number representable by int64.
+//
+// Integer does not accept numeric strings, truncate fractions, or saturate
+// values outside the int64 range.
+func (frame Frame) Integer(index int) (int64, bool) {
+	number, ok := frame.Number(index)
+	if !ok ||
+		math.IsNaN(number) ||
+		math.IsInf(number, 0) ||
+		math.Trunc(number) != number ||
+		number < -0x1p63 ||
+		number >= 0x1p63 {
+		return 0, false
+	}
+	return int64(number), true
+}
+
+// IntegerInRange returns argument index as an int64 when Integer accepts it
+// and it lies in the inclusive range [minimum, maximum].
+//
+// An inverted range rejects every value.
+func (frame Frame) IntegerInRange(
+	index int,
+	minimum int64,
+	maximum int64,
+) (int64, bool) {
+	value, ok := frame.Integer(index)
+	if !ok || minimum > maximum || value < minimum || value > maximum {
+		return 0, false
+	}
+	return value, true
+}
+
+// String returns argument index and whether it is exactly a Lua string.
+func (frame Frame) String(index int) (string, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isString() {
+		return "", false
+	}
+	return stringSlotText(value), true
+}
+
+// CoerceString returns argument index as a Lua string.
+//
+// Exact strings pass through and numbers use Lua's primitive number spelling.
+// Other kinds are rejected and no metamethod is invoked.
+func (frame Frame) CoerceString(index int) (string, bool) {
+	value, present := frame.argument(index)
+	if !present {
+		return "", false
+	}
+	return compactText(value)
+}
+
+// Table returns argument index and whether it is exactly a Lua table.
+func (frame Frame) Table(index int) (*Table, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isTable() {
+		return nil, false
+	}
+	return tableHandleFromSlot(value), true
+}
+
+func (frame Frame) tableObject(index int) (*tableObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isTable() {
+		return nil, false
+	}
+	return tableObjectFromSlot(value), true
+}
+
+// Function returns argument index and whether it is exactly a function.
+func (frame Frame) Function(index int) (*Function, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isFunction() {
+		return nil, false
+	}
+	return functionHandleFromSlot(value), true
+}
+
+func (frame Frame) functionObject(index int) (*functionObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isFunction() {
+		return nil, false
+	}
+	return functionObjectFromSlot(value), true
+}
+
+// UserData returns argument index and whether it is exactly Lua userdata.
+func (frame Frame) UserData(index int) (*UserData, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isUserData() {
+		return nil, false
+	}
+	return userDataHandleFromSlot(value), true
+}
+
+func (frame Frame) userDataObject(index int) (*userDataObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isUserData() {
+		return nil, false
+	}
+	return userDataObjectFromSlot(value), true
+}
+
+// Thread returns argument index and whether it is exactly a Lua thread.
+func (frame Frame) Thread(index int) (*Thread, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isThread() {
+		return nil, false
+	}
+	return threadHandleFromSlot(value), true
+}
+
+func (frame Frame) threadObject(index int) (*threadObject, bool) {
+	value, present := frame.argument(index)
+	if !present || !value.isThread() {
+		return nil, false
+	}
+	return threadObjectFromSlot(value), true
+}
+
+// State returns the State that owns this callback.
+//
+// The returned State is useful for State-bound construction and loading, but
+// it is not the callback's execution capability. State.Call* returns
+// ErrRunning while the callback is active; use this Frame's matching Call*
+// method for synchronous Lua reentry.
+func (frame Frame) State() *State {
+	frame.activation()
+	return frame.thread.state
+}
+
+// CurrentThread returns the Thread executing this callback.
+func (frame Frame) CurrentThread() *Thread {
+	frame.activation()
+	return frame.thread.owningHandle()
+}
+
+func (frame Frame) environmentObject() *tableObject {
+	return frame.activation().function.environment
+}
+
+// Return completes the callback without results.
+func (frame Frame) Return() Outcome {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, 0)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	resultBase := int(call.resultBase)
+	frame.thread.fillNil(resultBase, resultBase+outputCount)
+	return frame.sealReturn(outputCount)
+}
+
+// ReturnValue completes the callback with one owning Value.
+func (frame Frame) ReturnValue(value Value) Outcome {
+	call := frame.activation()
+	if err := frame.thread.owner.accept(value); err != nil {
+		panic(err)
+	}
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	if outputCount != 0 {
+		resultBase := int(call.resultBase)
+		writeSlot(
+			&frame.thread.values[resultBase],
+			frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
+		)
+		frame.thread.fillNil(resultBase+1, resultBase+outputCount)
+	}
+	return frame.sealReturn(outputCount)
+}
+
+// ReturnValues completes the callback with values.
+//
+// Values are validated before any result slot is changed. The caller's
+// requested result count is applied before the compact result window is
+// written.
+func (frame Frame) ReturnValues(values ...Value) Outcome {
+	call := frame.activation()
+	for _, value := range values {
+		if err := frame.thread.owner.accept(value); err != nil {
+			panic(err)
+		}
+	}
+	outputCount, failure := frame.prepareResults(call, len(values))
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	resultBase := int(call.resultBase)
+	copied := len(values)
+	if copied > outputCount {
+		copied = outputCount
+	}
+	for index := 0; index < copied; index++ {
+		writeSlot(
+			&frame.thread.values[resultBase+index],
+			frame.thread.owner.importAcceptedSlot(
+				slotFromValue(values[index]),
+			),
+		)
+	}
+	frame.thread.fillNil(
+		resultBase+copied,
+		resultBase+outputCount,
+	)
+	return frame.sealReturn(outputCount)
+}
+
+// ReturnArguments completes the callback by returning every supplied argument
+// in order without materializing it as owning Values.
+func (frame Frame) ReturnArguments() Outcome {
+	call := frame.activation()
+	base := int(call.base)
+	return frame.returnCompactValues(
+		[2]slot{},
+		0,
+		frame.thread.values[base:frame.thread.top],
+	)
+}
+
+// ReturnNil completes the callback with one Lua nil result.
+func (frame Frame) ReturnNil() Outcome {
+	call := frame.activation()
+	return frame.returnOne(call, nilSlot)
+}
+
+// ReturnBool completes the callback with one Lua boolean result.
+func (frame Frame) ReturnBool(value bool) Outcome {
+	call := frame.activation()
+	result := falseSlot
+	if value {
+		result = trueSlot
+	}
+	return frame.returnOne(call, result)
+}
+
+// ReturnNumber completes the callback with one Lua number result.
+func (frame Frame) ReturnNumber(value float64) Outcome {
+	call := frame.activation()
+	return frame.returnOne(call, numberSlot(value))
+}
+
+// ReturnString completes the callback with one Lua string result.
+func (frame Frame) ReturnString(value string) Outcome {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	if outputCount != 0 {
+		writeSlot(
+			&frame.thread.values[int(call.resultBase)],
+			stringSlot(frame.thread.owner.strings.make(value)),
+		)
+		frame.thread.fillNil(
+			int(call.resultBase)+1,
+			int(call.resultBase)+outputCount,
+		)
+	}
+	return frame.sealReturn(outputCount)
+}
+
+func (frame Frame) returnStringBytes(value []byte) Outcome {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	if outputCount != 0 {
+		writeSlot(
+			&frame.thread.values[int(call.resultBase)],
+			stringSlot(frame.thread.owner.strings.makeBytes(value)),
+		)
+		frame.thread.fillNil(
+			int(call.resultBase)+1,
+			int(call.resultBase)+outputCount,
+		)
+	}
+	return frame.sealReturn(outputCount)
+}
+
+// resultWriter publishes a native result window one compact value at a time,
+// allowing variable scalar result counts without constructing a slice.
+type resultWriter struct {
+	thread      *threadObject
+	base        int
+	outputCount int
+	written     int
+}
+
+func (frame Frame) beginResults(supplied int) (resultWriter, *Error) {
+	call := frame.activation()
+	outputCount, failure := frame.prepareResults(call, supplied)
+	if failure != nil {
+		return resultWriter{}, failure
+	}
+	return resultWriter{
+		thread:      frame.thread,
+		base:        int(call.resultBase),
+		outputCount: outputCount,
+	}, nil
+}
+
+func (writer *resultWriter) put(value slot) {
+	if writer.written < writer.outputCount {
+		writeSlot(
+			&writer.thread.values[writer.base+writer.written],
+			value,
+		)
+	}
+	writer.written++
+}
+
+func (frame Frame) finishResults(writer *resultWriter) Outcome {
+	written := writer.written
+	if written > writer.outputCount {
+		written = writer.outputCount
+	}
+	writer.thread.fillNil(
+		writer.base+written,
+		writer.base+writer.outputCount,
+	)
+	return frame.sealReturn(writer.outputCount)
+}
+
+// Yield suspends the executing coroutine without yielded values.
+//
+// The borrowed Frame becomes invalid immediately. Yielding from the main
+// Thread, across another native call, or across a metamethod or iterator
+// boundary produces Lua 5.1's ordinary illegal-yield error instead.
+func (frame Frame) Yield() Outcome {
+	call := frame.activation()
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, 0)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	frame.finishYield(call, resultBase, 0, previousTop, previousExtent)
+	return frame.sealYield(0)
+}
+
+// YieldValue suspends the executing coroutine with one owning Value.
+func (frame Frame) YieldValue(value Value) Outcome {
+	call := frame.activation()
+	if err := frame.thread.owner.accept(value); err != nil {
+		panic(err)
+	}
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	writeSlot(
+		&frame.thread.values[resultBase],
+		frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
+	)
+	frame.finishYield(call, resultBase, 1, previousTop, previousExtent)
+	return frame.sealYield(1)
+}
+
+// YieldValues suspends the executing coroutine with values.
+//
+// Values are validated before the execution stack is changed. Unlike a
+// return, yielded values are not adjusted to the caller's requested result
+// count; that adjustment applies later to the arguments supplied at resume.
+func (frame Frame) YieldValues(values ...Value) Outcome {
+	call := frame.activation()
+	for _, value := range values {
+		if err := frame.thread.owner.accept(value); err != nil {
+			panic(err)
+		}
+	}
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, len(values))
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	for index, value := range values {
+		writeSlot(
+			&frame.thread.values[resultBase+index],
+			frame.thread.owner.importAcceptedSlot(slotFromValue(value)),
+		)
+	}
+	frame.finishYield(
+		call,
+		resultBase,
+		len(values),
+		previousTop,
+		previousExtent,
+	)
+	return frame.sealYield(len(values))
+}
+
+// YieldArguments suspends the executing coroutine with every argument passed
+// to this native call. It transfers compact slots directly and does not
+// materialize owning Values.
+func (frame Frame) YieldArguments() Outcome {
+	call := frame.activation()
+	argumentBase := int(call.base)
+	argumentCount := frame.thread.top - argumentBase
+	resultBase, previousTop, previousExtent, failure :=
+		frame.prepareYield(call, argumentCount)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	copy(
+		frame.thread.values[resultBase:resultBase+argumentCount],
+		frame.thread.values[argumentBase:argumentBase+argumentCount],
+	)
+	frame.finishYield(
+		call,
+		resultBase,
+		argumentCount,
+		previousTop,
+		previousExtent,
+	)
+	return frame.sealYield(argumentCount)
+}
+
+func (frame Frame) raise(value Value) Outcome {
+	frame.activation()
+	if err := frame.thread.owner.accept(value); err != nil {
+		panic(err)
+	}
+	return frame.sealError(&Error{
+		value:       value,
+		description: value.String(),
+		category:    RuntimeError,
+	})
+}
+
+func (frame Frame) raiseCompact(value slot) Outcome {
+	frame.activation()
+	if err := frame.thread.owner.acceptSlot(value); err != nil {
+		panic(err)
+	}
+	return frame.sealError(&Error{
+		compactValue:    value,
+		description:     value.diagnosticString(),
+		category:        RuntimeError,
+		hasCompactValue: true,
+	})
+}
+
+func (frame Frame) argError(index int, reason string) Outcome {
+	frame.activation()
+	if index < 0 {
+		panic("lua: negative native argument index")
+	}
+	return frame.raiseString(fmt.Sprintf(
+		"bad argument #%d (%s)",
+		index+1,
+		reason,
+	))
+}
+
+func (frame Frame) argTypeError(index int, expected ...Kind) Outcome {
+	call := frame.activation()
+	if index < 0 {
+		panic("lua: negative native argument index")
+	}
+	if len(expected) == 0 {
+		panic("lua: missing expected argument kind")
+	}
+	var seen uint16
+	expectedText := ""
+	for expectedIndex, kind := range expected {
+		if kind <= InvalidKind || kind > TableKind {
+			panic("lua: invalid expected argument kind")
+		}
+		bit := uint16(1) << uint(kind)
+		if seen&bit != 0 {
+			panic("lua: duplicate expected argument kind")
+		}
+		seen |= bit
+		switch {
+		case expectedIndex == 0:
+		case expectedIndex == len(expected)-1 && len(expected) == 2:
+			expectedText += " or "
+		case expectedIndex == len(expected)-1:
+			expectedText += ", or "
+		default:
+			expectedText += ", "
+		}
+		expectedText += kind.String()
+	}
+	actual := "no value"
+	count := frame.thread.top - int(call.base)
+	if index < count {
+		actual = frame.thread.values[int(call.base)+index].kind().String()
+	}
+	return frame.argError(index, fmt.Sprintf(
+		"%s expected, got %s",
+		expectedText,
+		actual,
+	))
+}
+
+// Throw raises an arbitrary Lua error Value and does not return.
+//
+// A native callback ends in exactly one of three ways: it returns a Return*
+// Outcome, it returns a Yield* Outcome, or it throws. Throwing rather than
+// returning a failure lets a helper called at any depth inside the callback
+// report the error, which is where argument checks usually live.
+//
+// Throw unwinds with a private panic that Lunar recovers at the native call
+// boundary, so the thrown callback reaches that boundary in the same state a
+// returned one would. Host code between the Throw and the NativeFunc must not
+// recover it; a deferred recover that swallows unknown panics strands the
+// callback and is reported as an invalid outcome.
+//
+// Throw and its siblings return nothing, so they are written as statements.
+// A guard clause reads "if !ok { frame.ThrowArgTypeError(0, lua.StringKind) }"
+// and the callback continues below it only when the check passed.
+func (frame Frame) Throw(value Value) {
+	frame.throw(frame.raise(value))
+}
+
+// ThrowString raises a string Lua error and does not return. See Throw.
+func (frame Frame) ThrowString(message string) {
+	frame.activation()
+	frame.throw(frame.raiseString(message))
+}
+
+// ThrowError raises err as a Lua error and does not return.
+//
+// The Go error is preserved as the cause, so errors.Is and errors.As still
+// find it on the *Error a protected caller receives. See Throw.
+func (frame Frame) ThrowError(err error) {
+	frame.throw(frame.raiseError(err))
+}
+
+// Rethrow propagates a *Error returned by a nested Frame operation without
+// losing its Value, category, or nested traceback, and does not return.
+// See Throw.
+func (frame Frame) Rethrow(failure *Error) {
+	frame.throw(frame.reraise(failure))
+}
+
+// ThrowArgError raises a Lua argument error and does not return.
+//
+// index is zero-based. It may name a missing argument. See Throw.
+func (frame Frame) ThrowArgError(index int, reason string) {
+	frame.throw(frame.argError(index, reason))
+}
+
+// ThrowArgTypeError raises a Lua argument-type error and does not return.
+//
+// index is zero-based and may name a missing argument. At least one distinct
+// expected kind is required. See Throw.
+func (frame Frame) ThrowArgTypeError(index int, expected ...Kind) {
+	frame.throw(frame.argTypeError(index, expected...))
+}
+
+// throw abandons the Go stack carrying an already sealed terminal Outcome.
+// Sealing happens in the private raise that produced it, so a thrown callback
+// and a returned one reach invokeNativeCall in the same state.
+func (frame Frame) throw(outcome Outcome) {
+	panic(nativeThrow{token: frame.token, outcome: outcome})
+}
+
+// nativeThrow carries a Frame.Throw outcome out of a callback. Only the
+// boundary that opened the matching token recovers it; every other panic,
+// including a nativeThrow belonging to an outer frame, keeps unwinding.
+type nativeThrow struct {
+	token   uint64
+	outcome Outcome
+}
+
+func (frame Frame) raiseString(message string) Outcome {
+	value := frame.thread.state.String(message)
+	return frame.sealError(&Error{
+		value:       value,
+		description: message,
+		category:    RuntimeError,
+	})
+}
+
+func (frame Frame) argument(index int) (slot, bool) {
+	call := frame.activation()
+	if index < 0 {
+		panic("lua: negative native argument index")
+	}
+	count := frame.thread.top - int(call.base)
+	if index >= count {
+		return nilSlot, false
+	}
+	return frame.thread.values[int(call.base)+index], true
+}
+
+func (frame Frame) activation() *activation {
+	if frame.thread == nil ||
+		frame.token == 0 ||
+		frame.token&nativeTerminalBit != 0 ||
+		frame.thread.activeNativeToken != frame.token ||
+		frame.depth <= 0 ||
+		frame.depth != len(frame.thread.frames) {
+		panic("lua: stale or terminal native frame")
+	}
+	call := &frame.thread.frames[frame.depth-1]
+	if call.function == nil ||
+		call.function.prototype != nil ||
+		call.function.body == nil {
+		panic("lua: stale or invalid native frame")
+	}
+	return call
+}
+
+func (frame Frame) checkCaptureIndex(function *functionObject, index int) {
+	if index < 0 ||
+		index >= len(function.nativeBodyUnchecked().captures) {
+		panic("lua: native capture index out of range")
+	}
+}
+
+func (frame Frame) nativeCapture(index int) slot {
+	call := frame.activation()
+	frame.checkCaptureIndex(call.function, index)
+	return call.function.nativeBodyUnchecked().captures[index]
+}
+
+func (frame Frame) returnOne(call *activation, value slot) Outcome {
+	outputCount, failure := frame.prepareResults(call, 1)
+	if failure != nil {
+		return frame.sealError(failure)
+	}
+	resultBase := int(call.resultBase)
+	if outputCount != 0 {
+		writeSlot(&frame.thread.values[resultBase], value)
+		frame.thread.fillNil(resultBase+1, resultBase+outputCount)
+	}
+	return frame.sealReturn(outputCount)
+}
+
+func (frame Frame) prepareResults(
+	call *activation,
+	supplied int,
+) (int, *Error) {
+	if supplied < 0 {
+		panic("lua: negative native result count")
+	}
+	outputCount := supplied
+	if wanted := int(call.wantedResults); wanted != allResults {
+		outputCount = wanted
+	}
+	resultBase := int(call.resultBase)
+	limit := frame.thread.valueLimit()
+	if outputCount < 0 ||
+		resultBase < 0 ||
+		resultBase > limit ||
+		outputCount > limit-resultBase ||
+		uint64(resultBase)+uint64(outputCount) > uint64(^uint32(0)) {
+		return 0, newResourceError(
+			"value stack limit of %d exceeded",
+			limit,
+		)
+	}
+	required := resultBase + outputCount
+	frame.thread.reserveValues(required)
+	if required > frame.thread.top {
+		frame.thread.top = required
+	}
+	if required > frame.thread.frameExtent {
+		frame.thread.frameExtent = required
+	}
+	return outputCount, nil
+}
+
+func (frame Frame) prepareYield(
+	call *activation,
+	supplied int,
+) (resultBase, previousTop, previousExtent int, failure *Error) {
+	if supplied < 0 {
+		panic("lua: negative native yield count")
+	}
+	thread := frame.thread
+	if thread.isMain() ||
+		thread.status != ThreadRunning ||
+		thread.nativeCallDepth != 1 ||
+		len(thread.continuations) != 0 {
+		return 0, 0, 0, &Error{
+			value: thread.state.String(
+				"attempt to yield across metamethod/C-call boundary",
+			),
+			description: "attempt to yield across metamethod/C-call boundary",
+			category:    RuntimeError,
+		}
+	}
+	resultBase = int(call.resultBase)
+	limit := thread.valueLimit()
+	if resultBase < 0 ||
+		resultBase > limit ||
+		supplied > limit-resultBase ||
+		uint64(resultBase)+uint64(supplied) > uint64(^uint32(0)) {
+		return 0, 0, 0, newResourceError(
+			"value stack limit of %d exceeded",
+			limit,
+		)
+	}
+	previousTop = thread.top
+	previousExtent = thread.liveValueExtent()
+	thread.reserveValues(resultBase + supplied)
+	return resultBase, previousTop, previousExtent, nil
+}
+
+func (frame Frame) finishYield(
+	call *activation,
+	resultBase int,
+	supplied int,
+	previousTop int,
+	previousExtent int,
+) {
+	thread := frame.thread
+	resultEnd := resultBase + supplied
+	thread.clearInactive(resultEnd, previousTop)
+	thread.top = resultEnd
+	thread.frameExtent = int(call.callerExtent)
+	if resultEnd > thread.frameExtent {
+		thread.frameExtent = resultEnd
+	}
+	thread.clearDeadSuffix(previousExtent)
+}
+
+func (frame Frame) sealReturn(outputCount int) Outcome {
+	frame.seal()
+	return Outcome{
+		owner:       frame.thread.owner,
+		token:       frame.token,
+		resultCount: uint32(outputCount),
+		kind:        nativeOutcomeReturn,
+	}
+}
+
+func (frame Frame) sealYield(outputCount int) Outcome {
+	frame.seal()
+	return Outcome{
+		owner:       frame.thread.owner,
+		token:       frame.token,
+		resultCount: uint32(outputCount),
+		kind:        nativeOutcomeYield,
+	}
+}
+
+func (frame Frame) sealError(failure *Error) Outcome {
+	if failure == nil {
+		panic("lua: nil native failure")
+	}
+	frame.thread.state.rememberExitRequest(failure)
+	frame.seal()
+	return Outcome{
+		owner:   frame.thread.owner,
+		failure: failure,
+		token:   frame.token,
+		kind:    nativeOutcomeError,
+	}
+}
+
+func (frame Frame) seal() {
+	if frame.thread.activeNativeToken != frame.token {
+		panic("lua: stale or terminal native frame")
+	}
+	frame.thread.activeNativeToken = frame.token | nativeTerminalBit
+}
