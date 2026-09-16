@@ -215,3 +215,191 @@ func TestStoppedHeapChecksRechargeReimportedStrings(t *testing.T) {
 		t.Fatal("heap enforcement restarted automatic collection")
 	}
 }
+
+func TestCollectionHostSurfaceUsesTheSemanticCollector(t *testing.T) {
+	state := newCollectorTestState(t)
+
+	initial, err := state.HeapBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial == 0 || initial != state.semanticHeap().bytes {
+		t.Fatalf(
+			"initial HeapBytes = %d; semantic heap = %d",
+			initial,
+			state.semanticHeap().bytes,
+		)
+	}
+
+	var stateCollectError error
+	entry, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		before := frame.thread.state.semanticHeap().bytes
+		stateCollectError = state.Collect()
+		if err := frame.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		after := frame.thread.state.semanticHeap().bytes
+		return frame.ReturnValues(Number(float64(before)), Number(float64(after)))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := state.Call(entry.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(stateCollectError, ErrRunning) {
+		t.Fatalf(
+			"State.Collect during callback = %v; want ErrRunning",
+			stateCollectError,
+		)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Frame collector returned %d observations; want 2", len(results))
+	}
+	for index, result := range results {
+		number, ok := result.AsNumber()
+		if !ok || number <= 0 {
+			t.Fatalf("Frame collection observation %d = %v", index, result)
+		}
+	}
+
+	if err := state.Collect(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.HeapBytes(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("HeapBytes after Close = %v; want ErrClosed", err)
+	}
+	if err := state.Collect(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Collect after Close = %v; want ErrClosed", err)
+	}
+}
+
+func TestAutomaticCollectionRunsOnlyAtRootedExecutorSafePoints(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target := mustLoadString(
+		t,
+		state,
+		"@automatic-newtable.lua",
+		`return 41, {answer = 42}`,
+	)
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(32)
+	state.main.reserveFrames(4)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+	if state.runtime.collection.requested {
+		t.Fatal("fresh debt interval began with a due cycle")
+	}
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("automatic collection did not sweep prior garbage")
+	}
+	if len(results) != 2 {
+		t.Fatalf("automatic collection changed result count to %d", len(results))
+	}
+	if number, ok := results[0].AsNumber(); !ok || number != 41 {
+		t.Fatalf("first rooted result = %v; want 41", results[0])
+	}
+	table, ok := results[1].AsTable()
+	if !ok {
+		t.Fatalf("second rooted result = %v; want table", results[1])
+	}
+	assertTestValue(t, rawStr(table, "answer"), Number(42))
+	if state.runtime.collection.requested {
+		t.Fatal("completed automatic cycle remained requested")
+	}
+}
+
+func TestAutomaticCollectionServicesPreexistingDebtAtRootEntry(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		return frame.ReturnNumber(42)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(4)
+	state.main.reserveFrames(1)
+	state.resetCollectionDebt()
+	state.runtime.collection.requestCycle()
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("root-entry collection did not sweep prior garbage")
+	}
+	if len(results) != 1 {
+		t.Fatalf("native result count = %d; want 1", len(results))
+	}
+	if number, ok := results[0].AsNumber(); !ok || number != 42 {
+		t.Fatalf("native result = %v; want 42", results[0])
+	}
+	if state.runtime.collection.requested {
+		t.Fatal("root-entry collection remained requested")
+	}
+}
+
+func TestAutomaticCollectionRootsNativeReturnAtDepthZero(t *testing.T) {
+	state := newCollectorTestState(t)
+	defer state.Close()
+
+	var returned *tableObject
+	target, err := state.NewNativeFunction(func(frame Frame) Outcome {
+		returned = newTable(state, 0, 1)
+		if setErr := returned.rawSetStringSlot(
+			"answer",
+			numberSlot(42),
+		); setErr != nil {
+			frame.ThrowString(setErr.Error())
+		}
+		return frame.returnOne(
+			frame.activation(),
+			slotFromTableObject(returned),
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbage := newTable(state, 0, 0)
+	state.main.reserveValues(8)
+	state.main.reserveFrames(2)
+	state.resetCollectionDebt()
+	state.runtime.collection.budget = 1
+
+	results, err := state.Call(target.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if garbage.owner != nil {
+		t.Fatal("native-return collection did not sweep prior garbage")
+	}
+	if returned == nil || returned.owner != state.runtime {
+		t.Fatal("collection swept the compact native result")
+	}
+	if len(results) != 1 {
+		t.Fatalf("native result count = %d; want 1", len(results))
+	}
+	table, ok := results[0].AsTable()
+	if !ok || table.runtimeObject() != returned {
+		t.Fatal("native return did not preserve canonical table identity")
+	}
+	assertTestValue(t, rawStr(table, "answer"), Number(42))
+	if state.runtime.collection.requested {
+		t.Fatal("native-return collection remained requested")
+	}
+}

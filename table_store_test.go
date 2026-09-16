@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 // setFixture inserts into a standalone store for collision-chain tests.
@@ -1512,4 +1513,101 @@ func benchmarkStringTable(
 		}
 	}
 	return state, table
+}
+
+func TestTableVectorDescriptor(t *testing.T) {
+	vector := makeTableVector[int](2, 5)
+	if vector.len() != 2 || vector.cap() != 5 || vector.data == nil {
+		t.Fatalf(
+			"new vector = length:%d capacity:%d data:%p",
+			vector.len(),
+			vector.cap(),
+			vector.data,
+		)
+	}
+	values := vector.values()
+	if cap(values) != len(values) {
+		t.Fatalf(
+			"vector view capacity = %d, want fixed length %d",
+			cap(values),
+			len(values),
+		)
+	}
+	values[0], values[1] = 17, 23
+	backing := vector.data
+	vector = vector.withLength(5)
+	values = vector.values()
+	if vector.data != backing ||
+		len(values) != 5 ||
+		cap(values) != 5 ||
+		values[0] != 17 ||
+		values[1] != 23 {
+		t.Fatalf(
+			"grown vector = data:%p/%p length:%d capacity:%d values:%v",
+			vector.data,
+			backing,
+			len(values),
+			cap(values),
+			values,
+		)
+	}
+}
+
+func TestTableVectorRetainsPointerBackingAcrossGC(t *testing.T) {
+	finalized := make(chan int, 3)
+	newMarker := func(id int) *tableVectorLifetimeMarker {
+		marker := &tableVectorLifetimeMarker{id: id}
+		runtime.SetFinalizer(
+			marker,
+			func(marker *tableVectorLifetimeMarker) {
+				finalized <- marker.id
+			},
+		)
+		return marker
+	}
+
+	array := makeTableVector[slot](1, 1)
+	*array.at(0) = objectSlot(
+		TableKind,
+		unsafe.Pointer(newMarker(1)),
+	)
+	entries := makeTableVector[tableEntry](1, 1)
+	*entries.at(0) = tableEntry{
+		key: objectSlot(
+			TableKind,
+			unsafe.Pointer(newMarker(2)),
+		),
+		value: objectSlot(
+			TableKind,
+			unsafe.Pointer(newMarker(3)),
+		),
+		hash: 1,
+	}
+
+	for range 3 {
+		runtime.GC()
+	}
+	select {
+	case id := <-finalized:
+		t.Fatalf("table vector lost marker %d during collection", id)
+	default:
+	}
+
+	retained := []*tableVectorLifetimeMarker{
+		(*tableVectorLifetimeMarker)(array.at(0).ref),
+		(*tableVectorLifetimeMarker)(entries.at(0).key.ref),
+		(*tableVectorLifetimeMarker)(entries.at(0).value.ref),
+	}
+	for index, marker := range retained {
+		if marker.id != index+1 {
+			t.Fatalf(
+				"retained marker %d has id %d",
+				index+1,
+				marker.id,
+			)
+		}
+		runtime.SetFinalizer(marker, nil)
+	}
+	runtime.KeepAlive(array)
+	runtime.KeepAlive(entries)
 }

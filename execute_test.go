@@ -1743,93 +1743,6 @@ end
 	benchmarkExecutorFunction(b, state, closure)
 }
 
-func executeTestChunk(
-	t *testing.T,
-	source string,
-	arguments ...Value,
-) (*State, *threadObject, executionResult) {
-	t.Helper()
-	prototype, syntaxError := compileSource("@test.lua", source)
-	if syntaxError != nil {
-		t.Fatal(syntaxError)
-	}
-	state, err := New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	function := newLuaFunction(
-		state,
-		prototype,
-		state.main.globals,
-		nil,
-	)
-	thread := state.main
-	setTestCall(thread, 0, function, arguments...)
-	if callErr := thread.pushFunctionCall(
-		function,
-		0,
-		len(arguments),
-		allResults,
-	); callErr != nil {
-		state.Close()
-		t.Fatal(callErr)
-	}
-	return state, thread, runTestExecutor(t, thread, 0)
-}
-
-func compileTestFunction(
-	t testing.TB,
-	state *State,
-	sourceName string,
-	source string,
-) *functionObject {
-	t.Helper()
-	prototype, syntaxError := compileSource(sourceName, source)
-	if syntaxError != nil {
-		t.Fatal(syntaxError)
-	}
-	return newLuaFunction(state, prototype, state.main.globals, nil)
-}
-
-// enterTestExecution installs the same active-Thread invariant as public call
-// and resume entry points. Executor tests bypass those boundaries so they can
-// inspect compact stacks directly, but collection safe points must still see
-// a real running Thread.
-func enterTestExecution(t testing.TB, thread *threadObject) func() {
-	t.Helper()
-	if thread == nil ||
-		thread.state == nil ||
-		thread.owner != thread.state.runtime {
-		t.Fatal("test executor received an invalid Thread")
-	}
-	state := thread.state
-	if state.active != nil || thread.status == ThreadRunning {
-		t.Fatal("test State already has an active Thread")
-	}
-	previousStatus := thread.status
-	state.active = thread
-	thread.status = ThreadRunning
-	return func() {
-		valid := state.active == thread
-		thread.status = previousStatus
-		state.active = nil
-		if !valid {
-			t.Fatal("test executor changed the active Thread")
-		}
-	}
-}
-
-func runTestExecutor(
-	t testing.TB,
-	thread *threadObject,
-	stopDepth int,
-) executionResult {
-	t.Helper()
-	leave := enterTestExecution(t, thread)
-	defer leave()
-	return execute(thread, stopDepth)
-}
-
 func runTestExecutionDriver(
 	t testing.TB,
 	thread *threadObject,
@@ -1966,23 +1879,6 @@ func benchmarkRunExecutor(
 		result.err != nil ||
 		thread.top != 1 {
 		panic("unexpected benchmark execution result")
-	}
-}
-
-func assertExecutionReturned(t *testing.T, result executionResult) {
-	t.Helper()
-	if result.kind != executionReturned || result.err != nil {
-		t.Fatalf("execution result = %+v; want return", result)
-	}
-}
-
-func assertExecutionValues(t *testing.T, thread *threadObject, expected ...Value) {
-	t.Helper()
-	if thread.top != len(expected) {
-		t.Fatalf("result count = %d; want %d", thread.top, len(expected))
-	}
-	for index, value := range expected {
-		assertTestSlot(t, thread.values[index], value)
 	}
 }
 

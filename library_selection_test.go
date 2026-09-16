@@ -1,16 +1,18 @@
-package lua
+package lua_test
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/mmcdole/lunar"
 )
 
 func TestNewInstallsArbitraryLibrarySubset(t *testing.T) {
-	state, err := New(Options{
-		Libraries: LibrarySet{
-			MathLibrary,
-			StringLibrary,
-			MathLibrary,
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{
+			lua.MathLibrary,
+			lua.StringLibrary,
+			lua.MathLibrary,
 		},
 	})
 	if err != nil {
@@ -18,37 +20,37 @@ func TestNewInstallsArbitraryLibrarySubset(t *testing.T) {
 	}
 	defer state.Close()
 
-	assertGlobalKind(t, state, "math", TableKind)
-	assertGlobalKind(t, state, "string", TableKind)
-	assertGlobalKind(t, state, "table", NilKind)
-	assertGlobalKind(t, state, "type", NilKind)
-	assertGlobalKind(t, state, "coroutine", NilKind)
+	assertGlobalKind(t, state, "math", lua.TableKind)
+	assertGlobalKind(t, state, "string", lua.TableKind)
+	assertGlobalKind(t, state, "table", lua.NilKind)
+	assertGlobalKind(t, state, "type", lua.NilKind)
+	assertGlobalKind(t, state, "coroutine", lua.NilKind)
 }
 
 func TestCoreLibrariesInstallCapabilitySafeProfile(t *testing.T) {
-	state, err := New(Options{Libraries: CoreLibraries()})
+	state, err := lua.New(lua.Options{Libraries: lua.CoreLibraries()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
 
-	for name, kind := range map[string]Kind{
-		"type":      FunctionKind,
-		"coroutine": TableKind,
-		"package":   TableKind,
-		"table":     TableKind,
-		"string":    TableKind,
-		"math":      TableKind,
+	for name, kind := range map[string]lua.Kind{
+		"type":      lua.FunctionKind,
+		"coroutine": lua.TableKind,
+		"package":   lua.TableKind,
+		"table":     lua.TableKind,
+		"string":    lua.TableKind,
+		"math":      lua.TableKind,
 	} {
 		assertGlobalKind(t, state, name, kind)
 	}
 	for _, name := range []string{"io", "os", "debug"} {
-		assertGlobalKind(t, state, name, NilKind)
+		assertGlobalKind(t, state, name, lua.NilKind)
 	}
 }
 
 func TestFullLibrariesInstallEveryStandardLibrary(t *testing.T) {
-	state, err := New(Options{Libraries: FullLibraries()})
+	state, err := lua.New(lua.Options{Libraries: lua.FullLibraries()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,55 +66,55 @@ func TestFullLibrariesInstallEveryStandardLibrary(t *testing.T) {
 		"math",
 		"debug",
 	} {
-		assertGlobalKind(t, state, name, TableKind)
+		assertGlobalKind(t, state, name, lua.TableKind)
 	}
-	assertGlobalKind(t, state, "type", FunctionKind)
+	assertGlobalKind(t, state, "type", lua.FunctionKind)
 }
 
 func TestCoroutineLibraryDoesNotInstallBaseGlobals(t *testing.T) {
-	state, err := New(Options{
-		Libraries: LibrarySet{CoroutineLibrary},
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{lua.CoroutineLibrary},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer state.Close()
 
-	assertGlobalKind(t, state, "coroutine", TableKind)
-	assertGlobalKind(t, state, "type", NilKind)
+	assertGlobalKind(t, state, "coroutine", lua.TableKind)
+	assertGlobalKind(t, state, "type", lua.NilKind)
 }
 
 func TestNewRejectsInvalidLibraryBeforeConstruction(t *testing.T) {
-	state, err := New(Options{
-		Libraries: LibrarySet{BaseLibrary, Library(255)},
+	state, err := lua.New(lua.Options{
+		Libraries: lua.LibrarySet{lua.BaseLibrary, lua.Library(255)},
 	})
 	if state != nil {
 		t.Fatal("New returned a State for an invalid LibrarySet")
 	}
-	if !errors.Is(err, ErrInvalidLibrary) {
+	if !errors.Is(err, lua.ErrInvalidLibrary) {
 		t.Fatalf("New error = %v; want ErrInvalidLibrary", err)
 	}
 }
 
 func TestLibraryProfilesReturnIndependentSets(t *testing.T) {
-	first := CoreLibraries()
-	first[0] = DebugLibrary
-	if second := CoreLibraries(); second[0] != BaseLibrary {
+	first := lua.CoreLibraries()
+	first[0] = lua.DebugLibrary
+	if second := lua.CoreLibraries(); second[0] != lua.BaseLibrary {
 		t.Fatalf("CoreLibraries shared mutable storage: %v", second)
 	}
 
-	first = FullLibraries()
-	first[0] = DebugLibrary
-	if second := FullLibraries(); second[0] != BaseLibrary {
+	first = lua.FullLibraries()
+	first[0] = lua.DebugLibrary
+	if second := lua.FullLibraries(); second[0] != lua.BaseLibrary {
 		t.Fatalf("FullLibraries shared mutable storage: %v", second)
 	}
 }
 
 func assertGlobalKind(
 	t *testing.T,
-	state *State,
+	state *lua.State,
 	name string,
-	want Kind,
+	want lua.Kind,
 ) {
 	t.Helper()
 	value, err := state.RawGlobal(name)
