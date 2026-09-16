@@ -4,6 +4,30 @@ Lunar is a Lua 5.1 compiler and virtual machine implemented in Go. Runtime
 objects stay in private compact representations; the public Go API adds
 ownership only when a value crosses the embedding boundary.
 
+## Source layout
+
+The runtime stays in one package so execution, compilation, and collection can
+share private representations without exporting implementation details. Files
+are grouped by responsibility:
+
+| Files | Responsibility |
+| --- | --- |
+| `lexer*`, `parser.go`, `compiler*` | Source input, parsing, register allocation, and instruction emission |
+| `prototype.go`, `opcode.go`, `verify.go`, `chunk.go` | Immutable code, instruction representation, verification, and binary chunks |
+| `state.go`, `ownership.go`, `value.go` | Runtime lifecycle, host ownership and admission, and value representation |
+| `function.go`, `coroutine.go`, `userdata*` | Runtime objects and their owning handles |
+| `table.go`, `table_storage.go`, `table_store.go`, `table_tree.go` | Table API and raw readers, mutation and array layout, hashed records, and Go tree conversion |
+| `call_api.go`, `call_frames.go`, `call_native.go`, `protected.go` | Host entry, activation layout, callback reentry, and protected execution checkpoints |
+| `native.go`, `native_frame.go` | Native construction/dispatch and borrowed callback access/results |
+| `execute*`, `operation.go`, `metamethod.go` | Instruction execution and specialized call transitions, host Lua operations, and metamethod selection |
+| `collection.go`, `collection_control.go`, `collection_finalizer.go`, `collection_heap.go` | Object tracing/sweeping, scheduling and limits, finalizer execution, and retained heap accounting |
+| `load*`, `script_loader.go`, `debug.go`, `error.go` | Loading, script access, inspection, and failures |
+| `library*`, `io*`, `stream.go`, `process*`, `resource.go` | Standard libraries and native IO/resource machinery |
+
+Platform-specific files remain separate because their build constraints select
+different implementations. Small ordinary helpers belong with the subsystem
+that owns their behavior.
+
 ## Runtime model
 
 A `State` owns:
@@ -241,6 +265,29 @@ explicit continuation records when work remains after a nested call.
 One State still has one active executor: a callback may reenter through the
 Frame APIs, but another goroutine may not enter the State concurrently.
 
+### Nested execution invariants
+
+An `executionCheckpoint` captures the caller's activation and continuation
+depths, live stack extent, and native callback identity. Nested host calls,
+compact library calls, and protected Lua calls share its `drive` method to
+validate that successful execution returned to those depths and produced a
+valid result window.
+
+The caller retains responsibility for consuming results, capturing a traceback,
+and restoring the checkpoint. Failure deliberately leaves the failing frames
+available until that decision: an `xpcall` handler must be able to inspect them.
+Restoration closes escaped upvalues before clearing scratch roots and also runs
+when a Go panic escapes. Lua-visible mutations are never rolled back.
+
+Opcode metamethod continuations and synchronous Frame operations retain separate
+execution control. Their language decisions must agree, while the Frame path
+rejects a yield through its native call boundary. Public parity tests exercise
+indexing, assignment, equality, and length through Lua, State, and Frame entry.
+
+Owning-handle identity and readable snapshots after State closure remain part of
+the embedding contract. Internal refactoring must preserve both without adding
+host tokens to ordinary Lua execution paths.
+
 ## Contexts and host control
 
 `SetContext` installs one ambient `context.Context` for the State. It outlives
@@ -335,7 +382,54 @@ and VM semantics, libraries, collection, and supported platform paths.
 Recorded language and library cases can be re-run against a configured PUC Lua
 5.1.5 executable with `LUNAR_LUA51`.
 
+Tests follow subsystem names rather than the change that introduced them.
+Tests that need stack layouts, collector roots, or allocation invariants use
+package `lua`; API-only contract tests use package `lua_test`. Shared internal
+construction and assertion helpers live in `testsupport_test.go`. Helpers used
+only by one test file stay with those tests. A test should verify a behavior or
+invariant; checking a reported configuration label alone does not prove the
+configured behavior occurred.
+
+The nested benchmark modules have their own tests and vet checks. Root
+`go test ./...` does not include them; CI explicitly checks each module and both
+CBOR adapters. Benchmark inputs and result oracles stay separate from timing
+and reporting policy.
+
 Cross-runtime performance claims use the version-pinned harness and collection
 protocol in [`benchmarks/README.md`](../benchmarks/README.md). Algorithms
 adapted from reference implementations are identified in
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+
+### Source organization and binary placement
+
+Source files follow subsystem responsibilities. File size and function order
+are not performance contracts; avoid padding, arbitrary filename ordering, or
+mandatory linker alignment flags to tune one benchmark executable.
+
+The September 2026 cleanup retained this organization despite a local
+spectral-norm slowdown relative to `2a30a8c`. An isolated comparison on an
+AMD Ryzen 7 4800U, Linux/amd64, Go 1.27.1 (`nodwarf5`) measured:
+
+| Version | Median spectral-norm time |
+| --- | ---: |
+| Original | 81.10 ms |
+| Declaration moves only | 87.69 ms |
+| Runtime refactor only | 81.54 ms |
+| Full cleanup | 88.05 ms |
+
+These were four samples of 20 iterations, with balanced run orders, pinned to
+one CPU core, using `-trimpath`, `GOGC=100`, `GOMEMLIMIT=off`, and
+`GOMAXPROCS=1`. Allocation counts matched. Declaration audits isolated the
+runtime refactor from the moves; dispatch instructions were unchanged apart
+from addresses. Rebuilding both versions with diagnostic
+`-ldflags=-funcalign=64` removed the gap in a paired check (83.43 versus
+83.19 ms). The ordinary build also reproduced the slowdown on a second core.
+
+This strongly supports binary placement sensitivity, without identifying a
+specific cache or branch-prediction mechanism. The ordinary benchmark still
+showed roughly an 8% regression; the diagnostic does not erase it. The cleanup
+was accepted with that limitation. Alignment flags are not required, and these
+short local measurements do not establish performance across embedding
+applications, processors, or toolchains. Future performance changes should
+demonstrate benefits across representative workloads rather than depend on
+this executable's addresses.
