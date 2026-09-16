@@ -1223,15 +1223,3 @@ func mixHash(value uint64) uint64 {
 	value ^= value >> 31
 	return value
 }
-
-func (table *tableObject) rawNormalizedSlot(
-	key slot,
-	index int,
-	arrayKey bool,
-	hash uint32,
-) (slot, bool) {
-	if arrayKey {
-		return table.rawIntSlot(index)
-	}
-	return table.store.get(key, hash)
-}

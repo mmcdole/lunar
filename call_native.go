@@ -71,37 +71,23 @@ func (frame Frame) callCompactFixed(
 		wantedResults,
 	)
 	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth {
-				panic("lua: compact call returned invalid execution state")
+		var count int
+		count, failure = checkpoint.drive(thread, resultBase)
+		if failure == nil {
+			if count != wantedResults {
+				panic("lua: compact call returned an invalid result count")
 			}
 			value := nilSlot
-			if wantedResults == 1 {
-				if thread.top <= resultBase {
-					panic("lua: compact call omitted its adjusted result")
-				}
+			if count == 1 {
 				value = thread.values[resultBase]
 			}
 			checkpoint.restore(thread, true)
 			restored = true
 			return value, nil
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: compact call failed without an error")
-			}
-			failure = result.err
-			snapshotExecutionFailure(
-				thread,
-				checkpoint.frameDepth,
-				failure,
-			)
-		default:
-			panic("lua: compact call produced an invalid execution result")
 		}
+		snapshotExecutionFailure(thread, checkpoint.frameDepth, failure)
 	}
+
 	checkpoint.restore(thread, true)
 	restored = true
 	return nilSlot, failure
@@ -131,37 +117,16 @@ func (frame Frame) callCompactAllAndReturn(
 		allResults,
 	)
 	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth ||
-				thread.top < resultBase {
-				panic("lua: compact call returned invalid execution state")
-			}
-			resultCount := thread.top - resultBase
+		var count int
+		count, failure = checkpoint.drive(thread, resultBase)
+		if failure == nil {
 			previousExtent := checkpoint.restore(thread, false)
 			restored = true
-			return frame.returnScratchValues(
-				resultBase,
-				resultCount,
-				checkpoint.liveExtent,
-				previousExtent,
-			)
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: compact call failed without an error")
-			}
-			failure = result.err
-			snapshotExecutionFailure(
-				thread,
-				checkpoint.frameDepth,
-				failure,
-			)
-		default:
-			panic("lua: compact call produced an invalid execution result")
+			return frame.returnScratchValues(resultBase, count, checkpoint.liveExtent, previousExtent)
 		}
+		snapshotExecutionFailure(thread, checkpoint.frameDepth, failure)
 	}
+
 	checkpoint.restore(thread, true)
 	restored = true
 	return frame.sealError(failure)
@@ -399,29 +364,12 @@ func (frame Frame) runNestedCall(
 		wantedResults,
 	)
 	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth ||
-				thread.top < resultBase {
-				panic("lua: nested call returned invalid execution state")
-			}
-			count = thread.top - resultBase
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: nested call failed without an error")
-			}
-			failure = result.err
-			snapshotExecutionFailure(
-				thread,
-				checkpoint.frameDepth,
-				failure,
-			)
-		default:
-			panic("lua: nested call produced an invalid execution result")
+		count, failure = checkpoint.drive(thread, resultBase)
+		if failure != nil {
+			snapshotExecutionFailure(thread, checkpoint.frameDepth, failure)
 		}
 	}
+
 	if failure != nil {
 		checkpoint.restore(thread, true)
 		restored = true

@@ -44,6 +44,30 @@ func captureThreadExecutionCheckpoint(
 	}
 }
 
+// drive completes a staged nested call and validates the common return boundary.
+// Failure leaves frames live: pcall/xpcall may inspect them before choosing how
+// to report the error. The caller owns traceback capture and checkpoint restore,
+// including restoration during a Go panic. Results must be consumed or published
+// before restore clears their stack roots.
+func (checkpoint executionCheckpoint) drive(thread *threadObject, resultBase int) (int, *Error) {
+	result := driveExecution(thread, checkpoint.frameDepth)
+	switch result.kind {
+	case executionReturned:
+		if len(thread.frames) != checkpoint.frameDepth ||
+			len(thread.continuations) != checkpoint.continuationDepth || thread.top < resultBase {
+			panic("lua: nested call returned invalid execution state")
+		}
+		return thread.top - resultBase, nil
+	case executionFailed:
+		if result.err == nil {
+			panic("lua: nested call failed without an error")
+		}
+		return 0, result.err
+	default:
+		panic("lua: nested call produced an invalid execution result")
+	}
+}
+
 // restore removes every activation and continuation created above checkpoint.
 // It closes escaped stack cells before clearing their former storage. The
 // returned extent bounds all scratch slots that were live before restoration.
@@ -205,32 +229,15 @@ func runProtectedCall(
 		allResults,
 	)
 	if failure == nil {
-		result := driveExecution(thread, checkpoint.frameDepth)
-		switch result.kind {
-		case executionReturned:
-			if len(thread.frames) != checkpoint.frameDepth ||
-				len(thread.continuations) != checkpoint.continuationDepth ||
-				thread.top < resultBase {
-				panic("lua: protected call returned invalid execution state")
-			}
-			resultCount := thread.top - resultBase
+		var count int
+		count, failure = checkpoint.drive(thread, resultBase)
+		if failure == nil {
 			previousExtent := checkpoint.restore(thread, false)
 			restored = true
-			return frame.returnProtectedSuccess(
-				resultBase,
-				resultCount,
-				checkpoint.liveExtent,
-				previousExtent,
-			)
-		case executionFailed:
-			if result.err == nil {
-				panic("lua: protected target failed without an error")
-			}
-			failure = result.err
-		default:
-			panic("lua: protected call produced an invalid execution result")
+			return frame.returnProtectedSuccess(resultBase, count, checkpoint.liveExtent, previousExtent)
 		}
 	}
+
 	if failure == nil {
 		panic("lua: protected target failed without an error")
 	}
