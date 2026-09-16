@@ -3,7 +3,6 @@
 package luabridge
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 
@@ -47,16 +46,6 @@ func (state *State) Close() error {
 
 func (state *State) RuntimeVersion() string {
 	return "GopherLua v1.1.2 (" + engine.LuaVersion + ")"
-}
-
-func (state *State) ConfigureExecution(guarded bool, interval int) error {
-	if interval != 0 {
-		return fmt.Errorf("stock GopherLua does not support configurable polling intervals")
-	}
-	if guarded {
-		state.state.SetContext(context.Background())
-	}
-	return nil
 }
 
 func (state *State) String(text string) Value {

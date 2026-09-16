@@ -119,61 +119,17 @@ func TestReadSampleSetRejectsMixedBinaryIdentity(t *testing.T) {
 	}
 }
 
-func TestCompareAllowsOnlyTheExpectedContextTaxSignatureDifference(t *testing.T) {
-	collectionID := strings.Repeat("a", 32)
-	binaryHash := strings.Repeat("1", 64)
-	revision := strings.Repeat("a", 40)
-	baseline := writeMetricRecordsWithCollection(t, "baseline.jsonl", []int64{100, 101, 99}, 1_000, 100, binaryHash, revision, false, collectionID, []int{1, 4, 5})
-	candidate := writeMetricRecordsWithCollection(t, "candidate.jsonl", []int64{103, 104, 102}, 1_000, 100, binaryHash, revision, false, collectionID, []int{2, 3, 6})
-	contents, err := os.ReadFile(candidate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	contents = bytes.ReplaceAll(contents, []byte(`"execution":"raw"`), []byte(`"execution":"guarded"`))
-	contents = bytes.ReplaceAll(contents, []byte(`"context_check_interval":0`), []byte(`"context_check_interval":256`))
-	if err := os.WriteFile(candidate, contents, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := compare(options{baselinePath: baseline, candidatePath: candidate, minSamples: 3, bootstrap: 100}); err == nil {
-		t.Fatal("ordinary implementation comparison accepted raw/guarded signature mismatch")
-	}
-	report, err := compare(options{
+func TestCompareRejectsDifferentArchivedExecutionPolicies(t *testing.T) {
+	baseline := writeRecords(t, "baseline.jsonl", []int64{100, 101, 99})
+	candidate := writeRecords(t, "candidate.jsonl", []int64{103, 104, 102})
+	replaceInFile(t, candidate, `"execution":"raw"`, `"execution":"guarded"`)
+	replaceInFile(t, candidate, `"context_check_interval":0`, `"context_check_interval":256`)
+	_, err := compare(options{
 		baselinePath: baseline, candidatePath: candidate,
-		comparisonMode: "context-tax", minSamples: 3, bootstrap: 100,
+		minSamples: 3, bootstrap: 100,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.ComparisonMode != "context-tax" || report.Signature.Execution != "raw" || report.CandidateExecution != "guarded" || report.CandidateContextCheckInterval != 256 {
-		t.Fatalf("context-tax report metadata = %+v", report)
-	}
-	if !report.Policy.StrictEvidence || !report.Policy.CollectionRequired || report.Policy.RequiredMeasurement != "any" {
-		t.Fatalf("descriptive context-tax policy = %+v", report.Policy)
-	}
-	otherRevision := strings.Repeat("b", 40)
-	replaceInFile(t, candidate, `"revision":"`+revision+`"`, `"revision":"`+otherRevision+`"`)
-	if _, err := compare(options{
-		baselinePath: baseline, candidatePath: candidate,
-		comparisonMode: "context-tax", minSamples: 3, bootstrap: 100,
-	}); err == nil || !strings.Contains(err.Error(), "archived build identities differ") {
-		t.Fatalf("different context-tax revision error = %v", err)
-	}
-	replaceInFile(t, candidate, `"revision":"`+otherRevision+`"`, `"revision":"`+revision+`"`)
-	replaceInFile(t, candidate, `"revision_modified":false`, `"revision_modified":true`)
-	if _, err := compare(options{
-		baselinePath: baseline, candidatePath: candidate,
-		comparisonMode: "context-tax", minSamples: 3, bootstrap: 100,
-	}); err == nil || !strings.Contains(err.Error(), "archived build identities differ") {
-		t.Fatalf("different context-tax dirty identity error = %v", err)
-	}
-	replaceInFile(t, candidate, `"revision_modified":true`, `"revision_modified":false`)
-	replaceInFile(t, candidate, `"binary_sha256":"`+binaryHash+`"`, `"binary_sha256":"`+strings.Repeat("9", 64)+`"`)
-	if _, err := compare(options{
-		baselinePath: baseline, candidatePath: candidate,
-		comparisonMode: "context-tax", minSamples: 3, bootstrap: 100,
-	}); err == nil || !strings.Contains(err.Error(), "context-tax baseline and candidate binaries differ") {
-		t.Fatalf("different context-tax binary error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "workload signature mismatch") {
+		t.Fatalf("different execution policies = %v; want signature mismatch", err)
 	}
 }
 
@@ -376,22 +332,22 @@ func TestDescriptiveRunMayReportToStdout(t *testing.T) {
 	}
 }
 
-func TestContextTaxElapsedRatioGateUsesExplicitFivePercentCeiling(t *testing.T) {
+func TestElapsedRatioGateIncludesThreshold(t *testing.T) {
 	report := comparisonReport{
 		Baseline:  sampleSummary{Elapsed: distribution{Median: 100}},
 		Candidate: sampleSummary{Elapsed: distribution{Median: 105}},
 	}
 	if err := evaluate(&report, options{maxElapsedRatio: 1.05}); err != nil {
-		t.Fatalf("five-percent context-tax ceiling rejected boundary value: %v", err)
+		t.Fatalf("five-percent ceiling rejected boundary value: %v", err)
 	}
 	gate := findGate(t, report.Gates, "elapsed ratio")
 	if gate.Passed == nil || !*gate.Passed || gate.Threshold != 1.05 {
-		t.Fatalf("context-tax elapsed gate = %+v", gate)
+		t.Fatalf("elapsed gate = %+v", gate)
 	}
 
 	report.Candidate.Elapsed.Median = 106
 	if err := evaluate(&report, options{maxElapsedRatio: 1.05}); err == nil || !strings.Contains(err.Error(), "elapsed ratio") {
-		t.Fatalf("six-percent context-tax overhead gate error = %v", err)
+		t.Fatalf("six-percent overhead gate error = %v", err)
 	}
 }
 
@@ -590,22 +546,6 @@ func TestGatedComparisonRejectsMismatchedOracleMetadata(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "workload signature") {
 		t.Fatalf("oracle metadata mismatch error = %v", err)
-	}
-}
-
-func TestContextTaxRequiresModernCollectionMetadataEvenWithoutPerformanceGate(t *testing.T) {
-	binaryHash := strings.Repeat("1", 64)
-	revision := strings.Repeat("a", 40)
-	baseline := writeMetricRecords(t, "baseline.jsonl", []int64{100, 101, 99}, 1_000, 100, binaryHash, revision, false)
-	candidate := writeMetricRecords(t, "candidate.jsonl", []int64{101, 102, 100}, 1_000, 100, binaryHash, revision, false)
-	replaceInFile(t, candidate, `"execution":"raw"`, `"execution":"guarded"`)
-	replaceInFile(t, candidate, `"context_check_interval":0`, `"context_check_interval":256`)
-	_, err := compare(options{
-		baselinePath: baseline, candidatePath: candidate,
-		comparisonMode: "context-tax", minSamples: 3, bootstrap: 100,
-	})
-	if err == nil || !strings.Contains(err.Error(), "collection_id") {
-		t.Fatalf("missing context-tax collection metadata error = %v", err)
 	}
 }
 

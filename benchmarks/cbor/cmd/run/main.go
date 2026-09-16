@@ -40,9 +40,6 @@ type options struct {
 	runs                     int
 	warmups                  int
 	seed                     int64
-	comparisonMode           string
-	guarded                  bool
-	contextCheckInterval     int
 	timeout                  time.Duration
 	overwrite                bool
 }
@@ -76,9 +73,6 @@ func main() {
 	flag.IntVar(&opts.runs, "runs", 15, "recorded paired samples")
 	flag.IntVar(&opts.warmups, "warmups", 2, "discarded paired warmups")
 	flag.Int64Var(&opts.seed, "seed", 1, "runtime-order randomization seed")
-	flag.StringVar(&opts.comparisonMode, "comparison-mode", "implementations", "comparison policy: implementations or context-tax")
-	flag.BoolVar(&opts.guarded, "guarded", false, "exercise the worker's context-guarded path")
-	flag.IntVar(&opts.contextCheckInterval, "context-check-interval", 0, "guarded VM polling interval")
 	flag.DurationVar(&opts.timeout, "timeout", 10*time.Minute, "timeout for each fresh process")
 	flag.BoolVar(&opts.overwrite, "overwrite", false, "replace existing evidence files")
 	flag.Parse()
@@ -122,7 +116,7 @@ func execute(opts options) error {
 			ordered[left], ordered[right] = ordered[right], ordered[left]
 		})
 		for _, current := range ordered {
-			raw, err := runWorkload(opts, current.label, current.binary)
+			raw, err := runWorkload(opts, current.binary)
 			if err != nil {
 				phase := fmt.Sprintf("run %d", round+1)
 				if round < 0 {
@@ -277,25 +271,15 @@ func prepareImplementations(opts options) ([]implementation, error) {
 			implementations[2].sha256, opts.expectPreTrancheSHA256,
 		)
 	}
-	switch opts.comparisonMode {
-	case "implementations":
-		for left := range implementations {
-			for right := left + 1; right < len(implementations); right++ {
-				if implementations[left].sha256 == implementations[right].sha256 {
-					return nil, fmt.Errorf(
-						"%s and %s binaries have identical SHA-256 %s",
-						implementations[left].label, implementations[right].label,
-						implementations[left].sha256,
-					)
-				}
+	for left := range implementations {
+		for right := left + 1; right < len(implementations); right++ {
+			if implementations[left].sha256 == implementations[right].sha256 {
+				return nil, fmt.Errorf(
+					"%s and %s binaries have identical SHA-256 %s",
+					implementations[left].label, implementations[right].label,
+					implementations[left].sha256,
+				)
 			}
-		}
-	case "context-tax":
-		if implementations[0].sha256 != implementations[1].sha256 {
-			return nil, fmt.Errorf(
-				"context-tax baseline and candidate binaries differ: %s != %s",
-				implementations[0].sha256, implementations[1].sha256,
-			)
 		}
 	}
 	return implementations, nil
@@ -374,9 +358,6 @@ func validateOptions(opts *options) error {
 	if opts.preTranche == "" && (opts.expectPreTrancheSHA256 != "" || opts.expectPreTrancheRevision != "") {
 		return errors.New("pre-tranche identity expectations require -pre-tranche")
 	}
-	if opts.comparisonMode == "context-tax" && opts.preTranche != "" {
-		return errors.New("context-tax comparison does not accept a pre-tranche implementation")
-	}
 	if opts.data == "" {
 		return errors.New("-data is required so both workers use the same input file")
 	}
@@ -385,19 +366,6 @@ func validateOptions(opts *options) error {
 	}
 	if opts.measurement != "timing" && opts.measurement != "retained" {
 		return fmt.Errorf("invalid -measurement %q: expected timing or retained", opts.measurement)
-	}
-	if opts.comparisonMode != "implementations" && opts.comparisonMode != "context-tax" {
-		return fmt.Errorf("invalid -comparison-mode %q: expected implementations or context-tax", opts.comparisonMode)
-	}
-	if opts.comparisonMode == "context-tax" {
-		if opts.guarded {
-			return errors.New("context-tax comparison keeps the baseline raw; omit -guarded")
-		}
-		if opts.contextCheckInterval <= 1 {
-			return errors.New("context-tax comparison requires -context-check-interval greater than 1")
-		}
-	} else if opts.contextCheckInterval < 0 || (!opts.guarded && opts.contextCheckInterval != 0) {
-		return errors.New("a nonnegative -context-check-interval requires -guarded")
 	}
 	if opts.timeout <= 0 {
 		return errors.New("-timeout must be positive")
@@ -459,7 +427,7 @@ func validateOptions(opts *options) error {
 	return nil
 }
 
-func workloadArguments(opts options, implementation string) []string {
+func workloadArguments(opts options) []string {
 	arguments := []string{
 		"-preset", opts.preset,
 		"-mode", opts.mode,
@@ -468,27 +436,13 @@ func workloadArguments(opts options, implementation string) []string {
 		"-data", opts.data,
 		"-format", "jsonl",
 	}
-	guarded := opts.guarded
-	contextCheckInterval := opts.contextCheckInterval
-	if opts.comparisonMode == "context-tax" {
-		guarded = implementation == "candidate"
-		if !guarded {
-			contextCheckInterval = 0
-		}
-	}
-	if guarded {
-		arguments = append(arguments, "-guarded")
-		if contextCheckInterval != 0 {
-			arguments = append(arguments, "-context-check-interval", fmt.Sprint(contextCheckInterval))
-		}
-	}
 	return arguments
 }
 
-func runWorkload(opts options, implementation, binary string) ([]byte, error) {
+func runWorkload(opts options, binary string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, workloadArguments(opts, implementation)...)
+	command := exec.CommandContext(ctx, binary, workloadArguments(opts)...)
 	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("timed out after %s: %w", opts.timeout, ctx.Err())

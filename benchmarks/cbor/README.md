@@ -8,7 +8,7 @@ iteration, file I/O, and recursive codec calls.
 The graph is reported as a large-table memory workload. General interpreter and
 embedding results come from the benchmark module above it. The Lunar worker uses
 Lunar's owned public API, explicitly opens the standard libraries required by
-the fixture, and uses operation-scoped contexts for guarded calls. The stock
+the fixture, and runs the default execution path. The stock
 worker is selected with the `gopherlua_reference` build tag and uses the pinned
 dependency in `stock.mod`; both builds otherwise compile the same generator,
 workload, validation, and reporting code.

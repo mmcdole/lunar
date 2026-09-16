@@ -3,7 +3,6 @@
 package luabridge
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -18,12 +17,7 @@ type (
 
 // State adapts the benchmark operations to Lunar's owned public API.
 type State struct {
-	state      *engine.State
-	guarded    bool
-	iterator   engine.Value
-	visitor    engine.Value
-	visit      func(Value, Value) error
-	visitError error
+	state *engine.State
 }
 
 func NewState(options Options) (*State, error) {
@@ -40,52 +34,7 @@ func NewState(options Options) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	closeOnError := func(failure error) (*State, error) {
-		_ = runtime.Close()
-		return nil, failure
-	}
-	bridge := &State{state: runtime}
-	chunk, err := runtime.LoadString("@cbor-iterator.lua", `
-return function(target, emit)
-	for key, value in next, target do
-		emit(key, value)
-	end
-end
-`)
-	if err != nil {
-		return closeOnError(err)
-	}
-	results, err := runtime.Call(chunk.Value())
-	if err != nil {
-		return closeOnError(err)
-	}
-	if len(results) != 1 || results[0].Kind() != engine.FunctionKind {
-		return closeOnError(fmt.Errorf("iterator helper did not return a function"))
-	}
-	bridge.iterator = results[0]
-
-	visitor, err := runtime.NewNativeFunction(func(frame engine.Frame) engine.Outcome {
-		key, keyPresent := frame.Argument(0)
-		value, valuePresent := frame.Argument(1)
-		if !keyPresent || !valuePresent {
-			bridge.visitError = fmt.Errorf("iterator callback omitted key or value")
-			frame.ThrowString(bridge.visitError.Error())
-		}
-		if bridge.visit == nil {
-			bridge.visitError = fmt.Errorf("iterator callback ran outside traversal")
-			frame.ThrowString(bridge.visitError.Error())
-		}
-		if err := bridge.visit(key, value); err != nil {
-			bridge.visitError = err
-			frame.ThrowString(err.Error())
-		}
-		return frame.Return()
-	})
-	if err != nil {
-		return closeOnError(err)
-	}
-	bridge.visitor = visitor.Value()
-	return bridge, nil
+	return &State{state: runtime}, nil
 }
 
 func (state *State) Close() error {
@@ -94,14 +43,6 @@ func (state *State) Close() error {
 
 func (state *State) RuntimeVersion() string {
 	return "Lunar (Lua 5.1)"
-}
-
-func (state *State) ConfigureExecution(guarded bool, interval int) error {
-	if interval != 0 {
-		return fmt.Errorf("Lunar uses operation-scoped contexts and does not support configurable polling intervals")
-	}
-	state.guarded = guarded
-	return nil
 }
 
 func (state *State) String(text string) Value {
@@ -186,16 +127,7 @@ func (state *State) CallGlobalBool(name string) error {
 		return fmt.Errorf("global %s is %s, not a function", name, function.Kind())
 	}
 	var result [1]engine.Value
-	var count int
-	if state.guarded {
-		if setErr := state.state.SetContext(context.Background()); setErr != nil {
-			return setErr
-		}
-		defer func() { _ = state.state.RemoveContext() }()
-		count, err = state.state.CallInto(function, nil, result[:])
-	} else {
-		count, err = state.state.CallInto(function, nil, result[:])
-	}
+	count, err := state.state.CallInto(function, nil, result[:])
 	if err != nil {
 		return err
 	}
@@ -213,21 +145,19 @@ func (state *State) ForEach(
 	table *Table,
 	visit func(Value, Value) error,
 ) error {
-	if state.visit != nil {
-		return fmt.Errorf("nested bridge traversal is unsupported")
+	for key := engine.Nil(); ; {
+		next, value, ok, err := table.Next(key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		if err := visit(next, value); err != nil {
+			return err
+		}
+		key = next
 	}
-	state.visit = visit
-	state.visitError = nil
-	defer func() {
-		state.visit = nil
-		state.visitError = nil
-	}()
-	arguments := [...]engine.Value{table.Value(), state.visitor}
-	_, err := state.state.CallInto(state.iterator, arguments[:], nil)
-	if state.visitError != nil {
-		return state.visitError
-	}
-	return err
 }
 
 func Nil() Value {

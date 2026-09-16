@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mmcdole/lunar/benchmarks/cbor/internal/fixture"
-	lua "github.com/mmcdole/lunar/benchmarks/cbor/internal/luabridge"
 )
 
 func TestSmallPresetLoadRoundTripsWithStableOracle(t *testing.T) {
@@ -116,42 +115,6 @@ func TestProfileMeasurementSeparatesCPUAndHeapProfiles(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("profile measurement accepted combined CPU and heap profiles")
-	}
-}
-
-func TestGuardedMeasurementRecordsContextPolicy(t *testing.T) {
-	input := generatedInput(t, "small")
-	measured, err := execute(options{
-		mode: "load", measurement: "timing", preset: "small", fixture: fixturePath(t), data: input,
-		guarded: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if measured.Execution != "guarded" || measured.ContextCheckInterval != 0 {
-		t.Fatalf("context policy = %q/%d, want guarded/0", measured.Execution, measured.ContextCheckInterval)
-	}
-}
-
-func TestConfigurableContextIntervalIsRejected(t *testing.T) {
-	state, err := lua.NewState(lua.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = state.Close()
-	}()
-	if err := state.ConfigureExecution(true, 256); err == nil {
-		t.Fatal("runtime accepted an unsupported context polling interval")
-	}
-}
-
-func TestRawMeasurementRejectsContextInterval(t *testing.T) {
-	_, err := validateOptions(options{
-		mode: "load", measurement: "timing", preset: "small", data: "input.cbor", contextCheckInterval: 256,
-	})
-	if err == nil {
-		t.Fatal("raw measurement accepted a context-check interval")
 	}
 }
 

@@ -13,33 +13,16 @@ import (
 func TestWorkloadArgumentsCarryOneMeasurementPolicy(t *testing.T) {
 	opts := options{
 		preset: "large", mode: "load", measurement: "timing",
-		fixture: "/fixture", data: "/input.dat", guarded: true,
-		contextCheckInterval: 256,
+		fixture: "/fixture", data: "/input.dat",
 	}
-	got := strings.Join(workloadArguments(opts, "baseline"), " ")
+	got := strings.Join(workloadArguments(opts), " ")
 	for _, fragment := range []string{
 		"-preset large", "-mode load", "-measurement timing", "-fixture /fixture",
-		"-data /input.dat", "-format jsonl", "-guarded", "-context-check-interval 256",
+		"-data /input.dat", "-format jsonl",
 	} {
 		if !strings.Contains(got, fragment) {
 			t.Fatalf("arguments %q do not contain %q", got, fragment)
 		}
-	}
-}
-
-func TestContextTaxArgumentsKeepBaselineRawAndGuardCandidate(t *testing.T) {
-	opts := options{
-		comparisonMode: "context-tax",
-		preset:         "large", mode: "load", measurement: "timing",
-		fixture: "/fixture", data: "/input.dat", contextCheckInterval: 256,
-	}
-	baseline := strings.Join(workloadArguments(opts, "baseline"), " ")
-	candidate := strings.Join(workloadArguments(opts, "candidate"), " ")
-	if strings.Contains(baseline, "-guarded") || strings.Contains(baseline, "-context-check-interval") {
-		t.Fatalf("context-tax baseline is not raw: %q", baseline)
-	}
-	if !strings.Contains(candidate, "-guarded") || !strings.Contains(candidate, "-context-check-interval 256") {
-		t.Fatalf("context-tax candidate is not guarded at interval 256: %q", candidate)
 	}
 }
 
@@ -97,7 +80,7 @@ func TestValidateOptionsRequiresSharedData(t *testing.T) {
 	opts := options{
 		baseline: "baseline", candidate: "candidate",
 		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
-		runs: 1, measurement: "timing", comparisonMode: "implementations", timeout: time.Second,
+		runs: 1, measurement: "timing", timeout: time.Second,
 	}
 	if err := validateOptions(&opts); err == nil || !strings.Contains(err.Error(), "-data is required") {
 		t.Fatalf("missing shared input error = %v", err)
@@ -108,23 +91,10 @@ func TestValidateOptionsRequiresCompletePreTranchePair(t *testing.T) {
 	opts := options{
 		baseline: "baseline", candidate: "candidate", preTranche: "pre-tranche",
 		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
-		runs: 1, measurement: "timing", comparisonMode: "implementations", timeout: time.Second,
+		runs: 1, measurement: "timing", timeout: time.Second,
 	}
 	if err := validateOptions(&opts); err == nil || !strings.Contains(err.Error(), "supplied together") {
 		t.Fatalf("incomplete pre-tranche error = %v", err)
-	}
-}
-
-func TestValidateOptionsRejectsPreTrancheContextTax(t *testing.T) {
-	opts := options{
-		baseline: "baseline", candidate: "candidate", preTranche: "pre-tranche",
-		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
-		preTrancheOutput: "pre-tranche.jsonl", data: "input.dat",
-		runs: 1, measurement: "timing", comparisonMode: "context-tax",
-		contextCheckInterval: 256, timeout: time.Second,
-	}
-	if err := validateOptions(&opts); err == nil || !strings.Contains(err.Error(), "does not accept") {
-		t.Fatalf("context-tax pre-tranche error = %v", err)
 	}
 }
 
@@ -148,7 +118,6 @@ func TestPrepareImplementationsAuthenticatesAndSeparatesBinaries(t *testing.T) {
 		baseline: baseline, candidate: candidate, preTranche: preTranche,
 		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
 		preTrancheOutput: "pre-tranche.jsonl", expectBaselineSHA256: baselineHash,
-		comparisonMode: "implementations",
 	}
 	preTrancheHash, err := hashFile(preTranche)
 	if err != nil {
@@ -173,32 +142,6 @@ func TestPrepareImplementationsAuthenticatesAndSeparatesBinaries(t *testing.T) {
 	}
 	if _, err := prepareImplementations(opts); err == nil || !strings.Contains(err.Error(), "identical SHA-256") {
 		t.Fatalf("identical binary error = %v", err)
-	}
-}
-
-func TestPrepareImplementationsRequiresSameBinaryForContextTax(t *testing.T) {
-	directory := t.TempDir()
-	baseline := filepath.Join(directory, "baseline")
-	candidate := filepath.Join(directory, "candidate")
-	if err := os.WriteFile(baseline, []byte("same"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(candidate, []byte("same"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	opts := options{
-		baseline: baseline, candidate: candidate,
-		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
-		comparisonMode: "context-tax",
-	}
-	if _, err := prepareImplementations(opts); err != nil {
-		t.Fatalf("same context-tax binary rejected: %v", err)
-	}
-	if err := os.WriteFile(candidate, []byte("different"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := prepareImplementations(opts); err == nil || !strings.Contains(err.Error(), "context-tax") {
-		t.Fatalf("different context-tax binary error = %v", err)
 	}
 }
 
@@ -265,7 +208,7 @@ func TestValidateOptionsRequiresPreTrancheForIdentityExpectations(t *testing.T) 
 		baseline: "baseline", candidate: "candidate",
 		baselineOutput: "baseline.jsonl", candidateOutput: "candidate.jsonl",
 		expectPreTrancheSHA256: strings.Repeat("a", 64),
-		runs:                   1, measurement: "timing", comparisonMode: "implementations", timeout: time.Second,
+		runs:                   1, measurement: "timing", timeout: time.Second,
 	}
 	if err := validateOptions(&opts); err == nil || !strings.Contains(err.Error(), "require -pre-tranche") {
 		t.Fatalf("orphaned pre-tranche identity error = %v", err)

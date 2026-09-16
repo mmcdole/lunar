@@ -39,7 +39,6 @@ type options struct {
 	bootstrap                int
 	seed                     int64
 	format                   string
-	comparisonMode           string
 	outputPath               string
 	overwrite                bool
 }
@@ -197,7 +196,6 @@ func main() {
 	flag.IntVar(&opts.bootstrap, "bootstrap", 10_000, "deterministic bootstrap resamples")
 	flag.Int64Var(&opts.seed, "seed", 1, "bootstrap random seed")
 	flag.StringVar(&opts.format, "format", "markdown", "output format: markdown or json")
-	flag.StringVar(&opts.comparisonMode, "comparison-mode", "implementations", "comparison policy: implementations or context-tax")
 	flag.StringVar(&opts.outputPath, "output", "", "exclusive report archive path; required for qualification")
 	flag.BoolVar(&opts.overwrite, "overwrite", false, "replace an existing report archive")
 	flag.Parse()
@@ -241,12 +239,8 @@ func compare(opts options) (comparisonReport, error) {
 	if err := validateGateOptions(&opts); err != nil {
 		return comparisonReport{}, err
 	}
-	comparisonMode := opts.comparisonMode
-	if comparisonMode == "" {
-		comparisonMode = "implementations"
-	}
 	qualification := gatesEnabled(opts)
-	collectionRequired := qualification || comparisonMode == "context-tax" || opts.preTranchePath != ""
+	collectionRequired := qualification || opts.preTranchePath != ""
 	strictEvidence := collectionRequired
 	baseline, err := readSampleSetPolicy(opts.baselinePath, opts.minSamples, strictEvidence, "baseline")
 	if err != nil {
@@ -256,7 +250,7 @@ func compare(opts options) (comparisonReport, error) {
 	if err != nil {
 		return comparisonReport{}, fmt.Errorf("candidate: %w", err)
 	}
-	if err := validateSignaturePair(comparisonMode, baseline.signature, candidate.signature); err != nil {
+	if err := validateSignaturePair(baseline.signature, candidate.signature); err != nil {
 		return comparisonReport{}, err
 	}
 	if qualification && baseline.signature.Measurement != "timing" {
@@ -265,7 +259,7 @@ func compare(opts options) (comparisonReport, error) {
 			baseline.signature.Measurement,
 		)
 	}
-	if err := validateEvidenceIdentities(opts, comparisonMode, baseline, candidate); err != nil {
+	if err := validateEvidenceIdentities(opts, baseline, candidate); err != nil {
 		return comparisonReport{}, err
 	}
 	pairedBaseline, pairedCandidate, err := pairedElapsedSamples(baseline.records, candidate.records)
@@ -274,7 +268,7 @@ func compare(opts options) (comparisonReport, error) {
 	}
 
 	report := comparisonReport{
-		SchemaVersion: 2, CollectionID: baseline.collectionID, ComparisonMode: comparisonMode,
+		SchemaVersion: 2, CollectionID: baseline.collectionID, ComparisonMode: "implementations",
 		Signature:                     baseline.signature,
 		CandidateRuntimeVersion:       candidate.signature.RuntimeVersion,
 		CandidateExecution:            candidate.signature.Execution,
@@ -301,7 +295,7 @@ func compare(opts options) (comparisonReport, error) {
 		if err != nil {
 			return comparisonReport{}, fmt.Errorf("pre-tranche: %w", err)
 		}
-		if err := validateSignaturePair("implementations", baseline.signature, preTranche.signature); err != nil {
+		if err := validateSignaturePair(baseline.signature, preTranche.signature); err != nil {
 			return comparisonReport{}, fmt.Errorf("pre-tranche: %w", err)
 		}
 		if err := validatePreTrancheIdentity(opts, baseline, candidate, preTranche); err != nil {
@@ -361,13 +355,6 @@ func validateGateOptions(opts *options) error {
 	}
 	if opts.overwrite && opts.outputPath == "" {
 		return errors.New("-overwrite requires -output")
-	}
-	comparisonMode := opts.comparisonMode
-	if comparisonMode == "" {
-		comparisonMode = "implementations"
-	}
-	if comparisonMode == "context-tax" && opts.preTranchePath != "" {
-		return errors.New("context-tax comparison does not accept -pre-tranche")
 	}
 	if opts.minExcessMallocRemoval > 0 && opts.preTranchePath == "" {
 		return errors.New("-min-excess-malloc-removal requires -pre-tranche")
@@ -504,7 +491,7 @@ func gatesEnabled(opts options) bool {
 		opts.minExcessMallocRemoval > 0
 }
 
-func validateEvidenceIdentities(opts options, comparisonMode string, baseline, candidate sampleSet) error {
+func validateEvidenceIdentities(opts options, baseline, candidate sampleSet) error {
 	if opts.expectBaselineSHA256 != "" && baseline.identity.BinarySHA256 != opts.expectBaselineSHA256 {
 		return fmt.Errorf(
 			"baseline SHA-256 %s does not match required %s",
@@ -525,29 +512,11 @@ func validateEvidenceIdentities(opts options, comparisonMode string, baseline, c
 			return err
 		}
 	}
-	switch comparisonMode {
-	case "implementations":
-		if baseline.identity.BinarySHA256 == candidate.identity.BinarySHA256 {
-			return fmt.Errorf(
-				"baseline and candidate have identical binary SHA-256 %s",
-				baseline.identity.BinarySHA256,
-			)
-		}
-	case "context-tax":
-		if baseline.identity.BinarySHA256 != candidate.identity.BinarySHA256 {
-			return fmt.Errorf(
-				"context-tax baseline and candidate binaries differ: %s != %s",
-				baseline.identity.BinarySHA256, candidate.identity.BinarySHA256,
-			)
-		}
-		if baseline.identity.Revision != candidate.identity.Revision ||
-			baseline.identity.RevisionModified != candidate.identity.RevisionModified {
-			return fmt.Errorf(
-				"context-tax baseline and candidate archived build identities differ: revision=%q/%q modified=%t/%t",
-				baseline.identity.Revision, candidate.identity.Revision,
-				baseline.identity.RevisionModified, candidate.identity.RevisionModified,
-			)
-		}
+	if baseline.identity.BinarySHA256 == candidate.identity.BinarySHA256 {
+		return fmt.Errorf(
+			"baseline and candidate have identical binary SHA-256 %s",
+			baseline.identity.BinarySHA256,
+		)
 	}
 	return nil
 }
@@ -629,32 +598,13 @@ func validateExpectedRevision(value string) error {
 	return nil
 }
 
-func validateSignaturePair(comparisonMode string, baseline, candidate workloadSignature) error {
-	switch comparisonMode {
-	case "implementations":
-		normalized := candidate
-		normalized.RuntimeVersion = baseline.RuntimeVersion
-		if baseline != normalized {
-			return fmt.Errorf("workload signature mismatch: baseline=%+v candidate=%+v", baseline, candidate)
-		}
-		return nil
-	case "context-tax":
-		if baseline.Execution != "raw" || baseline.ContextCheckInterval != 0 {
-			return fmt.Errorf("context-tax baseline must be raw with interval 0, got execution=%s interval=%d", baseline.Execution, baseline.ContextCheckInterval)
-		}
-		if candidate.Execution != "guarded" || candidate.ContextCheckInterval <= 1 {
-			return fmt.Errorf("context-tax candidate must be guarded with interval greater than 1, got execution=%s interval=%d", candidate.Execution, candidate.ContextCheckInterval)
-		}
-		normalized := candidate
-		normalized.Execution = baseline.Execution
-		normalized.ContextCheckInterval = baseline.ContextCheckInterval
-		if baseline != normalized {
-			return fmt.Errorf("workload signature mismatch outside context policy: baseline=%+v candidate=%+v", baseline, candidate)
-		}
-		return nil
-	default:
-		return fmt.Errorf("invalid comparison mode %q: expected implementations or context-tax", comparisonMode)
+func validateSignaturePair(baseline, candidate workloadSignature) error {
+	normalized := candidate
+	normalized.RuntimeVersion = baseline.RuntimeVersion
+	if baseline != normalized {
+		return fmt.Errorf("workload signature mismatch: baseline=%+v candidate=%+v", baseline, candidate)
 	}
+	return nil
 }
 
 type sampleSet struct {

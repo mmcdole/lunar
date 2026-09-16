@@ -31,18 +31,16 @@ var fixtureFiles = []string{
 }
 
 type options struct {
-	mode                 string
-	measurement          string
-	preset               string
-	fixture              string
-	data                 string
-	format               string
-	cpuProfile           string
-	heapProfile          string
-	keepWorkdir          bool
-	verboseLua           bool
-	guarded              bool
-	contextCheckInterval int
+	mode        string
+	measurement string
+	preset      string
+	fixture     string
+	data        string
+	format      string
+	cpuProfile  string
+	heapProfile string
+	keepWorkdir bool
+	verboseLua  bool
 }
 
 type oracle struct {
@@ -93,8 +91,6 @@ func main() {
 	flag.StringVar(&opts.heapProfile, "heap-profile", "", "retained-heap profile path; valid only with -measurement profile")
 	flag.BoolVar(&opts.keepWorkdir, "keep-workdir", false, "retain the staged writable fixture")
 	flag.BoolVar(&opts.verboseLua, "verbose-lua", false, "print Lua workload log messages")
-	flag.BoolVar(&opts.guarded, "guarded", false, "run with a live context and exercise context polling")
-	flag.IntVar(&opts.contextCheckInterval, "context-check-interval", 0, "guarded bytecode polling interval; 0 preserves per-instruction checks")
 	flag.Parse()
 
 	measured, err := execute(opts)
@@ -151,12 +147,6 @@ func execute(opts options) (result, error) {
 	defer func() {
 		_ = L.Close()
 	}()
-	if err := L.ConfigureExecution(
-		opts.guarded,
-		opts.contextCheckInterval,
-	); err != nil {
-		return result{}, err
-	}
 	if err := installFixture(L, workdir, opts.verboseLua); err != nil {
 		return result{}, err
 	}
@@ -250,14 +240,10 @@ func execute(opts options) (result, error) {
 		return result{}, fmt.Errorf("hash workload: %w", err)
 	}
 
-	execution := "raw"
-	if opts.guarded {
-		execution = "guarded"
-	}
 	measured := result{
 		SchemaVersion: 2,
 		Mode:          opts.mode, Measurement: opts.measurement, Preset: opts.preset,
-		Execution: execution, ContextCheckInterval: opts.contextCheckInterval,
+		Execution: "raw", ContextCheckInterval: 0,
 		ElapsedNS:       elapsed.Nanoseconds(),
 		TotalAllocDelta: immediate.TotalAlloc - before.TotalAlloc,
 		MallocsDelta:    immediate.Mallocs - before.Mallocs,
@@ -293,12 +279,6 @@ func validateOptions(opts options) (fixture.Summary, error) {
 	}
 	if opts.measurement != "profile" && (opts.cpuProfile != "" || opts.heapProfile != "") {
 		return fixture.Summary{}, fmt.Errorf("profile outputs require -measurement profile")
-	}
-	if opts.contextCheckInterval < 0 {
-		return fixture.Summary{}, fmt.Errorf("-context-check-interval cannot be negative")
-	}
-	if !opts.guarded && opts.contextCheckInterval != 0 {
-		return fixture.Summary{}, fmt.Errorf("-context-check-interval requires -guarded")
 	}
 	if opts.data == "" {
 		return fixture.Summary{}, fmt.Errorf("-data is required so every implementation uses the same input file")
