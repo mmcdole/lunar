@@ -1117,6 +1117,7 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		"for index = first(), last(), step() do consume(index) end",
 		"for key, value in iterator, state, control do consume(key, value) end",
 		"repeat local value = 1; sink = function() return value end until done",
+		"repeat return x + 1 until true",
 		"; value = 1",
 		"value = 1;; value = 2",
 		"if true return else",

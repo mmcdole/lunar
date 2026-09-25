@@ -783,6 +783,41 @@ func TestLoopOpcodeVerificationEnforcesCanonicalFramesAndPairs(t *testing.T) {
 	assertPrototypeSyntaxError(t, wrongBackEdge)
 }
 
+func TestCompileSourceReleasesTerminalStatementTemporaries(t *testing.T) {
+	// A return or break that needs temporaries is the last statement of its
+	// block, and a repeat condition is compiled after it in the same scope.
+	for _, test := range []struct {
+		source string
+		want   []float64
+	}{
+		{"local x = 1 repeat return x + 1 until true", []float64{2}},
+		{"local x = 2 repeat local y = x * 3 return y + 1, y until y", []float64{7, 6}},
+		{"local x = 1 repeat do return x + 1 end until x", []float64{2}},
+		{"local t = {4} repeat return t[1] * 2 until t[1] > 0", []float64{8}},
+		{"local n = 0 repeat n = n + 1 if n > 2 then break end until false return n", []float64{3}},
+	} {
+		t.Run(test.source, func(t *testing.T) {
+			state, err := New(Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			results, err := state.DoString("=loop", test.source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(results) != len(test.want) {
+				t.Fatalf("results = %v; want %v", results, test.want)
+			}
+			for index, want := range test.want {
+				if got, ok := results[index].AsNumber(); !ok || got != want {
+					t.Fatalf("results = %v; want %v", results, test.want)
+				}
+			}
+		})
+	}
+}
+
 func compileLoopPrototype(t *testing.T, source string) *Prototype {
 	t.Helper()
 	prototype, syntaxError := compileSource("@loop.lua", source)

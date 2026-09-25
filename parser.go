@@ -223,6 +223,11 @@ func (parser *sourceParser) parseBlock() (bool, *Error) {
 			if _, syntaxError = parser.accept(';'); syntaxError != nil {
 				return false, syntaxError
 			}
+			// A repeat condition is compiled after this block in the same
+			// scope, so the terminal statement's temporaries must go too.
+			parser.function.releaseRegisters(
+				parser.function.registerFloor,
+			)
 			if !isBlockFollower(parser.current.kind) {
 				return false, parser.syntaxError(
 					parser.current.line,
