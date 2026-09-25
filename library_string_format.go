@@ -304,7 +304,7 @@ func (item formatItem) pad(
 		built = append(built, text...)
 		return appendRepeatedByte(built, ' ', fill)
 	}
-	if item.has('0') {
+	if item.has('0') && numeric {
 		prefix := 0
 		if numeric {
 			if len(text) != 0 &&

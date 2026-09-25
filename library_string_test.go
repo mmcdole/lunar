@@ -1628,4 +1628,14 @@ var stringLibraryLua51Cases = []lua51Case{
 		source: "return ('abcb'):gsub('b', 'x', nil)",
 		want:   "ok 'axcx' 2",
 	},
+	{
+		name:   "format_zero_flag_space_pads_text",
+		source: "return string.format('[%05s][%05c][%05.1s][%-05s]', 'ab', 65, 'de', 'x')",
+		want:   "ok '[   ab][    A][    d][x    ]'",
+	},
+	{
+		name:   "format_zero_flag_zero_pads_numbers",
+		source: "return string.format('[%05d][%05.1f][%+05d][%#08x]', -3, 2.25, 4, 255)",
+		want:   "ok '[-0003][002.2][+0004][0x0000ff]'",
+	},
 }
