@@ -122,30 +122,21 @@ for interpreters.
 
 ### Retained memory
 
-Live heap added after loading data and collecting garbage. These figures are
-earlier Apple M3 Pro / Go 1.25.1 measurements:
-[CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/) and
-[table shapes](benchmarks/results/2026-08-05-darwin-arm64-m3-pro/).
+Live heap added after loading data and collecting garbage
+([report](benchmarks/results/2026-09-25-linux-amd64-memory/)).
 
 | Workload | Lunar | GopherLua | Ratio |
 | --- | ---: | ---: | ---: |
-| 9 MB CBOR graph: 183,513 tables, 938,452 entries | **72.2 MiB** | 542.3 MiB | 7.5× |
-| 25,000 four-field tables, repeated 16 B keys | **7.3 MiB** | 72.0 MiB | 9.9× |
-| 25,000 four-field tables, repeated 80 B keys | **14.9 MiB** | 78.1 MiB | 5.3× |
-| One table, 100,000 unique 16 B keys | **6.5 MiB** | 14.7 MiB | 2.26× |
-| One table, 100,000 unique 256 B keys | **29.4 MiB** | 37.6 MiB | 1.28× |
+| 9 MB CBOR graph: 183,513 tables, 938,452 entries | **72.3 MiB** | 542.3 MiB | 7.5× |
+| 25,000 four-field tables, repeated 16 B keys | **7.4 MiB** | 72.0 MiB | 9.7× |
+| 25,000 four-field tables, repeated 80 B keys | **15.0 MiB** | 78.1 MiB | 5.2× |
+| One table, 100,000 unique 16 B keys | **6.5 MiB** | 14.8 MiB | 2.26× |
+| One table, 100,000 unique 256 B keys | **29.4 MiB** | 37.7 MiB | 1.28× |
 | One table, 100,000 unique 1 KiB keys | **102.7 MiB** | 110.9 MiB | 1.08× |
 
-The ratio depends on workload shape: Lunar wins on per-table overhead and
-on reusing repeated strings up to 64 bytes, while raw string bytes cost
-both runtimes the same, so the gap narrows toward 1× as string payload
-dominates. Loading the CBOR graph also allocates 7.3× less transient
-memory (**107.5 MB** versus 784.6 MB).
-
-The [measurement summaries](benchmarks/results/) include confidence intervals,
-allocation counts, and measurement conditions; the
-[benchmark protocol](benchmarks/README.md) lists the commands, inputs, and
-runtime versions.
+Lunar saves most on per-table overhead and repeated short strings; as raw
+string bytes dominate, the gap narrows toward 1×. The
+[benchmark protocol](benchmarks/README.md) lists commands and inputs.
 
 ## Compatibility
 
