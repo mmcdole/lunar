@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -1286,6 +1287,61 @@ func FuzzDecodeBinaryChunk(f *testing.F) {
 		if decodeErr == nil && !prototype.isSealed() {
 			t.Fatal("decoder returned an unsealed Prototype")
 		}
+	})
+}
+
+// FuzzExecuteVerifiedBinaryChunk runs every chunk the verifier accepts. The
+// executor relies on verifier guarantees instead of per-access bounds checks,
+// so mutated bytecode that verifies must still execute without faulting.
+// Run it under -asan to detect out-of-bounds reads directly.
+func FuzzExecuteVerifiedBinaryChunk(f *testing.F) {
+	for _, source := range []string{
+		`local total = 0 for i = 1, 10 do total = total + i * 2 - 1 end return total`,
+		`local s, n = "a", 0 repeat n = n + 1 until s == "b" or n > 5 return n`,
+		`local t = {x = 1, 2, 3} for k, v in next, t do t[k] = v end return t.x`,
+		`local function f(a, b) return a < b, a <= b, a == b end return f(1, 2)`,
+		`local a, b = true, nil if a and not b then return -#"abc" % 5 end`,
+		`local function g(...) local x, y = ... return y, x end return g(1, 2)`,
+	} {
+		prototype, err := Compile("@fuzz-seed.lua", source)
+		if err != nil {
+			f.Fatal(err)
+		}
+		dumped, err := dumpPrototype(prototype)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add([]byte(dumped))
+	}
+
+	f.Fuzz(func(t *testing.T, encoded []byte) {
+		control, failure := newLoadControl(nil, 1<<16)
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		prototype, decodeErr := decodeBinaryChunk(
+			"@fuzz.luac",
+			newStringChunkInput(string(encoded), &control),
+			&control,
+		)
+		if decodeErr != nil {
+			return
+		}
+		state, err := New(Options{MaxValues: 1 << 12, MaxHeapBytes: 8 << 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+		defer cancel()
+		if err := state.SetContext(ctx); err != nil {
+			t.Fatal(err)
+		}
+		function, err := state.LoadPrototype(prototype)
+		if err != nil {
+			return
+		}
+		_, _ = state.Call(function.Value())
 	})
 }
 
