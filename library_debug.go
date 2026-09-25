@@ -76,7 +76,7 @@ func debugGetRegistry(frame Frame) Outcome {
 func debugGetMetatable(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	metatable := metatableForSlot(frame.thread, value)
 	if metatable == nil {
@@ -92,7 +92,7 @@ func debugSetMetatable(frame Frame) Outcome {
 	metatableValue, present := frame.argument(1)
 	if !present ||
 		(!metatableValue.isNil() && !metatableValue.isTable()) {
-		return baseArgumentError(frame, 1, "nil or table expected")
+		return libraryArgumentError(frame, 1, "nil or table expected")
 	}
 	var metatable *tableObject
 	if metatableValue.isTable() {
@@ -116,7 +116,7 @@ func debugSetMetatable(frame Frame) Outcome {
 func debugGetEnvironment(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	var environment *tableObject
 	switch value.kind() {
@@ -139,7 +139,7 @@ func debugGetEnvironment(frame Frame) Outcome {
 func debugSetEnvironment(frame Frame) Outcome {
 	environment, ok := frame.tableObject(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "table")
+		return libraryArgumentTypeError(frame, 1, "table")
 	}
 	value, present := frame.argument(0)
 	if !present {
@@ -168,7 +168,7 @@ func debugGetUpvalue(frame Frame) Outcome {
 	}
 	function, ok := frame.functionObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "function")
+		return libraryArgumentTypeError(frame, 0, "function")
 	}
 	if function.prototype == nil ||
 		index <= 0 ||
@@ -190,7 +190,7 @@ func debugGetUpvalue(frame Frame) Outcome {
 func debugSetUpvalue(frame Frame) Outcome {
 	value, present := frame.argument(2)
 	if !present {
-		return baseArgumentError(frame, 2, "value expected")
+		return libraryArgumentError(frame, 2, "value expected")
 	}
 	index, ok := frame.integerArgument(1)
 	if !ok {
@@ -198,7 +198,7 @@ func debugSetUpvalue(frame Frame) Outcome {
 	}
 	function, ok := frame.functionObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "function")
+		return libraryArgumentTypeError(frame, 0, "function")
 	}
 	if function.prototype == nil ||
 		index <= 0 ||
@@ -236,7 +236,7 @@ func debugGetInfo(frame Frame) Outcome {
 		var ok bool
 		options, ok = frame.textArgument(offset + 1)
 		if !ok {
-			return baseArgumentTypeError(frame, offset+1, "string")
+			return libraryArgumentTypeError(frame, offset+1, "string")
 		}
 		options = luaCString(options)
 	}
@@ -260,14 +260,14 @@ func debugGetInfo(frame Frame) Outcome {
 		} else if targetValue.isFunction() {
 			target.function = functionObjectFromSlot(targetValue)
 		} else {
-			return baseArgumentError(
+			return libraryArgumentError(
 				frame,
 				offset,
 				"function or level expected",
 			)
 		}
 	} else {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			offset,
 			"function or level expected",
@@ -278,7 +278,7 @@ func debugGetInfo(frame Frame) Outcome {
 		switch options[index] {
 		case 'S', 'l', 'u', 'n', 'L', 'f':
 		default:
-			return baseArgumentError(
+			return libraryArgumentError(
 				frame,
 				offset+1,
 				"invalid option",
@@ -411,7 +411,7 @@ func debugGetLocal(frame Frame) Outcome {
 	}
 	record, found := thread.debugActivation(level)
 	if !found {
-		return baseArgumentError(frame, offset, "level out of range")
+		return libraryArgumentError(frame, offset, "level out of range")
 	}
 	ordinal, ok := frame.integerArgument(offset + 1)
 	if !ok {
@@ -439,11 +439,11 @@ func debugSetLocal(frame Frame) Outcome {
 	}
 	record, found := thread.debugActivation(level)
 	if !found {
-		return baseArgumentError(frame, offset, "level out of range")
+		return libraryArgumentError(frame, offset, "level out of range")
 	}
 	value, present := frame.argument(offset + 2)
 	if !present {
-		return baseArgumentError(frame, offset+2, "value expected")
+		return libraryArgumentError(frame, offset+2, "value expected")
 	}
 	ordinal, ok := frame.integerArgument(offset + 1)
 	if !ok {

@@ -185,7 +185,7 @@ func writeFileArguments(
 				return ioFailureResult(frame, err)
 			}
 		default:
-			return baseArgumentTypeError(frame, index, "string")
+			return libraryArgumentTypeError(frame, index, "string")
 		}
 	}
 	return frame.ReturnBool(true)
@@ -361,13 +361,13 @@ func seekFile(
 		var ok bool
 		mode, ok = frame.textArgument(1)
 		if !ok {
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 		mode = luaCString(mode)
 	}
 	origin, ok := fileSeekOrigin(mode)
 	if !ok {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			1,
 			"invalid option '"+mode+"'",
@@ -445,12 +445,12 @@ func setFileBuffering(
 ) Outcome {
 	modeText, ok := frame.textArgument(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "string")
+		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	modeText = luaCString(modeText)
 	mode, ok := fileBufferMode(modeText)
 	if !ok {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			1,
 			"invalid option '"+modeText+"'",
@@ -562,7 +562,7 @@ func acquireFileArgument(
 	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
 		return nativeResourceLease{}, nil,
-			baseArgumentTypeError(
+			libraryArgumentTypeError(
 				frame,
 				0,
 				luaFileHandleRegistryKey,

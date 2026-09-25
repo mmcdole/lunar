@@ -59,7 +59,7 @@ func (state *State) OpenCoroutine() error {
 func coroutineCreate(frame Frame) Outcome {
 	function, ok := frame.functionObject(0)
 	if !ok || function.prototype == nil {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			"Lua function expected",
@@ -77,7 +77,7 @@ func coroutineCreate(frame Frame) Outcome {
 func coroutineResume(frame Frame) Outcome {
 	thread, ok := frame.threadObject(0)
 	if !ok {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			"coroutine expected",
@@ -126,7 +126,7 @@ func coroutineRunning(frame Frame) Outcome {
 func coroutineStatus(frame Frame) Outcome {
 	thread, ok := frame.threadObject(0)
 	if !ok {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			"coroutine expected",
@@ -140,7 +140,7 @@ func coroutineStatus(frame Frame) Outcome {
 func coroutineWrap(frame Frame) Outcome {
 	function, ok := frame.functionObject(0)
 	if !ok || function.prototype == nil {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			"Lua function expected",

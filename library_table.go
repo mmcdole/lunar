@@ -94,12 +94,12 @@ func tableConcat(frame Frame) Outcome {
 				math.Float64frombits(value.bits),
 			)
 		default:
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 	}
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	first := 1
 	if value, present := frame.argument(2); present &&
@@ -195,11 +195,11 @@ func tableConcat(frame Frame) Outcome {
 func tableForEach(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	callback, present := frame.argument(1)
 	if !present || !callback.isFunction() {
-		return baseArgumentTypeError(frame, 1, "function")
+		return libraryArgumentTypeError(frame, 1, "function")
 	}
 
 	key := nilSlot
@@ -228,12 +228,12 @@ func tableForEach(frame Frame) Outcome {
 func tableForEachI(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	length := target.rawLen()
 	callback, present := frame.argument(1)
 	if !present || !callback.isFunction() {
-		return baseArgumentTypeError(frame, 1, "function")
+		return libraryArgumentTypeError(frame, 1, "function")
 	}
 
 	for index := 1; index <= length; index++ {
@@ -256,7 +256,7 @@ func tableForEachI(frame Frame) Outcome {
 func tableGetN(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	return frame.ReturnNumber(float64(target.rawLen()))
 }
@@ -267,7 +267,7 @@ func tableGetN(frame Frame) Outcome {
 func tableInsert(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	count := frame.ArgumentCount()
 	end := target.rawLen() + 1
@@ -323,7 +323,7 @@ func useSparseTableInsertShift(
 func tableMaxN(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	largest := 0.0
 	key := nilSlot
@@ -351,7 +351,7 @@ func tableMaxN(frame Frame) Outcome {
 func tableRemove(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	end := target.rawLen()
 	position := end
@@ -380,7 +380,7 @@ func tableRemove(frame Frame) Outcome {
 // setn nothing but this error; only the table argument is validated first.
 func tableSetN(frame Frame) Outcome {
 	if _, ok := frame.tableObject(0); !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	return libraryError(frame, "'setn' is obsolete")
 }
@@ -388,14 +388,14 @@ func tableSetN(frame Frame) Outcome {
 func tableSort(frame Frame) Outcome {
 	target, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	length := target.rawLen()
 	comparator := nilSlot
 	if value, present := frame.argument(1); present &&
 		!value.isNil() {
 		if !value.isFunction() {
-			return baseArgumentTypeError(frame, 1, "function")
+			return libraryArgumentTypeError(frame, 1, "function")
 		}
 		comparator = value
 	}

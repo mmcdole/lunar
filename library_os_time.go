@@ -58,7 +58,7 @@ func osDate(frame Frame) Outcome {
 		var ok bool
 		format, ok = frame.textArgument(0)
 		if !ok {
-			return baseArgumentTypeError(frame, 0, "string")
+			return libraryArgumentTypeError(frame, 0, "string")
 		}
 		format = luaCString(format)
 	}
@@ -132,7 +132,7 @@ func osTime(frame Frame) Outcome {
 		)
 	}
 	if !value.isTable() {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	frame.discardArgumentsAfter(1)
 

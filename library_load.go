@@ -8,7 +8,7 @@ import (
 func baseLoadString(frame Frame) Outcome {
 	source, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	name, outcome, failed := optionalLoadName(
 		frame,
@@ -29,7 +29,7 @@ func baseLoadString(frame Frame) Outcome {
 func baseLoad(frame Frame) Outcome {
 	reader, present := frame.argument(0)
 	if !present || !reader.isFunction() {
-		return baseArgumentTypeError(frame, 0, "function")
+		return libraryArgumentTypeError(frame, 0, "function")
 	}
 	name, outcome, failed := optionalLoadName(frame, 1, "=(load)")
 	if failed {
@@ -162,7 +162,7 @@ func optionalLoadName(
 	}
 	text, ok := compactText(value)
 	if !ok {
-		return "", baseArgumentTypeError(frame, index, "string"), true
+		return "", libraryArgumentTypeError(frame, index, "string"), true
 	}
 	return luaCString(text), Outcome{}, false
 }
@@ -177,7 +177,7 @@ func loadFilename(
 	text, ok := compactText(value)
 	if !ok {
 		return "", false,
-			baseArgumentTypeError(frame, 0, "string"),
+			libraryArgumentTypeError(frame, 0, "string"),
 			true
 	}
 	return luaCString(text), false, Outcome{}, false

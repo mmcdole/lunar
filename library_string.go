@@ -100,7 +100,7 @@ func (state *State) OpenString() error {
 func stringLen(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	return frame.ReturnNumber(float64(len(text)))
 }
@@ -108,7 +108,7 @@ func stringLen(frame Frame) Outcome {
 func stringSub(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	first, ok := frame.positionArgument(1)
 	if !ok {
@@ -150,7 +150,7 @@ func (frame Frame) returnBorrowedString(text string) Outcome {
 func stringReverse(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	reversed := make([]byte, len(text))
 	for index := 0; index < len(text); index++ {
@@ -175,7 +175,7 @@ func (frame Frame) returnMappedBytes(
 ) Outcome {
 	text, ok := frame.textArgument(index)
 	if !ok {
-		return baseArgumentTypeError(frame, index, "string")
+		return libraryArgumentTypeError(frame, index, "string")
 	}
 	changed := -1
 	for offset := 0; offset < len(text); offset++ {
@@ -214,7 +214,7 @@ func upperByte(value byte) byte {
 func stringRep(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	count, ok := frame.integerArgument(1)
 	if !ok {
@@ -235,7 +235,7 @@ func stringRep(frame Frame) Outcome {
 func stringByte(frame Frame) Outcome {
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	first := int64(1)
 	if _, present := frame.argument(1); present {
@@ -286,7 +286,7 @@ func stringChar(frame Frame) Outcome {
 			return numberArgumentError(frame, 0)
 		}
 		if value < 0 || value > 255 {
-			return baseArgumentError(frame, 0, "invalid value")
+			return libraryArgumentError(frame, 0, "invalid value")
 		}
 		return frame.returnOne(
 			frame.activation(),
@@ -300,7 +300,7 @@ func stringChar(frame Frame) Outcome {
 			return numberArgumentError(frame, index)
 		}
 		if value < 0 || value > 255 {
-			return baseArgumentError(frame, index, "invalid value")
+			return libraryArgumentError(frame, index, "invalid value")
 		}
 		bytes[index] = byte(value)
 	}
@@ -310,7 +310,7 @@ func stringChar(frame Frame) Outcome {
 func stringDump(frame Frame) Outcome {
 	function, ok := frame.functionObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "function")
+		return libraryArgumentTypeError(frame, 0, "function")
 	}
 	frame.discardArgumentsAfter(1)
 	if function.prototype == nil {
@@ -337,11 +337,11 @@ func stringMatch(frame Frame) Outcome {
 func stringFindAux(frame Frame, find bool) Outcome {
 	subject, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	pattern, ok := frame.textArgument(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "string")
+		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	init := int64(1)
 	if _, present := frame.argument(2); present {
@@ -446,11 +446,11 @@ const (
 func stringGMatch(frame Frame) Outcome {
 	subject, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	pattern, ok := frame.textArgument(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "string")
+		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	// PUC closes over exactly the subject and pattern. Release any supplied
 	// tail before constructing the iterator so unrelated values are not kept
@@ -519,11 +519,11 @@ func stringGSub(frame Frame) Outcome {
 	subjectValue, _ := frame.argument(0)
 	subject, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	pattern, ok := frame.textArgument(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "string")
+		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	replacement, _ := frame.argument(2)
 	limit := len(subject) + 1
@@ -544,7 +544,7 @@ func stringGSub(frame Frame) Outcome {
 	case TableKind:
 		replacementKind = gsubTable
 	default:
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			2,
 			"string/function/table expected",

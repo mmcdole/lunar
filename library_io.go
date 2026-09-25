@@ -364,7 +364,7 @@ func ioType(frame Frame) Outcome {
 	data, present := frame.userDataObject(0)
 	if !present {
 		if frame.Kind(0) == InvalidKind {
-			return baseArgumentError(frame, 0, "value expected")
+			return libraryArgumentError(frame, 0, "value expected")
 		}
 		return frame.ReturnNil()
 	}
@@ -382,7 +382,7 @@ func ioType(frame Frame) Outcome {
 func ioOpen(frame Frame) Outcome {
 	filename, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	filename = luaCString(filename)
 
@@ -391,7 +391,7 @@ func ioOpen(frame Frame) Outcome {
 		!supplied.isNil() {
 		mode, ok = frame.textArgument(1)
 		if !ok {
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 		mode = luaCString(mode)
 	}
@@ -520,7 +520,7 @@ func ioClose(frame Frame) Outcome {
 		}
 	}
 	if !present || !isFileUserData(frame.thread.state, data) {
-		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+		return libraryArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	return closeFileUserData(frame, data)
 }
@@ -531,16 +531,16 @@ func fileClose(frame Frame) Outcome {
 		// Lua 5.1's file:close path reports an absent receiver as nil,
 		// unlike the other file methods, which report "no value".
 		if frame.Kind(0) == InvalidKind {
-			return baseArgumentError(
+			return libraryArgumentError(
 				frame,
 				0,
 				luaFileHandleRegistryKey+" expected, got nil",
 			)
 		}
-		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+		return libraryArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	if !isFileUserData(frame.thread.state, data) {
-		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+		return libraryArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	return closeFileUserData(frame, data)
 }
@@ -590,7 +590,7 @@ func fileNoClose(frame Frame) Outcome {
 func fileCollect(frame Frame) Outcome {
 	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
-		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+		return libraryArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	lease, open := acquireManagedResource(data)
 	if !open {
@@ -611,7 +611,7 @@ func fileCollect(frame Frame) Outcome {
 func fileToString(frame Frame) Outcome {
 	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
-		return baseArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
+		return libraryArgumentTypeError(frame, 0, luaFileHandleRegistryKey)
 	}
 	lease, open := acquireManagedResource(data)
 	if !open {
@@ -650,7 +650,7 @@ func ioDefaultFile(
 			flags, _ := fileOpenFlags(mode)
 			file, err := os.OpenFile(filename, flags, 0o666)
 			if err != nil {
-				return baseArgumentError(
+				return libraryArgumentError(
 					frame,
 					0,
 					ioNamedFailureMessage(filename, err),
@@ -675,7 +675,7 @@ func ioDefaultFile(
 				data = userDataObjectFromSlot(argument)
 			}
 			if !isFileUserData(frame.thread.state, data) {
-				return baseArgumentTypeError(
+				return libraryArgumentTypeError(
 					frame,
 					0,
 					luaFileHandleRegistryKey,

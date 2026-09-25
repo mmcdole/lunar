@@ -184,7 +184,7 @@ func parseIOReadFormat(
 		text := stringSlotText(format)
 		if len(text) == 0 || text[0] != '*' {
 			return ioReadFormat{},
-				baseArgumentError(
+				libraryArgumentError(
 					frame,
 					index,
 					"invalid option",
@@ -193,7 +193,7 @@ func parseIOReadFormat(
 		}
 		if len(text) < 2 {
 			return ioReadFormat{},
-				baseArgumentError(
+				libraryArgumentError(
 					frame,
 					index,
 					"invalid format",
@@ -212,7 +212,7 @@ func parseIOReadFormat(
 				Outcome{}, false
 		default:
 			return ioReadFormat{},
-				baseArgumentError(
+				libraryArgumentError(
 					frame,
 					index,
 					"invalid format",
@@ -221,7 +221,7 @@ func parseIOReadFormat(
 		}
 	default:
 		return ioReadFormat{},
-			baseArgumentError(
+			libraryArgumentError(
 				frame,
 				index,
 				"invalid option",
@@ -294,13 +294,13 @@ func ioLines(frame Frame) Outcome {
 
 	filename, ok := compactText(argument)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	filename = luaCString(filename)
 	flags, _ := fileOpenFlags("r")
 	file, err := os.OpenFile(filename, flags, 0o666)
 	if err != nil {
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			ioNamedFailureMessage(filename, err),
@@ -325,7 +325,7 @@ func ioLines(frame Frame) Outcome {
 func fileLines(frame Frame) Outcome {
 	data, present := frame.userDataObject(0)
 	if !present || !isFileUserData(frame.thread.state, data) {
-		return baseArgumentTypeError(
+		return libraryArgumentTypeError(
 			frame,
 			0,
 			luaFileHandleRegistryKey,

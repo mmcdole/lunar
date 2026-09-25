@@ -37,7 +37,7 @@ type formatItem struct {
 func stringFormat(frame Frame) Outcome {
 	template, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	top := frame.ArgumentCount()
 	argument := 0
@@ -65,7 +65,7 @@ func stringFormat(frame Frame) Outcome {
 
 		argument++
 		if argument >= top {
-			return baseArgumentError(frame, argument, "no value")
+			return libraryArgumentError(frame, argument, "no value")
 		}
 		item, verb, scanned, failure := scanFormatItem(template, index)
 		if failure != "" {
@@ -215,7 +215,7 @@ func (frame Frame) formatOne(
 	case 'q':
 		text, ok := frame.textArgument(argument)
 		if !ok {
-			return built, false, baseArgumentTypeError(
+			return built, false, libraryArgumentTypeError(
 				frame,
 				argument,
 				"string",
@@ -226,7 +226,7 @@ func (frame Frame) formatOne(
 	case 's':
 		text, ok := frame.textArgument(argument)
 		if !ok {
-			return built, false, baseArgumentTypeError(
+			return built, false, libraryArgumentTypeError(
 				frame,
 				argument,
 				"string",

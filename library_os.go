@@ -60,7 +60,7 @@ func (state *State) OpenOS() error {
 func osGetEnvironment(frame Frame) Outcome {
 	name, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	value, found := os.LookupEnv(luaCString(name))
 	if !found {
@@ -79,7 +79,7 @@ func osExecute(frame Frame) Outcome {
 	}
 	command, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	status, cancelled := executeHostShell(
 		frame.Context(),
@@ -106,7 +106,7 @@ func osExit(frame Frame) Outcome {
 func osRemove(frame Frame) Outcome {
 	name, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	name = luaCString(name)
 	if err := os.Remove(name); err != nil {
@@ -118,11 +118,11 @@ func osRemove(frame Frame) Outcome {
 func osRename(frame Frame) Outcome {
 	from, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	to, ok := frame.textArgument(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "string")
+		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	from = luaCString(from)
 	to = luaCString(to)
@@ -140,7 +140,7 @@ func osSetLocale(frame Frame) Outcome {
 		var ok bool
 		locale, ok = frame.textArgument(0)
 		if !ok {
-			return baseArgumentTypeError(frame, 0, "string")
+			return libraryArgumentTypeError(frame, 0, "string")
 		}
 		locale = luaCString(locale)
 		query = false
@@ -152,14 +152,14 @@ func osSetLocale(frame Frame) Outcome {
 		var ok bool
 		category, ok = frame.textArgument(1)
 		if !ok {
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 		category = luaCString(category)
 	}
 	switch category {
 	case "all", "collate", "ctype", "monetary", "numeric", "time":
 	default:
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			1,
 			"invalid option '"+category+"'",

@@ -422,7 +422,7 @@ func mathRandom(source *randomSource) NativeFunc {
 				return numberArgumentError(frame, 0)
 			}
 			if upper < 1 {
-				return baseArgumentError(frame, 0, "interval is empty")
+				return libraryArgumentError(frame, 0, "interval is empty")
 			}
 			return frame.ReturnNumber(
 				math.Floor(fraction*float64(upper)) + 1,
@@ -437,7 +437,7 @@ func mathRandom(source *randomSource) NativeFunc {
 				return numberArgumentError(frame, 1)
 			}
 			if lower > upper {
-				return baseArgumentError(frame, 1, "interval is empty")
+				return libraryArgumentError(frame, 1, "interval is empty")
 			}
 			// The span is computed in floating point. PUC evaluates
 			// u-l+1 in C int arithmetic, which overflows for wide

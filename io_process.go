@@ -173,7 +173,7 @@ func finishFileOperation(
 func ioPopen(frame Frame) Outcome {
 	command, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	command = luaCString(command)
 
@@ -182,7 +182,7 @@ func ioPopen(frame Frame) Outcome {
 		!supplied.isNil() {
 		mode, ok = frame.textArgument(1)
 		if !ok {
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 		mode = luaCString(mode)
 	}

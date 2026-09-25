@@ -213,13 +213,13 @@ func packageNameArgument(
 	value, present := frame.argument(index)
 	if !present {
 		return "", nilSlot,
-			baseArgumentTypeError(frame, index, "string"),
+			libraryArgumentTypeError(frame, index, "string"),
 			true
 	}
 	text, ok := compactText(value)
 	if !ok {
 		return "", nilSlot,
-			baseArgumentTypeError(frame, index, "string"),
+			libraryArgumentTypeError(frame, index, "string"),
 			true
 	}
 	text = luaCString(text)
@@ -675,7 +675,7 @@ func packageModuleTable(
 func packageSeeAll(frame Frame) Outcome {
 	module, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	metatable := module.metatable
 	if metatable == nil {

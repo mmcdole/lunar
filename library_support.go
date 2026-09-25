@@ -149,12 +149,12 @@ func libraryInteger(number float64) int {
 	}
 }
 
-// baseArgumentError reports a library argument failure as luaL_argerror does.
+// libraryArgumentError reports a library argument failure as luaL_argerror does.
 //
 // A method call does not count its receiver, so an error in the receiver of
 // t:f(...) becomes Lua 5.1's distinct bad-self message and every later
 // argument keeps the caller's visible position.
-func baseArgumentError(
+func libraryArgumentError(
 	frame Frame,
 	index int,
 	reason string,
@@ -209,13 +209,13 @@ func baseArgumentError(
 	return frame.raiseString(message)
 }
 
-// baseArgumentTypeError reports luaL_typerror's expected-versus-actual form.
-func baseArgumentTypeError(
+// libraryArgumentTypeError reports luaL_typerror's expected-versus-actual form.
+func libraryArgumentTypeError(
 	frame Frame,
 	index int,
 	expected string,
 ) Outcome {
-	return baseArgumentError(
+	return libraryArgumentError(
 		frame,
 		index,
 		expected+" expected, got "+argumentTypeName(frame, index),
@@ -223,7 +223,7 @@ func baseArgumentTypeError(
 }
 
 func numberArgumentError(frame Frame, index int) Outcome {
-	return baseArgumentTypeError(frame, index, "number")
+	return libraryArgumentTypeError(frame, index, "number")
 }
 
 // argumentTypeName names argument index for a diagnostic. A missing argument

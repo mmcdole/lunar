@@ -145,7 +145,7 @@ func (state *State) OpenBase() error {
 func baseAssert(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	if truthySlot(value) {
 		return frame.ReturnArguments()
@@ -157,7 +157,7 @@ func baseAssert(frame Frame) Outcome {
 		var ok bool
 		message, ok = frame.textArgument(1)
 		if !ok {
-			return baseArgumentTypeError(frame, 1, "string")
+			return libraryArgumentTypeError(frame, 1, "string")
 		}
 	}
 	if end := strings.IndexByte(message, 0); end >= 0 {
@@ -172,7 +172,7 @@ func baseCollectGarbage(frame Frame) Outcome {
 		var ok bool
 		option, ok = compactText(value)
 		if !ok {
-			return baseArgumentTypeError(frame, 0, "string")
+			return libraryArgumentTypeError(frame, 0, "string")
 		}
 		option = luaCString(option)
 	}
@@ -181,7 +181,7 @@ func baseCollectGarbage(frame Frame) Outcome {
 	case "stop", "restart", "collect", "count", "step",
 		"setpause", "setstepmul":
 	default:
-		return baseArgumentError(
+		return libraryArgumentError(
 			frame,
 			0,
 			"invalid option '"+option+"'",
@@ -345,7 +345,7 @@ func resolveBaseEnvironmentTarget(
 	level := libraryInteger(number)
 	if level < 0 {
 		return baseEnvironmentTarget{},
-			baseArgumentError(
+			libraryArgumentError(
 				frame,
 				0,
 				"level must be non-negative",
@@ -371,7 +371,7 @@ func resolveBaseEnvironmentTarget(
 			true
 	default:
 		return baseEnvironmentTarget{},
-			baseArgumentError(frame, 0, "invalid level"),
+			libraryArgumentError(frame, 0, "invalid level"),
 			true
 	}
 }
@@ -394,7 +394,7 @@ func baseGetEnvironment(frame Frame) Outcome {
 func baseSetEnvironment(frame Frame) Outcome {
 	environment, ok := frame.tableObject(1)
 	if !ok {
-		return baseArgumentTypeError(frame, 1, "table")
+		return libraryArgumentTypeError(frame, 1, "table")
 	}
 	target, outcome, failed := resolveBaseEnvironmentTarget(frame, false)
 	if failed {
@@ -422,7 +422,7 @@ func baseSetEnvironment(frame Frame) Outcome {
 func baseGetMetatable(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	metatable := metatableForSlot(frame.thread, value)
 	if metatable == nil {
@@ -444,12 +444,12 @@ func baseGetMetatable(frame Frame) Outcome {
 func baseSetMetatable(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	value, present := frame.argument(1)
 	if !present ||
 		!value.isNil() && !value.isTable() {
-		return baseArgumentError(frame, 1, "nil or table expected")
+		return libraryArgumentError(frame, 1, "nil or table expected")
 	}
 	if _, protected := metamethodSlot(
 		frame.thread,
@@ -471,11 +471,11 @@ func baseSetMetatable(frame Frame) Outcome {
 func baseRawEqual(frame Frame) Outcome {
 	left, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	right, present := frame.argument(1)
 	if !present {
-		return baseArgumentError(frame, 1, "value expected")
+		return libraryArgumentError(frame, 1, "value expected")
 	}
 	return frame.ReturnBool(rawSlotEqual(left, right))
 }
@@ -483,11 +483,11 @@ func baseRawEqual(frame Frame) Outcome {
 func baseRawGet(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	key, present := frame.argument(1)
 	if !present {
-		return baseArgumentError(frame, 1, "value expected")
+		return libraryArgumentError(frame, 1, "value expected")
 	}
 	value, _ := table.rawSlot(key)
 	return frame.returnOne(frame.activation(), value)
@@ -496,15 +496,15 @@ func baseRawGet(frame Frame) Outcome {
 func baseRawSet(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	key, present := frame.argument(1)
 	if !present {
-		return baseArgumentError(frame, 1, "value expected")
+		return libraryArgumentError(frame, 1, "value expected")
 	}
 	value, present := frame.argument(2)
 	if !present {
-		return baseArgumentError(frame, 2, "value expected")
+		return libraryArgumentError(frame, 2, "value expected")
 	}
 	switch table.rawSetSlot(key, value) {
 	case tableKeyNil:
@@ -519,7 +519,7 @@ func baseRawSet(frame Frame) Outcome {
 func baseType(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	return frame.ReturnString(value.kind().String())
 }
@@ -527,7 +527,7 @@ func baseType(frame Frame) Outcome {
 func baseNext(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	previous, present := frame.argument(1)
 	if !present {
@@ -569,7 +569,7 @@ func baseNewProxy(frame Frame) Outcome {
 	default:
 		metatable = metatableForSlot(frame.thread, argument)
 		if metatable == nil {
-			return baseArgumentError(
+			return libraryArgumentError(
 				frame,
 				0,
 				"boolean or proxy expected",
@@ -579,7 +579,7 @@ func baseNewProxy(frame Frame) Outcome {
 			slotFromTableObject(metatable),
 		)
 		if !found || !truthySlot(valid) {
-			return baseArgumentError(
+			return libraryArgumentError(
 				frame,
 				0,
 				"boolean or proxy expected",
@@ -603,7 +603,7 @@ func baseNewProxy(frame Frame) Outcome {
 func basePairs(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	iterator := frame.nativeCapture(0)
 	frame.discardArgumentsAfter(1)
@@ -617,7 +617,7 @@ func basePairs(frame Frame) Outcome {
 func baseIPairs(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	iterator := frame.nativeCapture(0)
 	frame.discardArgumentsAfter(1)
@@ -635,7 +635,7 @@ func baseIPairsIterator(frame Frame) Outcome {
 	}
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	// PUC increments a signed C int here, which is undefined at MaxInt32.
 	// Lunar defines the common two's-complement wrap instead.
@@ -677,7 +677,7 @@ func baseSelect(frame Frame) Outcome {
 		index = count
 	}
 	if index < 1 {
-		return baseArgumentError(frame, 0, "index out of range")
+		return libraryArgumentError(frame, 0, "index out of range")
 	}
 	base := int(frame.activation().base)
 	return frame.returnCompactValues(
@@ -690,7 +690,7 @@ func baseSelect(frame Frame) Outcome {
 func baseUnpack(frame Frame) Outcome {
 	table, ok := frame.tableObject(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "table")
+		return libraryArgumentTypeError(frame, 0, "table")
 	}
 	first, outcome, failed := optionalLibraryInteger(frame, 1, 1)
 	if failed {
@@ -739,7 +739,7 @@ func baseToNumber(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if base == 10 {
 		if !present {
-			return baseArgumentError(frame, 0, "value expected")
+			return libraryArgumentError(frame, 0, "value expected")
 		}
 		if number, ok := slotToNumber(value); ok {
 			return frame.ReturnNumber(number)
@@ -749,10 +749,10 @@ func baseToNumber(frame Frame) Outcome {
 
 	text, ok := frame.textArgument(0)
 	if !ok {
-		return baseArgumentTypeError(frame, 0, "string")
+		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	if base < 2 || base > 36 {
-		return baseArgumentError(frame, 1, "base out of range")
+		return libraryArgumentError(frame, 1, "base out of range")
 	}
 	number, ok := parseBaseNumber(text, base)
 	if !ok {
@@ -764,7 +764,7 @@ func baseToNumber(frame Frame) Outcome {
 func baseToString(frame Frame) Outcome {
 	value, present := frame.argument(0)
 	if !present {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	if method, found := metamethodSlot(
 		frame.thread,
@@ -810,7 +810,7 @@ func basePCall(frame Frame) Outcome {
 	base := int(call.base)
 	count := thread.top - base
 	if count == 0 {
-		return baseArgumentError(frame, 0, "value expected")
+		return libraryArgumentError(frame, 0, "value expected")
 	}
 	target := thread.values[base]
 	return runProtectedCall(
@@ -828,7 +828,7 @@ func baseXPCall(frame Frame) Outcome {
 	base := int(call.base)
 	count := thread.top - base
 	if count < 2 {
-		return baseArgumentError(frame, 1, "value expected")
+		return libraryArgumentError(frame, 1, "value expected")
 	}
 	target := thread.values[base]
 	handler := thread.values[base+1]
