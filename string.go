@@ -372,6 +372,19 @@ func stringSlotLen(value slot) int {
 	return stringLength(value.ref, value.bits)
 }
 
+// stringSlotContentsEqual compares two string slots whose representations
+// differ. Callers test representation identity inline first.
+//
+//go:noinline
+func stringSlotContentsEqual(left, right slot) bool {
+	if stringHash(left.bits>>stringHashShift) !=
+		stringHash(right.bits>>stringHashShift) {
+		return false
+	}
+	return stringText(left.ref, left.bits) ==
+		stringText(right.ref, right.bits)
+}
+
 func stringSlotsEqual(left, right slot) bool {
 	if left.ref == right.ref && left.bits == right.bits {
 		return true
