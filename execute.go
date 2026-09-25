@@ -287,11 +287,6 @@ driver:
 					return stopExecution(thread, failure)
 				}
 			case opReturn:
-				if thread.contextBudget != 0 {
-					if failure := pollExecutionContext(thread); failure != nil {
-						return stopExecution(thread, failure)
-					}
-				}
 				frame := thread.frames[len(thread.frames)-1]
 				firstResult := int(frame.base) + current.a()
 				resultCount := current.b() - 1
@@ -306,6 +301,15 @@ driver:
 						return stopExecution(thread, failure)
 					}
 					return executionResult{kind: executionReturned}
+				}
+				// Poll after the callee is gone: runInstructions does not
+				// publish a returning frame's PC, while the caller's was
+				// published at its call, so a cancellation is positioned at the
+				// call site.
+				if thread.contextBudget != 0 {
+					if failure := pollExecutionContext(thread); failure != nil {
+						return stopExecution(thread, failure)
+					}
 				}
 				if len(thread.continuations) != 0 {
 					last := len(thread.continuations) - 1

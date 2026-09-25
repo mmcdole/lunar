@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1925,34 +1926,40 @@ end`)
 	}
 }
 
+var deadlinePosition = regexp.MustCompile(`^deadline\.lua:[0-9]+: `)
+
 func TestContextDeadlineInterruptsEveryBackwardJump(t *testing.T) {
 	// Every loop ends in a backward jump or a call. Each shape below must
 	// observe a deadline, whichever execution path takes its jump.
 	for _, test := range []struct {
 		name   string
 		source string
+		want   string // exact error, when the position is pinned
 	}{
-		{"jump", "while true do end"},
-		{"number equality", "local x = 0 repeat until x == 1"},
-		{"number order", "local x = 0 repeat until x > 1"},
-		{"string equality", `local s = "a" repeat until s == "b"`},
-		{"string inequality", `local s = "a" repeat until s ~= "a"`},
-		{"string less than", `local a, b = "a", "b" repeat until b < a`},
-		{"string less equal", `local a, b = "a", "b" repeat until b <= a`},
-		{"table equality", "local t, u = {}, {} repeat until t == u"},
-		{"string while", `local s = "a" while s ~= "b" do end`},
+		{"jump", "while true do end", ""},
+		{"number equality", "local x = 0 repeat until x == 1", ""},
+		{"number order", "local x = 0 repeat until x > 1", ""},
+		{"string equality", `local s = "a" repeat until s == "b"`, ""},
+		{"string inequality", `local s = "a" repeat until s ~= "a"`, ""},
+		{"string less than", `local a, b = "a", "b" repeat until b < a`, ""},
+		{"string less equal", `local a, b = "a", "b" repeat until b <= a`, ""},
+		{"table equality", "local t, u = {}, {} repeat until t == u", ""},
+		{"string while", `local s = "a" while s ~= "b" do end`, ""},
 		{"metamethod equality", `local mt = {__eq = function() return false end}
 local t, u = setmetatable({}, mt), setmetatable({}, mt)
-repeat until t == u`},
+repeat until t == u`, ""},
 		{"metamethod order", `local mt = {__lt = function() return false end}
 local t, u = setmetatable({}, mt), setmetatable({}, mt)
-repeat until t < u`},
-		{"numeric for", "for i = 1, math.huge do end"},
-		{"Lua iterator", "for _ in function() return 1 end do end"},
-		{"native iterator", "for _ in math.max, 1, 1 do end"},
-		{"goto", "::top:: goto top"},
-		{"tail call", "local function f() return f() end return f()"},
-		{"string equality position", "local s = \"a\"\nrepeat\nuntil s == \"b\""},
+repeat until t < u`, ""},
+		{"numeric for", "for i = 1, math.huge do end", ""},
+		{"Lua iterator", "for _ in function() return 1 end do end", ""},
+		{"native iterator", "for _ in math.max, 1, 1 do end", ""},
+		{"goto", "::top:: goto top", ""},
+		{"tail call", "local function f() return f() end return f()", ""},
+		{"string equality position", "local s = \"a\"\nrepeat\nuntil s == \"b\"",
+			"deadline.lua:3: context deadline exceeded"},
+		{"Lua iterator position", "local function it()\n\treturn 1\nend\nfor _ in it do end",
+			"deadline.lua:4: context deadline exceeded"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			state, err := New(Options{Libraries: CoreLibraries()})
@@ -1979,12 +1986,11 @@ repeat until t < u`},
 					!errors.Is(failure, context.DeadlineExceeded) {
 					t.Fatalf("loop error = %#v; want deadline ContextError", callErr)
 				}
-				if !strings.HasPrefix(failure.Error(), "deadline.lua:") {
-					t.Fatalf("deadline error %q lacks a source position", failure.Error())
+				if !deadlinePosition.MatchString(failure.Error()) {
+					t.Fatalf("deadline error %q lacks a source line", failure.Error())
 				}
-				if test.name == "string equality position" &&
-					failure.Error() != "deadline.lua:3: context deadline exceeded" {
-					t.Fatalf("deadline error %q; want the until line", failure.Error())
+				if test.want != "" && failure.Error() != test.want {
+					t.Fatalf("deadline error %q; want %q", failure.Error(), test.want)
 				}
 			case <-time.After(2 * time.Second):
 				t.Fatal("loop did not observe its deadline")
