@@ -286,10 +286,7 @@ func executeRawStringTableSet(
 	}
 	table := (*tableObject)(target.ref)
 	hash := uint32(stringSlotHash(key))
-	_, location, found := table.resolveStringKeySlot(
-		key,
-		hash,
-	)
+	storeIndex, found := table.store.findStringSlot(key, hash)
 	if !found {
 		if table.metatable == nil ||
 			table.metatable.absentMetamethods&metaNewIndex.bit() != 0 {
@@ -304,7 +301,18 @@ func executeRawStringTableSet(
 		}
 		return code.withOpcode(rawTableMissOpcode(code.opcode()))
 	}
-	table.replaceResolvedSlot(location, value)
+	if value.isNil() {
+		table.replaceResolvedSlot(
+			tableLocation{index: storeIndex, lane: tableHashLane},
+			value,
+		)
+		return tableInstructionHandled
+	}
+	// findStringSlot returns only live entries, so a non-nil write replaces
+	// the value in place.
+	if replaceTableValue(&table.store.entries.at(storeIndex).value, value) {
+		table.absentMetamethods = 0
+	}
 	return tableInstructionHandled
 }
 

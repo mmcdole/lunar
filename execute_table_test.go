@@ -2096,3 +2096,36 @@ return t.kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk,
 	}
 	assertTestValues(t, results, Number(3), Number(3), Number(1), Number(1))
 }
+
+func TestConstantFieldWritesKeepStoreBookkeeping(t *testing.T) {
+	// A constant-key write to an existing field replaces the value in
+	// place, while assigning nil deletes the entry and updates the counts
+	// that growth and compaction rely on.
+	state, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	results, err := state.DoString("=fields", `
+local t = {alpha = 1, beta = 2}
+t.alpha = nil
+t.beta = 3
+return t, t.alpha, t.beta
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results[1:], Nil(), Number(3))
+	handle, ok := results[0].AsTable()
+	if !ok {
+		t.Fatalf("result = %v; want a table", results[0])
+	}
+	table := handle.runtimeObject()
+	if table.store.live != 1 || table.store.dead != 1 {
+		t.Fatalf(
+			"store live, dead = %d, %d; want 1, 1",
+			table.store.live,
+			table.store.dead,
+		)
+	}
+}
