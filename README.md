@@ -82,23 +82,36 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 ## Performance
 
 Medians from 15 runs on an AMD Ryzen 7 4800U under Linux/amd64, using
-Go 1.27.1. The [measurement report](benchmarks/results/2026-09-25-linux-amd64-hosaka/)
-records revisions, build settings, and confidence intervals. Lower is better.
+Go 1.27.1. The [measurement report](benchmarks/results/2026-09-25-linux-amd64-are-we-fast-yet/)
+records revisions, build settings, confidence intervals, and a PUC Lua 5.1
+comparison. Lower is better.
 
-| Established Lua program | Lunar | GopherLua | go-lua |
-| --- | ---: | ---: | ---: |
-| binary-trees | **268.9 ms** | 316.6 ms | 333.6 ms |
-| fannkuch-redux | **26.72 ms** | 60.42 ms | 72.42 ms |
-| n-body | **98.13 ms** | 339.40 ms | 432.98 ms |
-| spectral-norm | **73.15 ms** | 310.65 ms | 314.38 ms |
+[Are We Fast Yet](https://github.com/smarr/are-we-fast-yet) programs model
+typical object-oriented code: classes built with metatables, closures, many
+small objects, strings, and arrays.
 
-| Embedding operation | Lunar | GopherLua | go-lua |
+| Are We Fast Yet | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | 154.9 ns | **122.8 ns** | 278.3 ns |
-| Lua calls Go 1,000 times | **105.9 µs** | 201.0 µs | 186.6 µs |
-| Lua echoes a 128-byte Go string | 198.3 ns | **133.4 ns** | 270.8 ns |
-| Lua checksums a reused Go-built table | **488.7 ns** | 942.4 ns | 1.918 µs |
-| Build a table in Go, then checksum it in Lua | 3.755 µs | **2.846 µs** | 3.293 µs |
+| Richards | **877.9 ms** | 1,677.6 ms | 1,990.4 ms |
+| DeltaBlue | **141.7 ms** | 326.1 ms | 9,503.5 ms |
+| Json | **937.6 ms** | 1,681.7 ms | 1,981.0 ms |
+| CD | **2,755 ms** | 6,321 ms | 6,623 ms |
+| Bounce | **927.3 ms** | 2,211.0 ms | 2,854.5 ms |
+| List | **604.2 ms** | 1,258.7 ms | 1,397.7 ms |
+| Mandelbrot | **489.8 ms** | 1,697.5 ms | 2,566.3 ms |
+| NBody | **1,539 ms** | 5,730 ms | 8,165 ms |
+| Permute | **536.1 ms** | 1,398.0 ms | 1,725.3 ms |
+| Queens | **504.8 ms** | 1,183.9 ms | 1,537.2 ms |
+| Sieve | **721.2 ms** | 1,893.1 ms | 2,058.3 ms |
+| Storage | **1,011 ms** | 2,456 ms | 2,812 ms |
+| Towers | **886.2 ms** | 1,899.5 ms | 3,000.7 ms |
+
+| Benchmarks Game program | Lunar | GopherLua | go-lua |
+| --- | ---: | ---: | ---: |
+| binary-trees | **271.1 ms** | 323.7 ms | 345.1 ms |
+| fannkuch-redux | **27.73 ms** | 60.38 ms | 73.63 ms |
+| n-body | **86.26 ms** | 337.07 ms | 440.58 ms |
+| spectral-norm | **81.22 ms** | 311.41 ms | 348.86 ms |
 
 The retained-memory figures below are earlier Apple M3 Pro / Go 1.25.1
 measurements: [CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
