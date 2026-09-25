@@ -63,7 +63,7 @@ for ((round=0; round<samples; round++)); do
     echo "# round: $((round+1)); runtime: $engine" >> "$output"
     GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1 "${affinity[@]}" "$staging/compare.test" \
       -test.run '^$' \
-      -test.bench "^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkDiagnostics)\$/.*\$/^runtime=${engine}\$" \
+      -test.bench "^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkDiagnostics|BenchmarkAWFY)\$/.*\$/^runtime=${engine}\$" \
       -test.benchtime "$benchtime" -test.count 1 -test.cpu 1 > "$staging/sample.txt"
     rows=$(awk '/^Benchmark/ {n++} END {print n+0}' "$staging/sample.txt")
     if [[ "$rows" == 0 || ( "$expected_rows" != 0 && "$rows" != "$expected_rows" ) ]]; then
