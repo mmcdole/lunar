@@ -3,6 +3,7 @@ package lua
 import (
 	"fmt"
 	"math"
+	"unsafe"
 )
 
 type executionResultKind uint8
@@ -395,6 +396,15 @@ reload:
 	base := int(thread.frames[len(thread.frames)-1].base)
 	pc := int(thread.frames[len(thread.frames)-1].pc)
 	code := prototype.code
+	// The verifier bounds every register, constant, and jump by the
+	// prototype, and call entry sizes the stack to the frame. One check per
+	// frame load therefore covers every unchecked access below.
+	if base+int(prototype.registers) > len(values) {
+		panic("lua: frame exceeds the value stack")
+	}
+	registers := unsafe.Pointer(unsafe.SliceData(values))
+	constants := unsafe.Pointer(unsafe.SliceData(prototype.constants))
+	instructions := unsafe.Pointer(unsafe.SliceData(code))
 	var current instruction
 	goto dispatch
 
@@ -418,20 +428,20 @@ contextBackedge:
 
 dispatch:
 	for {
-		current = code[pc]
+		current = instructionAt(instructions, pc)
 		pc++
 
 		switch current.opcode() {
 		case opMove:
 			writeSlot(
-				&values[base+current.a()],
-				values[base+current.b()],
+				registerAt(registers, base+current.a()),
+				(*registerAt(registers, base+current.b())),
 			)
 
 		case opLoadK:
 			writeSlot(
-				&values[base+current.a()],
-				prototype.constants[current.bx()],
+				registerAt(registers, base+current.a()),
+				*constantAt(constants, current.bx()),
 			)
 
 		case opLoadBool:
@@ -439,25 +449,25 @@ dispatch:
 			if current.b() != 0 {
 				value = trueSlot
 			}
-			writeSlot(&values[base+current.a()], value)
+			writeSlot(registerAt(registers, base+current.a()), value)
 			if current.c() != 0 {
 				pc++
 			}
 
 		case opLoadNil:
 			for register := current.a(); register <= current.b(); register++ {
-				values[base+register] = nilSlot
+				*registerAt(registers, base+register) = nilSlot
 			}
 
 		case opGetUpvalue:
 			writeSlot(
-				&values[base+current.a()],
+				registerAt(registers, base+current.a()),
 				function.luaUpvalueUnchecked(current.b()).read(),
 			)
 
 		case opSetUpvalue:
 			function.luaUpvalueUnchecked(current.b()).write(
-				values[base+current.a()],
+				(*registerAt(registers, base+current.a())),
 			)
 
 		case opGetTable, opSelf:
@@ -493,15 +503,15 @@ dispatch:
 			return result
 
 		case opAdd, opSub, opMul, opDiv, opMod:
-			left := operandSlot(
-				values,
-				prototype.constants,
+			left := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.b(),
 			)
-			right := operandSlot(
-				values,
-				prototype.constants,
+			right := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.c(),
 			)
@@ -523,7 +533,7 @@ dispatch:
 						math.Floor(leftNumber/rightNumber)*rightNumber
 				}
 				writeSlot(
-					&values[base+current.a()],
+					registerAt(registers, base+current.a()),
 					numberSlot(result),
 				)
 				break
@@ -532,10 +542,10 @@ dispatch:
 			return current
 
 		case opUnaryMinus:
-			source := values[base+current.b()]
+			source := (*registerAt(registers, base+current.b()))
 			if source.ref == nil {
 				writeSlot(
-					&values[base+current.a()],
+					registerAt(registers, base+current.a()),
 					numberSlot(-math.Float64frombits(source.bits)),
 				)
 				break
@@ -544,26 +554,26 @@ dispatch:
 			return current
 
 		case opNot:
-			source := values[base+current.b()]
+			source := (*registerAt(registers, base+current.b()))
 			result := source.ref == nilMarkerPointer ||
 				source.ref == falseMarkerPointer
 			if result {
-				writeSlot(&values[base+current.a()], trueSlot)
+				writeSlot(registerAt(registers, base+current.a()), trueSlot)
 			} else {
-				writeSlot(&values[base+current.a()], falseSlot)
+				writeSlot(registerAt(registers, base+current.a()), falseSlot)
 			}
 
 		case opLength:
-			source := values[base+current.b()]
+			source := (*registerAt(registers, base+current.b()))
 			switch source.kind() {
 			case StringKind:
 				writeSlot(
-					&values[base+current.a()],
+					registerAt(registers, base+current.a()),
 					numberSlot(float64(stringSlotLen(source))),
 				)
 			case TableKind:
 				writeTableLength(
-					&values[base+current.a()],
+					registerAt(registers, base+current.a()),
 					(*tableObject)(source.ref),
 				)
 			default:
@@ -583,15 +593,15 @@ dispatch:
 			}
 
 		case opEqual:
-			left := operandSlot(
-				values,
-				prototype.constants,
+			left := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.b(),
 			)
-			right := operandSlot(
-				values,
-				prototype.constants,
+			right := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.c(),
 			)
@@ -613,7 +623,7 @@ dispatch:
 				equal = false
 			}
 			if equal == (current.a() != 0) {
-				jump := code[pc]
+				jump := instructionAt(instructions, pc)
 				pc++
 				offset := jump.sbx()
 				pc += offset
@@ -626,15 +636,15 @@ dispatch:
 			}
 
 		case opLessThan, opLessEqual:
-			left := operandSlot(
-				values,
-				prototype.constants,
+			left := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.b(),
 			)
-			right := operandSlot(
-				values,
-				prototype.constants,
+			right := operandSlotUnchecked(
+				registers,
+				constants,
 				base,
 				current.c(),
 			)
@@ -657,7 +667,7 @@ dispatch:
 				return current
 			}
 			if result == (current.a() != 0) {
-				jump := code[pc]
+				jump := instructionAt(instructions, pc)
 				pc++
 				offset := jump.sbx()
 				pc += offset
@@ -670,11 +680,11 @@ dispatch:
 			}
 
 		case opTest:
-			source := values[base+current.a()]
+			source := (*registerAt(registers, base+current.a()))
 			truth := source.ref != nilMarkerPointer &&
 				source.ref != falseMarkerPointer
 			if truth == (current.c() != 0) {
-				jump := code[pc]
+				jump := instructionAt(instructions, pc)
 				pc++
 				offset := jump.sbx()
 				pc += offset
@@ -687,12 +697,12 @@ dispatch:
 			}
 
 		case opTestSet:
-			source := values[base+current.b()]
+			source := (*registerAt(registers, base+current.b()))
 			truth := source.ref != nilMarkerPointer &&
 				source.ref != falseMarkerPointer
 			if truth == (current.c() != 0) {
-				writeSlot(&values[base+current.a()], source)
-				jump := code[pc]
+				writeSlot(registerAt(registers, base+current.a()), source)
+				jump := instructionAt(instructions, pc)
 				pc++
 				offset := jump.sbx()
 				pc += offset
@@ -715,7 +725,7 @@ dispatch:
 				thread.tryCompleteFixedLuaReturn(frameIndex, current) {
 				goto reload
 			}
-			return code[pc-1]
+			return instructionAt(instructions, pc-1)
 
 		// The driver executes these; listing them keeps them explicit in the
 		// dispatch table rather than relying on default.
@@ -725,14 +735,14 @@ dispatch:
 
 		case opForPrep:
 			register := base + current.a()
-			initial := values[register]
-			limit := values[register+1]
-			step := values[register+2]
+			initial := (*registerAt(registers, register))
+			limit := (*registerAt(registers, register+1))
+			step := (*registerAt(registers, register+2))
 			if initial.ref == nil &&
 				limit.ref == nil &&
 				step.ref == nil {
 				writeSlot(
-					&values[register],
+					registerAt(registers, register),
 					numberSlot(
 						math.Float64frombits(initial.bits)-
 							math.Float64frombits(step.bits),
@@ -746,14 +756,14 @@ dispatch:
 
 		case opForLoop:
 			register := base + current.a()
-			step := math.Float64frombits(values[register+2].bits)
-			index := math.Float64frombits(values[register].bits) + step
-			limit := math.Float64frombits(values[register+1].bits)
+			step := math.Float64frombits((*registerAt(registers, register+2)).bits)
+			index := math.Float64frombits((*registerAt(registers, register)).bits) + step
+			limit := math.Float64frombits((*registerAt(registers, register+1)).bits)
 			if step > 0 && index <= limit ||
 				!(step > 0) && limit <= index {
 				value := numberSlot(index)
-				writeSlot(&values[register], value)
-				writeSlot(&values[register+3], value)
+				writeSlot(registerAt(registers, register), value)
+				writeSlot(registerAt(registers, register+3), value)
 				offset := current.sbx()
 				pc += offset
 				if offset < 0 {
@@ -1087,4 +1097,28 @@ func appendExecutionTraceback(
 		})
 	}
 	return traceback
+}
+
+func registerAt(registers unsafe.Pointer, index int) *slot {
+	return (*slot)(unsafe.Add(registers, uintptr(index)*unsafe.Sizeof(slot{})))
+}
+
+func constantAt(constants unsafe.Pointer, index int) *slot {
+	return (*slot)(unsafe.Add(constants, uintptr(index)*unsafe.Sizeof(slot{})))
+}
+
+func instructionAt(code unsafe.Pointer, pc int) instruction {
+	return *(*instruction)(unsafe.Add(code, uintptr(pc)*unsafe.Sizeof(instruction(0))))
+}
+
+func operandSlotUnchecked(
+	registers unsafe.Pointer,
+	constants unsafe.Pointer,
+	base int,
+	operand int,
+) slot {
+	if isConstantOperand(operand) {
+		return *constantAt(constants, constantIndex(operand))
+	}
+	return *registerAt(registers, base+operand)
 }
