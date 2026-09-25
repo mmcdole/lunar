@@ -64,6 +64,38 @@ func compileLexer(
 	sourceName string,
 	lex *lexer,
 ) (*Prototype, error) {
+	return guardCompile(sourceName, lex, func() (*Prototype, error) {
+		return compileChunk(sourceName, lex)
+	})
+}
+
+// guardCompile turns a compiler invariant failure into an internal-error
+// *Error so that compiling hostile source cannot crash the host. A panic
+// raised while the input was refilling came from Lua or host code the refill
+// ran, and propagates unchanged.
+func guardCompile(
+	sourceName string,
+	lex *lexer,
+	compile func() (*Prototype, error),
+) (prototype *Prototype, err error) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		if lex.input != nil && lex.input.refilling {
+			panic(recovered)
+		}
+		prototype = nil
+		err = newInternalCompilerError(sourceName, recovered)
+	}()
+	return compile()
+}
+
+func compileChunk(
+	sourceName string,
+	lex *lexer,
+) (*Prototype, error) {
 	unit := newCompileUnit(sourceName)
 	function, syntaxError := unit.newFunction(
 		nil,

@@ -156,6 +156,10 @@ type chunkInput struct {
 	failure         error
 	pendingFailure  error
 	ended           bool
+	// refilling is set while refill runs. A refill may execute Lua or host
+	// code, so a panic raised during it belongs to the caller, not the
+	// compiler.
+	refilling bool
 }
 
 func newStringChunkInput(
@@ -366,7 +370,9 @@ func (input *chunkInput) ensurePiece() error {
 			input.failure = failure
 			return failure
 		}
+		input.refilling = true
 		piece, err := input.refill()
+		input.refilling = false
 		if piece == "" {
 			if err != nil && err != io.EOF {
 				input.failure = &chunkRefillFailure{cause: err}

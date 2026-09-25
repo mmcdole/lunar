@@ -1128,7 +1128,11 @@ func FuzzCompileSourceDoesNotPanic(fuzz *testing.F) {
 		fuzz.Add(source)
 	}
 	fuzz.Fuzz(func(t *testing.T, source string) {
-		_, _ = compileSource("@fuzz.lua", source)
+		_, failure := compileSource("@fuzz.lua", source)
+		if failure != nil &&
+			strings.Contains(failure.Error(), "internal compiler error") {
+			t.Fatalf("source %q: %v", source, failure)
+		}
 	})
 }
 
@@ -1250,3 +1254,75 @@ return nil
 }
 
 var benchmarkPrototype *Prototype
+
+func TestCompileGuardReportsCompilerInvariantFailures(t *testing.T) {
+	lex := newLexer("@guard.lua", "return 1")
+	prototype, err := guardCompile("@guard.lua", lex, func() (*Prototype, error) {
+		panic("lua: compiler lost register ownership")
+	})
+	if prototype != nil {
+		t.Fatal("guarded failure returned a prototype")
+	}
+	var failure *Error
+	if !errors.As(err, &failure) || failure.Category() != SyntaxError {
+		t.Fatalf("guarded failure = %#v; want SyntaxError", err)
+	}
+	want := "guard.lua: internal compiler error: lua: compiler lost register ownership"
+	if failure.Error() != want {
+		t.Fatalf("guarded failure = %q; want %q", failure.Error(), want)
+	}
+}
+
+type panickingReader struct{}
+
+func (panickingReader) Read([]byte) (int, error) {
+	panic("reader panic")
+}
+
+func TestCompileGuardPropagatesRefillPanics(t *testing.T) {
+	state, err := New(Options{Libraries: CoreLibraries()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+
+	host, err := state.NewNativeFunction(func(Frame) Outcome {
+		panic("host panic")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.RawSetGlobal("host", host.Value()); err != nil {
+		t.Fatal(err)
+	}
+	chunk := mustLoadString(t, state, "@refill.lua", `
+local sent = false
+return load(function()
+	if sent then
+		host()
+	end
+	sent = true
+	return "return "
+end)
+`)
+
+	recoverPanic := func(operation func()) (recovered any) {
+		defer func() {
+			recovered = recover()
+		}()
+		operation()
+		return nil
+	}
+	if recovered := recoverPanic(func() {
+		_, _ = state.Call(chunk.Value())
+	}); recovered != "host panic" {
+		t.Fatalf("Lua reader panic = %#v; want host panic", recovered)
+	}
+	assertRootThreadReady(t, state.main)
+
+	if recovered := recoverPanic(func() {
+		_, _ = state.Load("@reader.lua", panickingReader{})
+	}); recovered != "reader panic" {
+		t.Fatalf("io.Reader panic = %#v; want reader panic", recovered)
+	}
+}

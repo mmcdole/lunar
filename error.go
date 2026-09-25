@@ -238,6 +238,22 @@ func newSourceSyntaxError(
 	}
 }
 
+// newInternalCompilerError reports a compiler invariant failure. It is a
+// SyntaxError so loaders reject the chunk normally; the message marks it as a
+// Lunar bug rather than a fault in the source.
+func newInternalCompilerError(source string, recovered any) *Error {
+	message := fmt.Sprintf(
+		"%s: internal compiler error: %v",
+		sourceID(source),
+		recovered,
+	)
+	return &Error{
+		value:       errorStringValue(message),
+		description: message,
+		category:    SyntaxError,
+	}
+}
+
 func newResourceError(format string, arguments ...any) *Error {
 	message := fmt.Sprintf(format, arguments...)
 	return &Error{
