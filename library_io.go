@@ -552,16 +552,7 @@ func closeFileUserData(frame Frame, data *userDataObject) Outcome {
 	}
 	if !lease.owned {
 		lease.release()
-		return frame.returnCompactValues(
-			[2]slot{
-				nilSlot,
-				stringSlot(frame.thread.owner.strings.make(
-					"cannot close standard file",
-				)),
-			},
-			2,
-			nil,
-		)
+		return fileNoClose(frame)
 	}
 	lease.release()
 	_, err := closeManagedResourceContext(
