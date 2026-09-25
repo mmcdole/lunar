@@ -115,7 +115,7 @@ func stringSub(frame Frame) Outcome {
 		return numberArgumentError(frame, 1)
 	}
 	last := int64(-1)
-	if _, present := frame.argument(2); present {
+	if value, present := frame.argument(2); present && !value.isNil() {
 		last, ok = frame.positionArgument(2)
 		if !ok {
 			return numberArgumentError(frame, 2)
@@ -238,7 +238,7 @@ func stringByte(frame Frame) Outcome {
 		return libraryArgumentTypeError(frame, 0, "string")
 	}
 	first := int64(1)
-	if _, present := frame.argument(1); present {
+	if value, present := frame.argument(1); present && !value.isNil() {
 		first, ok = frame.positionArgument(1)
 		if !ok {
 			return numberArgumentError(frame, 1)
@@ -246,7 +246,7 @@ func stringByte(frame Frame) Outcome {
 	}
 	first = relativePosition(first, len(text))
 	last := first
-	if _, present := frame.argument(2); present {
+	if value, present := frame.argument(2); present && !value.isNil() {
 		supplied, valid := frame.positionArgument(2)
 		if !valid {
 			return numberArgumentError(frame, 2)
@@ -344,7 +344,7 @@ func stringFindAux(frame Frame, find bool) Outcome {
 		return libraryArgumentTypeError(frame, 1, "string")
 	}
 	init := int64(1)
-	if _, present := frame.argument(2); present {
+	if value, present := frame.argument(2); present && !value.isNil() {
 		init, ok = frame.positionArgument(2)
 		if !ok {
 			return numberArgumentError(frame, 2)
@@ -527,7 +527,7 @@ func stringGSub(frame Frame) Outcome {
 	}
 	replacement, _ := frame.argument(2)
 	limit := len(subject) + 1
-	if _, present := frame.argument(3); present {
+	if value, present := frame.argument(3); present && !value.isNil() {
 		limit, ok = frame.integerArgument(3)
 		if !ok {
 			return numberArgumentError(frame, 3)

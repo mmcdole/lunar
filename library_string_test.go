@@ -1603,4 +1603,29 @@ var stringLibraryLua51Cases = []lua51Case{
 		source: "local mt = getmetatable('') return mt.__index == string, type(mt)",
 		want:   "ok true 'table'",
 	},
+	{
+		name:   "sub_nil_end_is_absent",
+		source: "return ('abcdef'):sub(2, nil)",
+		want:   "ok 'bcdef'",
+	},
+	{
+		name:   "byte_nil_positions_are_absent",
+		source: "return ('abc'):byte(nil), ('abc'):byte(1, nil), ('abc'):byte(nil, nil)",
+		want:   "ok 97 97 97",
+	},
+	{
+		name:   "find_and_match_nil_init_are_absent",
+		source: "return ('abc'):find('b', nil), ('abc'):match('b', nil)",
+		want:   "ok 2 'b'",
+	},
+	{
+		name:   "find_nil_init_and_plain",
+		source: "return ('abc'):find('b', nil, nil)",
+		want:   "ok 2 2",
+	},
+	{
+		name:   "gsub_nil_limit_is_absent",
+		source: "return ('abcb'):gsub('b', 'x', nil)",
+		want:   "ok 'axcx' 2",
+	},
 }
