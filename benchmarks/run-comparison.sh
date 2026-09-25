@@ -114,7 +114,7 @@ for ((round = 0; round < samples; round++)); do
     echo "round $((round + 1))/$samples: $runtime_name" >&2
     GOGC=100 GOMEMLIMIT=off GOMAXPROCS=1 \
       go test -run '^$' \
-      -bench "^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkEmbedding)\$/.*\$/^runtime=${runtime_name}\$" \
+      -bench "^(BenchmarkPrograms|BenchmarkInterpreter|BenchmarkEmbedding|BenchmarkAWFY)\$/.*\$/^runtime=${runtime_name}\$" \
       -benchmem -benchtime="$benchtime" -count=1 -cpu=1 |
       tee -a "$output"
   done

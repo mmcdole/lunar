@@ -1,86 +1,45 @@
-# Program benchmarks
 
-`BenchmarkPrograms` complements the synthetic `BenchmarkInterpreter`
-microbenchmarks with four current Lua programs from the Computer Language
-Benchmarks Game:
 
-- binary-trees Lua #2;
-- fannkuch-redux Lua #1;
-- n-body Lua #2; and
-- spectral-norm Lua #1.
+## Are We Fast Yet
 
-These are local runtime comparisons, not official Computer Language
-Benchmarks Game scores. In particular, the inputs are deliberately scaled
-down from those used on the official site:
+`BenchmarkAWFY` runs 13 programs from the Lua port of
+[Are We Fast Yet](https://github.com/smarr/are-we-fast-yet): Richards,
+DeltaBlue, Json, CD, Bounce, List, Mandelbrot, NBody, Permute, Queens, Sieve,
+Storage and Towers. They represent object-oriented code built from classes,
+closures, small objects, strings and arrays. Havlak is omitted because its
+smallest verified size takes about 6 s on PUC Lua.
 
-| Program | Local input |
-| --- | ---: |
-| binary-trees Lua #2 | 12 |
-| fannkuch-redux Lua #1 | 8 |
-| n-body Lua #2 | 20,000 |
-| spectral-norm Lua #1 | 150 |
+Each program's modules are bundled into one chunk behind a local `require`,
+so every runtime loads identical code using only the base, string and math
+libraries. A timed operation calls the program's `inner_benchmark_loop` once
+and fails unless the program's own verification passes. Inner iteration
+counts are scaled for interpreters and listed in `awfy_compare_test.go`.
 
-## Method
+Lua 5.1 has no bitwise operators. `awfy/bit.lua` is a pure-Lua stand-in for
+LuaJIT's `bit` module, written for this repository and used by every runtime.
 
-Each source file under `programs/` is an unchanged upstream command-line
-program. The Go harness generates a small Lua wrapper around it. The wrapper
-provides the program's `arg[1]`, captures `io.write` into a string, and exposes
-one repeatable `benchmark_program` function. The original source is inserted
-once, byte-for-byte, inside that function.
+The files were retrieved on 2026-09-25 from upstream commit
+[`74306fec151070fd07157cefeacf19e7e0bcdc89`](https://github.com/smarr/are-we-fast-yet/tree/74306fec151070fd07157cefeacf19e7e0bcdc89/benchmarks/Lua)
+and are unchanged. `TestAWFYSourcesMatchUpstream` checks these hashes.
+[`awfy/LICENSE.md`](awfy/LICENSE.md) is upstream's license overview, copied
+unchanged.
 
-For every engine and program, the harness:
-
-1. creates a fresh state and opens the equivalent base and string libraries,
-   plus math only for n-body and spectral-norm;
-2. compiles and loads the same generated Lua source once;
-3. executes the wrapper's top-level initialization once;
-4. invokes the program once as an untimed warmup and validates its output;
-5. forces a Go garbage collection, resets the benchmark timer, and measures
-   protected calls to the already loaded function; and
-6. stops the timer and validates the last measured output.
-
-Compilation, source loading, library setup, warmup, and oracle checks are
-outside the timed region. The output capture itself is shared Lua code and is
-therefore part of every runtime's measured work, while terminal I/O is not.
-Integer-result programs use exact output oracles. Floating-point programs
-parse the upstream nine-decimal output and use a `5e-9` absolute tolerance.
-
-`TestProgramsExecute` uses separate tiny smoke inputs so ordinary `go test
-./...` remains quick; scaled measurement inputs exist only in
-`BenchmarkPrograms`.
-
-Run the correctness tests and a one-sample benchmark smoke with:
-
-```sh
-cd benchmarks
-go test ./...
-GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkPrograms$' \
-  -benchmem -benchtime=1x -count=1 -cpu=1
-```
-
-Use a longer benchtime and repeated counts before publishing comparative
-numbers.
-
-## Provenance
-
-The files were retrieved on 2026-07-27 from the official
-[`benchmarksgame-sourcecode.zip`](https://salsa.debian.org/benchmarksgame-team/benchmarksgame/-/raw/40296663ed350d5fe4a6ab5e367bab61cb77c219/public/download/benchmarksgame-sourcecode.zip)
-at the repository snapshot
-[`40296663ed350d5fe4a6ab5e367bab61cb77c219`](https://salsa.debian.org/benchmarksgame-team/benchmarksgame/-/tree/40296663ed350d5fe4a6ab5e367bab61cb77c219);
-its generated pages are under `public/program/`. The downloaded archive's
-SHA-256 is
-`aabcf6726cdc14f0f45b99e5daba48584f94bbb48883fd3711a1d040474d1cb4`.
-The live program page, archive member, and SHA-256 of each vendored file are
-pinned below.
-
-| Vendored file | Official program page | Archive member | SHA-256 |
-| --- | --- | --- | --- |
-| `binarytrees.lua` | [binary-trees Lua #2](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/binarytrees-lua-2.html) | `binarytrees/binarytrees.lua-2.lua` | `58afb23db343d5c59e0c23b9d8b6188dab41fc378b0e588f965c0d24000173ed` |
-| `fannkuchredux.lua` | [fannkuch-redux Lua #1](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/fannkuchredux-lua-1.html) | `fannkuchredux/fannkuchredux.lua` | `e6db90f101bafdfc2f213ce700d247e9b719c23a3782fc2c843c39ea5f1b157a` |
-| `nbody.lua` | [n-body Lua #2](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/nbody-lua-2.html) | `nbody/nbody.lua-2.lua` | `841c93a66ccbf952ba188b96f35ff1267f68f75c8869bd3b019bcc3f99099c1a` |
-| `spectralnorm.lua` | [spectral-norm Lua #1](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/spectralnorm-lua-1.html) | `spectralnorm/spectralnorm.lua` | `1acdfef437c9cae18f1dfb8394acc9144028d3e38ca4c581f7d699294fe81fed` |
-
-The hash test makes accidental source edits visible. The files retain their
-upstream contributor notices. [The corpus license](programs/LICENSE) is the
-archive's top-level `LICENSE` copied byte-for-byte (SHA-256
-`5bb4ce0a63be9ab37cd2e162375e4075535d341c18b3ca18d5cf3e4e07b7d010`).
+| Vendored file | SHA-256 |
+| --- | --- |
+| `benchmark.lua` | `f854c782efb9513bd60805e6e833e4df268b997ea9ff95744de0ad6d00733e63` |
+| `bounce.lua` | `e54bf6160d07938100b9c4bf00af6603ba500388761ae51e0fd2d920fe7c67df` |
+| `cd.lua` | `e1d7114fdba480bdc97207f9f8b0f2cd62b9393377a095cd43f0d130273a365e` |
+| `deltablue.lua` | `8f0064b61bfdcafafa260d0c5fb35dc7e55c255ca59b23f8f7beb3024684fb63` |
+| `hashindextable.lua` | `c1f415af1b69f85908afc6b8b8fc5f1ae7c3879a1f0feeb2eaae00f97ed4473a` |
+| `json.lua` | `79196a37531206523459ea5400aa00ca6425942f4f5c23595f14f96affcabbf1` |
+| `list.lua` | `863cff8f08d7b48bbf5f01b12d487dace4aee25777fbcc456c43819a51e59e07` |
+| `mandelbrot-fn.lua` | `8bba1d7624431d4c0323c18bab50e270fcdb0d3a0522bc5bc9231bd5a167ab20` |
+| `mandelbrot.lua` | `d6b063615e2f6057a3db7257c66325af35dcbdf8b0294eb2580c294b64425e98` |
+| `nbody.lua` | `6bd49dde32cf69dd4b9e6a971d182d357ac4b7e29910dfbd79c3626b73d8cd7f` |
+| `permute.lua` | `7e7c7cd4dd1d10b85a4474d868a70da04be5b5ec9b287bee8421a111fcee2068` |
+| `queens.lua` | `03f9349ae7ba3aad09a5bba4f7102e77ea340e757906f9c8e53c133d8e469381` |
+| `richards.lua` | `b9620354ecafb1a1d3fe6b587630ff87df3fde359092eaeb210ed07f572a9990` |
+| `sieve.lua` | `3b6a63b07b5ed506e97337ba339983aa71a54021bd73c9f83b4e069aa5d89fed` |
+| `som.lua` | `5c07cf378452f0c391c76d3788dc15274ff34b82692bb5cfe6f7e648b82212d0` |
+| `storage.lua` | `142e767645d31351104ed3f326d8b24dd68eab06b1ff687fc7233330afefa3d2` |
+| `towers.lua` | `d0902a6d929a57e6412586687585732bccfdf39a81c805bbdcd8485b4c1b4c75` |

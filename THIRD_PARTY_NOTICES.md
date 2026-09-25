@@ -47,6 +47,22 @@ Language Benchmarks Game. The files retain their contributor notices and are
 distributed under the adjacent
 [`benchmarks/programs/LICENSE`](benchmarks/programs/LICENSE).
 
+## Are We Fast Yet
+
+The Lua programs under `benchmarks/awfy` come from the Lua port of
+[Are We Fast Yet](https://github.com/smarr/are-we-fast-yet), which Francois
+Perrad derived from the SOM benchmarks and distributes under the MIT license
+reproduced in each file. Upstream's license overview is copied unchanged in
+[`benchmarks/awfy/LICENSE.md`](benchmarks/awfy/LICENSE.md):
+
+- Richards and DeltaBlue derive from Mario Wolczko's Smalltalk sources.
+  Martin Richards, L. Peter Deutsch and John Maloney granted permission to
+  distribute translations of these benchmarks.
+- NBody and Mandelbrot derive from the Computer Language Benchmarks Game
+  under its Revised BSD license.
+
+`benchmarks/awfy/bit.lua` was written for this repository.
+
 ## lua-cbor
 
 `benchmarks/cbor/testdata/cbor.lua` is derived from lua-cbor 1.0.0 by Kim
