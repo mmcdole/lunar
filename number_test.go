@@ -2,6 +2,7 @@ package lua
 
 import (
 	"math"
+	"strconv"
 	"testing"
 )
 
@@ -236,5 +237,41 @@ func TestParseLuaNumberDoesNotAllocate(t *testing.T) {
 	}
 	if allocations != 0 {
 		t.Fatalf("slotToNumber allocated %.2f times, want 0", allocations)
+	}
+}
+
+func TestLuaPowRoundsPowersOfTenCorrectly(t *testing.T) {
+	for exponent := minDecimalPower; exponent <= maxDecimalPower; exponent++ {
+		want, err := strconv.ParseFloat("1e"+strconv.Itoa(exponent), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := luaPow(10, float64(exponent)); got != want {
+			t.Fatalf("10^%d = %v; want %v", exponent, got, want)
+		}
+	}
+	if luaPow(10, 400) != math.Inf(1) || luaPow(10, -400) != 0 ||
+		luaPow(10, 0.5) != math.Sqrt(10) || !math.IsNaN(luaPow(10, math.NaN())) {
+		t.Fatal("luaPow mishandled a special or delegated case")
+	}
+}
+
+func TestPowerAgreesAcrossFoldingRuntimeAndMathPow(t *testing.T) {
+	state, err := New(Options{Libraries: CoreLibraries()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	results, err := state.DoString("=power", `
+local ten, exponent = 10, -308
+return 10^200 == 1e200, ten^-exponent == 1e308, math.pow(ten, exponent) == 1e-308
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, result := range results {
+		if truth, ok := result.AsBool(); !ok || !truth {
+			t.Fatalf("power check %d failed: %v", index+1, results)
+		}
 	}
 }

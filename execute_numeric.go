@@ -15,7 +15,7 @@ func numericBinary(operation opcode, left, right float64) float64 {
 	case opMod:
 		return left - math.Floor(left/right)*right
 	case opPow:
-		return math.Pow(left, right)
+		return luaPow(left, right)
 	default:
 		panic("lua: invalid numeric binary operation")
 	}

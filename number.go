@@ -3,6 +3,7 @@ package lua
 import (
 	"math"
 	"strconv"
+	"sync"
 )
 
 // parseLuaNumber implements the numeric grammar shared by source literals and
@@ -200,3 +201,41 @@ func hexDigitValue(value byte) uint8 {
 		return value - 'A' + 10
 	}
 }
+
+// luaPow computes x^y for the ^ operator, constant folding, and math.pow.
+// math.Pow can be several ULP from the correctly rounded result. Integral
+// powers of ten are common in Lua code and are compared with decimal literals,
+// so they come from correctly rounded constants. Other inputs use math.Pow;
+// docs/language-compatibility.md describes the remaining differences from C
+// pow.
+func luaPow(x, y float64) float64 {
+	if x == 10 &&
+		y >= minDecimalPower &&
+		y <= maxDecimalPower &&
+		y == math.Trunc(y) {
+		return decimalPowers()[int(y)-minDecimalPower]
+	}
+	return math.Pow(x, y)
+}
+
+// The smallest and largest integral powers of ten with a nonzero finite
+// float64 value.
+const (
+	minDecimalPower = -323
+	maxDecimalPower = 308
+)
+
+// decimalPowers holds correctly rounded 1eN values. It is built on first use.
+var decimalPowers = sync.OnceValue(
+	func() *[maxDecimalPower - minDecimalPower + 1]float64 {
+		var table [maxDecimalPower - minDecimalPower + 1]float64
+		for exponent := minDecimalPower; exponent <= maxDecimalPower; exponent++ {
+			value, err := strconv.ParseFloat("1e"+strconv.Itoa(exponent), 64)
+			if err != nil {
+				panic("lua: invalid decimal power")
+			}
+			table[exponent-minDecimalPower] = value
+		}
+		return &table
+	},
+)

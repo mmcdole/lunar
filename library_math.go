@@ -356,7 +356,7 @@ func mathPow(frame Frame) Outcome {
 	if !ok {
 		return numberArgumentError(frame, 1)
 	}
-	return frame.ReturnNumber(math.Pow(base, exponent))
+	return frame.ReturnNumber(luaPow(base, exponent))
 }
 
 func mathRad(frame Frame) Outcome {

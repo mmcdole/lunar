@@ -67,6 +67,28 @@ Lunar, PUC Lua 5.2, and LuaJIT keep `x` open across this jump. Lunar's existing
 bytecode verifier continues to validate the resulting ordinary `JMP` and
 `CLOSE` instructions and their targets.
 
+## Arithmetic precision
+
+Lunar uses IEEE double arithmetic like PUC Lua 5.1. Basic operators round
+identically, but results can differ from PUC Lua on Linux in these places:
+
+- Exponentiation. PUC Lua evaluates `^` and `math.pow` with the C library's
+  `pow`, which glibc keeps within about 0.52 ULP. Lunar uses Go's `math.Pow`.
+  It is exact for `x^2`, `x^-1`, `x^0.5`, and powers of two, but other
+  results can be several ULP away, up to about 70 ULP for large integer
+  exponents. The last digits printed with `%.17g` can therefore differ.
+  Integral powers of ten are correctly rounded, so `10^k == 1ek` holds for
+  every finite `k`; glibc misses two of those. The operator, constant
+  folding, and `math.pow` share one implementation, so a program always
+  agrees with itself.
+- Other `math` functions. `math.sin`, `math.exp`, `math.log`, and similar use
+  Go's `math` package and can differ from glibc in the last bit.
+- Negative zero constants. PUC Lua 5.1 keys a function's numeric constants by
+  value, where `-0` and `0` compare equal, so whichever appears first sets the
+  sign for both. After `local a = 0 local b = -0`, `1/b` is `inf`; after
+  `local b = -0 local a = 0`, `1/a` is `-inf` and `-1/0` is `inf`. Lunar keeps
+  each constant's own sign.
+
 ## Primary-source comparison
 
 - [PUC Lua 5.2 parser and goto resolution](https://www.lua.org/source/5.2/lparser.c.html#closegoto)

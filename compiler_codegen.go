@@ -541,7 +541,7 @@ func foldNumericBinary(
 		}
 		result = a - math.Floor(a/b)*b
 	case binaryPower:
-		result = math.Pow(a, b)
+		result = luaPow(a, b)
 	default:
 		return compiledExpression{}, false
 	}
