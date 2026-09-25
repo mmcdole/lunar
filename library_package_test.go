@@ -1,7 +1,10 @@
 package lua
 
 import (
+	"context"
 	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -338,6 +341,70 @@ return ok,type(message),string.find(message,"loop or previous error",1,true)~=ni
 		Bool(true),
 		Bool(true),
 	)
+}
+
+func TestPackageHostLoaderContinuesAfterCandidateOpenError(t *testing.T) {
+	state := newStateWithPackage(t, Options{
+		ScriptLoader: HostLoader().WithPackagePath("p1/?.lua;p2/?.lua"),
+	})
+	defer state.Close()
+	if err := state.OpenString(); err != nil {
+		t.Fatal(err)
+	}
+
+	var opened []string
+	state.scriptLoader.opener = func(
+		_ context.Context,
+		name string,
+	) (io.ReadCloser, error) {
+		opened = append(opened, name)
+		if name == "p1/m.lua" {
+			return nil, fs.ErrPermission
+		}
+		return io.NopCloser(strings.NewReader(`return "p2"`)), nil
+	}
+
+	chunk := mustLoadString(t, state, "@package-host-open-error.lua", `
+return require("m")
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("p2"))
+	if len(opened) != 2 || opened[0] != "p1/m.lua" || opened[1] != "p2/m.lua" {
+		t.Fatalf("package path candidates opened = %q", opened)
+	}
+}
+
+func TestPackageFuncLoaderStopsAfterCandidateOpenError(t *testing.T) {
+	var opened []string
+	state := newStateWithPackage(t, Options{
+		ScriptLoader: FuncLoader(func(
+			_ context.Context,
+			name string,
+		) (io.ReadCloser, error) {
+			opened = append(opened, name)
+			return nil, fs.ErrPermission
+		}).WithPackagePath("p1/?.lua;p2/?.lua"),
+	})
+	defer state.Close()
+	if err := state.OpenString(); err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := mustLoadString(t, state, "@package-func-open-error.lua", `
+local ok,message=pcall(require,"m")
+return ok,string.find(message,"p1/m.lua",1,true)~=nil
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Bool(false), Bool(true))
+	if len(opened) != 1 || opened[0] != "p1/m.lua" {
+		t.Fatalf("FuncLoader candidates opened = %q", opened)
+	}
 }
 
 func TestPackageRequireSentinelRemainsCompact(t *testing.T) {

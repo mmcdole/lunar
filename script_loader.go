@@ -117,10 +117,11 @@ func (loader ScriptLoader) WithPackagePath(path string) ScriptLoader {
 }
 
 type scriptLoaderConfig struct {
-	opener      ScriptOpener
-	packagePath string
-	separator   string
-	stdin       bool
+	opener                        ScriptOpener
+	packagePath                   string
+	separator                     string
+	stdin                         bool
+	packageSearchIgnoresOpenError bool
 }
 
 func normalizeScriptLoader(
@@ -138,6 +139,7 @@ func normalizeScriptLoader(
 		}
 		return config, nil
 	case scriptLoaderHost:
+		config.packageSearchIgnoresOpenError = true
 		config.opener = func(
 			_ context.Context,
 			name string,
