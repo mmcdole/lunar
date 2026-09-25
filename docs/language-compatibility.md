@@ -89,6 +89,16 @@ identically, but results can differ from PUC Lua on Linux in these places:
   `local b = -0 local a = 0`, `1/a` is `-inf` and `-1/0` is `inf`. Lunar keeps
   each constant's own sign.
 
+## Process handles
+
+Close `io.popen` handles explicitly. `file:close()` flushes buffered output,
+closes the pipe, and waits for the command, honoring the execution context. A
+handle that is instead collected, or still open at `State.Close`, discards
+unflushed output and terminates the command. PUC Lua 5.1 flushes and waits in
+both cases, but an embedded runtime must not let collection or `State.Close`
+block on an external process. A script can drop a handle to a command that
+never exits.
+
 ## Primary-source comparison
 
 - [PUC Lua 5.2 parser and goto resolution](https://www.lua.org/source/5.2/lparser.c.html#closegoto)
