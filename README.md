@@ -81,16 +81,18 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-Medians from 15 runs on an AMD Ryzen 7 4800U under Linux/amd64, using
-Go 1.27.1. The [measurement report](benchmarks/results/2026-09-25-linux-amd64-are-we-fast-yet/)
-records revisions, build settings, confidence intervals, and a PUC Lua 5.1
-comparison. Lower is better.
+Timings are medians from 15 runs on an AMD Ryzen 7 4800U under
+Linux/amd64, using Go 1.27.1. The
+[measurement report](benchmarks/results/2026-09-25-linux-amd64-are-we-fast-yet/)
+records revisions, build settings, and confidence intervals. Lower is better.
+
+### Are We Fast Yet
 
 [Are We Fast Yet](https://github.com/smarr/are-we-fast-yet) programs model
 typical object-oriented code: classes built with metatables, closures, many
 small objects, strings, and arrays.
 
-| Are We Fast Yet | Lunar | GopherLua | go-lua |
+| Program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
 | Richards | **877.9 ms** | 1,677.6 ms | 1,990.4 ms |
 | DeltaBlue | **141.7 ms** | 326.1 ms | 9,503.5 ms |
@@ -106,18 +108,26 @@ small objects, strings, and arrays.
 | Storage | **1,011 ms** | 2,456 ms | 2,812 ms |
 | Towers | **886.2 ms** | 1,899.5 ms | 3,000.7 ms |
 
-| Benchmarks Game program | Lunar | GopherLua | go-lua |
+### Benchmarks Game
+
+Four programs from the Computer Language Benchmarks Game, with inputs scaled
+for interpreters.
+
+| Program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
 | binary-trees | **271.1 ms** | 323.7 ms | 345.1 ms |
 | fannkuch-redux | **27.73 ms** | 60.38 ms | 73.63 ms |
 | n-body | **86.26 ms** | 337.07 ms | 440.58 ms |
 | spectral-norm | **81.22 ms** | 311.41 ms | 348.86 ms |
 
-The retained-memory figures below are earlier Apple M3 Pro / Go 1.25.1
-measurements: [CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
-and [table shapes](benchmarks/results/2026-08-05-darwin-arm64-m3-pro/).
+### Retained memory
 
-| Live heap added after loading and GC | Lunar | GopherLua | Ratio |
+Live heap added after loading data and collecting garbage. These figures are
+earlier Apple M3 Pro / Go 1.25.1 measurements:
+[CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/) and
+[table shapes](benchmarks/results/2026-08-05-darwin-arm64-m3-pro/).
+
+| Workload | Lunar | GopherLua | Ratio |
 | --- | ---: | ---: | ---: |
 | 9 MB CBOR graph: 183,513 tables, 938,452 entries | **72.2 MiB** | 542.3 MiB | 7.5× |
 | 25,000 four-field tables, repeated 16 B keys | **7.3 MiB** | 72.0 MiB | 9.9× |
