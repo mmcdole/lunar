@@ -149,12 +149,18 @@ func slowEquality(
 		code.c(),
 	)
 	if rawSlotEqual(left, right) {
-		setComparisonPC(thread, frameIndex, nextPC, code, true)
+		if setComparisonPC(thread, frameIndex, nextPC, code, true) &&
+			thread.contextStepDue() {
+			return pollComparisonBackedge(thread, frameIndex, nextPC)
+		}
 		return nil
 	}
 	if left.kind() != right.kind() ||
 		(!left.isTable() && !left.isUserData()) {
-		setComparisonPC(thread, frameIndex, nextPC, code, false)
+		if setComparisonPC(thread, frameIndex, nextPC, code, false) &&
+			thread.contextStepDue() {
+			return pollComparisonBackedge(thread, frameIndex, nextPC)
+		}
 		return nil
 	}
 	method, found := matchingMetamethod(
@@ -164,7 +170,10 @@ func slowEquality(
 		metaEqual,
 	)
 	if !found {
-		setComparisonPC(thread, frameIndex, nextPC, code, false)
+		if setComparisonPC(thread, frameIndex, nextPC, code, false) &&
+			thread.contextStepDue() {
+			return pollComparisonBackedge(thread, frameIndex, nextPC)
+		}
 		return nil
 	}
 	return startMetamethodCall(
@@ -226,7 +235,10 @@ func slowOrder(
 		if code.opcode() == opLessEqual {
 			result = leftText <= rightText
 		}
-		setComparisonPC(thread, frameIndex, nextPC, code, result)
+		if setComparisonPC(thread, frameIndex, nextPC, code, result) &&
+			thread.contextStepDue() {
+			return pollComparisonBackedge(thread, frameIndex, nextPC)
+		}
 		return nil
 	}
 

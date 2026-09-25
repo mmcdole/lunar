@@ -292,13 +292,19 @@ func resumeExecutionContinuation(thread *threadObject) *Error {
 	if continuation.mode == continuationCompareInverted {
 		truth = !truth
 	}
-	setComparisonPC(
+	if setComparisonPC(
 		thread,
 		frameIndex,
 		int(continuation.nextPC),
 		continuation.code,
 		truth,
-	)
+	) && thread.contextStepDue() {
+		return pollComparisonBackedge(
+			thread,
+			frameIndex,
+			int(continuation.nextPC),
+		)
+	}
 	return nil
 }
 
@@ -323,20 +329,47 @@ func resumeIteratorContinuation(
 	frame.pc = uint32(nextPC)
 }
 
+// setComparisonPC applies a comparison's result to its following jump and
+// reports whether it jumped backward. It stays small enough to inline into the
+// slow comparison paths; callers poll through pollComparisonBackedge.
 func setComparisonPC(
 	thread *threadObject,
 	frameIndex int,
 	followerPC int,
 	code instruction,
 	result bool,
-) {
+) (backward bool) {
 	nextPC := followerPC + 1
 	if result == (code.a() != 0) {
-		nextPC += thread.frames[frameIndex].
+		offset := thread.frames[frameIndex].
 			function.
 			prototype.
 			code[followerPC].
 			sbx()
+		nextPC += offset
+		backward = offset < 0
 	}
 	thread.frames[frameIndex].pc = uint32(nextPC)
+	return backward
+}
+
+// pollComparisonBackedge polls the context once a slow-path backward
+// comparison jump exhausts the context budget, as the fast path's back-edges
+// do, so loops whose condition takes this path stay cancellable. Callers step
+// the budget inline. A cancellation is positioned at the jump.
+//
+//go:noinline
+func pollComparisonBackedge(
+	thread *threadObject,
+	frameIndex int,
+	followerPC int,
+) *Error {
+	frame := &thread.frames[frameIndex]
+	target := frame.pc
+	frame.pc = uint32(followerPC + 1)
+	if failure := pollExecutionContext(thread); failure != nil {
+		return failure
+	}
+	frame.pc = target
+	return nil
 }
