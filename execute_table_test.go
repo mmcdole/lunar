@@ -2068,3 +2068,31 @@ return {
 `)
 	benchmarkExecutorFunction(b, state, function)
 }
+
+func TestStringKeysMatchByContentAcrossRepresentations(t *testing.T) {
+	// Strings longer than the short-string cache are not interned, so a key
+	// built at runtime and a constant with the same content are separate
+	// objects. Lookups must still find the same entry.
+	state, err := New(Options{Libraries: CoreLibraries()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	results, err := state.DoString("=keys", `
+local built = string.rep("k", 69) .. "k"
+local t = {}
+t[built] = 1
+t.kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk = 2
+local count = 0
+for _ in pairs(t) do count = count + 1 end
+local other = string.rep("k", 70)
+t[other] = 3
+local after = 0
+for _ in pairs(t) do after = after + 1 end
+return t.kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk, t[built], count, after
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, Number(3), Number(3), Number(1), Number(1))
+}

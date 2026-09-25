@@ -167,9 +167,11 @@ func (store *tableStore) getStringSlot(key slot, hash uint32) (slot, bool) {
 		if entry.hash == entryHashEmpty {
 			return nilSlot, false
 		}
-		if entry.hash == hash &&
-			entry.key.isString() &&
-			stringSlotsEqual(entry.key, key) {
+		// Identical bits are the common interned case and need no call.
+		if entry.key.ref == key.ref && entry.key.bits == key.bits ||
+			entry.hash == hash &&
+				entry.key.isString() &&
+				stringSlotContentsEqual(entry.key, key) {
 			value := entry.value
 			return value, !value.isNil()
 		}
@@ -220,10 +222,11 @@ func (store *tableStore) findStringSlot(
 		if entry.hash == entryHashEmpty {
 			return 0, false
 		}
-		if entry.hash == hash &&
-			!entry.value.isNil() &&
-			entry.key.isString() &&
-			stringSlotsEqual(entry.key, key) {
+		if (entry.key.ref == key.ref && entry.key.bits == key.bits ||
+			entry.hash == hash &&
+				entry.key.isString() &&
+				stringSlotContentsEqual(entry.key, key)) &&
+			!entry.value.isNil() {
 			return index, true
 		}
 		if entry.next == 0 {
