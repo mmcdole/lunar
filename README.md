@@ -81,24 +81,24 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 ## Performance
 
-Medians from 15 runs on an AMD Ryzen 9 9950X3D under Linux/amd64 (WSL2),
-using Go 1.26.0. The [measurement report](benchmarks/results/2026-09-08-linux-amd64-integrated-table-lookup/)
+Medians from 15 runs on an AMD Ryzen 7 4800U under Linux/amd64, using
+Go 1.27.1. The [measurement report](benchmarks/results/2026-09-25-linux-amd64-hosaka/)
 records revisions, build settings, and confidence intervals. Lower is better.
 
 | Established Lua program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | **131.69 ms** | 153.78 ms | 159.24 ms |
-| fannkuch-redux | **14.46 ms** | 29.25 ms | 32.59 ms |
-| n-body | **42.80 ms** | 161.24 ms | 170.93 ms |
-| spectral-norm | **42.10 ms** | 144.71 ms | 133.44 ms |
+| binary-trees | **268.9 ms** | 316.6 ms | 333.6 ms |
+| fannkuch-redux | **26.72 ms** | 60.42 ms | 72.42 ms |
+| n-body | **98.13 ms** | 339.40 ms | 432.98 ms |
+| spectral-norm | **73.15 ms** | 310.65 ms | 314.38 ms |
 
 | Embedding operation | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Go calls Lua with scalar arguments | 53.92 ns | **51.01 ns** | 123.50 ns |
-| Lua calls Go 1,000 times | **51.60 µs** | 89.80 µs | 67.53 µs |
-| Lua echoes a 128-byte Go string | 77.79 ns | **66.06 ns** | 126.30 ns |
-| Lua checksums a reused Go-built table | **229.8 ns** | 519.7 ns | 846.7 ns |
-| Build a table in Go, then checksum it in Lua | 2.164 µs | **1.250 µs** | 1.453 µs |
+| Go calls Lua with scalar arguments | 154.9 ns | **122.8 ns** | 278.3 ns |
+| Lua calls Go 1,000 times | **105.9 µs** | 201.0 µs | 186.6 µs |
+| Lua echoes a 128-byte Go string | 198.3 ns | **133.4 ns** | 270.8 ns |
+| Lua checksums a reused Go-built table | **488.7 ns** | 942.4 ns | 1.918 µs |
+| Build a table in Go, then checksum it in Lua | 3.755 µs | **2.846 µs** | 3.293 µs |
 
 The retained-memory figures below are earlier Apple M3 Pro / Go 1.25.1
 measurements: [CBOR graph](benchmarks/results/2026-07-28-darwin-arm64-m3-pro/)
