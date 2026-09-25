@@ -19,6 +19,7 @@ measurements; they do not imply that a result describes the current runtime.
 | [2026-09-08, numeric operands](2026-09-08-linux-amd64-numeric-operands/) | Parked arithmetic prototype; program/control pilots and CBOR evidence |
 | [2026-09-25, Ryzen 7 4800U](2026-09-25-linux-amd64-hosaka/) | README tables after the dispatch, call and table-lookup changes |
 | [2026-09-25, Are We Fast Yet](2026-09-25-linux-amd64-are-we-fast-yet/) | Are We Fast Yet suite with PUC comparison; current README tables |
+| [2026-09-25, retained memory](2026-09-25-linux-amd64-memory/) | CBOR graph and table-shape memory on the README machine |
 
 The [benchmark protocol](../README.md) describes collection, analysis and the
 summary-only publication policy. Workloads, fixtures and reusable tools live in

@@ -13,10 +13,10 @@ worker is selected with the `gopherlua_reference` build tag and uses the pinned
 dependency in `stock.mod`; both builds otherwise compile the same generator,
 workload, validation, and reporting code.
 
-The paired retained-memory results are summarized in
-[`2026-07-28 Apple M3 Pro`](../results/2026-07-28-darwin-arm64-m3-pro/).
-The controlled table-shape suite below has its own summary in
-[`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
+The current retained-memory results are summarized in
+[`2026-09-25 Ryzen 7 4800U`](../results/2026-09-25-linux-amd64-memory/), which
+covers both the CBOR graph and the table-shape suite. Earlier Apple M3 Pro
+collections remain in the [results index](../results/).
 
 ## Deterministic synthetic fixtures
 
@@ -219,8 +219,8 @@ go run ./cmd/shapes -case one-unique-16 -format jsonl
 Published shape results follow the same summary policy as CBOR: report the
 revisions, measurement conditions, sample counts, medians and uncertainty in
 one dated README. Keep JSONL records and other run output locally during
-validation and review. The historical summary is
-[`2026-08-05 Apple M3 Pro`](../results/2026-08-05-darwin-arm64-m3-pro/).
+validation and review. The current summary is
+[`2026-09-25 Ryzen 7 4800U`](../results/2026-09-25-linux-amd64-memory/).
 Recollect the suite whenever table storage, string interning, or the
 allocator changes, and publish a new dated summary without replacing previous
 measurements.
