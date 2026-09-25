@@ -1206,3 +1206,15 @@ var patternEngineLua51Cases = []patternEngineCase{
 		want:    "1 2",
 	},
 }
+
+// find repeats the search string.find and string.match perform inline: strip
+// the anchor, then scan from init. Captures are read from the state afterwards.
+func (state *matchState) find(
+	source string,
+	pattern string,
+	init int,
+) (start, end int, found bool) {
+	stripped, anchored := patternAnchor(pattern)
+	state.reset(source, stripped)
+	return state.searchFrom(init, anchored)
+}

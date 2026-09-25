@@ -459,7 +459,7 @@ func TestWeakTableHostRootsAndDeletedKeyContinuation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		index, found := table.store.findContinuation(keySlot, hash)
+		index, found := table.store.findStored(keySlot, hash)
 		if !found ||
 			!table.store.entries.at(index).key.isDeadReferenceKey() {
 			t.Fatal("weak clearing did not retain a non-owning continuation")
@@ -544,7 +544,7 @@ func TestWeakClearingPreservesCollisionChainsAndCompactsOnRevival(
 		t.Fatal("lookup beyond cleared collision nodes failed")
 	}
 	for index := 0; index < chainLength-1; index++ {
-		if _, found := table.store.findContinuation(
+		if _, found := table.store.findStored(
 			keys[index],
 			hashes[index],
 		); !found {

@@ -328,10 +328,6 @@ func (store *tableStore) findStored(
 	}
 }
 
-func (store *tableStore) findContinuation(key slot, hash uint32) (int, bool) {
-	return store.findStored(key, hash)
-}
-
 func tableNumberBitsEqual(left, right uint64) bool {
 	return left == right || left<<1 == 0 && right<<1 == 0
 }

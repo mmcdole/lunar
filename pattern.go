@@ -611,18 +611,6 @@ func (state *matchState) searchFrom(
 	}
 }
 
-// find is the search string.find and string.match perform: strip the anchor,
-// then scan from init. Captures are read from the state afterwards.
-func (state *matchState) find(
-	source string,
-	pattern string,
-	init int,
-) (start, end int, found bool) {
-	stripped, anchored := patternAnchor(pattern)
-	state.reset(source, stripped)
-	return state.searchFrom(init, anchored)
-}
-
 // patternAnchor strips a leading '^' and reports whether the pattern is
 // anchored.
 //

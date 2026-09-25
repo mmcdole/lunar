@@ -562,3 +562,10 @@ func assertExecutionValues(t *testing.T, thread *threadObject, expected ...Value
 		assertTestSlot(t, thread.values[index], value)
 	}
 }
+
+func (result collectionResult) total() int {
+	return result.tables +
+		result.functions +
+		result.threads +
+		result.userData
+}

@@ -561,7 +561,7 @@ func (table *tableObject) next(previous slot) (key, value slot, found bool, err 
 			if hashErr != nil {
 				return nilSlot, nilSlot, false, ErrInvalidNextKey
 			}
-			index, exists := table.store.findContinuation(previous, hash)
+			index, exists := table.store.findStored(previous, hash)
 			if !exists {
 				return nilSlot, nilSlot, false, ErrInvalidNextKey
 			}

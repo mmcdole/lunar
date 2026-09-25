@@ -77,13 +77,6 @@ type collectionResult struct {
 	userData  int
 }
 
-func (result collectionResult) total() int {
-	return result.tables +
-		result.functions +
-		result.threads +
-		result.userData
-}
-
 func (thread *threadObject) collectionMark() objectMark {
 	return objectMark(thread.flags & threadFlagMarked)
 }

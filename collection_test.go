@@ -335,7 +335,7 @@ func TestSemanticCollectorRetiresDeletedReferenceKeys(t *testing.T) {
 	mustRootCollectorObject(t, state, "dead-key object", keySlot)
 
 	state.collectUnreachable()
-	index, found := table.store.findContinuation(keySlot, hash)
+	index, found := table.store.findStored(keySlot, hash)
 	if !found {
 		t.Fatal("collector discarded a valid next continuation")
 	}
@@ -377,7 +377,7 @@ func TestSemanticCollectorRetiresDeletedReferenceKeys(t *testing.T) {
 	headerReference := weak.Make(&key.objectHeader)
 	unrootCollectorObject(t, state, "dead-key object")
 	state.collectUnreachable()
-	index, found = table.store.findContinuation(keySlot, hash)
+	index, found = table.store.findStored(keySlot, hash)
 	if !found {
 		t.Fatal("unreachable key lost its tombstone before Go reclamation")
 	}
@@ -484,7 +484,7 @@ func TestSemanticCollectorRetiresEveryReferenceKeyKind(t *testing.T) {
 			mustRootCollectorObject(t, state, "dead-key-object", key)
 
 			state.collectUnreachable()
-			index, found := table.store.findContinuation(key, hash)
+			index, found := table.store.findStored(key, hash)
 			if !found {
 				t.Fatal("collector discarded the continuation")
 			}

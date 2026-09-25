@@ -432,7 +432,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 			if _, found := store.get(key(deleted.index), hash); found {
 				t.Fatalf("deleted key %d remained live", deleted.index)
 			}
-			if continuation, found := store.findContinuation(
+			if continuation, found := store.findStored(
 				key(deleted.index),
 				hash,
 			); !found {
@@ -494,7 +494,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 		if !store.deleteFixture(key(2), hash) {
 			t.Fatal("delete did not find collision key")
 		}
-		if _, found := store.findContinuation(key(2), hash); !found {
+		if _, found := store.findStored(key(2), hash); !found {
 			t.Fatal("deleted key stopped being a traversal continuation")
 		}
 
@@ -512,7 +512,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 		if _, found := store.get(key(2), hash); found {
 			t.Fatal("deleted key remained live after node reuse")
 		}
-		if _, found := store.findContinuation(key(2), hash); found {
+		if _, found := store.findStored(key(2), hash); found {
 			t.Fatal("node reuse retained the replaced continuation key")
 		}
 		for _, index := range []int{1, 3, 4, 5} {
@@ -562,7 +562,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 				store.dead,
 			)
 		}
-		if _, found := store.findContinuation(key(1), 1); found {
+		if _, found := store.findStored(key(1), 1); found {
 			t.Fatal("main-node reuse retained the replaced continuation key")
 		}
 		if index, found := store.find(key(2), 1); !found || index != 1 {
@@ -745,7 +745,7 @@ func TestTableHashStoreCollisionChains(t *testing.T) {
 		); !stored {
 			t.Fatal("specialized string mutation lookup lost tombstone")
 		}
-		if _, found := store.findContinuation(first, hash); !found {
+		if _, found := store.findStored(first, hash); !found {
 			t.Fatal("deleted string stopped being a continuation")
 		}
 		assertTableStoreInvariant(t, &store)
@@ -786,7 +786,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 			t.Fatal(err)
 		}
 		hash := uint32(stringSlotHash(keySlots[index]))
-		if _, found := table.store.findContinuation(
+		if _, found := table.store.findStored(
 			keySlots[index],
 			hash,
 		); !found {
@@ -821,7 +821,7 @@ func TestTableTombstoneRevivalCompactsDeadRecordKeys(t *testing.T) {
 	}
 	for index := 1; index < 4; index++ {
 		hash := uint32(stringSlotHash(keySlots[index]))
-		if _, found := table.store.findContinuation(
+		if _, found := table.store.findStored(
 			keySlots[index],
 			hash,
 		); found {
@@ -894,7 +894,7 @@ func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 				); err != nil {
 					t.Fatal(err)
 				}
-				if _, found := table.store.findContinuation(
+				if _, found := table.store.findStored(
 					keySlots[index],
 					hashReference(keySlots[index]),
 				); !found {
@@ -933,7 +933,7 @@ func TestTableArrayInsertionsCompactDeadRecordKeys(t *testing.T) {
 				)
 			}
 			for index := 0; index < 4; index++ {
-				if _, found := table.store.findContinuation(
+				if _, found := table.store.findStored(
 					keySlots[index],
 					hashReference(keySlots[index]),
 				); found {
@@ -1017,7 +1017,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 
 	previous := slotFromValue(state.String(byLocation[0]))
 	previousHash := uint32(stringSlotHash(previous))
-	continuation, found := table.store.findContinuation(
+	continuation, found := table.store.findStored(
 		previous,
 		previousHash,
 	)
@@ -1054,7 +1054,7 @@ func TestTableValueUpdatePreservesDeadContinuations(t *testing.T) {
 			lastFree,
 		)
 	}
-	if after, found := table.store.findContinuation(
+	if after, found := table.store.findStored(
 		previous,
 		previousHash,
 	); !found || after != continuation {
