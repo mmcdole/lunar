@@ -76,6 +76,17 @@ environment, upvalues, and native captures. Threads trace their environment,
 live stack extent, activations, and open upvalues. Userdata trace their
 environment and metatable.
 
+A thread's live stack extent covers every register of each active Lua
+function. A returning call clears the callee's registers beyond its caller's
+frame, but leaves the ones inside that frame until they are reused. A
+collection that runs while a native function is active therefore still traces
+values a returned callee left there. PUC Lua 5.1 stops at the native call's
+stack top instead, so a weak entry or finalizer can be cleared or run one
+collection later in Lunar. For example, after
+`local function f() local t = {} weak[t] = true end f() collectgarbage()`,
+PUC clears the entry and Lunar keeps it until the slot is overwritten. Lua 5.1
+does not specify how promptly unreachable objects are collected.
+
 Go callback closures and userdata payloads are opaque. A Go value that needs
 to retain a Lua object must use an owning Lunar value, which then appears in the
 host root set. Hosts that create cycles through opaque Go payloads must break
