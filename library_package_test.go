@@ -340,6 +340,26 @@ return ok,type(message),string.find(message,"loop or previous error",1,true)~=ni
 	)
 }
 
+func TestPackageLuaLoaderContinuesWhenScriptLoadingIsDisabled(t *testing.T) {
+	state := newStateWithPackage(t, Options{})
+	defer state.Close()
+	if err := state.OpenString(); err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := mustLoadString(t, state, "@package-disabled-loader.lua", `
+package.loaders[3]=function(name)
+  return function() return "virtual "..name end
+end
+return require("virt")
+`)
+	results, err := state.Call(chunk.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTestValues(t, results, state.String("virtual virt"))
+}
+
 func TestPackageRequireSentinelRemainsCompact(t *testing.T) {
 	state := newStateWithPackage(t, Options{})
 	defer state.Close()
