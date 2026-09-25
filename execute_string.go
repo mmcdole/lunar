@@ -23,22 +23,9 @@ func slowLength(
 	nextPC := int(frame.pc)
 	instructionPC := nextPC - 1
 	base := int(frame.base)
+	// runInstructions resolves string and table lengths inline, so only
+	// operands that need __len or raise an error reach here.
 	source := thread.values[base+code.b()]
-
-	switch source.kind() {
-	case StringKind:
-		writeSlot(
-			&thread.values[base+code.a()],
-			numberSlot(float64(stringSlotLen(source))),
-		)
-		return nil
-	case TableKind:
-		writeSlot(
-			&thread.values[base+code.a()],
-			numberSlot(float64((*tableObject)(source.ref).rawLen())),
-		)
-		return nil
-	}
 
 	method, found := binaryMetamethod(
 		thread,

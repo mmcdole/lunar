@@ -1193,6 +1193,8 @@ func hashNumber(number float64) uint32 {
 	)
 }
 
+// hashReference hashes a boolean or reference-typed key. Callers hash numbers
+// and strings themselves before reaching it.
 func hashReference(value slot) uint32 {
 	switch value.kind() {
 	case BoolKind:
@@ -1200,8 +1202,6 @@ func hashReference(value slot) uint32 {
 			return normalizeTableHash(0x6eed0e9da4d94a4f)
 		}
 		return normalizeTableHash(0x8a5cd789635d2dff)
-	case StringKind:
-		return uint32(stringSlotHash(value))
 	default:
 		return normalizeTableHash(mixHash(uint64(uintptr(value.ref))))
 	}

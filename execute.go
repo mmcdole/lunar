@@ -359,17 +359,8 @@ driver:
 				frame := &thread.frames[len(thread.frames)-1]
 				frame.pc = uint32(int(frame.pc) + current.sbx())
 			default:
-				frameIndex := len(thread.frames) - 1
-				return stopExecution(
-					thread,
-					newExecutionRuntimeError(
-						thread,
-						frameIndex,
-						int(thread.frames[frameIndex].pc)-1,
-						"opcode %s is not executable yet",
-						current.opcode(),
-					),
-				)
+				panic("lua: executor returned unhandled opcode " +
+					current.opcode().String())
 			}
 		}
 	}
@@ -533,10 +524,6 @@ dispatch:
 				)
 				break
 			}
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return current
-
-		case opPow:
 			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
@@ -726,19 +713,9 @@ dispatch:
 			}
 			return code[pc-1]
 
-		case opTailCall:
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return current
-
-		case opClose:
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return current
-
-		case opClosure:
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return current
-
-		case opVararg:
+		// The driver executes these; listing them keeps them explicit in the
+		// dispatch table rather than relying on default.
+		case opPow, opTailCall, opClose, opClosure, opVararg, opIteratorLoop:
 			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return current
 
@@ -779,10 +756,6 @@ dispatch:
 					goto contextBackedge
 				}
 			}
-
-		case opIteratorLoop:
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return current
 
 		default:
 			thread.frames[len(thread.frames)-1].pc = uint32(pc)
