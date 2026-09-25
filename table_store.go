@@ -157,6 +157,20 @@ func (store *tableStore) getString(text string, hash uint32) (slot, bool) {
 // already proved that key is a string constant. It avoids repeating generic
 // slot-kind dispatch while retaining content equality for distinct string
 // objects with the same bytes.
+// mainStringEntry returns the entry at key's main position when it holds the
+// identical key representation. Small tables usually find their constant keys
+// there, so executors try it before walking the chain.
+func (store *tableStore) mainStringEntry(key slot, hash uint32) *tableEntry {
+	if store.entries.len() == 0 {
+		return nil
+	}
+	entry := store.entries.at(store.mainIndex(hash))
+	if entry.key.ref != key.ref || entry.key.bits != key.bits {
+		return nil
+	}
+	return entry
+}
+
 func (store *tableStore) getStringSlot(key slot, hash uint32) (slot, bool) {
 	if store.entries.len() == 0 {
 		return nilSlot, false
