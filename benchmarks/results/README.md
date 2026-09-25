@@ -16,6 +16,7 @@ measurements; they do not imply that a result describes the current runtime.
 | [2026-09-07, native calls](2026-09-07-linux-amd64-native-calls/) | README comparison after the native-call change |
 | [2026-09-07, array access](2026-09-07-linux-amd64-array-access/) | Rejected array-access experiments |
 | [2026-09-08, integrated table lookup](2026-09-08-linux-amd64-integrated-table-lookup/) | General indexed-access improvement and callback tradeoff |
+| [2026-09-25, Ryzen 7 4800U](2026-09-25-linux-amd64-hosaka/) | README tables after the dispatch, call and table-lookup changes |
 
 The [benchmark protocol](../README.md) describes collection, analysis and the
 summary-only publication policy. Workloads, fixtures and reusable tools live in
