@@ -138,10 +138,13 @@ func executeRawStringTableGet(
 		return code
 	}
 	table := (*tableObject)(target.ref)
-	result, found := table.rawStringKeySlot(
-		key,
-		uint32(stringSlotHash(key)),
-	)
+	hash := uint32(stringSlotHash(key))
+	if entry := table.store.mainStringEntry(key, hash); entry != nil &&
+		!entry.value.isNil() {
+		writeSlot(&values[base+code.a()], entry.value)
+		return tableInstructionHandled
+	}
+	result, found := table.rawStringKeySlot(key, hash)
 	if !found {
 		if table.metatable == nil ||
 			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
@@ -286,6 +289,14 @@ func executeRawStringTableSet(
 	}
 	table := (*tableObject)(target.ref)
 	hash := uint32(stringSlotHash(key))
+	if entry := table.store.mainStringEntry(key, hash); entry != nil &&
+		!entry.value.isNil() &&
+		!value.isNil() {
+		if replaceTableValue(&entry.value, value) {
+			table.absentMetamethods = 0
+		}
+		return tableInstructionHandled
+	}
 	storeIndex, found := table.store.findStringSlot(key, hash)
 	if !found {
 		if table.metatable == nil ||
