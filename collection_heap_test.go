@@ -1026,7 +1026,7 @@ func TestFailedBoundariesDoNotAdmitStrings(t *testing.T) {
 	) {
 		t.Helper()
 		compact := slotFromValue(value)
-		reference := stringRef{ref: compact.ref, bits: compact.bits}
+		reference := stringRef(compact)
 		if _, found := state.runtime.collection.attributedStrings[reference]; found {
 			t.Fatalf("%q was attributed by a failed boundary", stringSlotText(compact))
 		}
@@ -1256,7 +1256,7 @@ func TestBoundaryMetamethodAdmissionTracksArgumentProvenance(t *testing.T) {
 	control := &state.runtime.collection
 	assertAttribution := func(value slot, want bool) {
 		t.Helper()
-		reference := stringRef{ref: value.ref, bits: value.bits}
+		reference := stringRef(value)
 		_, found := control.attributedStrings[reference]
 		if found != want {
 			t.Fatalf(

@@ -232,10 +232,7 @@ func (rt *runtimeState) importAcceptedString(compact slot) slot {
 			stringSlotHash(compact),
 		))
 	}
-	rt.collection.attributeString(stringRef{
-		ref:  compact.ref,
-		bits: compact.bits,
-	})
+	rt.collection.attributeString(stringRef(compact))
 	return compact
 }
 

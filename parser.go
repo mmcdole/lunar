@@ -470,7 +470,7 @@ func (parser *sourceParser) parseLocal() *Error {
 	}
 
 	emitter := parser.function
-	base := emitter.registerTop
+	var base int
 	hasValues, syntaxError := parser.accept('=')
 	if syntaxError != nil {
 		return syntaxError

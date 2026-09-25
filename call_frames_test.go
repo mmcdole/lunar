@@ -531,7 +531,7 @@ func TestValueStackGrowthRetargetsOpenUpvalueCells(t *testing.T) {
 	}
 	defer state.Close()
 	thread := state.main
-	thread.values = make([]slot, 4, 4)
+	thread.values = make([]slot, 4)
 	lowValue := state.String("low")
 	highValue := state.String("high")
 	thread.values[1] = slotFromValue(lowValue)

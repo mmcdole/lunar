@@ -146,10 +146,7 @@ func prototypeTreeRetainedBytes(prototype *Prototype) uint64 {
 	addName(prototype.sourceName)
 	for _, constant := range prototype.constants {
 		if constant.isString() {
-			add(stringRefRetainedBytes(stringRef{
-				ref:  constant.ref,
-				bits: constant.bits,
-			}))
+			add(stringRefRetainedBytes(stringRef(constant)))
 		}
 	}
 	for _, child := range prototype.children {
@@ -310,10 +307,7 @@ func (summary *semanticHeapSummary) addSlot(
 	value slot,
 ) {
 	if value.isString() {
-		summary.addStringRef(ledger, stringRef{
-			ref:  value.ref,
-			bits: value.bits,
-		})
+		summary.addStringRef(ledger, stringRef(value))
 	}
 }
 

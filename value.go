@@ -363,7 +363,7 @@ func stringSlot(value stringRef) slot {
 	if !value.valid() {
 		panic("lua: invalid string reference")
 	}
-	return slot{ref: value.ref, bits: value.bits}
+	return slot(value)
 }
 
 func (value Value) owner() *runtimeState {

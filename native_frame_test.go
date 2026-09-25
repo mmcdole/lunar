@@ -435,7 +435,7 @@ func TestProtectedErrorImportsStateNeutralStringOnDemand(t *testing.T) {
 		}
 		value := state.String(strings.Repeat("caught-native-error-", 8))
 		compact := slotFromValue(value)
-		reference := stringRef{ref: compact.ref, bits: compact.bits}
+		reference := stringRef(compact)
 		function, err := state.NewNativeFunction(
 			func(frame Frame) Outcome {
 				frame.Throw(value)

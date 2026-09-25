@@ -63,7 +63,10 @@ type nativeResourceToken struct {
 // assigning a library metatable to unrelated userdata cannot impersonate a
 // native handle.
 type nativeResourceClass struct {
-	marker byte
+	// marker gives the class a nonzero size. Pointers to distinct zero-size
+	// allocations may compare equal, which would let two classes share an
+	// identity.
+	marker byte //lint:ignore U1000 read only through pointer identity
 }
 
 // nativeResourceLease keeps the finalizer token reachable for the complete

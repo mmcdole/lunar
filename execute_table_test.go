@@ -572,7 +572,7 @@ return target, key, value
 	if err := sink.RawSetInt(1, state.String("unchanged")); err != nil {
 		t.Fatal(err)
 	}
-	thread, result = executeTestFunction(
+	_, result = executeTestFunction(
 		t,
 		state,
 		caller,
@@ -638,7 +638,7 @@ return invalid()
 	); err != nil {
 		t.Fatal(err)
 	}
-	thread, result = executeTestFunction(
+	_, result = executeTestFunction(
 		t,
 		state,
 		caller,
@@ -658,7 +658,7 @@ return invalid()
 	); err != nil {
 		t.Fatal(err)
 	}
-	thread, result = executeTestFunction(
+	_, result = executeTestFunction(
 		t,
 		state,
 		caller,
