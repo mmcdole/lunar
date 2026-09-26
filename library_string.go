@@ -9,22 +9,23 @@ import (
 // THIRD_PARTY_NOTICES.md for the reference implementation's license.
 
 var stringLibraryFunctions = [...]struct {
-	name  string
-	entry NativeFunc
+	name   string
+	entry  NativeFunc
+	direct nativeDirectFunc
 }{
-	{name: "byte", entry: stringByte},
-	{name: "char", entry: stringChar},
+	{name: "byte", entry: stringByte, direct: stringByteDirect},
+	{name: "char", entry: stringChar, direct: stringCharDirect},
 	{name: "dump", entry: stringDump},
 	{name: "find", entry: stringFind},
 	{name: "format", entry: stringFormat},
 	{name: "gmatch", entry: stringGMatch},
 	{name: "gsub", entry: stringGSub},
-	{name: "len", entry: stringLen},
+	{name: "len", entry: stringLen, direct: stringLenDirect},
 	{name: "lower", entry: stringLower},
 	{name: "match", entry: stringMatch},
 	{name: "rep", entry: stringRep},
 	{name: "reverse", entry: stringReverse},
-	{name: "sub", entry: stringSub},
+	{name: "sub", entry: stringSub, direct: stringSubDirect},
 	{name: "upper", entry: stringUpper},
 }
 
@@ -61,6 +62,7 @@ func (state *State) OpenString() error {
 		if functionErr != nil {
 			return functionErr
 		}
+		function.nativeBodyUnchecked().direct = definition.direct
 		if setErr := library.rawSetStringSlot(
 			definition.name,
 			slotFromFunctionObject(function),
