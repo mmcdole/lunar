@@ -83,7 +83,7 @@ callbacks, tables, errors, cancellation, coroutines, and lifecycle.
 
 Timings are medians from 15 runs on an AMD Ryzen 7 4800U under
 Linux/amd64, using Go 1.27.1. The
-[measurement report](benchmarks/results/2026-09-25-linux-amd64-are-we-fast-yet/)
+[measurement report](benchmarks/results/2026-09-26-linux-amd64-interpreter/)
 records revisions, build settings, and confidence intervals. Lower is better.
 
 ### Are We Fast Yet
@@ -94,19 +94,19 @@ small objects, strings, and arrays.
 
 | Program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| Richards | **877.9 ms** | 1,677.6 ms | 1,990.4 ms |
-| DeltaBlue | **141.7 ms** | 326.1 ms | 9,503.5 ms |
-| Json | **937.6 ms** | 1,681.7 ms | 1,981.0 ms |
-| CD | **2,755 ms** | 6,321 ms | 6,623 ms |
-| Bounce | **927.3 ms** | 2,211.0 ms | 2,854.5 ms |
-| List | **604.2 ms** | 1,258.7 ms | 1,397.7 ms |
-| Mandelbrot | **489.8 ms** | 1,697.5 ms | 2,566.3 ms |
-| NBody | **1,539 ms** | 5,730 ms | 8,165 ms |
-| Permute | **536.1 ms** | 1,398.0 ms | 1,725.3 ms |
-| Queens | **504.8 ms** | 1,183.9 ms | 1,537.2 ms |
-| Sieve | **721.2 ms** | 1,893.1 ms | 2,058.3 ms |
-| Storage | **1,011 ms** | 2,456 ms | 2,812 ms |
-| Towers | **886.2 ms** | 1,899.5 ms | 3,000.7 ms |
+| Richards | **595.0 ms** | 1,677.2 ms | 1,990.8 ms |
+| DeltaBlue | **124.5 ms** | 325.6 ms | 9,569.5 ms |
+| Json | **651.0 ms** | 1,670.2 ms | 1,982.6 ms |
+| CD | **2,541 ms** | 6,314 ms | 6,645 ms |
+| Bounce | **542.7 ms** | 2,143.7 ms | 2,874.0 ms |
+| List | **528.1 ms** | 1,247.2 ms | 1,401.1 ms |
+| Mandelbrot | **367.7 ms** | 1,681.1 ms | 2,563.6 ms |
+| NBody | **1,363 ms** | 5,631 ms | 8,151 ms |
+| Permute | **586.5 ms** | 1,387.6 ms | 1,740.5 ms |
+| Queens | **467.9 ms** | 1,187.8 ms | 1,527.9 ms |
+| Sieve | **561.5 ms** | 1,899.3 ms | 2,064.2 ms |
+| Storage | **519.3 ms** | 2,440.1 ms | 2,801.2 ms |
+| Towers | **899.0 ms** | 1,925.1 ms | 3,050.1 ms |
 
 ### Benchmarks Game
 
@@ -115,10 +115,10 @@ for interpreters.
 
 | Program | Lunar | GopherLua | go-lua |
 | --- | ---: | ---: | ---: |
-| binary-trees | **271.1 ms** | 323.7 ms | 345.1 ms |
-| fannkuch-redux | **27.73 ms** | 60.38 ms | 73.63 ms |
-| n-body | **86.26 ms** | 337.07 ms | 440.58 ms |
-| spectral-norm | **81.22 ms** | 311.41 ms | 348.86 ms |
+| binary-trees | **250.5 ms** | 322.2 ms | 344.0 ms |
+| fannkuch-redux | **26.57 ms** | 62.56 ms | 73.84 ms |
+| n-body | **63.94 ms** | 335.20 ms | 444.98 ms |
+| spectral-norm | **66.49 ms** | 312.13 ms | 344.02 ms |
 
 ### Retained memory
 
