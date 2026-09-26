@@ -150,8 +150,10 @@ One normalized `ScriptLoader` belongs to each State. Its zero value has no
 opener. `HostLoader` snapshots `LUA_PATH` during `New`; `fs.FS` and custom-opener
 modes use slash-separated names and default `package.path` to
 `?.lua;?/init.lua`. `LoadFile`, `DoFile`, base-library file loading, and the
-Lua package source searcher all pass through the same opener. Only
-`fs.ErrNotExist` advances a module search to the next path candidate. With no
+Lua package source searcher all pass through the same opener. With the host
+loader, any candidate the searcher cannot open counts as missing, as in PUC
+Lua; with an `fs.FS` or custom opener, only `fs.ErrNotExist` advances to the
+next path candidate and other errors end the search. With no
 opener, the source searcher tries no candidates and reports that script-file
 loading is disabled, so searchers added after it still run.
 

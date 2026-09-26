@@ -121,6 +121,11 @@ type scriptLoaderConfig struct {
 	packagePath string
 	separator   string
 	stdin       bool
+	// searchSkipsOpenErrors makes the package source searcher treat any
+	// candidate it cannot open as missing, as PUC Lua does. Only the host
+	// loader sets it; for fs.FS and custom openers an open error is the
+	// host's decision and ends the search.
+	searchSkipsOpenErrors bool
 }
 
 func normalizeScriptLoader(
@@ -138,6 +143,7 @@ func normalizeScriptLoader(
 		}
 		return config, nil
 	case scriptLoaderHost:
+		config.searchSkipsOpenErrors = true
 		config.opener = func(
 			_ context.Context,
 			name string,
