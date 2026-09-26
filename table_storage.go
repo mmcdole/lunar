@@ -156,7 +156,7 @@ func (table *tableObject) replaceResolvedSlot(
 	if value.isNil() {
 		switch location.lane {
 		case tableArrayLane:
-			*current = nilSlot
+			writeSlot(current, nilSlot)
 			table.arrayUsed--
 		case tableHashLane:
 			table.store.deleteAt(location.index)
@@ -721,9 +721,7 @@ func (table *tableObject) growArrayExact(length int) {
 	array := arrayVector.values()
 	oldArray := table.array.values()
 	copy(array, oldArray)
-	for index := len(oldArray); index < length; index++ {
-		array[index] = nilSlot
-	}
+	fillFreshNilSlots(array[len(oldArray):length])
 	table.array = arrayVector
 	table.chargeStorageGrowth(previousStorage)
 }
@@ -753,15 +751,11 @@ func (table *tableObject) redistributeForInsert(
 		arraySize <= table.array.cap():
 		arrayVector = table.array.withLength(arraySize)
 		array = arrayVector.values()
-		for index := len(oldArray); index < arraySize; index++ {
-			array[index] = nilSlot
-		}
+		fillNilSlots(array[len(oldArray):arraySize])
 	default:
 		arrayVector = makeTableVector[slot](arraySize, arraySize)
 		array = arrayVector.values()
-		for index := range array {
-			array[index] = nilSlot
-		}
+		fillFreshNilSlots(array)
 	}
 
 	var store tableStore
@@ -990,7 +984,7 @@ func (table *tableObject) setArray(index int, value slot) bool {
 		table.arrayUsed++
 		return true
 	case valueNil:
-		*target = nilSlot
+		writeSlot(target, nilSlot)
 		table.arrayUsed--
 		return true
 	default:
@@ -1026,9 +1020,7 @@ func (table *tableObject) growArray(length int) {
 		)
 	}
 	array := table.array.values()
-	for index := oldLength; index < length; index++ {
-		array[index] = nilSlot
-	}
+	fillNilSlots(array[oldLength:length])
 	if table.store.integerKeys == 0 {
 		return
 	}
@@ -1159,6 +1151,27 @@ func hashTableKey(key slot) (uint32, error) {
 	}
 }
 
+// fillNilSlots stores nil into every element. Scalar destinations update only
+// their bits word, so filling fresh or scalar-only memory runs no write
+// barrier.
+func fillNilSlots(values []slot) {
+	for index := range values {
+		if values[index].ref != nil {
+			values[index] = nilSlot
+		} else {
+			values[index].bits = nilSlotBits
+		}
+	}
+}
+
+// fillFreshNilSlots stores nil into memory that has never held a reference,
+// such as a newly allocated vector.
+func fillFreshNilSlots(values []slot) {
+	for index := range values {
+		values[index].bits = nilSlotBits
+	}
+}
+
 func writeSlot(destination *slot, value slot) {
 	if destination.ref == value.ref {
 		destination.bits = value.bits
@@ -1198,7 +1211,7 @@ func hashNumber(number float64) uint32 {
 func hashReference(value slot) uint32 {
 	switch value.kind() {
 	case BoolKind:
-		if value.ref == trueMarkerPointer {
+		if value.isTrue() {
 			return normalizeTableHash(0x6eed0e9da4d94a4f)
 		}
 		return normalizeTableHash(0x8a5cd789635d2dff)

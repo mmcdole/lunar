@@ -253,7 +253,7 @@ func (table *tableObject) rawSetValue(key, value Value) error {
 	}
 	var incoming slot
 	if value.ref == numberMarkerPointer {
-		incoming.bits = value.bits
+		incoming.bits = canonicalNumberBits(value.bits)
 	} else {
 		if err := table.owner.accept(value); err != nil {
 			return err
@@ -312,7 +312,7 @@ func (table *tableObject) rawSetIntValue(key int, value Value) error {
 	}
 	var incoming slot
 	if value.ref == numberMarkerPointer {
-		incoming.bits = value.bits
+		incoming.bits = canonicalNumberBits(value.bits)
 	} else {
 		if err := table.owner.accept(value); err != nil {
 			return err
@@ -371,7 +371,7 @@ func (table *tableObject) rawSetStringValue(key string, value Value) error {
 	}
 	var incoming slot
 	if value.ref == numberMarkerPointer {
-		incoming.bits = value.bits
+		incoming.bits = canonicalNumberBits(value.bits)
 	} else {
 		if err := table.owner.accept(value); err != nil {
 			return err

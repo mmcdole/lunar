@@ -153,7 +153,7 @@ func slowConcat(
 }
 
 func isDirectConcatValue(value slot) bool {
-	return value.ref == nil || value.isString()
+	return value.isNumber() || value.isString()
 }
 
 func concatDirectValues(
@@ -186,7 +186,7 @@ func concatDirectValues(
 	var numberBuffer [32]byte
 	for _, value := range values {
 		length := 0
-		if value.ref == nil {
+		if value.isNumber() {
 			formatted := appendLuaNumber(
 				numberBuffer[:0],
 				math.Float64frombits(value.bits),
@@ -204,7 +204,7 @@ func concatDirectValues(
 	var builder strings.Builder
 	builder.Grow(total)
 	for _, value := range values {
-		if value.ref == nil {
+		if value.isNumber() {
 			formatted := appendLuaNumber(
 				numberBuffer[:0],
 				math.Float64frombits(value.bits),

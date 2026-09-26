@@ -70,15 +70,68 @@ type Value struct {
 }
 
 // slot is the private representation used by registers, tables, and upvalues.
-// A nil pointer denotes a number, making the zero slot numeric zero. Public
-// Value uses a real marker pointer so Value{} remains detectably invalid.
+// A nil pointer denotes a scalar: a number, nil, or a boolean. Numbers store
+// their IEEE-754 bits directly, making the zero slot numeric zero. nil, false,
+// and true occupy the three highest bit patterns, which are negative quiet NaNs
+// with an all-ones payload.
+//
+// No number slot may hold those patterns, nor a NaN that reaches them by
+// negation, abs, or quieting (the only payload-preserving transformations
+// that arithmetic and Go's math package perform). Numbers entering from
+// outside the runtime (host API, reflection, binary chunks) pass through
+// canonicalNumberBits; every other NaN is produced by hardware or math.NaN
+// from numbers that already satisfy the invariant.
+//
+// Keeping scalars pointer-free lets writeSlot and fills update only the bits
+// word when the destination already holds a scalar, so those stores never
+// execute a GC write barrier. Reference slots keep kind tags in their low byte
+// (4..8, or 0 for dead keys), so the reserved patterns never collide with them
+// and nil, boolean, and truth tests need not inspect ref.
+//
+// Public Value uses a real marker pointer so Value{} remains detectably
+// invalid.
 type slot struct {
 	ref  unsafe.Pointer
 	bits uint64
 }
 
+const (
+	nilSlotBits   uint64 = ^uint64(0)
+	falseSlotBits uint64 = ^uint64(0) - 1
+	trueSlotBits  uint64 = ^uint64(0) - 2
+	// Every number slot's bits are below trueSlotBits.
+	firstReservedSlotBits = trueSlotBits
+
+	canonicalNaNBits uint64 = 0x7ff8000000000000
+)
+
+// numberSlot wraps a number produced inside the runtime. Its NaNs, if any,
+// already satisfy the slot invariant.
 func numberSlot(value float64) slot {
 	return slot{bits: math.Float64bits(value)}
+}
+
+// canonicalNumberBits returns bits for a number that may have come from
+// outside the runtime. A NaN whose sign-set, quieted form would collide with a
+// reserved scalar pattern collapses to canonicalNaNBits; other payloads are
+// preserved.
+func canonicalNumberBits(bits uint64) uint64 {
+	if bits|1<<63|1<<51 >= firstReservedSlotBits {
+		return canonicalNaNBits
+	}
+	return bits
+}
+
+// hostNumberSlot wraps a number whose NaN payload is not trusted.
+func hostNumberSlot(value float64) slot {
+	return slot{bits: canonicalNumberBits(math.Float64bits(value))}
+}
+
+func boolSlot(value bool) slot {
+	if value {
+		return trueSlot
+	}
+	return falseSlot
 }
 
 type scalarMarker struct {
@@ -99,9 +152,9 @@ var (
 	nilValue   = Value{ref: nilMarkerPointer, bits: uint64(NilKind)}
 	falseValue = Value{ref: falseMarkerPointer, bits: uint64(BoolKind)}
 	trueValue  = Value{ref: trueMarkerPointer, bits: uint64(BoolKind)}
-	nilSlot    = slot{ref: nilMarkerPointer, bits: uint64(NilKind)}
-	falseSlot  = slot{ref: falseMarkerPointer, bits: uint64(BoolKind)}
-	trueSlot   = slot{ref: trueMarkerPointer, bits: uint64(BoolKind)}
+	nilSlot    = slot{bits: nilSlotBits}
+	falseSlot  = slot{bits: falseSlotBits}
+	trueSlot   = slot{bits: trueSlotBits}
 )
 
 // Nil returns the Lua nil value.
@@ -282,7 +335,7 @@ func (value slot) diagnosticString() string {
 	case NilKind:
 		return "nil"
 	case BoolKind:
-		return strconv.FormatBool(value.ref == trueMarkerPointer)
+		return strconv.FormatBool(value.bits == trueSlotBits)
 	case NumberKind:
 		var buffer [32]byte
 		return string(appendLuaNumber(
@@ -385,8 +438,15 @@ func slotFromValue(value Value) slot {
 	if !value.Valid() {
 		panic("lua: invalid Value at compact-value seam")
 	}
-	if value.ref == numberMarkerPointer {
-		return slot{bits: value.bits}
+	switch value.ref {
+	case numberMarkerPointer:
+		return slot{bits: canonicalNumberBits(value.bits)}
+	case nilMarkerPointer:
+		return nilSlot
+	case falseMarkerPointer:
+		return falseSlot
+	case trueMarkerPointer:
+		return trueSlot
 	}
 	switch value.Kind() {
 	case FunctionKind:
@@ -412,6 +472,14 @@ func slotFromValue(value Value) slot {
 
 func (value slot) owningValue() Value {
 	if value.ref == nil {
+		switch value.bits {
+		case nilSlotBits:
+			return nilValue
+		case falseSlotBits:
+			return falseValue
+		case trueSlotBits:
+			return trueValue
+		}
 		return Value{ref: numberMarkerPointer, bits: value.bits}
 	}
 	if value.isUserData() {
@@ -430,31 +498,60 @@ func (value slot) owningValue() Value {
 }
 
 func (value slot) kind() Kind {
-	switch value.ref {
-	case nil:
-		return NumberKind
-	case nilMarkerPointer:
-		return NilKind
-	case falseMarkerPointer, trueMarkerPointer:
-		return BoolKind
-	default:
-		kind := Kind(value.bits & 0xff)
-		if kind < StringKind || kind > TableKind {
-			return InvalidKind
+	if value.ref == nil {
+		switch {
+		case value.bits < firstReservedSlotBits:
+			return NumberKind
+		case value.bits == nilSlotBits:
+			return NilKind
+		default:
+			return BoolKind
 		}
-		return kind
 	}
+	kind := Kind(value.bits & 0xff)
+	if kind < StringKind || kind > TableKind {
+		return InvalidKind
+	}
+	return kind
 }
 
 // Typed predicates are the compact counterpart to Lua's ttis* tests. Slots
 // inside the runtime are already verified values, so a caller asking one
 // specific type question need not decode the complete Kind.
+//
+// The reserved scalar patterns never occur in reference slots, so nil,
+// boolean, and truth tests read only the bits word.
 func (value slot) isNil() bool {
-	return value.ref == nilMarkerPointer
+	return value.bits == nilSlotBits
+}
+
+func (value slot) isBool() bool {
+	return value.bits-trueSlotBits <= falseSlotBits-trueSlotBits
+}
+
+func (value slot) isTrue() bool {
+	return value.bits == trueSlotBits
+}
+
+// truth reports Lua truthiness: nil and false are the two highest patterns.
+func (value slot) truth() bool {
+	return value.bits < falseSlotBits
 }
 
 func (value slot) isNumber() bool {
-	return value.ref == nil
+	return value.ref == nil && value.bits < firstReservedSlotBits
+}
+
+// bothNumbers is the binary-operator fast-path test. It may report false for
+// two numbers: the OR of two number patterns can reach the reserved range
+// (for example -Inf with a large subnormal, or two negative NaNs whose
+// payloads together fill the low bits). Callers must therefore send a false
+// result to a slow path that still accepts numbers. In exchange the float
+// case costs the same two non-destructive pointer tests as a pointer-only
+// check plus a single compare-and-branch on the ORed bits.
+func bothNumbers(left, right slot) bool {
+	return left.ref == nil && right.ref == nil &&
+		left.bits|right.bits < firstReservedSlotBits
 }
 
 func (value slot) isString() bool {
@@ -519,9 +616,15 @@ func rawEqual(left, right Value) bool {
 
 func rawSlotEqual(left, right slot) bool {
 	if left.ref == nil || right.ref == nil {
-		return left.ref == nil &&
-			right.ref == nil &&
-			math.Float64frombits(left.bits) == math.Float64frombits(right.bits)
+		if left.ref != nil || right.ref != nil {
+			return false
+		}
+		if left.bits >= firstReservedSlotBits ||
+			right.bits >= firstReservedSlotBits {
+			return left.bits == right.bits
+		}
+		return math.Float64frombits(left.bits) ==
+			math.Float64frombits(right.bits)
 	}
 	if left.ref == right.ref && left.bits == right.bits {
 		return true
@@ -533,7 +636,7 @@ func rawSlotEqual(left, right slot) bool {
 	switch kind {
 	case StringKind:
 		return stringSlotsEqual(left, right)
-	case NilKind, BoolKind, FunctionKind, UserDataKind, ThreadKind, TableKind:
+	case FunctionKind, UserDataKind, ThreadKind, TableKind:
 		return left.ref == right.ref
 	default:
 		return false

@@ -45,7 +45,7 @@ func parseLuaNumber(text string) (float64, bool) {
 }
 
 func slotToNumber(value slot) (float64, bool) {
-	if value.ref == nil {
+	if value.isNumber() {
 		return math.Float64frombits(value.bits), true
 	}
 	if !value.isString() {

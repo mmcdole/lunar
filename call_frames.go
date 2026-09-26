@@ -682,9 +682,10 @@ func (thread *threadObject) reserveFrames(required int) {
 }
 
 func (thread *threadObject) fillNil(from, to int) {
-	for index := from; index < to; index++ {
-		thread.values[index] = nilSlot
+	if from >= to {
+		return
 	}
+	fillNilSlots(thread.values[from:to])
 }
 
 func (thread *threadObject) clearInactive(from, to int) {

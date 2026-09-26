@@ -228,6 +228,21 @@ func slowOrder(
 			rightKind,
 		)
 	}
+	if leftKind == NumberKind {
+		// runInstructions' single-compare bothNumbers test sends a few rare
+		// number pairs (such as -Inf with a large subnormal) here.
+		leftNumber := math.Float64frombits(left.bits)
+		rightNumber := math.Float64frombits(right.bits)
+		result := leftNumber < rightNumber
+		if code.opcode() == opLessEqual {
+			result = leftNumber <= rightNumber
+		}
+		if setComparisonPC(thread, frameIndex, nextPC, code, result) &&
+			thread.contextStepDue() {
+			return pollComparisonBackedge(thread, frameIndex, nextPC)
+		}
+		return nil
+	}
 	if leftKind == StringKind {
 		leftText := stringSlotText(left)
 		rightText := stringSlotText(right)

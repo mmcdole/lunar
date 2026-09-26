@@ -284,13 +284,10 @@ func verifyPrototype(prototype *Prototype) *Error {
 }
 
 func validPrototypeConstant(value slot) bool {
-	switch value.ref {
-	case nil:
+	switch {
+	case value.ref == nil:
+		// Numbers, nil, and booleans; loaded NaNs are canonicalized.
 		return true
-	case nilMarkerPointer:
-		return value.bits == uint64(NilKind)
-	case falseMarkerPointer, trueMarkerPointer:
-		return value.bits == uint64(BoolKind)
 	default:
 		return Kind(value.bits&0xff) == StringKind &&
 			stringHash(value.bits>>stringHashShift) != 0

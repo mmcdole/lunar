@@ -83,7 +83,7 @@ func (thread *threadObject) tryDirectNativeCall(
 }
 
 func directNumber(value slot) (float64, bool) {
-	if value.ref != nil {
+	if !value.isNumber() {
 		return 0, false
 	}
 	return math.Float64frombits(value.bits), true
@@ -100,7 +100,7 @@ func directOptionalPosition(
 		return fallback, true
 	}
 	value := arguments[index]
-	if value.ref == nilMarkerPointer {
+	if value.isNil() {
 		return fallback, true
 	}
 	number, ok := directNumber(value)
@@ -114,14 +114,14 @@ func directUnaryMath(
 	arguments []slot,
 	operation func(float64) float64,
 ) (slot, bool) {
-	if len(arguments) == 0 {
+	// Kept within the inlining budget so each caller calls operation
+	// directly.
+	if len(arguments) == 0 || !arguments[0].isNumber() {
 		return slot{}, false
 	}
-	number, ok := directNumber(arguments[0])
-	if !ok {
-		return slot{}, false
-	}
-	return numberSlot(operation(number)), true
+	return numberSlot(
+		operation(math.Float64frombits(arguments[0].bits)),
+	), true
 }
 
 func mathFloorDirect(_ *threadObject, arguments []slot) (slot, bool) {
@@ -235,7 +235,7 @@ func stringByteDirect(_ *threadObject, arguments []slot) (slot, bool) {
 	}
 	first = relativePosition(first, len(text))
 	last := first
-	if len(arguments) > 2 && arguments[2].ref != nilMarkerPointer {
+	if len(arguments) > 2 && !arguments[2].isNil() {
 		supplied, valid := directNumber(arguments[2])
 		if !valid {
 			return slot{}, false

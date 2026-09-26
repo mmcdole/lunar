@@ -296,7 +296,7 @@ func constantTruth(value slot) bool {
 	case NilKind:
 		return false
 	case BoolKind:
-		return value.ref == trueMarkerPointer
+		return value.isTrue()
 	default:
 		return true
 	}
@@ -813,7 +813,7 @@ func (parser *sourceParser) writeExpressionValue(
 			emitter.emitABC(opLoadNil, target, target, 0, line)
 		case BoolKind:
 			boolean := 0
-			if value.constant.ref == trueMarkerPointer {
+			if value.constant.isTrue() {
 				boolean = 1
 			}
 			emitter.emitABC(opLoadBool, target, boolean, 0, line)

@@ -140,7 +140,7 @@ func (writer *chunkWriter) writeConstant(value slot) {
 		writer.writeByte(0)
 	case BoolKind:
 		writer.writeByte(1)
-		if value.ref == trueMarkerPointer {
+		if value.isTrue() {
 			writer.writeByte(1)
 		} else {
 			writer.writeByte(0)
@@ -584,7 +584,7 @@ func (decoder *chunkDecoder) readConstant() (slot, error) {
 		if readErr != nil {
 			return slot{}, readErr
 		}
-		return slot{bits: bits}, nil
+		return slot{bits: canonicalNumberBits(bits)}, nil
 	case 4:
 		value, readErr := decoder.readString()
 		if readErr != nil {

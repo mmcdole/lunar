@@ -67,6 +67,17 @@ for _, a in ipairs(values) do
     end
   end
 end
+-- nil and booleans are scalars without a reference; none may pass as a number.
+for _, v in ipairs({{nil}, {true}, {false}}) do
+  local x = v[1]
+  check("floornil", math.floor, function() return (math.floor(x)) end, {x}, 1)
+  check("maxnil", math.max, function() return (math.max(1, x)) end, {1, x}, 2)
+  check("charnil", string.char, function() return (string.char(x)) end, {x}, 1)
+  check("subnil2", string.sub, function() return (string.sub("abc", x)) end, {"abc", x}, 2)
+  check("bytenil2", string.byte, function() return (string.byte("abc", x)) end, {"abc", x}, 2)
+  check("bytenil3", string.byte, function() return (string.byte("abc", 2, x)) end, {"abc", 2, x}, 3)
+  check("subnil3", string.sub, function() return (string.sub("abc", 2, x)) end, {"abc", 2, x}, 3)
+end
 check("floor0", math.floor, function() return (math.floor()) end, {}, 0)
 check("max0", math.max, function() return (math.max()) end, {}, 0)
 check("sub1", string.sub, function() return (string.sub("abc")) end, {"abc"}, 1)

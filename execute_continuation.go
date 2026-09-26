@@ -287,8 +287,7 @@ func resumeExecutionContinuation(thread *threadObject) *Error {
 		panic("lua: invalid execution continuation mode")
 	}
 
-	truth := result.ref != nilMarkerPointer &&
-		result.ref != falseMarkerPointer
+	truth := result.truth()
 	if continuation.mode == continuationCompareInverted {
 		truth = !truth
 	}

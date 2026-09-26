@@ -70,7 +70,7 @@ func (state *State) treeSlot(tree any, depth int) (slot, error) {
 	case []byte:
 		return stringSlot(state.runtime.strings.makeBytes(typed)), nil
 	case float64:
-		return numberSlot(typed), nil
+		return hostNumberSlot(typed), nil
 	case float32:
 		return numberSlot(float64(typed)), nil
 	case int:
@@ -338,7 +338,7 @@ func treeFromSlot(
 
 	switch value.kind() {
 	case BoolKind:
-		return value.ref == trueMarkerPointer, nil
+		return value.isTrue(), nil
 	case NumberKind:
 		return math.Float64frombits(value.bits), nil
 	case StringKind:

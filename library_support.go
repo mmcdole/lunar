@@ -342,8 +342,7 @@ func (frame Frame) lessThan(left, right slot) (bool, *Error) {
 
 // truthySlot applies Lua's truth rule: only nil and false are false.
 func truthySlot(value slot) bool {
-	return value.ref != nilMarkerPointer &&
-		value.ref != falseMarkerPointer
+	return value.truth()
 }
 
 // libraryError completes a callback with luaL_error's positioned failure.
