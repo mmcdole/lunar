@@ -681,11 +681,13 @@ func (thread *threadObject) reserveFrames(required int) {
 	)
 }
 
+// fillNil stores nil into a register range. Frames are short and their slots
+// usually hold scalars already, so plain stores beat testing each old value;
+// a write barrier runs only while the Go collector is marking.
 func (thread *threadObject) fillNil(from, to int) {
-	if from >= to {
-		return
+	for index := from; index < to; index++ {
+		thread.values[index] = slot{bits: nilSlotBits}
 	}
-	fillNilSlots(thread.values[from:to])
 }
 
 func (thread *threadObject) clearInactive(from, to int) {

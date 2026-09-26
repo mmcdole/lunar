@@ -129,9 +129,9 @@ func hostNumberSlot(value float64) slot {
 
 func boolSlot(value bool) slot {
 	if value {
-		return trueSlot
+		return slot{bits: trueSlotBits}
 	}
-	return falseSlot
+	return slot{bits: falseSlotBits}
 }
 
 type scalarMarker struct {
@@ -152,9 +152,12 @@ var (
 	nilValue   = Value{ref: nilMarkerPointer, bits: uint64(NilKind)}
 	falseValue = Value{ref: falseMarkerPointer, bits: uint64(BoolKind)}
 	trueValue  = Value{ref: trueMarkerPointer, bits: uint64(BoolKind)}
-	nilSlot    = slot{bits: nilSlotBits}
-	falseSlot  = slot{bits: falseSlotBits}
-	trueSlot   = slot{bits: trueSlotBits}
+	// The interpreter loop and frame fills spell these as slot{bits: ...}
+	// literals: Go loads package variables from memory, but a literal
+	// becomes an immediate.
+	nilSlot   = slot{bits: nilSlotBits}
+	falseSlot = slot{bits: falseSlotBits}
+	trueSlot  = slot{bits: trueSlotBits}
 )
 
 // Nil returns the Lua nil value.
