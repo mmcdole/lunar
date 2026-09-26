@@ -4,6 +4,10 @@ import "math"
 
 const maxTableMetamethodChain = 100
 
+// inlineIndexChainLimit bounds the table-valued __index links a constant-key
+// read follows before handing the rest of the chain to slowTableGet.
+const inlineIndexChainLimit = 4
+
 const tableInstructionHandled = instruction(opTableHandled)
 
 func rawTableMissOpcode(operation opcode) opcode {
@@ -114,6 +118,7 @@ func executeRawTableGet(
 func executeRawStringTableGet(
 	values []slot,
 	function *functionObject,
+	stringMetatable *tableObject,
 	base int,
 	code instruction,
 ) instruction {
@@ -134,27 +139,52 @@ func executeRawStringTableGet(
 		panic("lua: invalid constant-string table read opcode")
 	}
 
-	if !target.isTable() {
+	hash := uint32(stringSlotHash(key))
+	var metatable *tableObject
+	if target.isTable() {
+		table := (*tableObject)(target.ref)
+		if entry := table.store.mainStringEntry(key, hash); entry != nil &&
+			!entry.value.isNil() {
+			writeSlot(&values[base+code.a()], entry.value)
+			return tableInstructionHandled
+		}
+		result, found := table.rawStringKeySlot(key, hash)
+		if found {
+			writeSlot(&values[base+code.a()], result)
+			return tableInstructionHandled
+		}
+		metatable = table.metatable
+	} else if target.isString() && stringMetatable != nil {
+		metatable = stringMetatable
+	} else {
 		return code
 	}
-	table := (*tableObject)(target.ref)
-	hash := uint32(stringSlotHash(key))
-	if entry := table.store.mainStringEntry(key, hash); entry != nil &&
-		!entry.value.isNil() {
-		writeSlot(&values[base+code.a()], entry.value)
-		return tableInstructionHandled
-	}
-	result, found := table.rawStringKeySlot(key, hash)
-	if !found {
-		if table.metatable == nil ||
-			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+	// Follow __index while each link is a table, as PUC Lua's luaV_gettable
+	// does. Raw reads cannot run Lua, so any bail-out may restart the chain in
+	// slowTableGet, which also owns the loop limit and every error.
+	miss := code.withOpcode(rawTableMissOpcode(code.opcode()))
+	for range inlineIndexChainLimit {
+		index, found := metatableEventSlot(metatable, metaIndex)
+		if !found {
+			if !target.isTable() {
+				return code
+			}
 			writeSlot(&values[base+code.a()], nilSlot)
 			return tableInstructionHandled
 		}
-		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+		if !index.isTable() {
+			return miss
+		}
+		table := (*tableObject)(index.ref)
+		result, found := table.rawStringKeySlot(key, hash)
+		if found {
+			writeSlot(&values[base+code.a()], result)
+			return tableInstructionHandled
+		}
+		metatable = table.metatable
+		target = index
 	}
-	writeSlot(&values[base+code.a()], result)
-	return tableInstructionHandled
+	return miss
 }
 
 // executeRawTableSet completes writes that cannot invoke Lua or construct an

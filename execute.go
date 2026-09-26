@@ -485,7 +485,13 @@ dispatch:
 			return result
 
 		case opGetGlobal, opGetField, opSelfField:
-			result := executeRawStringTableGet(values, function, base, current)
+			result := executeRawStringTableGet(
+				values,
+				function,
+				thread.state.typeMetatables[StringKind],
+				base,
+				current,
+			)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -620,8 +626,10 @@ dispatch:
 				equal = true
 			case left.kind() != right.kind():
 				equal = false
-			case left.isString() ||
-				left.isTable() ||
+			case left.isString():
+				equal = left.bits == right.bits &&
+					stringSlotsEqual(left, right)
+			case left.isTable() ||
 				left.isUserData():
 				thread.frames[len(thread.frames)-1].pc = uint32(pc)
 				return current

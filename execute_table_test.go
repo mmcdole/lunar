@@ -2129,3 +2129,77 @@ return t, t.alpha, t.beta
 		)
 	}
 }
+
+// indexChainLua51Cases cover constant-key reads that follow table-valued
+// __index links, including links past the interpreter's inline limit, and
+// string equality decided without leaving the interpreter.
+var indexChainLua51Cases = []lua51Case{
+	{
+		name: "fields resolve at every depth of a class chain",
+		source: `
+local class = {d1 = 1}
+for depth = 2, 7 do
+  class = setmetatable({["d" .. depth] = depth}, {__index = class})
+end
+local object = setmetatable({}, {__index = class})
+return object.d1, object.d4, object.d5, object.d7, object.missing`,
+		want: "ok 1 4 5 7 nil",
+	},
+	{
+		name: "methods resolve through a class chain",
+		source: `
+local Base = {}
+Base.__index = Base
+function Base:name() return "base:" .. self.tag end
+local Derived = setmetatable({}, Base)
+Derived.__index = Derived
+local object = setmetatable({tag = "x"}, Derived)
+return object:name()`,
+		want: "ok 'base:x'",
+	},
+	{
+		name: "a function link inside the chain is called",
+		source: `
+local last = setmetatable({}, {__index = function(_, key) return key .. "!" end})
+local middle = setmetatable({}, {__index = last})
+local object = setmetatable({}, {__index = middle})
+return object.field`,
+		want: "ok 'field!'",
+	},
+	{
+		name: "string methods use the string metatable",
+		source: `
+function string.shout(text) return text:upper() .. "!" end
+local text = "abc"
+return text:len(), text:shout(), text.missing`,
+		want: "ok 3 'ABC!' nil",
+	},
+	{
+		name: "strings without an index table cannot be indexed",
+		source: `
+getmetatable("").__index = nil
+local text = "abc"
+return text:len()`,
+		want: "error 'case:4: attempt to index local 'text' (a string value)'",
+	},
+	{
+		name: "numbers cannot be indexed",
+		source: `
+local number = 5
+return number.field`,
+		want: "error 'case:3: attempt to index local 'number' (a number value)'",
+	},
+	{
+		name: "string equality compares content",
+		source: `
+local long = string.rep("x", 100)
+local built = "ab" .. "c"
+return built == "abc", built == "abd", long == string.rep("x", 100),
+  long == string.rep("x", 99) .. "y", "a" == "ab"`,
+		want: "ok true false true false false",
+	},
+}
+
+func TestExecutorIndexChainsAndStringEquality(t *testing.T) {
+	runLua51Cases(t, indexChainLua51Cases)
+}
