@@ -1942,7 +1942,8 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 			len(tableLibraryLua51Cases)+
 			len(stringLibraryLua51Cases)+
 			len(ioLibraryLua51Cases)+
-			len(osLibraryLua51Cases),
+			len(osLibraryLua51Cases)+
+			len(indexChainLua51Cases),
 	)
 	cases = append(cases, baseLibraryLua51Cases...)
 	cases = append(cases, loadLibraryLua51Cases...)
@@ -1952,6 +1953,7 @@ func TestLua51OracleMatchesLibraryCases(t *testing.T) {
 	cases = append(cases, stringLibraryLua51Cases...)
 	cases = append(cases, ioLibraryLua51Cases...)
 	cases = append(cases, osLibraryLua51Cases...)
+	cases = append(cases, indexChainLua51Cases...)
 
 	driver := &strings.Builder{}
 	driver.WriteString(lua51OracleDriver)
