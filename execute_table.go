@@ -1,6 +1,9 @@
 package lua
 
-import "math"
+import (
+	"math"
+	"unsafe"
+)
 
 const maxTableMetamethodChain = 100
 
@@ -60,9 +63,13 @@ func tableSourceOpcode(operation opcode) (opcode, bool) {
 // error. It is called directly by the instruction loop so common reads avoid
 // a return through the cold semantic driver.
 //
+// Like the loop, these helpers take the frame's register pointer and read
+// verified operands unchecked. Passing the pointer instead of the value slice
+// keeps the slice out of the loop's live registers.
+//
 //go:noinline
 func executeRawTableGet(
-	values []slot,
+	registers unsafe.Pointer,
 	function *functionObject,
 	base int,
 	code instruction,
@@ -71,21 +78,21 @@ func executeRawTableGet(
 
 	switch code.opcode() {
 	case opGetTable:
-		target = values[base+code.b()]
-		key = operandSlot(
-			values,
-			function.prototype.constants,
+		target = *registerAt(registers, base+code.b())
+		key = operandSlotUnchecked(
+			registers,
+			unsafe.Pointer(unsafe.SliceData(function.prototype.constants)),
 			base,
 			code.c(),
 		)
 	case opSelf:
-		target = values[base+code.b()]
+		target = *registerAt(registers, base+code.b())
 		// SELF publishes its receiver before reading RK(C), including when
 		// C aliases A+1.
-		writeSlot(&values[base+code.a()+1], target)
-		key = operandSlot(
-			values,
-			function.prototype.constants,
+		writeSlot(registerAt(registers, base+code.a()+1), target)
+		key = operandSlotUnchecked(
+			registers,
+			unsafe.Pointer(unsafe.SliceData(function.prototype.constants)),
 			base,
 			code.c(),
 		)
@@ -101,12 +108,12 @@ func executeRawTableGet(
 	if !found {
 		if table.metatable == nil ||
 			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
-			writeSlot(&values[base+code.a()], nilSlot)
+			writeSlot(registerAt(registers, base+code.a()), nilSlot)
 			return tableInstructionHandled
 		}
 		return code.withOpcode(rawTableMissOpcode(code.opcode()))
 	}
-	writeSlot(&values[base+code.a()], result)
+	writeSlot(registerAt(registers, base+code.a()), result)
 	return tableInstructionHandled
 }
 
@@ -116,9 +123,8 @@ func executeRawTableGet(
 //
 //go:noinline
 func executeRawStringTableGet(
-	values []slot,
+	registers unsafe.Pointer,
 	function *functionObject,
-	stringMetatable *tableObject,
 	base int,
 	code instruction,
 ) instruction {
@@ -129,62 +135,99 @@ func executeRawStringTableGet(
 		target = slotFromTableObject(function.environment)
 		key = function.prototype.constants[code.bx()]
 	case opGetField:
-		target = values[base+code.b()]
+		target = *registerAt(registers, base+code.b())
 		key = function.prototype.constants[constantIndex(code.c())]
 	case opSelfField:
-		target = values[base+code.b()]
-		writeSlot(&values[base+code.a()+1], target)
+		target = *registerAt(registers, base+code.b())
+		writeSlot(registerAt(registers, base+code.a()+1), target)
 		key = function.prototype.constants[constantIndex(code.c())]
 	default:
 		panic("lua: invalid constant-string table read opcode")
 	}
 
-	hash := uint32(stringSlotHash(key))
-	var metatable *tableObject
-	if target.isTable() {
-		table := (*tableObject)(target.ref)
-		if entry := table.store.mainStringEntry(key, hash); entry != nil &&
-			!entry.value.isNil() {
-			writeSlot(&values[base+code.a()], entry.value)
-			return tableInstructionHandled
-		}
-		result, found := table.rawStringKeySlot(key, hash)
-		if found {
-			writeSlot(&values[base+code.a()], result)
-			return tableInstructionHandled
-		}
-		metatable = table.metatable
-	} else if target.isString() && stringMetatable != nil {
-		metatable = stringMetatable
-	} else {
+	if !target.isTable() {
 		return code
 	}
-	// Follow __index while each link is a table, as PUC Lua's luaV_gettable
-	// does. Raw reads cannot run Lua, so any bail-out may restart the chain in
-	// slowTableGet, which also owns the loop limit and every error.
-	miss := code.withOpcode(rawTableMissOpcode(code.opcode()))
+	table := (*tableObject)(target.ref)
+	hash := uint32(stringSlotHash(key))
+	if entry := table.store.mainStringEntry(key, hash); entry != nil &&
+		!entry.value.isNil() {
+		writeSlot(registerAt(registers, base+code.a()), entry.value)
+		return tableInstructionHandled
+	}
+	result, found := table.rawStringKeySlot(key, hash)
+	if !found {
+		if table.metatable == nil ||
+			table.metatable.absentMetamethods&metaIndex.bit() != 0 {
+			writeSlot(registerAt(registers, base+code.a()), nilSlot)
+			return tableInstructionHandled
+		}
+		return code.withOpcode(rawTableMissOpcode(code.opcode()))
+	}
+	writeSlot(registerAt(registers, base+code.a()), result)
+	return tableInstructionHandled
+}
+
+// executeIndexChainGet continues a constant-key read that
+// executeRawStringTableGet could not finish: a table miss whose metatable
+// has __index, or a string receiver. It follows table-valued __index links,
+// as PUC Lua's luaV_gettable does, and returns the instruction unchanged for
+// anything else. Raw reads cannot run Lua, so slowTableGet may restart the
+// chain; it also owns the loop limit and every error. Keeping this off the
+// hit path leaves executeRawStringTableGet as small as a plain field read.
+//
+//go:noinline
+func executeIndexChainGet(
+	registers unsafe.Pointer,
+	function *functionObject,
+	stringMetatable *tableObject,
+	base int,
+	code instruction,
+) instruction {
+	var target, key slot
+	switch code.opcode() {
+	case opGetGlobalMiss:
+		target = slotFromTableObject(function.environment)
+		key = function.prototype.constants[code.bx()]
+	case opGetField, opGetFieldMiss, opSelfField, opSelfFieldMiss:
+		target = *registerAt(registers, base+code.b())
+		key = function.prototype.constants[constantIndex(code.c())]
+	default:
+		return code
+	}
+
+	var metatable *tableObject
+	switch {
+	case target.isTable():
+		metatable = (*tableObject)(target.ref).metatable
+	case target.isString() && stringMetatable != nil:
+		metatable = stringMetatable
+	default:
+		return code
+	}
+	hash := uint32(stringSlotHash(key))
 	for range inlineIndexChainLimit {
 		index, found := metatableEventSlot(metatable, metaIndex)
 		if !found {
 			if !target.isTable() {
 				return code
 			}
-			writeSlot(&values[base+code.a()], nilSlot)
+			writeSlot(registerAt(registers, base+code.a()), nilSlot)
 			return tableInstructionHandled
 		}
 		if !index.isTable() {
-			return miss
+			return code
 		}
 		table := (*tableObject)(index.ref)
 		result, found := table.rawStringKeySlot(key, hash)
 		if found {
-			writeSlot(&values[base+code.a()], result)
+			writeSlot(registerAt(registers, base+code.a()), result)
 			return tableInstructionHandled
 		}
 		metatable = table.metatable
 		target = index
 	}
-	return miss
+	return code
 }
 
 // executeRawTableSet completes writes that cannot invoke Lua or construct an
@@ -192,7 +235,7 @@ func executeRawStringTableGet(
 //
 //go:noinline
 func executeRawTableSet(
-	values []slot,
+	registers unsafe.Pointer,
 	function *functionObject,
 	base int,
 	code instruction,
@@ -201,16 +244,16 @@ func executeRawTableSet(
 
 	switch code.opcode() {
 	case opSetTable:
-		target = values[base+code.a()]
-		key = operandSlot(
-			values,
-			function.prototype.constants,
+		target = *registerAt(registers, base+code.a())
+		key = operandSlotUnchecked(
+			registers,
+			unsafe.Pointer(unsafe.SliceData(function.prototype.constants)),
 			base,
 			code.b(),
 		)
-		value = operandSlot(
-			values,
-			function.prototype.constants,
+		value = operandSlotUnchecked(
+			registers,
+			unsafe.Pointer(unsafe.SliceData(function.prototype.constants)),
 			base,
 			code.c(),
 		)
@@ -289,7 +332,7 @@ resolved:
 //
 //go:noinline
 func executeRawStringTableSet(
-	values []slot,
+	registers unsafe.Pointer,
 	function *functionObject,
 	base int,
 	code instruction,
@@ -300,13 +343,13 @@ func executeRawStringTableSet(
 	case opSetGlobal:
 		target = slotFromTableObject(function.environment)
 		key = function.prototype.constants[code.bx()]
-		value = values[base+code.a()]
+		value = *registerAt(registers, base+code.a())
 	case opSetField:
-		target = values[base+code.a()]
+		target = *registerAt(registers, base+code.a())
 		key = function.prototype.constants[constantIndex(code.b())]
-		value = operandSlot(
-			values,
-			function.prototype.constants,
+		value = operandSlotUnchecked(
+			registers,
+			unsafe.Pointer(unsafe.SliceData(function.prototype.constants)),
 			base,
 			code.c(),
 		)

@@ -35,24 +35,33 @@ const (
 // path polls when a budget is active; here a due poll is left to it), and
 // collection servicing after allocation (returned as directCallCollect so the
 // driver services it at the same safe point the native return would).
-// frameTop is the caller's register extent; the ordinary fixed return resets
-// thread.top to it, so a differing top is left to the ordinary path.
+// The ordinary fixed return resets thread.top to the caller's register extent,
+// so a differing top is left to the ordinary path. The extent is read from the
+// frame here rather than passed in, which keeps the prototype out of the
+// dispatch loop's live registers.
 //
 //go:noinline
 func (thread *threadObject) tryDirectNativeCall(
 	callerBase int,
-	frameTop int,
 	code instruction,
-	callable slot,
 ) directCallResult {
+	callable := thread.values[callerBase+code.a()]
+	if callable.bits != uint64(FunctionKind)|nativeFunctionSlotFlag ||
+		callable.ref == nil {
+		return directCallMissed
+	}
 	argumentField := code.b()
 	resultField := code.c()
 	if argumentField == 0 || resultField == 0 || resultField > 2 {
 		return directCallMissed
 	}
 	direct := (*functionObject)(callable.ref).nativeBodyUnchecked().direct
-	if direct == nil ||
-		thread.top != frameTop ||
+	if direct == nil {
+		return directCallMissed
+	}
+	caller := &thread.frames[len(thread.frames)-1]
+	frameTop := callerBase + int(caller.function.prototype.registers)
+	if thread.top != frameTop ||
 		len(thread.frames) >= thread.frameLimit() ||
 		int(thread.owner.nativeCallDepth) >= thread.nativeCallLimit() ||
 		thread.state.execution.pendingExit != nil {

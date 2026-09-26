@@ -451,9 +451,9 @@ dispatch:
 			)
 
 		case opLoadBool:
-			value := falseSlot
+			value := slot{bits: falseSlotBits}
 			if current.b() != 0 {
-				value = trueSlot
+				value = slot{bits: trueSlotBits}
 			}
 			writeSlot(registerAt(registers, base+current.a()), value)
 			if current.c() != 0 {
@@ -462,7 +462,10 @@ dispatch:
 
 		case opLoadNil:
 			for register := current.a(); register <= current.b(); register++ {
-				writeSlot(registerAt(registers, base+register), nilSlot)
+				writeSlot(
+					registerAt(registers, base+register),
+					slot{bits: nilSlotBits},
+				)
 			}
 
 		case opGetUpvalue:
@@ -477,7 +480,7 @@ dispatch:
 			)
 
 		case opGetTable, opSelf:
-			result := executeRawTableGet(values, function, base, current)
+			result := executeRawTableGet(registers, function, base, current)
 			if result == tableInstructionHandled {
 				break
 			}
@@ -486,9 +489,39 @@ dispatch:
 
 		case opGetGlobal, opGetField, opSelfField:
 			result := executeRawStringTableGet(
-				values,
+				registers,
+				function,
+				base,
+				current,
+			)
+			if result == tableInstructionHandled {
+				break
+			}
+			result = executeIndexChainGet(
+				registers,
 				function,
 				thread.state.typeMetatables[StringKind],
+				base,
+				result,
+			)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return result
+
+		case opSetTable:
+			result := executeRawTableSet(registers, function, base, current)
+			if result == tableInstructionHandled {
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return result
+
+		case opSetGlobal, opSetField:
+			result := executeRawStringTableSet(
+				registers,
+				function,
 				base,
 				current,
 			)
@@ -498,55 +531,78 @@ dispatch:
 			thread.frames[len(thread.frames)-1].pc = uint32(pc)
 			return result
 
-		case opSetTable:
-			result := executeRawTableSet(values, function, base, current)
-			if result == tableInstructionHandled {
-				break
-			}
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return result
-
-		case opSetGlobal, opSetField:
-			result := executeRawStringTableSet(values, function, base, current)
-			if result == tableInstructionHandled {
-				break
-			}
-			thread.frames[len(thread.frames)-1].pc = uint32(pc)
-			return result
-
-		case opAdd, opSub, opMul, opDiv, opMod:
-			left := operandSlotUnchecked(
-				registers,
-				constants,
-				base,
-				current.b(),
-			)
-			right := operandSlotUnchecked(
-				registers,
-				constants,
-				base,
-				current.c(),
-			)
+		// Each arithmetic opcode has its own case, as in PUC Lua's luaV_execute,
+		// so the jump table reaches the operation without a second dispatch.
+		case opAdd:
+			left := operandSlotUnchecked(registers, constants, base, current.b())
+			right := operandSlotUnchecked(registers, constants, base, current.c())
 			if bothNumbers(left, right) {
 				leftNumber := math.Float64frombits(left.bits)
 				rightNumber := math.Float64frombits(right.bits)
-				var result float64
-				switch current.opcode() {
-				case opAdd:
-					result = leftNumber + rightNumber
-				case opSub:
-					result = leftNumber - rightNumber
-				case opMul:
-					result = leftNumber * rightNumber
-				case opDiv:
-					result = leftNumber / rightNumber
-				case opMod:
-					result = leftNumber -
-						math.Floor(leftNumber/rightNumber)*rightNumber
-				}
 				writeSlot(
 					registerAt(registers, base+current.a()),
-					numberSlot(result),
+					numberSlot(leftNumber+rightNumber),
+				)
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return current
+
+		case opSub:
+			left := operandSlotUnchecked(registers, constants, base, current.b())
+			right := operandSlotUnchecked(registers, constants, base, current.c())
+			if bothNumbers(left, right) {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					numberSlot(leftNumber-rightNumber),
+				)
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return current
+
+		case opMul:
+			left := operandSlotUnchecked(registers, constants, base, current.b())
+			right := operandSlotUnchecked(registers, constants, base, current.c())
+			if bothNumbers(left, right) {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					numberSlot(leftNumber*rightNumber),
+				)
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return current
+
+		case opDiv:
+			left := operandSlotUnchecked(registers, constants, base, current.b())
+			right := operandSlotUnchecked(registers, constants, base, current.c())
+			if bothNumbers(left, right) {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					numberSlot(leftNumber/rightNumber),
+				)
+				break
+			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return current
+
+		case opMod:
+			left := operandSlotUnchecked(registers, constants, base, current.b())
+			right := operandSlotUnchecked(registers, constants, base, current.c())
+			if bothNumbers(left, right) {
+				leftNumber := math.Float64frombits(left.bits)
+				rightNumber := math.Float64frombits(right.bits)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					numberSlot(leftNumber-
+						math.Floor(leftNumber/rightNumber)*rightNumber),
 				)
 				break
 			}
@@ -568,9 +624,15 @@ dispatch:
 		case opNot:
 			source := (*registerAt(registers, base+current.b()))
 			if !source.truth() {
-				writeSlot(registerAt(registers, base+current.a()), trueSlot)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					slot{bits: trueSlotBits},
+				)
 			} else {
-				writeSlot(registerAt(registers, base+current.a()), falseSlot)
+				writeSlot(
+					registerAt(registers, base+current.a()),
+					slot{bits: falseSlotBits},
+				)
 			}
 
 		case opLength:
@@ -634,7 +696,8 @@ dispatch:
 				equal = false
 			case left.isString():
 				equal = left.bits == right.bits &&
-					stringSlotsEqual(left, right)
+					(left.ref == right.ref ||
+						stringSlotContentsEqual(left, right))
 			case left.isTable() ||
 				left.isUserData():
 				thread.frames[len(thread.frames)-1].pc = uint32(pc)
@@ -731,28 +794,20 @@ dispatch:
 			frameIndex := len(thread.frames) - 1
 			if current.opcode() == opCall {
 				thread.frames[frameIndex].pc = uint32(pc)
-				callable := *registerAt(registers, base+current.a())
-				if callable.bits == uint64(FunctionKind)|nativeFunctionSlotFlag &&
-					callable.ref != nil {
-					switch thread.tryDirectNativeCall(
-						base,
-						base+int(prototype.registers),
-						current,
-						callable,
-					) {
-					case directCallDone:
-						continue
-					case directCallCollect:
-						return current.executorOutcome(opCollectionPoll)
-					}
-				} else if thread.tryEnterFixedLuaCall(base, current) {
+				if thread.tryEnterFixedLuaCall(base, current) {
 					goto reload
+				}
+				switch thread.tryDirectNativeCall(base, current) {
+				case directCallDone:
+					continue
+				case directCallCollect:
+					return current.executorOutcome(opCollectionPoll)
 				}
 			} else if frameIndex > stopDepth &&
 				thread.tryCompleteFixedLuaReturn(frameIndex, current) {
 				goto reload
 			}
-			return instructionAt(instructions, pc-1)
+			return current
 
 		// The driver executes these; listing them keeps them explicit in the
 		// dispatch table rather than relying on default.
