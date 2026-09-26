@@ -68,6 +68,7 @@ const (
 	opSetFieldMiss
 	opSelfFieldMiss
 	opContextPoll
+	opCollectionPoll
 )
 
 const (

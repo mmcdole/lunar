@@ -18,33 +18,34 @@ const (
 const defaultRandomSeed = 1
 
 var mathLibraryFunctions = [...]struct {
-	name  string
-	entry NativeFunc
+	name   string
+	entry  NativeFunc
+	direct nativeDirectFunc
 }{
-	{name: "abs", entry: mathAbs},
+	{name: "abs", entry: mathAbs, direct: mathAbsDirect},
 	{name: "acos", entry: mathAcos},
 	{name: "asin", entry: mathAsin},
 	{name: "atan", entry: mathAtan},
 	{name: "atan2", entry: mathAtan2},
-	{name: "ceil", entry: mathCeil},
+	{name: "ceil", entry: mathCeil, direct: mathCeilDirect},
 	{name: "cos", entry: mathCos},
 	{name: "cosh", entry: mathCosh},
 	{name: "deg", entry: mathDeg},
 	{name: "exp", entry: mathExp},
-	{name: "floor", entry: mathFloor},
+	{name: "floor", entry: mathFloor, direct: mathFloorDirect},
 	{name: "fmod", entry: mathFmod},
 	{name: "frexp", entry: mathFrexp},
 	{name: "ldexp", entry: mathLdexp},
 	{name: "log", entry: mathLog},
 	{name: "log10", entry: mathLog10},
-	{name: "max", entry: mathMax},
-	{name: "min", entry: mathMin},
+	{name: "max", entry: mathMax, direct: mathMaxDirect},
+	{name: "min", entry: mathMin, direct: mathMinDirect},
 	{name: "modf", entry: mathModf},
 	{name: "pow", entry: mathPow},
 	{name: "rad", entry: mathRad},
 	{name: "sin", entry: mathSin},
 	{name: "sinh", entry: mathSinh},
-	{name: "sqrt", entry: mathSqrt},
+	{name: "sqrt", entry: mathSqrt, direct: mathSqrtDirect},
 	{name: "tan", entry: mathTan},
 	{name: "tanh", entry: mathTanh},
 }
@@ -89,6 +90,7 @@ func (state *State) OpenMath() error {
 		if functionErr != nil {
 			return functionErr
 		}
+		function.nativeBodyUnchecked().direct = definition.direct
 		if setErr := library.rawSetStringSlot(
 			definition.name,
 			slotFromFunctionObject(function),

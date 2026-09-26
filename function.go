@@ -26,6 +26,7 @@ type functionObject struct {
 
 type nativeFunctionData struct {
 	entry    NativeFunc
+	direct   nativeDirectFunc
 	captures []slot
 }
 

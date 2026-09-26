@@ -357,6 +357,12 @@ driver:
 				); failure != nil {
 					return stopExecution(thread, failure)
 				}
+			case opCollectionPoll:
+				if failure := serviceAutomaticCollection(
+					thread,
+				); failure != nil {
+					return stopExecution(thread, failure)
+				}
 			case opContextPoll:
 				if failure := pollExecutionContext(thread); failure != nil {
 					return stopExecution(thread, failure)
@@ -718,7 +724,21 @@ dispatch:
 			frameIndex := len(thread.frames) - 1
 			if current.opcode() == opCall {
 				thread.frames[frameIndex].pc = uint32(pc)
-				if thread.tryEnterFixedLuaCall(base, current) {
+				callable := *registerAt(registers, base+current.a())
+				if callable.bits == uint64(FunctionKind)|nativeFunctionSlotFlag &&
+					callable.ref != nil {
+					switch thread.tryDirectNativeCall(
+						base,
+						base+int(prototype.registers),
+						current,
+						callable,
+					) {
+					case directCallDone:
+						continue
+					case directCallCollect:
+						return current.executorOutcome(opCollectionPoll)
+					}
+				} else if thread.tryEnterFixedLuaCall(base, current) {
 					goto reload
 				}
 			} else if frameIndex > stopDepth &&
