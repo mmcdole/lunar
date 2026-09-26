@@ -51,7 +51,7 @@ return require("host"),
 	loaded==nil,type(loadError),
 	doOK,type(doError),
 	requireOK,type(requireError),
-	string.find(requireError,"script-file loading is disabled",1,true)~=nil
+	string.find(requireError,"script-file loading is disabled",1,true)==nil
 `)
 	results, err := state.Call(chunk.Value())
 	if err != nil {
