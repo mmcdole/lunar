@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -279,4 +280,118 @@ func BenchmarkValueSlotRoundTrip(b *testing.B) {
 		value = slotFromValue(value).owningValue()
 	}
 	runtime.KeepAlive(value)
+}
+
+func TestHostNaNPayloadsCannotForgeScalarSlots(t *testing.T) {
+	state, err := New(Options{Libraries: CoreLibraries()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	// Each payload would reach a reserved nil/false/true pattern directly,
+	// through negation, or through quieting.
+	for _, bits := range []uint64{
+		nilSlotBits,
+		falseSlotBits,
+		trueSlotBits,
+		0x7fffffffffffffff,
+		0x7ffffffffffffffd,
+		0xfff7ffffffffffff,
+		0x7ff7fffffffffffe,
+	} {
+		value := Number(math.Float64frombits(bits))
+		converted := slotFromValue(value)
+		if !converted.isNumber() || converted.bits|1<<63|1<<51 >= firstReservedSlotBits {
+			t.Fatalf("host NaN %#x became slot %#x", bits, converted.bits)
+		}
+		if err := state.SetGlobal("x", value); err != nil {
+			t.Fatal(err)
+		}
+		results, err := state.DoString("=nan", `
+			local y = -x
+			return type(x), type(y), type(math.abs(x)), type(x + 1), x ~= x, y ~= y
+		`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"number", "number", "number", "number", "true", "true"}
+		for index, result := range results {
+			if got := result.String(); got != want[index] {
+				t.Fatalf("%#x result %d = %s, want %s", bits, index, got, want[index])
+			}
+		}
+	}
+	for _, bits := range []uint64{0x7ff8000000000001, 0x7ff8000000000042, 0xfff8000000000000} {
+		if got := canonicalNumberBits(bits); got != bits {
+			t.Fatalf("safe NaN %#x canonicalized to %#x", bits, got)
+		}
+	}
+}
+
+// Number pairs whose bit patterns OR into the reserved scalar range miss the
+// interpreter's single-compare bothNumbers test and must still behave as
+// numbers on the slow paths.
+func TestNumberPairsOutsideBothNumbersFastPath(t *testing.T) {
+	state, err := New(Options{Libraries: CoreLibraries()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	pairs := [][2]uint64{
+		{0xfff0000000000000, 0x000fffffffffffff}, // -Inf, largest subnormal
+		{0x000fffffffffffff, 0xfff0000000000000},
+		{0xfff8000000000000, 0x0007ffffffffffff}, // -NaN, subnormal
+		{0xfffffffffffffff0, 0x000000000000000f}, // payload NaN, subnormal
+		{0xfffffffffffffff0, 0xfff000000000000f}, // two NaNs
+	}
+	for _, pair := range pairs {
+		a := math.Float64frombits(pair[0])
+		b := math.Float64frombits(pair[1])
+		if bothNumbers(numberSlot(a), numberSlot(b)) {
+			t.Fatalf("%#x, %#x unexpectedly took the fast path", pair[0], pair[1])
+		}
+		if err := state.SetGlobal("a", Number(a)); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.SetGlobal("b", Number(b)); err != nil {
+			t.Fatal(err)
+		}
+		results, err := state.DoString("=pairs", `
+			local a, b = a, b
+			local t = {}
+			t[#t+1] = a < b
+			t[#t+1] = a <= b
+			t[#t+1] = a > b
+			t[#t+1] = a >= b
+			t[#t+1] = a == b
+			t[#t+1] = a ~= b
+			t[#t+1] = type(a + b)
+			t[#t+1] = type(a - b)
+			t[#t+1] = type(a * b)
+			t[#t+1] = type(a / b)
+			t[#t+1] = type(a % b)
+			return unpack(t)
+		`)
+		if err != nil {
+			t.Fatalf("%#x, %#x: %v", pair[0], pair[1], err)
+		}
+		want := []string{
+			strconv.FormatBool(a < b),
+			strconv.FormatBool(a <= b),
+			strconv.FormatBool(a > b),
+			strconv.FormatBool(a >= b),
+			strconv.FormatBool(a == b),
+			strconv.FormatBool(a != b),
+			"number", "number", "number", "number", "number",
+		}
+		if len(results) != len(want) {
+			t.Fatalf("%#x, %#x: %d results", pair[0], pair[1], len(results))
+		}
+		for index, result := range results {
+			if got := result.String(); got != want[index] {
+				t.Fatalf("%#x, %#x result %d = %s, want %s",
+					pair[0], pair[1], index, got, want[index])
+			}
+		}
+	}
 }

@@ -462,7 +462,7 @@ dispatch:
 
 		case opLoadNil:
 			for register := current.a(); register <= current.b(); register++ {
-				*registerAt(registers, base+register) = nilSlot
+				writeSlot(registerAt(registers, base+register), nilSlot)
 			}
 
 		case opGetUpvalue:
@@ -527,7 +527,7 @@ dispatch:
 				base,
 				current.c(),
 			)
-			if left.ref == nil && right.ref == nil {
+			if bothNumbers(left, right) {
 				leftNumber := math.Float64frombits(left.bits)
 				rightNumber := math.Float64frombits(right.bits)
 				var result float64
@@ -555,7 +555,7 @@ dispatch:
 
 		case opUnaryMinus:
 			source := (*registerAt(registers, base+current.b()))
-			if source.ref == nil {
+			if source.isNumber() {
 				writeSlot(
 					registerAt(registers, base+current.a()),
 					numberSlot(-math.Float64frombits(source.bits)),
@@ -567,9 +567,7 @@ dispatch:
 
 		case opNot:
 			source := (*registerAt(registers, base+current.b()))
-			result := source.ref == nilMarkerPointer ||
-				source.ref == falseMarkerPointer
-			if result {
+			if !source.truth() {
 				writeSlot(registerAt(registers, base+current.a()), trueSlot)
 			} else {
 				writeSlot(registerAt(registers, base+current.a()), falseSlot)
@@ -620,8 +618,16 @@ dispatch:
 			var equal bool
 			switch {
 			case left.ref == nil && right.ref == nil:
-				equal = math.Float64frombits(left.bits) ==
-					math.Float64frombits(right.bits)
+				// Two scalars. Numbers with equal bits always pass the
+				// bothNumbers bits test, and the only distinct number
+				// patterns that compare equal (the zeros) do too, so any
+				// scalar pair outside it is equal exactly when its bits are.
+				if left.bits|right.bits < firstReservedSlotBits {
+					equal = math.Float64frombits(left.bits) ==
+						math.Float64frombits(right.bits)
+				} else {
+					equal = left.bits == right.bits
+				}
 			case left.ref == right.ref && left.bits == right.bits:
 				equal = true
 			case left.kind() != right.kind():
@@ -662,41 +668,35 @@ dispatch:
 				base,
 				current.c(),
 			)
-			var (
-				compared bool
-				result   bool
-			)
-			if left.ref == nil && right.ref == nil {
+			if bothNumbers(left, right) {
 				leftNumber := math.Float64frombits(left.bits)
 				rightNumber := math.Float64frombits(right.bits)
-				compared = true
+				var result bool
 				if current.opcode() == opLessThan {
 					result = leftNumber < rightNumber
 				} else {
 					result = leftNumber <= rightNumber
 				}
-			}
-			if !compared {
-				thread.frames[len(thread.frames)-1].pc = uint32(pc)
-				return current
-			}
-			if result == (current.a() != 0) {
-				jump := instructionAt(instructions, pc)
-				pc++
-				offset := jump.sbx()
-				pc += offset
-				if offset < 0 {
-					current = jump
-					goto contextBackedge
+				if result == (current.a() != 0) {
+					jump := instructionAt(instructions, pc)
+					pc++
+					offset := jump.sbx()
+					pc += offset
+					if offset < 0 {
+						current = jump
+						goto contextBackedge
+					}
+				} else {
+					pc++
 				}
-			} else {
-				pc++
+				break
 			}
+			thread.frames[len(thread.frames)-1].pc = uint32(pc)
+			return current
 
 		case opTest:
 			source := (*registerAt(registers, base+current.a()))
-			truth := source.ref != nilMarkerPointer &&
-				source.ref != falseMarkerPointer
+			truth := source.truth()
 			if truth == (current.c() != 0) {
 				jump := instructionAt(instructions, pc)
 				pc++
@@ -712,8 +712,7 @@ dispatch:
 
 		case opTestSet:
 			source := (*registerAt(registers, base+current.b()))
-			truth := source.ref != nilMarkerPointer &&
-				source.ref != falseMarkerPointer
+			truth := source.truth()
 			if truth == (current.c() != 0) {
 				writeSlot(registerAt(registers, base+current.a()), source)
 				jump := instructionAt(instructions, pc)
@@ -766,9 +765,9 @@ dispatch:
 			initial := (*registerAt(registers, register))
 			limit := (*registerAt(registers, register+1))
 			step := (*registerAt(registers, register+2))
-			if initial.ref == nil &&
-				limit.ref == nil &&
-				step.ref == nil {
+			if initial.isNumber() &&
+				limit.isNumber() &&
+				step.isNumber() {
 				writeSlot(
 					registerAt(registers, register),
 					numberSlot(

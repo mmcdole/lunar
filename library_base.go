@@ -556,9 +556,9 @@ func baseNewProxy(frame Frame) Outcome {
 
 	validMetatables := tableObjectFromSlot(frame.nativeCapture(0))
 	var metatable *tableObject
-	switch argument.ref {
-	case nilMarkerPointer, falseMarkerPointer:
-	case trueMarkerPointer:
+	switch argument.bits {
+	case nilSlotBits, falseSlotBits:
+	case trueSlotBits:
 		metatable = newTable(frame.thread.state, 0, 0)
 		if status := validMetatables.rawSetSlot(
 			slotFromTableObject(metatable),
@@ -789,7 +789,7 @@ func baseToString(frame Frame) Outcome {
 			math.Float64frombits(value.bits),
 		))
 	case BoolKind:
-		if value.ref == trueMarkerPointer {
+		if value.isTrue() {
 			return frame.ReturnString("true")
 		}
 		return frame.ReturnString("false")

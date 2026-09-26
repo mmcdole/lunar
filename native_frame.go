@@ -44,10 +44,10 @@ func (frame Frame) Bool(index int) (bool, bool) {
 	if !present {
 		return false, false
 	}
-	switch value.ref {
-	case falseMarkerPointer:
+	switch value.bits {
+	case falseSlotBits:
 		return false, true
-	case trueMarkerPointer:
+	case trueSlotBits:
 		return true, true
 	default:
 		return false, false
@@ -57,7 +57,7 @@ func (frame Frame) Bool(index int) (bool, bool) {
 // Number returns argument index and whether it is exactly a Lua number.
 func (frame Frame) Number(index int) (float64, bool) {
 	value, present := frame.argument(index)
-	if !present || value.ref != nil {
+	if !present || !value.isNumber() {
 		return 0, false
 	}
 	return math.Float64frombits(value.bits), true
@@ -320,7 +320,7 @@ func (frame Frame) ReturnBool(value bool) Outcome {
 // ReturnNumber completes the callback with one Lua number result.
 func (frame Frame) ReturnNumber(value float64) Outcome {
 	call := frame.activation()
-	return frame.returnOne(call, numberSlot(value))
+	return frame.returnOne(call, hostNumberSlot(value))
 }
 
 // ReturnString completes the callback with one Lua string result.
